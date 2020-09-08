@@ -1,0 +1,171 @@
+{Mail8 - Delte, Find, Step, Zero, Restore}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+PROCEDURE Delte;                                           
+ BEGIN    
+  temp1 := increment;
+  IF (recnumber<1) OR (recnumber>numrecs) THEN EXIT(Delte);
+  IF recnumber <= ladd THEN ladd := recnumber - 1;
+  IF disk^.code = 'Perm  ' THEN
+   BEGIN
+    NEW(ptr);   
+    STR(recnumber,disk^.code);  
+    ptr^.recpart := disk^;    
+    ptr^.lpart := first;
+    first := ptr;
+   END;
+  WITH disk^ DO          
+   BEGIN
+    code := '      '; 
+   END;
+  SEEK(disk,recnumber);    
+  PUT(disk);    
+  Step;
+  IF (disk^.code<>'Add   ') AND (disk^.code<>'Change ') AND
+     (disk^.code<>'Perm  ') THEN
+   BEGIN
+    increment := -increment;  
+    Step;
+   END;
+  IF (disk^.code<>'Add   ') AND (disk^.code<>'Change ') AND
+     (disk^.code<>'Perm  ') THEN
+   SC_Clr_Screen;  
+  increment := temp1;
+ END; (* Delte *)                                             
+  
+     
+PROCEDURE Find;                    
+ VAR high,low:INTEGER;  
+     ch2:char;
+     tempwildok:BOOLEAN;
+ 
+ PROCEDURE Findnext; 
+  VAR oldrec : INTEGER;  
+  BEGIN    
+   SC_Clr_Screen;        
+   WRITE('Searching ');
+   temp := recnumber;
+   REPEAT    
+    WRITE('.');
+    oldrec := recnumber;    
+    Step; 
+    Wild2;
+    tempwildok:=Wildok;
+   UNTIL (oldrec=recnumber) OR tempwildok OR (recnumber=numrecs)
+         OR (recnumber=1);       
+  if NOT tempwildok then
+    begin
+      writeln;
+      writeln;
+      write('Not Found ...');
+      repeat until NOT Space_Wait(TRUE);
+    end;
+  IF (NOT tempwildok) OR (oldrec=recnumber) THEN recnumber := temp;       
+  SEEK(disk,recnumber);  
+  GET(disk);
+  END;       
+      
+ BEGIN             
+  repeat
+   SC_Clr_Line(1);
+   SC_Clr_Line(0);
+   IF increment = 1 THEN WRITE('>') ELSE WRITE('<');
+   WRITELN('Find: P)refix, F)name, mi(N)it, L)name, s(U)ffix, T)itle, C)mpny,');
+   WRITE  ('       #)ph, A)dd, c(I)ty, S)tate, cntr(Y), Z)ip, M)isc,',
+           ' (^), R)ec#, Q(uit:');
+   READ(KEYBOARD,ch2);
+  until ch2 in ['P','p','F','f','N','n','L','l','U','u','T','t','C','c',
+                '#',    'A','a','I','i','S','s','Y','y','Z','z','M','m',
+                '^','R','r','Q','q'];
+  SC_Clr_Line(1);
+  SC_Clr_Line(0); 
+  IF ch2 IN ['r','R'] THEN
+   BEGIN
+    WRITE('Enter record number:');
+    recnumber:=-1; {returned value if integer illegal}
+    Getint(0,0,recnumber);
+    IF recnumber < 1 THEN recnumber := 1; 
+    IF recnumber > numrecs THEN recnumber := numrecs; 
+    recnumber := recnumber - increment;  
+    SEEK(disk,recnumber); 
+    GET(disk);
+    Step;
+   END 
+  ELSE
+    begin
+      IF not(ch2 in ['Q','q']) then
+      BEGIN
+       Wild1(ch2);
+       Findnext;
+      END 
+    end;
+ END (* Find *);              
+
+PROCEDURE Step;                                  
+ VAR temp : INTEGER;      
+ BEGIN      
+  temp := recnumber; 
+  REPEAT
+   temp := temp + increment;
+   IF (temp>numrecs) THEN temp := numrecs;    
+   IF (temp<1) THEN temp := 1;      
+   SEEK(disk,temp);  
+   GET(disk);
+  UNTIL (disk^.code='Perm  ') OR (disk^.code='Add   ') OR
+   (disk^.code='Change') OR 
+   ((increment=-1) and (temp=1)) OR ((increment=1) and (temp=numrecs));    
+  IF (disk^.code='Perm  ') OR (disk^.code='Add   ') OR    
+     (disk^.code='Change')  THEN recnumber := temp;     
+  SEEK(disk,recnumber);
+  GET(disk); 
+ END (* step *);         
+ 
+PROCEDURE Zero;                            
+ var tmpstr:string;
+ BEGIN         
+  WRITELN;  
+  WRITE('Caution: Type YES if you mean to destroy ',
+        'the present contents of the file:');
+  READLN(tmpstr);  
+  Uppercase(tmpstr);
+  IF tmpstr<>'YES' THEN EXIT(Zero);     
+  numrecs := 0;                                   
+  ladd := 0;
+  orignrecs := 0;
+  SC_Clr_Screen; 
+  Wnew0rec;        
+ END (* zero *);       
+  
+PROCEDURE Restore;
+ BEGIN
+  IF disk^.code<>'Change' THEN EXIT(Restore); 
+  ptr := first; 
+  WHILE (ptr<>NIL) DO
+   BEGIN
+   IF Val(ptr^.recpart.code)=recnumber THEN   
+    BEGIN
+     disk^ := ptr^.recpart;
+     ptr^.recpart.code := '000000'; 
+     disk^.code := 'Perm  ';
+     SEEK(disk,recnumber);  
+     PUT(disk);
+     ptr := NIL;
+    END 
+   ELSE
+    ptr := ptr^.lpart; 
+  END;
+ END; 
+ 
+

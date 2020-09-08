@@ -1,0 +1,337 @@
+{       
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+}
+
+{REPORT.TEXT}                                                             
+SEGMENT PROCEDURE Report;
+ VAR ch737,ch : CHAR;
+     partwild : STRING[16];
+     codewild : STRING[10];
+     datewild : STRING[6];
+     tranwild : STRING[6];
+     ofile    : TEXT;
+     oname    : STRING;
+     linat    : INTEGER;
+ 
+  PROCEDURE Chkpage;
+   VAR ch1 : CHAR;
+   BEGIN
+    IF (linat >=20) AND (oname = '#2:') THEN    
+     BEGIN
+      WRITE('<cr> to continue, <esc> to quit'); 
+      READ(KEYBOARD,ch1); 
+      WRITELN(CHR(11));
+      WRITE(CHR(27),'T',CHR(0),CHR(0),CHR(0),CHR(0));
+      IF ch1 = CHR(27) THEN
+       BEGIN
+        Clrline(0,0);
+        EXIT(Report);
+       END;
+      linat := 0; 
+     END 
+   END; 
+ 
+ FUNCTION Min(a,b : INTEGER) : INTEGER; 
+  BEGIN
+   IF a<b THEN Min := a ELSE Min := b;
+  END;
+  
+ FUNCTION Trawildok : BOOLEAN;  
+  VAR intb : BOOLEAN;
+      temp : INTEGER;
+  BEGIN
+   intb := TRUE;
+   
+   FOR temp := 1 TO Min(LENGTH(tranwild),LENGTH(arcfile^.trans)) DO    
+    IF (tranwild[temp]<>'?') AND (tranwild[temp]<>arcfile^.trans[temp]) 
+     THEN intb := FALSE;
+     
+   IF LENGTH(tranwild)>LENGTH(arcfile^.trans) THEN       
+    FOR temp := LENGTH(arcfile^.trans)+1 TO LENGTH(tranwild) DO   
+     IF tranwild[temp]<>'?' THEN intb := FALSE;  
+   
+   IF LENGTH(tranwild)<LENGTH(arcfile^.trans) THEN intb := FALSE;
+   
+   {tranwild vs. arcfile^.trans}      
+   Trawildok := intb;
+  END;    
+ 
+ FUNCTION Otherwildok : BOOLEAN;    
+  VAR intb : BOOLEAN;
+      temp : INTEGER;
+  BEGIN
+   intb := TRUE;
+   
+   FOR temp := 1 TO Min(LENGTH(codewild),LENGTH(arcfile^.code)) DO 
+    IF (codewild[temp]<>'?') AND (codewild[temp]<>arcfile^.code[temp])
+     THEN intb := FALSE;
+     
+   IF LENGTH(codewild)>LENGTH(arcfile^.code) THEN
+    FOR temp := LENGTH(arcfile^.code)+1 TO LENGTH(codewild) DO
+     IF codewild[temp]<>'?' THEN intb := FALSE;       
+     
+   FOR temp := 1 TO Min(LENGTH(datewild),LENGTH(arcfile^.date)) DO
+    IF (datewild[temp]<>'?') AND (datewild[temp]<>arcfile^.date[temp])         
+      THEN intb := FALSE;
+      
+   IF LENGTH(datewild)>LENGTH(arcfile^.date) THEN
+    FOR temp := LENGTH(arcfile^.date)+1 TO LENGTH(datewild) DO            
+     IF datewild[temp]<>'?' THEN intb := FALSE;
+         
+   IF (LENGTH(codewild)<LENGTH(arcfile^.code)) OR 
+      (LENGTH(datewild)<LENGTH(arcfile^.date)) THEN intb := FALSE; 
+      
+   {codewild vs. arcfile^.code AND datewild vs. arcfile^.date}    
+   Otherwildok := intb AND Trawildok;
+  END; 
+  
+ FUNCTION Wpartok : BOOLEAN; 
+  VAR intb : BOOLEAN;
+      temp : INTEGER;
+  BEGIN
+   intb := TRUE;
+   
+   FOR temp := 1 TO Min(LENGTH(partwild),LENGTH(invfile^.partnum)) DO  
+    IF (partwild[temp]<>'?') AND (partwild[temp]<>invfile^.partnum[temp]) 
+     THEN intb := FALSE;
+     
+   IF LENGTH(partwild)>LENGTH(invfile^.partnum) THEN   
+    FOR temp := LENGTH(invfile^.partnum)+1 TO LENGTH(partwild) DO 
+     IF partwild[temp]<>'?' THEN intb := FALSE;
+   
+   IF LENGTH(partwild)<LENGTH(invfile^.partnum) THEN intb := FALSE;
+   
+   {partwild vs. invfile^.partnum}      
+   Wpartok := intb;
+  END;  
+   
+ FUNCTION Arcwildok : BOOLEAN; 
+  VAR intb : BOOLEAN;
+      temp : INTEGER;
+  BEGIN  
+   intb := TRUE;  
+   
+   FOR temp := 1 TO Min(LENGTH(partwild),LENGTH(arcfile^.partnum)) DO      
+    IF (partwild[temp]<>'?') AND (partwild[temp]<>arcfile^.partnum[temp]) 
+     THEN intb := FALSE;  
+     
+   IF LENGTH(partwild)>LENGTH(arcfile^.partnum) THEN   
+    FOR temp := LENGTH(arcfile^.partnum)+1 TO LENGTH(partwild) DO   
+     IF partwild[temp]<>'?' THEN intb := FALSE;
+   
+   IF LENGTH(partwild)<LENGTH(arcfile^.partnum) THEN intb := FALSE;
+   
+   {partwild vs. arcfile^.partnum}      
+   Arcwildok := intb;
+  END;    
+ 
+ 
+ PROCEDURE Invreport;    
+  VAR temp1 : INTEGER;
+      aflg : BOOLEAN;
+  BEGIN   
+   FOR temp := 1 TO nirecs DO    
+    BEGIN
+     SEEK(invfile,temp);
+     GET(invfile);
+     IF Wpartok THEN
+      BEGIN
+       IF ch IN ['B','b'] THEN 
+        BEGIN
+         WRITELN(ofile);        
+         linat := linat + 1;
+         Chkpage;
+        END;
+       WITH invfile^ DO 
+        BEGIN
+         WRITE(ofile,partnum);
+         IF LENGTH(partnum)<16 THEN WRITE(ofile,' ':(16-LENGTH(partnum)));
+         WRITE(ofile,' ',descrip);
+         IF LENGTH(descrip)<24 THEN WRITE(ofile,' ':(24-LENGTH(descrip))); 
+         WRITE(ofile,' ',vpart);
+         IF LENGTH(vpart)<16 THEN WRITE(ofile,' ':(16-LENGTH(vpart))); 
+         WRITELN(ofile,' ',units:5,' ',qty:8:2);            
+        END;
+       linat := linat + 1; 
+       Chkpage;
+       IF ch IN ['B','b'] THEN   
+        BEGIN
+         aflg := FALSE;
+         FOR temp1 := 1 TO narecs DO   
+          BEGIN
+           SEEK(arcfile,temp1);
+           GET(arcfile);  
+           IF arcfile^.partnum = invfile^.partnum THEN
+            BEGIN
+             IF Otherwildok THEN  
+              BEGIN
+               IF NOT aflg THEN          
+                BEGIN
+                 WRITELN(ofile,' ':18,'Transaction  ','Code':10,'  ',     
+                         'Date':6,'       ','Qty'); 
+                 WRITELN(ofile,'                  ------',  
+                         '-----------------------------------');   
+                 linat := linat + 2;
+                 Chkpage;
+                 aflg := TRUE; 
+                END; 
+                WITH arcfile^ DO 
+                 WRITELN(ofile,' ':18,trans,' ':(13-LENGTH(trans)),   
+                         code:10,'  ',date:6,'  ',qty:8:2);     
+             linat := linat + 1;
+             Chkpage;
+            END;      
+           END;   
+        END;  
+       END;
+     END;
+   END;
+  END;
+  
+ PROCEDURE Fpart;
+  BEGIN       
+   Clear;
+   WRITE('Report :: A)rchive, I)nventory, B)oth ::');   
+   READ(ch);    
+   IF NOT (ch IN ['I','i','A','a','B','b']) THEN
+    BEGIN
+     Clear;
+     EXIT(Report);
+    END;
+   Clear;
+   WRITE('to what device should the report go (<esc-cr> to quit) --->'); 
+   Rdata(0,0,30,oname);  
+   ch737 := 'N';
+   IF oname = '#6:' THEN
+    BEGIN
+     WRITE('Do you have a centronics 737 printer? ');
+     READ(ch737);
+    END;
+   IF LENGTH(oname)=0 THEN oname := '#2:';     
+   IF LENGTH(oname)<>0 THEN IF oname[1]=CHR(27) THEN
+    BEGIN
+     Clear;
+     EXIT(Report);
+    END; 
+   {$I-}
+   REWRITE(ofile,oname);  
+   IF IORESULT <> 0 THEN 
+    BEGIN
+     CLOSE(ofile);
+     Clear;  
+     EXIT(Report);
+    END;
+   {$I+} 
+   IF ch737 IN ['Y','y'] THEN WRITE(ofile,CHR(27),CHR(19));
+   WRITELN; 
+   WRITE('enter partnumber wildcard (<esc-cr> to quit) ---->');       
+   Rdata(0,0,16,partwild);    
+   IF LENGTH(partwild)=0 THEN partwild := '????????????????'; 
+   IF LENGTH(partwild)<>0 THEN IF partwild[1]=CHR(27) THEN
+    BEGIN 
+     CLOSE(ofile);  
+     Clear;
+     EXIT(Report);
+    END; 
+   WRITELN;  
+   IF ch IN ['A','a','B','b'] THEN  
+    BEGIN
+     WRITE('enter code wildcard (<esc-cr> to quit) --->');  
+     Rdata(0,0,10,codewild);  
+     IF LENGTH(codewild)=0 THEN codewild := '??????????';   
+     IF LENGTH(codewild)<>0 THEN IF codewild[1]=CHR(27) THEN  
+      BEGIN 
+       CLOSE(ofile);
+       Clear;
+       EXIT(Report);
+      END; 
+     WRITELN;  
+     WRITE('enter date wildcard (<esc-cr> to quit) --->');  
+     Rdata(0,0,6,datewild); 
+     IF LENGTH(datewild)=0 THEN datewild := '??????'; 
+     IF LENGTH(datewild)<>0 THEN IF datewild[1]=CHR(27) THEN
+      BEGIN 
+       CLOSE(ofile);
+       Clear;
+       EXIT(Report);
+      END; 
+     WRITELN;  
+     WRITE('enter transaction wildcard (<esc-cr> to quit) --->'); 
+     Rdata(0,0,6,tranwild);
+     IF LENGTH(tranwild)=0 THEN tranwild := '??????'; 
+     IF LENGTH(tranwild)<>0 THEN IF tranwild[1]=CHR(27) THEN    
+      BEGIN 
+       CLOSE(ofile);
+       Clear;
+       EXIT(Report);
+      END; 
+     WRITELN;    
+    END; 
+   WRITELN;
+  END;
+  
+ BEGIN
+  Fpart;
+  linat := 4;
+  CASE ch OF 
+   'I','i' : BEGIN
+              WRITELN(ofile, 'INVENTORY REPORT');        
+              WRITELN(ofile);
+              WRITELN(ofile,
+'Partnumber       Description              Vendor Part#     Units      Qty'
+                            ); 
+              WRITELN(ofile,
+'-------------------------------------------------------------------------'
+                            );          
+             END;     
+   'A','a' : BEGIN
+              WRITELN(ofile, 'ARCHIVE REPORT');
+              WRITELN(ofile); 
+              WRITELN(ofile,'Transaction  ','Partnumber':16,'  ','Code':10,'  ',
+                      'Date':6,'       ','Qty'); 
+              WRITELN(ofile,'-------------',
+                      '----------------------------------------------');        
+             END;     
+   'B','b' : BEGIN
+              WRITELN(ofile, 'INVENTORY AND ARCHIVE REPORT'); 
+              WRITELN(ofile); 
+              WRITELN(ofile,
+'Partnumber       Description              Vendor Part#     Units      Qty'
+                            ); 
+              WRITELN(ofile,
+'-------------------------------------------------------------------------'
+                            );          
+             END;     
+  END;
+  IF NOT (ch IN ['A','a']) THEN Invreport  
+   ELSE
+    BEGIN
+     FOR temp := 1 TO narecs DO
+      BEGIN
+       SEEK(arcfile,temp); 
+       GET(arcfile); 
+       IF Arcwildok AND Otherwildok THEN
+        BEGIN
+         WITH arcfile^ DO 
+          WRITELN(ofile,trans,' ':(13-LENGTH(trans)),    
+                  partnum:16,'  ',code:10,'  ',date:6,'  ',qty:8:2);  
+         linat := linat + 1;
+         Chkpage;
+        END; 
+      END;
+    END;
+  IF oname = '#2:' THEN BEGIN WRITE('<cr> to continue'); READLN; END 
+   ELSE WRITE(ofile,CHR(12));
+  CLOSE(ofile,lock);
+ END;
+

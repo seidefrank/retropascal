@@ -1,0 +1,164 @@
+                             SPELLDOC
+        
+        Speller is a simple spelling checker.  Speller reads an
+input text file and sorts it into an alphabetical list of unique
+words. This list of words is then checked against a dictionary,
+and all words that are found in the dictionary are removed from
+the list.  The remaining list consists of "flagged", or
+potentially misspelled words.  This list can be displayed,
+printed, sent to a file, or simply ignored.  An optional second
+pass can then be made through the text file.  During the second 
+pass, each text word is looked up in the list of flagged words. 
+If a text word is found, a flag ("<") is inserted in the text
+file.  The editor is then used to find each of the flags and
+correct the error.
+        
+        A practical spelling checker must check a text file of
+reasonable length against a large dictionary in a reasonable
+amount of time.  Speller uses memory only for the list of unique
+text words, which is considerably shorter than the text file
+itself.  This allows a reasonably long text file to be checked
+against a dictionary file that is limited only by disk space. 
+        
+        Speller spends the vast majority of its run time in
+reading text and looking up words.  The time spent in reading
+text is minimized by using routines from IOUNIT in place of the
+standard constructs.  The time spent in looking up words is
+minimized by using a binary tree search algorithm from Niklaus
+Wirth's program "Cross Reference Generator" in his book
+Algorithms + Data Structures = Programs.
+
+Running Speller
+        Speller announces its presence by displaying "Speller",
+and then prompts for the name of the input text file, which can
+be any UCSD text file.  If only a name is entered then ".text"
+is appended to the name.  I/O checking is turned off while an
+attempt is made to access the file on the default disk drive.
+If there is a problem, the name is displayed and the process
+repeats.  If no name is entered, it is assumed that the program
+was entered by mistake, and Speller terminates.
+        
+        After the text file is successfully opened, the program
+displays "Sorting text" and begins to sort the input text. An
+indication of progress is provided by displaying a "." as each
+tenth line is read from the input text file.  After the sort has
+been completed, the program prompts for the name of the input
+dictionary file.  The dictionary file is an alphebetical
+list of correctly spelled words, one to a line, in an otherwise
+standard UCSD text file.  The process of opening the dictionary
+file is the same as that of opening the text file. If no name is
+entered, the word list is not checked and the program goes
+directly to the output procedure.
+        
+        After the input dictionary file is successfully opened,
+the program prompts for the name of a new (output) dictionary
+file.  An attempt is made to open this file in the same way as
+the previous files.  If the file can be opened, each word from
+the input dictionary file is copied to the output dictionary
+file, and text words that were not found in the dictionary can
+be added.  If no file name is entered, the option of adding
+words to the dictionary is not available.
+        
+        In either case, the program displays "Checking text" and
+begins to check the word list against the dictionary.  If the
+option of adding words to the dictionary has not been exercised,
+the indications of progress are the same as when reading a text
+file.
+        
+        If words are being added to the dictionary, the only
+indication of progress is an occasional message that goes
+something like:
+
+          "Line 338: snurf not found.  Enter it (Y) ? ".
+
+        Either "Y" or "y" will cause the word to be added to the
+dictionary. If the answer is any other character, the message
+continues with:
+
+                        " Flag it (Y) ? "
+
+        Either "Y" or "y" will cause the word to be added to the
+list of flagged words, any other character will cause the word
+to be removed from the list of flagged words.
+        
+        After the entire list of words has been checked, (or if
+no dictionary file name was entered), the program prompts for
+the name of the output list file, which can be CONSOLE:,
+PRINTER:, etc, as well as a disk file.  The process of opening
+the output file is the same as before.
+
+        If the output file is successfully opened, the program
+displays "Writing output list", and the output list is sent to
+its destination.  The output is a sorted list of the flagged
+words, along with the line number of the first appearance and a
+count of the total number of appearances in the original text
+file.  If no file name is entered, the word list is not written.
+        
+        The program then prompts for the name of the marked text
+file.  After this file is successfully opened, the input text
+file is copied to the output text file, with a "<" inserted at
+the end of each flagged word.  If no file name is entered, the
+marked text file is not written.
+        
+        The program finishes by displaying the number of lines,
+words, and unique words that were found in the text file,
+the number of unique words that were flagged, and the number of
+words of memory still available.
+        
+Implementation Notes
+        Speller converts all text to lower case, so that neither
+"pascal" nor "PASCAL" is flagged as a potential spelling error.
+Words are defined as beginning with a..z or 0..9, and as
+continuing with a..z, 0..9, "-","'", or "/".  Words beginning
+with 0..9 increment the word count but are not checked. Byte-
+flipped is two words: "byte-" and "flipped".  Byte-flipped,
+ain't, and I/O are all words, but M(unched is two words: "m" and
+"unched".  
+        
+        The maximum length of a word is defined by the constant
+MAXCHAR as 14 characters.  Words up to and including maxchar
+characters in length are accepted as is.  Words longer than this
+are truncated, and the last character is changed to a "-".
+        
+        Words are defined in the procedure GETTOKEN, and the
+definition can be changed as desired.
+        
+        Speller uses a "literal dictionary", which means that
+the dictionary is just a long list of words.  The dictionary is 
+formatted as one word per line, in alphabetical order, with no
+leading or trailing spaces.  (Using GETTOKEN rather than 
+READLINE to read the dictionary removes the formatting 
+restrictions at the cost of doubling the time to read the 
+dictionary).  The dictionary can be edited just as any other
+text file.  Speller's dictionary is defined as a sorted list of
+words known to be spelled correctly. Considerable care should be
+used in adding words to the dictionary; a spelling check using a
+corrupt dictionary is of little value.
+        
+Performance
+        Speller runs a complete check at a rate of roughly 300
+text words per minute, depending on the specific system, the
+length of the files, etc.  The sorting method used by Speller
+is recursive, which means that the procedure includes a call to
+itself.  Because of this recursion, both the memory and the
+time required to sort a text file depend on the order of the
+words in the input text. If the file contains normal English
+text, the performance of the sort is roughly equivalent to the
+performance of a binary search.  If the input text is already
+sorted, or nearly so, the performance of the sort degrades to
+that of a linear search. The result is a slow sort requiring
+copious memory.  Replying to "Input text file" with "dict.text"
+will probably cause "*STACK OVERFLOW*" many minutes later.
+        
+        The maximum length of the input text file is determined
+primarily by the number of unique words encountered, and is
+limited to roughly three times the capacity of the screen
+editor. The length of the dictionary file is limited by the disk
+capacity and the user's patience.  If the dictionary is to be
+edited, the editor's limitations on file length become
+important.  However, note that it is relatively easy to modify
+the procedure CHECKDICT to read several dictionary files in
+sequence.
+        
+                                CR
+

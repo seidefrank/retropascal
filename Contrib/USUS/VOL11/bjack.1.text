@@ -1,0 +1,362 @@
+          WRITE('HOUSE LIMIT IS $200.. BET PLEASE ? ');
+          READLN(BET);
+        UNTIL (0<BET) AND (BET<201);
+      END
+     ELSE
+      BEGIN
+         WRITE('                  STILL BET  $',BET,'? (y/n)');
+         READ(C);
+         IF C='N' THEN BET:=0;
+      END
+   UNTIL ((0<BET) AND (BET<201)) 
+  END;
+  (*$I+*)
+END; {PLAYERIN}
+
+PROCEDURE SHOHOLE;
+ VAR CN:INTEGER;
+ BEGIN
+  GOTOXY(XHOLE,YHOLE);
+  CN:=YHOLE-YHAND0;
+  WRITE(CN:3,')',HOLRANK:6,' OF ',HOLSUIT);
+  IF NOT SHUFFLED_SINCE_HOLCARD THEN 
+     BEGIN
+       HOLCARD:=TRUE;
+       {TENCOUNT;}
+     END;
+ END; {SHOHOLE}
+ 
+ PROCEDURE CHKPAIR;
+  BEGIN
+   Q:=Q+1;
+   IF (FSTCARD=RANK) AND (Q=3) THEN PAIR:=TRUE;
+   IF (Q=1) THEN
+    BEGIN
+    FSTCARD:=RANK;
+    FIRSTCARD:=CARD;
+    END;
+   IF Q=3 THEN
+    BEGIN
+     THIRDCARD:=CARD;
+    END;
+  END;
+   
+PROCEDURE DEAL;
+ BEGIN
+  REPEAT
+    IF CARDSLEFT=0 THEN SHUFFLE;
+    CARD:=DECK[CARDSLEFT];
+    IF CARD_NOT_IN_DECK[CARD] THEN COUNTERFIX;
+    CARDSLEFT:=CARDSLEFT-1;
+  UNTIL CARD_NOT_IN_DECK[CARD]=FALSE;
+  CARD_ON_TABLE[CARD]:=TRUE;
+  RANSUIT(CARD);
+  CHKPAIR;
+  NAMECARD;
+  IF PERSON=PLAYER THEN HANDSIZE[1]:=HANDSIZE[1]+1;
+    IF PERSON=DEALER THEN HANDSIZE[2]:=HANDSIZE[2]+1;
+  IF SPLITHAND THEN HANDSIZE[3]:=HANDSIZE[3]+1;
+ END; {DEAL}
+
+PROCEDURE DEAL2;
+ VAR
+   C:INTEGER;
+ BEGIN
+  FOR C:=1 TO 2 DO
+   BEGIN
+    FOR PERSON:=PLAYER TO DEALER DO
+     BEGIN
+      DEAL;
+      SCORE;
+      IF (C=2) AND JUST_SHUFFLED THEN
+        SHUFFLED_SINCE_HOLCARD:=TRUE;
+      IF (PERSON=DEALER) AND (C=1) THEN NOSHOW
+      ELSE 
+        BEGIN
+          SHOWHAND;
+          {TENCOUNT;}
+        END;
+      IF (C=2) AND (PERSON=DEALER) AND (RANK=1) THEN ACEUP:=TRUE
+     END; {PERSON}
+  END; {FOR}
+ END; {DEAL2}
+ 
+PROCEDURE TEST21;
+ BEGIN
+  IF (HANDVAL[1]=21) OR (HANDVAL[2]=21) THEN
+   BEGIN
+    BJACK:=TRUE;
+    SHOHOLE;
+    IF HANDVAL[1]=HANDVAL[2] THEN
+     BEGIN
+      PUSH:=TRUE;
+      CLEAR_LINE(XOVER,YOVER);
+      WRITE('* * DOUBLE BLACKJACK !!! - PUSH -');
+      SQUAWK;
+    END {PUSH}
+   ELSE IF HANDVAL[1]=21 THEN
+    BEGIN
+     WIN:=TRUE;
+     BET:=BET+BET DIV 2;
+     CLEAR_LINE(XOVER,YOVER);
+     WRITE('* * * BLACKJACK !! - PAY 1.5 TIMES BET ');
+     SQUAWK;
+    END {PLAYERS BLACKJACK}
+   ELSE
+    BEGIN
+     CLEAR_LINE(XOVER,YOVER);
+     WRITE('* * DEALER HAS A BLACKJACK !!');
+     SQUAWK;
+    END;
+   END; {BJACK:=TRUE}
+  END; {TEST21 - NO BLACKJACK}
+  
+PROCEDURE DEALPLAYER;
+ BEGIN
+  IF SPLITHAND THEN I:=3 ELSE I:=1;
+  PERSON:=PLAYER;
+  REPEAT
+   DOWHAT;
+    IF (REPLY='Q') THEN EXIT(PROGRAM);
+    IF (REPLY='H') OR (REPLY='D') THEN
+     BEGIN
+      DEAL;
+      SHOWHAND;
+      {TENCOUNT;}
+      SCORE;
+     END
+   UNTIL BUST OR (REPLY<>'H') OR (REPLY='D');
+  IF BUST THEN
+   BEGIN
+    CLEAR_LINE(XOVER,YOVER);
+    IF SPLIT THEN
+     BEGIN
+      YOVER:=YOVER+1;
+     END;
+    WRITE('YOU BUSTED WITH ',HANDVAL[I]:3);
+   END {IF BUST}
+  ELSE BUST:=FALSE;
+  IF REPLY='D' THEN
+     BEGIN
+        IF SPLIT THEN
+          BEGIN
+            IF SPLITHAND THEN DBLDOWN3:=TRUE;
+            IF NOT SPLITHAND THEN DBLDOWN:=TRUE;
+          END
+        ELSE DBLDOWN:=TRUE;
+     END;
+  IF (REPLY='S') THEN SPLIT:=TRUE;
+ END; {DEALPLAYER}
+  
+PROCEDURE DEALHOUSE;
+ BEGIN
+  PERSON:=DEALER;
+  SHOHOLE;
+WHILE (HANDVAL[2]<17) OR ((HANDVAL[2]=17) AND (NUMACES[2]>0)) DO
+   BEGIN
+    DEAL;
+    SHOWHAND;
+    {TENCOUNT;}
+    SCORE;
+   END; {WHILE}
+  HSCORE;
+ END; {DEALHOUSE}
+ 
+PROCEDURE EVALUATE;
+ VAR HV:INTEGER;
+ BEGIN
+  IF SPLITHAND THEN I:=3 ELSE I:=1;
+  IF BUST THEN BEGIN
+    IF SPLITHAND AND BUSTSECOND THEN WIN:=FALSE;
+    IF SPLIT AND ((NOT SPLITHAND) AND BUSTFIRST) THEN WIN:=FALSE
+    ELSE WIN:=TRUE;
+   CLEAR_LINE(XOVER,YOVER);
+   WRITE('THE HOUSE BUSTED WITH ',HANDVAL[2]:3);
+  END
+  ELSE IF HANDVAL[I]=HANDVAL[2] THEN PUSH:=TRUE
+  ELSE IF HANDVAL[I]>HANDVAL[2] THEN 
+    BEGIN
+     IF SPLIT THEN
+     BEGIN
+      IF NOT SPLITHAND AND NOT BUSTFIRST THEN WIN:=TRUE;
+      IF SPLITHAND AND NOT BUSTSECOND THEN WIN:=TRUE;
+      END
+     ELSE WIN:=TRUE;
+   END;
+  IF PUSH THEN BEGIN
+   CLEAR_LINE(XOVER,YOVER);
+   WRITE(' - PUSH -');
+  END;
+  HV:=HANDVAL[2];
+  IF (NOT PUSH) AND (NOT BUST) THEN
+   BEGIN
+    CLEAR_LINE(XOVER,YOVER);
+    IF HV=21 THEN
+     WRITE('DEALER HAS 21!!')
+     ELSE WRITE('PAY ',HV+1);
+   END; {NOT PUSH}
+ END; {EVALUATE}
+ 
+ PROCEDURE DEALSPLIT;
+ BEGIN
+  RANSUIT(CARD);
+  SCORE;
+  NAMECARD;
+  SHOWHAND;
+  DEAL;
+  SCORE;
+  SHOWHAND;
+  {TENCOUNT;}
+  DEALPLAYER;
+  IF BUST THEN
+   BEGIN
+   IF SPLITHAND THEN BUSTSECOND:=TRUE
+   ELSE BUSTFIRST:=TRUE;
+   BUST:=FALSE;
+  END;
+  PSCORE;
+ END;
+ 
+ 
+ PROCEDURE SPLITPR;
+  BEGIN
+  HANDVAL[1]:=0;
+  HANDVAL[3]:=0;
+  NUMACES[1]:=0;
+  NUMACES[3]:=0;
+  XPLYR:=0;
+  YPLYR:=YHAND0;
+  CARD:=FIRSTCARD;
+  DEALSPLIT;
+  XPLYR:=XSPLIT;
+  YPLYR:=YSPLIT;
+  CARD:=THIRDCARD;
+  SPLITHAND:=TRUE;
+  DEALSPLIT;
+  IF BUSTFIRST AND BUSTSECOND THEN DBLBUST:=TRUE;
+  END;
+  
+  PROCEDURE INSURANCE;
+   BEGIN
+     IF ACEUP THEN
+        BEGIN
+           CLEAR_LINE(XOVER,YOVER);
+           SQUAWK;
+           WRITE('Do want insurance (y/n)? ');
+           READ(REPLY);
+           IF REPLY IN ['Y', 'y' ] THEN
+             BEGIN
+                CLEAR_LINE(XOVER,YOVER);
+                WRITE('The maximum insurance bet is $',BET DIV 2);
+                GOTOXY(XOVER,YOVER+1);
+                WRITE('Your insurance bet?');
+                (*$I-*)
+                REPEAT
+                READLN(INSBET);
+                IF (IORESULT<>0) OR (INSBET<=0) OR (INSBET>BET DIV 2) THEN 
+                     BEGIN
+                       SQUAWK;
+                       CLEAR_LINE(XOVER+19,YOVER+1);
+                     END;
+                UNTIL (INSBET>0) AND (INSBET<=BET DIV 2);
+                (*$I+*)
+                CLEAR_LINE(XOVER,YOVER+1);
+             END
+           ELSE EXIT(INSURANCE);
+           IF HANDVAL[2]=21 THEN
+              BEGIN
+                 DOLLARS:=DOLLARS+INSBET+INSBET;
+                 WRITE('You win double the insurance bet!');
+              END
+           ELSE
+              BEGIN
+                 DOLLARS:=DOLLARS-INSBET;
+                 WRITE('No Blackjack, you lose the insurance bet');
+              END;
+           CLEAR_LINE(XWIN+32,YWIN);
+           WRITE(DOLLARS);
+      END;
+ END;
+  
+  
+ BEGIN          {MAIN PROGRAM}
+  CHOICE:=['H','G','D','S','Q'];
+  TIME(HI,LO);
+  FOR HI:=1 TO 100 DO HI:=HI;
+  TIME(HI,LO_AGAIN);
+  IF LO=LO_AGAIN THEN
+    BEGIN
+       {$I-}
+       REPEAT
+          BEGIN
+            WRITE('  PLEASE ENTER A RANDOM NUMBER - ');
+            READLN(SEED);
+          END;
+       UNTIL IORESULT=0;
+       {$I+}
+    END
+  ELSE SEED:=LO_AGAIN;
+  IF SEED<0 THEN SEED:=SEED*(-1);
+  CLEAR_SCREEN ( 0, 0 );
+  WRITELN('  Welcome to Blackjack (aka "21").');
+  WRITELN;
+  WRITELN('     ',VERSION);
+  WRITELN;
+  WRITELN('          <space> to start the game');
+  WRITELN;
+  WRITELN('       Be sure to hold on to your wallet!');
+  READ(REPLY);
+  CLEAR_SCREEN ( 0, 0 );
+  FRESHDECK;
+  FOR I:=1 TO 52 DO 
+    BEGIN
+      CARD_NOT_IN_DECK[I]:=FALSE;
+      CARD_ON_TABLE[I]:=FALSE;
+    END;
+  BET:=200;
+  NUMTENS:=16;
+  NOTTEN:=36;
+  CHANGED_BET:=FALSE;
+  SHUFFLE;
+  SETUP;
+  INSTRUCTIONS;
+  PLAYERIN;
+  DOLLARS:=0;
+  REPEAT
+   IF BET>0 THEN BEGIN
+    DEAL2;
+    INSURANCE;
+    TEST21;
+    IF NOT BJACK THEN
+     BEGIN
+      DEALPLAYER;
+      IF SPLIT THEN SPLITPR ELSE PSCORE;
+      IF DBLBUST THEN
+       BEGIN
+        BUST:=FALSE;
+        END;
+      {NOTSEEN;}
+      IF NOT (BUST OR (SPLIT AND DBLBUST)) THEN
+       BEGIN
+        DEALHOUSE;
+        IF SPLIT THEN
+         BEGIN
+          EVALUATE;
+          WINNINGS;
+          SPLITHAND:=FALSE;
+          WIN:=FALSE;
+          PUSH:=FALSE;
+          EVALUATE;
+         END
+       ELSE EVALUATE;
+      END; {IF NOT BUST}
+     END; {NOT BJACK}
+    END; {BET>0}
+   INSTRUCTIONS;
+   WINNINGS;
+   PLAYERIN;
+   SETUP;
+   CLEAR_SCREEN ( 0, YOVER );
+  UNTIL BET<0
+ END.  {MAIN PROGRAM}
+ 

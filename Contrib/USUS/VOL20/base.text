@@ -1,0 +1,100 @@
+PROGRAM BASE;      (*Version 2.1 - 10 Feb 83*)
+
+USES {$U H19UTIL.CODE} H19UTIL, {$U NUMBER2.CODE} NUMBER2;
+
+VAR     DATA : INTEGER;
+        REPLY : CHAR;
+        S : STRING;
+        FIRSTTIME : BOOLEAN;
+        
+PROCEDURE GETDEC(VAR DATA : INTEGER);
+  VAR   RL : REAL;
+  PROCEDURE ERRHNDLR;
+    CONST BELL = 7;
+    BEGIN
+      CLEARSPACE(0,0,80);
+      WRITE(CHR(BELL),'Improper number. Retype.');
+      GOTOXY(XCUR,YCUR);
+      CLEAR_EOL;
+      GETDEC(DATA);
+      SAVECURSOR(XCUR,YCUR);
+      CLEARSPACE(0,0,80);
+      GOTOXY(XCUR,YCUR);
+      EXIT(GETDEC)
+    END;
+    
+  BEGIN
+    SAVECURSOR(XCUR,YCUR);
+    RL := INREAL(INPUT,INPT);
+    IF (RL>32767.0) OR (RL<-32768.0) THEN ERRHNDLR;
+    DATA := TRUNC(RL)
+  END;
+  
+PROCEDURE ASKFORIT(S : STRING);
+  BEGIN
+    WRITE('Enter ',S,' number: ');
+  END;
+  
+BEGIN
+  FIRSTTIME := TRUE;
+  REPEAT
+    CLEARSCREEN;
+    IF NOT(FIRSTTIME) THEN
+      BEGIN
+        GOTOXY(0,6);
+        CASE REPLY OF
+          'B' : BEGIN
+                  S := 'binary';
+                  ASKFORIT(S);
+                  GETBINARY(DATA);
+                END;
+          'D' : BEGIN
+                  S := 'decimal';
+                  ASKFORIT(S);
+                  GETDEC(DATA);
+                END;
+          'F' : BEGIN
+                  S := 'fliphex';
+                  ASKFORIT(S);
+                  GETFLIP(DATA);
+                END;
+          'H' : BEGIN
+                  S := 'hex';
+                  ASKFORIT(S);
+                  GETHEX(DATA);
+                END;
+          'O' : BEGIN
+                  S := 'octal';
+                  ASKFORIT(S);
+                  GETOCTAL(DATA);
+                END;
+          'Q' : BEGIN
+                  CLEARSCREEN;
+                  EXIT(PROGRAM)
+                END
+        END;
+        WRITELN('   Decimal value = ',DATA);
+        WRITE('   Binary value = ');
+        WRITEBIN(DATA);
+        WRITELN;
+        WRITE('   Octal value = ');
+        WRITEOCTAL(DATA);
+        WRITELN;
+        WRITE('   Hex value = ');
+        WRITEHEX(DATA);
+        WRITE('   Flipped hex value = ');
+        WRITEFLIP(DATA);
+        WRITELN;
+        WRITELN;
+        WRITELN;
+        WRITELN;
+      END
+    ELSE
+      BEGIN
+        FIRSTTIME := FALSE;
+        GOTOXY(0,14)
+      END;
+REPLY := COMMAND('D(ecimal, O(ctal, H(exadecimal, B(inary, F(lipbyte, Q(uit',
+             ['B','D','F','H','O','Q']);
+  UNTIL FALSE
+END.

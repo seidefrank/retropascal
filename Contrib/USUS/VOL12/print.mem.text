@@ -1,0 +1,12 @@
+program printmem;
+  (* Noddy program for use with Jon Bondy's benchmark
+     See USUS News*)
+     
+  var
+    ptr : ^integer;
+  begin
+    new(ptr); dispose(ptr);
+    writeln(memavail ,' words of memory available');
+    writeln(varavail('') ,' words really available');
+  end.
+

@@ -1,0 +1,52 @@
+﻿<Page
+    x:Class="WinRT_First_Steps.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WinRT_First_Steps"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Page.BottomAppBar>
+        <AppBar BorderThickness="0" x:Name="appBar" Padding="10,0,10,0" BorderBrush="Black"  Background="SaddleBrown" > <!-- Background will be overwritten by ImageBrush in code -->
+            <Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button x:ConnectionId='6' Foreground="white" Style="{StaticResource UndoAppBarButtonStyle}"                   />
+                </StackPanel>
+                <!-- <Rectangle Height="50" Width="2" Fill="Gray"/> -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:ConnectionId='1' Content="Suspend (Test)"                                 />
+                    <Button x:ConnectionId='2' Content="Resume (Test)"                                />
+                    <!--
+                    <Button x:Name="BoldOn_Button" Style="{StaticResource BoldAppBarButtonStyle}" Content="off" Visibility="Collapsed" Click="BoldOn_Click"/>
+                    <Button x:Name="BoldOff_Button" Style="{StaticResource BoldAppBarButtonStyle}" Click="BoldOff_Click"/>
+                    <Button x:Name="RevMenuOn_Button" Style="{StaticResource DockBottomAppBarButtonStyle}" Content="off" Visibility="Collapsed" Click="RevMenuOn_Click"/>
+                    <Button x:Name="RevMenuOff_Button" Style="{StaticResource DockBottomAppBarButtonStyle}" Click="RevMenuOff_Click"/>
+                    -->
+                    <Button x:ConnectionId='3' x:Name="ResolutionPopup_Button" Style="{StaticResource FontSizeAppBarButtonStyle}"                               />
+                    <Button x:ConnectionId='4' x:Name="colorPopup_Button" Style="{StaticResource FontColorAppBarButtonStyle}"                          />
+                    <Rectangle Height="50" Width="2" Fill="Gray"/>
+                    <Button x:ConnectionId='5' Foreground="white" Style="{StaticResource StopAppBarButtonStyle}"                        />
+                </StackPanel>
+            </Grid>
+       </AppBar>
+    </Page.BottomAppBar>
+    <Grid Background="{StaticResource ApplicationPageBackgroundThemeBrush}">
+        <Popup x:Name="resolutionPopup" IsLightDismissEnabled="True">
+            <StackPanel x:Name="resolutionPopupPanel" Background="#FFB8D0E4" Orientation="Vertical" >
+                <Button x:ConnectionId='10' Content="Large Font" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}"                             />
+                <Button x:ConnectionId='11' Content="Medium Font" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}"                                />
+                <Button x:ConnectionId='12' Content="Small Font" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}"                               />
+                <!--<Button Content="Classic 24 x 40" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}" Click="ResolutionPopup_24x40" /> -->
+                <Button x:ConnectionId='13' Content="Classic 24 x 80" Margin="20,20,20,20" Style="{StaticResource TextButtonStyle}"                               />
+            </StackPanel>
+        </Popup>
+        <Popup x:Name="colorPopup" IsLightDismissEnabled="True">
+            <StackPanel x:Name="colorPopupPanel" Background="#FFB8D0E4" Orientation="Vertical" >
+                <Button x:ConnectionId='7' Content="Amber" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}"                          />
+                <Button x:ConnectionId='8' Content="Green" Margin="20,20,20,0" Style="{StaticResource TextButtonStyle}"                          />
+                <Button x:ConnectionId='9' Content="Paper White" Margin="20,20,20,20" Style="{StaticResource TextButtonStyle}"                               />
+            </StackPanel>
+        </Popup>
+    </Grid>
+</Page>
+

@@ -1,0 +1,668 @@
+{$L-TRIANGLE.LIST}
+{
+                                 TRIANGLE program by:  KEN GAAL
+                                          15-AUG-79
+                                          
+      Changes made by reviewer:
+        Reversed ranges in type SCREENTYPE.
+        Replaced PAGE(OUTPUT) with CLEARSCREEN.
+        Replaced CHR(31) with RLF.
+        Replaced CHR(29) with CEOL.
+              ___Henry E. Baumgarten
+}
+
+PROGRAM TRIANGLE;
+  USES {$U GRAPH.LIBRARY} SCREEN_STUFF;
+CONST DTR=0.01745329;
+      RTD=57.29578;
+TYPE SCREENTYPE = PACKED ARRAY [0..239,0..319] OF BOOLEAN;
+VAR S:  SCREENTYPE;
+    VALID,AMBIG,LABEL2,USES_SSAAA:  BOOLEAN;
+    AA,AB,AC,AA2,AB2,AC2,   { ANGLES }
+    SA,SB,SC,SA2,SB2,SC2,   { SIDES  }
+    SINA,COSA,SINB,COSB:  REAL;
+    KTYP,R             :  INTEGER;
+
+PROCEDURE DRAWLINE(VAR R:INTEGER;
+                       S:SCREENTYPE; RW,XSTART,YSTART,DX,DY,INK:INTEGER);
+EXTERNAL;
+
+FUNCTION INPUT_VALUE:REAL;
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1] IN ['E','-'] );
+    IF LENGTH(INP)>1 THEN
+                     OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+             OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(RLF,'READ ERROR, TRY AGAIN ',CEOL)
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+                                             EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE DATA_IN;
+VAR CH: CHAR;
+BEGIN
+  GOTOXY(0,23);
+  WRITE('enter Q to quit or RETURN to continue'); READ(KEYBOARD,CH);
+  IF CH IN ['q','Q'] THEN EXIT(PROGRAM);
+  CLEARSCREEN;
+  FILLCHAR(S,9600,CHR(0));
+  UNITWRITE(3,S,63);  { CLEAR SCREEN }
+  GOTOXY(0,1);
+  WRITELN('ENTER, AS REQUESTED, VALUES OF SIDES AND ANGLES (DECIMAL DEG.)');
+  WRITELN('  press RETURN if side or angle is not input');
+  WRITELN;
+  WRITELN('SIDE a  '); SA:=INPUT_VALUE;
+  WRITELN('SIDE b  '); SB:=INPUT_VALUE;
+  WRITELN('SIDE c  '); SC:=INPUT_VALUE;
+  WRITELN('ANGLE A '); AA:=INPUT_VALUE;
+  WRITELN('ANGLE B '); AB:=INPUT_VALUE;
+  WRITELN('ANGLE C '); AC:=INPUT_VALUE;
+  CLEARSCREEN;
+  UNITWRITE(3,S,63);
+  GOTOXY(0,1); WRITELN('INPUT VALUES');
+  WRITELN('  SIDES:   a = ',SA:8:3,'  b = ',SB:8:3,'  c = ',SC:8:3);
+  WRITELN('  ANGLES:  A = ',AA:8:3,'  B = ',AB:8:3,'  C = ',AC:8:3);
+END; { procedure DATA_IN }
+
+PROCEDURE PERMUTE;
+VAR TEMP: REAL;
+BEGIN
+  TEMP:=AB; AB:=AA; AA:=AC; AC:=TEMP;
+  TEMP:=SB; SB:=SA; SA:=SC; SC:=TEMP;
+END; { procedure PERMUTE }
+
+PROCEDURE XCHG_BC;
+VAR TEMP: REAL;
+BEGIN
+  TEMP:=SB; SB:=SC; SC:=TEMP;
+  TEMP:=AB; AB:=AC; AC:=TEMP;
+END; { procedure XCHG_BC }
+
+FUNCTION APPROX(X,Y:real): boolean;
+var ERR,AX,AXMY: real;
+begin
+  ERR:=0.001;
+  AX:=ABS(X); AXMY:=ABS(X-Y);
+  APPROX:=(AXMY=0);
+  if (AXMY=0) then EXIT(APPROX);
+  if AX>0 then APPROX:=(AXMY/AX < ERR)
+          else APPROX:=(AXMY/ABS(Y) < ERR);
+end; { of function APPROX }
+
+
+PROCEDURE SSS;
+BEGIN
+  WRITE('   SSS');
+  IF SA >= SB+SC THEN BEGIN VALID:=FALSE; WRITE('   a >= b+c') END;
+  IF SB >= SA+SC THEN BEGIN VALID:=FALSE; WRITE('   b >= a+c') END;
+  IF SC >= SA+SB THEN BEGIN VALID:=FALSE; WRITE('   c >= a+b') END;
+  IF NOT VALID THEN WRITE('    sides do NOT make a triangle');
+  IF VALID THEN
+    BEGIN
+      COSA:=(SQR(SC)+SQR(SB)-SQR(SA))/(2*SC*SB);   SINA:=SQRT(1-COSA*COSA);
+      IF COSA = 0 THEN AA:=90
+                  ELSE AA:=ATAN(SINA/COSA)*RTD;
+      IF AA<0 THEN AA:=AA+180;
+      COSB:=(SQR(SA)+SQR(SC)-SQR(SB))/(2*SA*SC);  SINB:=SQRT(1-COSB*COSB);
+      IF COSB = 0 THEN AB:=90
+                  ELSE AB:=ATAN(SINB/COSB)*RTD;
+      IF AB<0 THEN AB:=AB+180;
+      AC := 180-AA-AB
+    END; { if VALID }
+END;   { procedure SSS }
+
+PROCEDURE SAS;
+begin
+  WRITE('   SAS');
+  CASE KTYP OF { permute SAS so that A = angle a (AA) }
+     28: ;                            { A=AA }
+     42: begin PERMUTE; PERMUTE end;  { A=AB }
+     49: PERMUTE;                     { A=AC }
+     END; { case KTYP }
+  IF AA >= 180 THEN
+                begin
+                  VALID:=FALSE;
+                  CASE KTYP OF
+                     28: WRITE('   Angle A >= 180 DEG');
+                     42: WRITE('   Angle B >= 180 DEG');
+                     49: WRITE('   Angle C >= 180 DEG');
+                     END; { case KTYP }
+                end; { if AA >= 180 }
+  IF VALID THEN
+            begin
+              SA:=SQRT(SB*SB+SC*SC-2*SB*SC*COS(AA*DTR)); { law of cosines }
+              COSB:=(SQR(SA)+SQR(SC)-SQR(SB))/(2*SA*SC);
+              SINB:=SQRT(1-COSB*COSB);
+              IF COSB = 0 THEN AB:=90
+                          ELSE AB:=ATAN(SINB/COSB)*RTD;
+              IF AB < 0 THEN AB:=AB+180;
+              AC:=180-AA-AB
+            end; { if VALID }
+  CASE KTYP OF { PERMUTE back to original labels }
+     28: ;
+     42: PERMUTE;
+     49: begin PERMUTE; PERMUTE end;
+     END; { of case KTYP }
+end; { of procedure SAS }
+     
+PROCEDURE ASA;
+begin
+  WRITE('   ASA');
+  CASE KTYP OF { permute ASA so that S = side c (SC) }
+     14:  ;                          { S = SC }
+     21: PERMUTE;                    { S = SB }
+     35: begin PERMUTE; PERMUTE end; { S = SA }
+     END; { case KTYP }
+  IF AA+AB >= 180 THEN
+        begin
+          VALID:=FALSE;
+          WRITE('Angles ');
+          CASE KTYP OF
+             14: WRITE('A + B ');
+             21: WRITE('A + C ');
+             35: WRITE('B + C ');
+             END; { of case KTYP }
+          WRITE(' >= 180 DEGREES')
+        end; { of IF AA+BB >= 180 }
+    IF VALID THEN { solve for parts of triangle }
+        begin
+          AC:=180-AA-AB;
+          SA:=SC*SIN(AA*DTR)/SIN(AC*DTR);
+          SB:=SC*SIN(AB*DTR)/SIN(AC*DTR)
+        end; { of IF VALID }
+    CASE KTYP OF { permute triangle back to original labels }
+       14: ;
+       21: begin PERMUTE; PERMUTE end;
+       35: PERMUTE;
+       END; { of case KTYP }
+end; { of procedure ASA }
+
+PROCEDURE SAA;
+begin
+  WRITE('   SAA');
+  CASE KTYP OF { validity check and 3rd angle computation }
+     11,19: IF AB+AC >= 180
+                THEN begin
+                       VALID:=FALSE;
+                       WRITE('    Angles B + C >= 180')
+                     end
+                ELSE AA:=180-AB-AC;
+     13,37: IF AA+AC >= 180
+                THEN begin
+                       VALID:=FALSE;
+                       WRITE('    Angles A + C >= 180')
+                     end
+                ELSE AB:=180-AA-AC;
+     22,38: IF AA+AB >= 180
+                THEN begin
+                       VALID:=FALSE;
+                       WRITE('    Angles A + B >= 180')
+                     end
+                ELSE AC:=180-AA-AB;
+     END; { case KTYP }
+  IF VALID THEN
+      begin
+        CASE KTYP OF { permute labels so that S = side c (SC) }
+           11,13: ;                           { S = SC }
+           19,22: PERMUTE;                    { S = SB }
+           37,38: begin PERMUTE; PERMUTE end; { S = SA }
+           END; { of case KTYP }
+        SA:=SC*SIN(AA*DTR)/SIN(AC*DTR);
+        SB:=SC*SIN(AB*DTR)/SIN(AC*DTR);
+        CASE KTYP OF { permute lables back to original positions }
+           11,13: ;
+           19,22: begin PERMUTE; PERMUTE end; 
+           37,38: PERMUTE;
+           END; { of case KTYP }
+      end; { if VALID then }
+end; { of procedure SAA }
+
+PROCEDURE ASS;
+VAR TEST: real;
+  
+  PROCEDURE CONVERT_BACK;
+  begin
+    CASE KTYP OF { convert back to original labels }
+       52: ;
+       44: XCHG_BC;
+       50: begin XCHG_BC; PERMUTE end;
+       26: PERMUTE;
+       41: begin PERMUTE; PERMUTE end;
+       25: begin XCHG_BC; PERMUTE; PERMUTE end;
+       END; { of case KTYP }
+  end; { procedure CONVERT_BACK }
+  
+  PROCEDURE AMBIG_PERMUTE;
+  VAR TEMP: REAL;
+  BEGIN
+    TEMP:=AB2; AB2:=AA2; AA2:=AC2; AC2:=TEMP;
+    TEMP:=SB2; SB2:=SA2; SA2:=SC2; SC2:=TEMP;
+  END; { procedure AMBIG_PERMUTE }
+  
+  PROCEDURE AMBIG_XCHG_BC;
+  VAR TEMP: REAL;
+  BEGIN
+    TEMP:=SB2; SB2:=SC2; SC2:=TEMP;
+    TEMP:=AB2; AB2:=AC2; AC2:=TEMP;
+  END; { procedure AMBIG_XCHG_BC }
+  
+  PROCEDURE AMBIG_CONVERT_BACK;
+  begin
+    CASE KTYP OF { convert back to original labels }
+       52: ;
+       44: AMBIG_XCHG_BC;
+       50: begin AMBIG_XCHG_BC; AMBIG_PERMUTE end;
+       26: AMBIG_PERMUTE;
+       41: begin AMBIG_PERMUTE; AMBIG_PERMUTE end;
+       25: begin AMBIG_XCHG_BC; AMBIG_PERMUTE; AMBIG_PERMUTE end;
+       END; { of case KTYP }
+  end; { procedure AMBIG_CONVERT_BACK }
+  
+
+begin { procedure ASS }
+  WRITE('   ASS');
+  IF AA+AB+AC >= 180 THEN
+      begin VALID:=FALSE;
+            WRITE('    input angle >= 180 ');
+            EXIT(ASS)
+      end;
+  CASE KTYP OF { convert to ASS type: AA,SB,SA }
+     52: ;                                    { AA,SB,SA }
+     44: XCHG_BC;                             { AA,SC,SA }
+     50: begin PERMUTE; PERMUTE; XCHG_BC end; { AB,SA,SB }
+     26: begin PERMUTE; PERMUTE end;          { AB,SC,SB }
+     41: PERMUTE;                             { AC,SA,SC }
+     25: begin PERMUTE; XCHG_BC end;          { AC,SB,SC }
+     END; { of case KTYP }
+  TEST:=SB*SIN(AA*DTR);
+  IF SA < TEST THEN
+      begin
+        VALID:=FALSE;
+        WRITE(' NO triangle since side ');
+        CASE KTYP OF
+           44,52: WRITE('a');
+           26,50: WRITE('b');
+           25,41: WRITE('c');
+           END; {of case KTYP }
+        WRITE(' WILL NOT reach the opposite side');
+        EXIT(ASS)
+      end; { of if SA < TEST }
+  IF (SA=TEST) THEN
+      begin
+        WRITE('    a RIGHT triangle');
+        AB:=90;
+        AC:=90-AA;
+        SC:=SB*COS(AA*DTR)
+      end;
+  IF (SA >= SB) THEN
+      begin
+        WRITE('    one triangle');
+        SINB:=SIN(AA*DTR)*SB/SA;
+        COSB:=SQRT(1-SINB*SINB);
+        AB:=ATAN(SINB/COSB)*RTD;
+        AC:=180-AA-AB;
+        SC:=SA*SIN(AC*DTR)/SIN(AA*DTR)
+      end;
+  IF (SA > TEST) and (SA < SB) THEN
+      begin
+        WRITE(' AMBIGUOUS CASE 1st solution');
+        AMBIG:=TRUE;
+        SINB:=SIN(AA*DTR)*SB/SA;
+        COSB:=SQRT(1-SINB*SINB);
+        AB:=ATAN(SINB/COSB)*RTD;
+        AC:=180-AA-AB;
+        SC:=SA*SIN(AC*DTR)/SIN(AA*DTR);
+        AA2:=AA;
+        SB2:=SB;
+        SA2:=SA;
+        AB2:=180-AB;
+        AC2:=180-AA2-AB2;
+        SC2:=SA2*SIN(AC2*DTR)/SIN(AA2*DTR)
+      end;
+  CONVERT_BACK;
+  IF AMBIG THEN AMBIG_CONVERT_BACK;
+end; { of procedure ASS }
+
+PROCEDURE AAA;
+begin
+  WRITE('   AAA');
+  IF AA+AB+AC <> 180 THEN
+      begin
+        VALID:=FALSE;
+        WRITE('    NO triangle since then angle sum <> 180');
+        EXIT(AAA)
+      end;
+  IF NOT USES_SSAAA THEN
+    WRITE('    all solutions are SIMILAR to the following triangle');
+  SA:=1;
+  SB:=SA*SIN(AB*DTR)/SIN(AA*DTR);
+  SC:=SA*SIN(AC*DTR)/SIN(AA*DTR)
+end; { of procedure AAA }
+
+PROCEDURE SAAA;
+begin
+  WRITE('   SAAA');
+  IF AA+AB+AC <> 180 THEN
+     begin
+       VALID:=FALSE;
+       WRITE('    angle sum <> 180');
+       EXIT(SAAA)
+     end;
+  CASE KTYP OF { convert side S so that S = SA }
+     15: PERMUTE;                    { S=SC }
+     23: begin PERMUTE; PERMUTE end; { S=SB }
+     39: ;                           { S=SA }
+     END; { of case KTYP }
+  SB:=SA*SIN(AB*DTR)/SIN(AA*DTR);
+  SC:=SA*SIN(AC*DTR)/SIN(AA*DTR);
+  CASE KTYP OF { restore labels }
+     15: begin PERMUTE; PERMUTE end;
+     23: PERMUTE;
+     39: ;
+     END; { of case KTYP }
+end; { of procedure SAAA }
+     
+PROCEDURE SSAA;
+begin
+  WRITE('   SSAA');
+  IF AA+AB+AC >= 180 THEN
+    begin VALID:=FALSE;
+          WRITE('   NO TRIANGLE since sum of the two input angles >= 180');
+          EXIT(SSAA)
+    end;
+  CASE KTYP OF { compute 3rd angle }
+    27,43,51: AA:=180-AB-AC;
+    29,45,53: AB:=180-AA-AC;
+    30,46,54: AC:=180-AA-AB;
+    END; { of case KTYP }
+  CASE KTYP OF { test for consistency; if so, compute 3rd side }
+    27,29,30: IF APPROX(SIN(AB*DTR)/SB, SIN(AC*DTR)/SC)
+                 then SA:=SB*SIN(AA*DTR)/SIN(AB*DTR)
+                 else VALID:=FALSE;
+    43,45,46: IF APPROX(SIN(AA*DTR)/SA, SIN(AC*DTR)/SC)
+                 then SB:=SA*SIN(AB*DTR)/SIN(AA*DTR)
+                 else VALID:=FALSE;
+    51,53,54: IF APPROX(SIN(AA*DTR)/SA, SIN(AB*DTR)/SB)
+                 then SC:=SA*SIN(AC*DTR)/SIN(AA*DTR)
+                 else VALID:=FALSE;
+    END; { of case KTYP }
+  IF NOT VALID THEN WRITE('   NO TRIANGLE since input values inconsistent');
+end; { of procedure SSAA }
+
+PROCEDURE SSSA;
+VAR ASAVE: real;
+begin
+  WRITE('   SSSA');
+  ASAVE:=AA+AB+AC;
+  SSS;
+  IF VALID 
+     then CASE KTYP OF { check for consistent input angle }
+        57: VALID:=APPROX(AC,ASAVE);
+        58: VALID:=APPROX(AB,ASAVE);
+        60: VALID:=APPROX(AA,ASAVE);
+        END; { of case KTYP }
+  IF NOT VALID THEN WRITE('   NO TRIANGLE - inconsistent data');
+end; { of procedure SSSA }
+
+PROCEDURE SSAAA;
+VAR SAX,SBX,SCX,RATIO: real;
+begin
+  WRITE('   SSAAA');
+  USES_SSAAA:=TRUE;
+  CASE KTYP OF { save sides for consistency comparison tests }
+    31: begin SBX:=SB; SCX:=SC end;
+    47: begin SAX:=SA; SCX:=SC end;
+    55: begin SAX:=SA; SBX:=SB end;
+    END; { of case KTYP }
+  AAA;
+  IF VALID
+    then CASE KTYP OF
+           31: VALID:=APPROX(SBX*SC,SCX*SB);
+           47: VALID:=APPROX(SAX*SC,SCX*SA);
+           55: VALID:=APPROX(SAX*SB,SBX*SA);
+           END; { of case KTYP }
+  IF VALID
+    THEN begin CASE KTYP OF
+                 31:    RATIO:=SBX/SB;
+                 47,55: RATIO:=SAX/SA;
+                 END;
+               SA:=SA*RATIO; SB:=SB*RATIO; SC:=SC*RATIO
+         end
+    ELSE WRITE('   NO TRIANGLE - inconsistent data')
+end; { of procedure SSAAA }
+
+PROCEDURE SSSAA;
+VAR AAX,ABX,ACX: REAL;
+begin
+  WRITE('   SSSAA');
+  IF AA+AB+AC >= 180 THEN
+    begin VALID:=FALSE;
+          WRITE('   NO TRIANGLE - INPUT ANGLES >= 180');
+          EXIT(SSSAA)
+    end;
+  CASE KTYP OF { save angles for consistency comparison test }
+    59: begin ABX:=AB; ACX:=AC end;
+    61: begin AAX:=AA; ACX:=AC end;
+    62: begin AAX:=AA; ABX:=AB end;
+    END; 
+  SSS;
+  IF VALID 
+    then CASE KTYP OF
+           59: VALID:=APPROX(ABX,AB) and APPROX(ACX,AC);
+           61: VALID:=APPROX(AAX,AA) and APPROX(ACX,AC);
+           62: VALID:=APPROX(AAX,AA) and APPROX(ABX,AB);
+           END;
+  IF NOT VALID THEN WRITE('   NO TRIANGLE - inconsistent data');
+end; { of procedure SSSAA }
+
+PROCEDURE SSSAAA;
+VAR AAX,ABX,ACX: real;
+begin
+  WRITE('   SSSAAA');
+  IF AA+AB+AC <> 180 THEN
+     begin VALID:=FALSE;
+           WRITE('   NO TRIANGLE since angle sum <> 180');
+           EXIT(SSSAAA)
+     end;
+  AAX:=AA; ABX:=AB; ACX:=AC;
+  SSS;
+  VALID := APPROX(AA,AAX) and APPROX(AB,ABX) and APPROX(AC,ACX);
+  IF NOT VALID THEN WRITE('   NO TRIANGLE - inconsistent data')
+  end; { of procedure SSSAAA }
+
+PROCEDURE ANALYZE;
+BEGIN
+  KTYP:=0;
+  IF AC > 0 THEN KTYP:=KTYP + 1 ;
+  IF AB > 0 THEN KTYP:=KTYP + 2 ;
+  IF AA > 0 THEN KTYP:=KTYP + 4 ;
+  IF SC > 0 THEN KTYP:=KTYP + 8 ;
+  IF SB > 0 THEN KTYP:=KTYP +16 ;
+  IF SA > 0 THEN KTYP:=KTYP +32 ;
+  VALID := TRUE;
+  AMBIG := FALSE;
+  LABEL2:=FALSE;
+  USES_SSAAA:=FALSE;
+  CASE KTYP OF
+    56:                 SSS;
+    28,42,49:           SAS;
+    14,21,35:           ASA;
+    11,13,19,22,37,38:  SAA;
+    25,26,41,44,50,52:  ASS;
+    7:                  AAA;
+    0,1,2,3,4,5,6,8,9,
+    10,12,16,17,18,20,
+    24,32,33,34,36,40,
+    48: BEGIN
+          VALID:=FALSE;
+          WRITE('   INSUFFICIENT DATA TO MAKE A TRIANGLE')
+        END;
+    15,23,39:          SAAA;
+    27,29,30,43,45,46,
+    51,53,54:          SSAA;
+    57,58,60:          SSSA;
+    31,47,55:         SSAAA;
+    59,61,62:         SSSAA;
+    63:              SSSAAA;
+    END; { case KTYP }
+END; { procedure ANALYZE }
+    
+PROCEDURE LABEL_TRIANGLE(XA,YA,XB,YB,XC,YC:INTEGER);
+VAR X,Y:         INTEGER;
+    ANG,SIDE,A,PER: REAL;
+BEGIN
+  X:=XA DIV 4 - 5;
+  Y:=YA DIV 10;
+  IF LABEL2 THEN Y:=Y+1;
+  IF LABEL2 THEN ANG:=AA2 ELSE ANG:=AA;
+  GOTOXY(X,Y); WRITE('A= ',ANG:5:1);
+  X:=((XA+XB) DIV 2) DIV 4 -5;
+  Y:=Y-1;
+  IF LABEL2 THEN SIDE:=SC2 ELSE SIDE:=SC;
+  GOTOXY(X,Y); WRITE('c= ',SIDE:5:1);
+  X:=XB DIV 4 -2;
+  Y:=Y+1;
+  IF LABEL2 THEN ANG:=AB2 ELSE ANG:=AB;
+  GOTOXY(X,Y); WRITE('B= ',ANG:5:1);
+  X:=((XB+XC) DIV 2) DIV 4 -1;
+  Y:=((YB+YC) DIV 2) DIV 10;
+  IF LABEL2 THEN Y:=Y+1;
+  IF LABEL2 THEN SIDE:=SA2 ELSE SIDE:=SA;
+  GOTOXY(X,Y); WRITE('a= ',SIDE:5:1);
+  X:=XC DIV 4 -5;
+  Y:=YC DIV 10;
+  IF LABEL2 THEN Y:=Y+1;
+  IF LABEL2 THEN ANG:=AC2 ELSE ANG:=AC;
+  GOTOXY(X,Y); WRITE('C= ',ANG:5:1);
+  X:=((XA+XC) DIV 2) DIV 4 -5;
+  Y:=((YA+YC) DIV 2) DIV 10 -1;
+  IF LABEL2 THEN Y:=Y+1;
+  IF LABEL2 THEN SIDE:=SB2 ELSE SIDE:=SB;
+  GOTOXY(X,Y); WRITE('b= ',SIDE:5:1);
+  IF LABEL2 THEN X:=42 ELSE X:=3;
+  IF LABEL2 THEN A:=SC2*SB2*SIN(AA2*DTR)/2 ELSE A:=SC*SB*SIN(AA*DTR)/2;
+  IF LABEL2 THEN PER:=SA2+SB2+SC2  ELSE PER:=SA+SB+SC;
+  GOTOXY(X,7);
+  WRITE('AREA=',A:8:3,'  PERIMETER=',PER:8:3)
+END; { procedure LABEL_TRIANGLE }
+  
+PROCEDURE DISPLAY;
+var WIDE: boolean;
+    AX,AY,BX,BY,CX,CY,   { (x,y) coordinates }
+    AX2,AY2,BX2,BY2,CX2,CY2, { 2nd triangle }
+    XLEFT,YBOT,YDIF:  integer;
+    H,H2,W,W2,
+    XC,XC2,XL,XL2,XR,XR2,
+    WMAX,HMAX,SCALE:     real;
+begin
+  GOTOXY(0,5);
+  WRITELN('  a=',SA:8:3,'  b=',SB:8:3,'  c=',SC:8:3);
+  WRITELN('  A=',AA:8:3,'  B=',AB:8:3,'  C=',AC:8:3);
+  XLEFT:=41; YBOT:=200; { SW corner of rect for triangle display }
+  YDIF:=1;     { downward vertical (dot) displacement for 2nd triangle }
+  WMAX:=240; HMAX:=120; { max width and height of triangle (units=dots) }
+  H:=SB*SIN(AA*DTR);    { H is triangle height }
+  XC:=SB*COS(AA*DTR);
+  IF XC < 0 THEN XL:=XC ELSE XL:=0;
+  IF XC > SC THEN XR:=XC ELSE XR:=SC;
+  W:=XR-XL;
+  IF AMBIG THEN  { adjust H and W so rect contains both triangles }
+       begin
+         H2:=SB2*SIN(AA2*DTR);
+         IF H2>H THEN H:=H2;
+         XC2:=SB2*COS(AA2*DTR);
+         IF XC2 < XL THEN XL:=XC2;
+         IF XC2 > XR THEN XR:=XC2;
+         IF SC2 > XR THEN XR:=SC2;
+         W:=XR-XL;
+       end; { if AMBIG }
+  IF W/H >= WMAX/HMAX THEN WIDE:=true ELSE WIDE:=false;
+  IF WIDE THEN SCALE:=WMAX/W ELSE SCALE:=HMAX/H;
+  { the following code assigns x,y dot values to the triangle vertices }
+  AY:=YBOT;
+  BY:=YBOT;
+  IF XC >= 0 THEN AX:=XLEFT
+             ELSE AX:=XLEFT-ROUND(XC*SCALE);
+  if AMBIG and (XC2 < XC) and (XC2 < 0) then AX:=XLEFT-ROUND(XC2*SCALE);
+  BX:=AX+ROUND(SC*SCALE);
+  CX:=AX+ROUND(XC*SCALE);
+  CY:=YBOT-ROUND(H*SCALE);
+  DRAWLINE(R,S,20,AX,AY,BX-AX,BY-AY,1);
+  DRAWLINE(R,S,20,BX,BY,CX-BX,CY-BY,1);
+  DRAWLINE(R,S,20,CX,CY,AX-CX,AY-CY,1);
+  LABEL_TRIANGLE(AX,AY,BX,BY,CX,CY);
+  IF AMBIG THEN
+      begin
+        LABEL2:=TRUE;
+        AY2:=YBOT+YDIF;
+        BY2:=YBOT+YDIF;
+        AX2:=AX;
+        BX2:=AX2+ROUND(SC2*SCALE);
+        CY2:=YBOT+YDIF-ROUND(H2*SCALE);
+        CX2:=AX2+ROUND(XC2*SCALE);
+        GOTOXY(50,4); WRITE('2nd solution');
+        GOTOXY(41,5); WRITE('a=',SA2:8:3,'  b=',SB2:8:3,'  c=',SC2:8:3);
+        GOTOXY(41,6); WRITE('A=',AA2:8:3,'  B=',AB2:8:3,'  C=',AC2:8:3);
+        DRAWLINE(R,S,20,AX2,AY2,BX2-AX2,BY2-AY2,1);
+        DRAWLINE(R,S,20,BX2,BY2,CX2-BX2,CY2-BY2,1);
+        DRAWLINE(R,S,20,CX2,CY2,AX2-CX2,AY2-CY2,1);
+        LABEL_TRIANGLE(AX2,AY2,BX2,BY2,CX2,CY2);
+      end { of if AMBIG }
+end; { of procedure DISPLAY }
+    
+begin { main program TRIANGLE }
+  REPEAT
+    DATA_IN;
+    ANALYZE;
+    IF VALID THEN DISPLAY
+  UNTIL FALSE;
+end. { of main program TRIANGLE}

@@ -1,0 +1,204 @@
+
+PROGRAM GETSORTEDCOPY; (* uses #5;keyno.text, #5:address.text, to build 
+                          #5:printf.text, a sorted printable version of the 
+                          entire address file *)
+
+CONST 
+      MAXNUMKEYS = 1000;
+
+TYPE 
+     STRUCTURE = RECORD
+                   NAME: STRING;
+                   STREET: STRING;
+                   CITYSTATEZIP: STRING;
+                   PHONE: STRING;
+                   KEY : STRING
+                 END;
+     KEYREC = RECORD
+                KEY : STRING;
+                RECNUM : 0 .. MAXNUMKEYS
+              END;
+     PREC = ^REC;
+     REC = RECORD
+             LEFT, RIGHT : PREC;
+             THEKEY : KEYREC
+           END;
+
+VAR 
+    FIN : FILE OF STRUCTURE;
+    FOUT, KEYF : TEXT;
+    KEYS : KEYREC;
+    NEXT, BASE, TREE : PREC;
+    MAXKEYS : 0 .. MAXNUMKEYS;
+    ANSWER : CHAR;
+
+PROCEDURE PUTONTREE ( VAR PT, PN : PREC );
+BEGIN
+  IF PT = NIL
+    THEN
+      PT := PN
+    ELSE
+      IF PN^.THEKEY.KEY < PT^.THEKEY.KEY
+        THEN
+          PUTONTREE ( PT^.LEFT, PN )
+        ELSE
+          PUTONTREE ( PT^.RIGHT, PN );
+
+  TREE := PT;
+  WRITE ( '.');
+END;
+
+PROCEDURE PRINTTREE ( PNT : PREC );
+BEGIN
+  IF PNT <> NIL
+    THEN
+      BEGIN
+        PRINTTREE ( PNT^.LEFT );
+        WRITELN (KEYF, PNT^.THEKEY.KEY);
+        WRITELN (KEYF, PNT^.THEKEY.RECNUM);
+        WRITE ( '.');
+        PRINTTREE (PNT^.RIGHT);
+      END;
+END;
+
+PROCEDURE BUILDKEYFILE;
+
+VAR 
+    THISRECNO : 0 .. MAXNUMKEYS;
+BEGIN
+  RESET ( KEYF, '#5:KEYS.TEXT');
+  READLN ( KEYF, MAXKEYS );
+  MAXKEYS := PRED ( MAXKEYS );
+  CLOSE ( KEYF, NORMAL );
+  WRITELN('... Building the key file...' );
+  RESET ( FIN, '#5:ADDRESS.TEXT');
+  REWRITE ( KEYF, '#4:SORTK.TEXT');
+  THISRECNO := 0;
+  WHILE  ( (NOT EOF ( FIN ) ) AND  (THISRECNO <= MAXKEYS)) DO
+    BEGIN
+      SEEK ( FIN, THISRECNO );
+      GET ( FIN );
+      WRITELN ( KEYF, FIN^.KEY );
+      WRITELN ( 'GOT ', FIN^.KEY);
+      WRITELN ( KEYF, THISRECNO );
+      WRITELN ( '     ',THISRECNO:2);
+      SEEK (FIN, THISRECNO);
+      PUT ( FIN );
+      THISRECNO := SUCC ( THISRECNO );
+    END;
+  CLOSE ( KEYF, LOCK );
+END;
+
+PROCEDURE SORTKEYS;
+BEGIN
+  RESET ( KEYF,'#4:SORTK.TEXT');
+  BASE := NIL;
+  TREE := NIL;
+  WRITELN ( '... Sorting keys ...');
+  WHILE NOT EOF ( KEYF ) DO
+    BEGIN
+      NEW ( NEXT );
+      READLN (KEYF, NEXT^.THEKEY.KEY);
+      READLN (KEYF, NEXT^.THEKEY.RECNUM);
+      NEXT^.LEFT := NIL;
+      NEXT^.RIGHT := NIL;
+      PUTONTREE ( BASE, NEXT );
+    END;
+  CLOSE ( KEYF, PURGE );
+  REWRITE ( KEYF, '#5:SORTK.TEXT');
+  WRITELN;
+  WRITELN ('... Traversing the tree ... ');
+  PRINTTREE ( TREE );
+  CLOSE ( KEYF, LOCK );
+END;
+
+PROCEDURE BUILDSORTEDFILE;
+
+VAR 
+    I, BUF1 : INTEGER;
+BEGIN
+  WRITELN;
+  WRITELN ('... Writing the sorted file ...');
+  I := 0;
+  CLOSE ( FIN, NORMAL );
+  RESET ( KEYF, '#5:SORTK.TEXT');
+  RESET ( FIN, '#5:ADDRESS.TEXT');
+  REWRITE ( FOUT, '#5:PRINTF.TEXT');
+  WHILE  ( (NOT EOF ( FIN ) ) AND ( I <= MAXKEYS ) )  DO
+    BEGIN
+      READLN ( KEYF);
+      READLN ( KEYF, BUF1);
+      SEEK ( FIN, BUF1);
+      GET ( FIN );
+      WRITELN (FIN^.NAME);
+      WRITELN (FIN^.STREET);
+      WRITELN (FIN^.CITYSTATEZIP);
+      WRITELN (FIN^.PHONE);
+      WRITELN ('``````````````````````````````````````````````> ', FIN^.KEY);
+      WRITELN ( FOUT );
+      WRITELN ( FOUT, FIN^.NAME);
+      WRITELN ( FOUT, FIN^.STREET);
+      WRITELN ( FOUT, FIN^.CITYSTATEZIP);
+      WRITELN ( FOUT, FIN^.PHONE);
+      WRITELN ( FOUT );
+      SEEK ( FIN, BUF1);
+      PUT ( FIN );
+      I := SUCC ( I );
+    END;
+  CLOSE (FOUT, LOCK);
+  WRITELN;
+  WRITELN ('  ...Your sorted file, #5:PRINTF.TEXT, is ready ...');
+  CLOSE (KEYF, PURGE);
+END;
+
+PROCEDURE PRINTSORTEDCOPY;
+VAR
+  F, LP : TEXT;
+  BUFFER : STRING;
+  LINENO, I : INTEGER;
+  FF, CH : CHAR;
+
+BEGIN
+  
+  FF := CHR ( 12 );
+  
+  WRITELN;
+  
+  WRITE(' Do You want a Hard Copy now? Y/N: ');
+  
+  READLN ( CH );
+  WRITELN;
+  
+  IF CH IN [ 'Y', 'y' ]
+     THEN
+       BEGIN
+         RESET ( F, '#5:PRINTF.TEXT');
+         REWRITE ( LP, 'PRINTER:');
+         WHILE NOT EOF ( F ) DO
+            BEGIN
+              CH := FF;
+              WRITE ( LP, CH );
+              LINENO := 0;
+              WHILE (LINENO < 60 ) AND (NOT (EOF (F) )) DO
+                BEGIN
+                  LINENO := SUCC ( LINENO );
+                  READLN ( F, BUFFER );
+                  WRITELN ( LP, BUFFER );
+                  WRITELN ( BUFFER );
+                END;
+            END;
+       END;
+END;
+
+BEGIN
+   WRITE (' Do You want to rebuild the print file? Y/N: ');
+   READLN ( ANSWER );
+   IF ANSWER IN [ 'Y', 'y']
+     THEN
+       BEGIN
+         BUILDKEYFILE;
+         SORTKEYS;
+         BUILDSORTEDFILE;
+       END;
+   PRINTSORTEDCOPY;
+END.

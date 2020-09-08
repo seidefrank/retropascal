@@ -1,0 +1,664 @@
+
+
+PROCEDURE SETUP;     {Reads all color and weave}
+VAR COUNT : INTEGER; {setup parameters and sends to screen}
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN('             ----- DRAWDOWN FOR 4 HARNESS LOOMS -----');
+  WRITELN('             ',REM);
+  WRITELN('             SETUP IS FOR ',HORIZLEN,' WARP THREADS');
+  WRITELN;
+  WRITELN('             "A" TABBY IS TREADLE  ',TABBYA);
+  WRITELN('             "B" TABBY IS TREADLE  ',TABBYB);
+  WRITELN;
+  COUNT := 0;
+  WRITELN('             THREADING SEQUENCE IS --->');
+  WRITELN;
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE (THREAD[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN('             WARP COLOR SEQUENCE IS --->');
+  WRITELN;
+  COUNT := 0;
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE(COLOR1[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITE('               PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN('             TREADLE TIEUP IS--->');
+  WRITELN;
+  FOR I := 1 TO 6 DO
+  BEGIN
+    WRITE('TREADLE ',I:2,' TO HARNESS NUMBERS',TIE1[I]:2,' -',TIE2[I]:2);
+    WRITELN(' -',TIE3[I]:2);
+  END;
+  WRITELN;
+  COUNT := 0;
+  WRITELN('            TREADLING SEQUENCE IS---> ');
+  WRITELN;
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(TREADL[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN;
+  WRITELN('              WEFT COLOR SEQUENCE IS --->');
+  WRITELN;
+  COUNT := 0;
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(COLOR2[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITE('            PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  EXIT(SETUP)
+END;
+
+PROCEDURE PSETUP;     {Reads all plain drawdown setup}
+VAR COUNT : INTEGER;  {parameters and sends to screen}
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN('             ----- DRAWDOWN FOR 4 HARNESS LOOMS -----');
+  WRITELN('             ',REM);
+  WRITELN('             SETUP IS FOR ',HORIZLEN,' WARP THREADS');
+  WRITELN;
+  WRITELN('             "A" TABBY IS TREADLE  ',TABBYA);
+  WRITELN('             "B" TABBY IS TREADLE  ',TABBYB);
+  WRITELN;
+  COUNT := 0;
+  WRITELN('             THREADING SEQUENCE IS --->');
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE (THREAD[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN;
+  WRITELN('             TREADLE TIEUP IS--->');
+  FOR I := 1 TO 6 DO
+  BEGIN
+    WRITE('TREADLE',I:2,' TO HARNESS NUMBERS',TIE1[I]:2,' -',TIE2[I]:2);
+    WRITELN(' -',TIE3[I]:2);
+  END;
+  WRITELN;
+  COUNT := 0;
+  WRITELN('            TREADLING SEQUENCE IS---> ');
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(TREADL[I]:3);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 25 = 0 THEN
+    WRITELN;
+  END;
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITE('            PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  EXIT(PSETUP)
+END;
+
+PROCEDURE SETUP1;     {Reads all color and weave setup}
+VAR COUNT : INTEGER;  {parameters and outputs to printer}
+BEGIN
+  COUNT := 0;
+  WRITELN(FT,'DRAWDOWN FOR 4 HARNESS LOOMS (color and weave)');
+  WRITELN(FT,REM);
+  WRITELN(FT,'SETUP IS FOR ',HORIZLEN,' THREADS.');
+  WRITELN(FT);
+  WRITELN(FT,'THREADING SEQUENCE IS --->');
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE (FT,THREAD[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+  WRITELN(FT,'WARP COLOR SEQUENCE IS --->');
+  COUNT := 0;
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE(FT,COLOR1[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+  WRITELN(FT,'"A" TABBY IS TREADLE',TABBYA:2);
+  WRITELN(FT,'"B" TABBY IS TREADLE',TABBYB:2);
+  WRITELN(FT);
+  WRITELN(FT,'TREADLE TIEUP IS--->');
+  FOR I := 1 TO 6 DO
+  BEGIN
+    WRITE(FT,'TREADLE',I:2,' TO HARNESS NUMBERS ',TIE1[I]:2,' -',TIE2[I]:2);
+    WRITELN(FT,' -',TIE3[I]:2);
+  END;
+  WRITELN(FT);
+  COUNT := 0;
+  WRITELN(FT,'TREADLING SEQUENCE IS --->');
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(FT,TREADL[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+  WRITELN(FT,'WEFT COLOR SEQUENCE IS --->');
+  COUNT := 0;
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(FT,COLOR2[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+END;
+
+
+PROCEDURE PSETUP1;   {Reads all plain drawdown setup}
+VAR COUNT : INTEGER; {parameters and outputs to printer}
+BEGIN
+  COUNT := 0;
+  WRITELN(FT);
+  WRITELN(FT,'DRAWDOWN FOR 4 HARNESS LOOMS');
+  WRITELN(FT,REM);
+  WRITELN(FT,'SETUP IS FOR ',HORIZLEN,' THREADS.');
+  WRITELN(FT);
+  WRITELN(FT,'THREADING SEQUENCE IS --->');
+  FOR I := 1 TO HORIZLEN DO
+  BEGIN
+    WRITE (FT,THREAD[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+  WRITELN(FT,'"A" TABBY IS TREADLE',TABBYA:2);
+  WRITELN(FT,'"B" TABBY IS TREADLE',TABBYB:2);
+  WRITELN(FT);
+  WRITELN(FT,'TREADLE TIEUP IS--->');
+  FOR I := 1 TO 6 DO
+  BEGIN
+    WRITE(FT,'TREADLE',I:2,' TO HARNESS NUMBERS',TIE1[I]:2,' -',TIE2[I]:2);
+    WRITELN(FT,' -',TIE3[I]:2);
+  END;
+  WRITELN(FT);
+  COUNT := 0;
+  WRITELN(FT,'TREADLING SEQUENCE IS --->');
+  FOR I := 1 TO VERTLEN DO
+  BEGIN
+    WRITE(FT,TREADL[I]:2);
+    COUNT := COUNT + 1;
+    IF COUNT MOD 30 = 0 THEN
+    WRITELN(FT);
+  END;
+  WRITELN(FT);
+  WRITELN(FT);
+END;
+
+
+PROCEDURE CRTOUT;  {Outputs color and weave pattern to screen}
+BEGIN
+  CLEARSCREEN;
+  SETUP;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  BEGIN
+    FOR I := 1 TO VERTLEN DO
+    BEGIN
+      FOR J := 1 TO HORIZLEN DO
+      BEGIN
+        K := TREADL[I];
+        IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR 
+           (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['D','d'])
+           THEN WRITE(SHOWARPD)
+        ELSE IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+                (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['L','l'])
+           THEN WRITE(SHOWARPL)
+        ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['D','d'])
+           THEN WRITE(SHOWARPD)
+        ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['L','l'])
+           THEN WRITE(SHOWARPL)
+      END;
+    WRITELN;
+    END;
+  END;
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITE('              PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  EXIT(CRTOUT)
+END;
+  
+  
+PROCEDURE PCRTOUT;  {Outputs plain drawdown pattern to screen}
+BEGIN
+  CLEARSCREEN;
+  PSETUP;
+  WRITELN;
+  WRITELN;
+  BEGIN
+    BEGIN
+      FOR I := 1 TO VERTLEN DO
+      BEGIN
+        FOR J := 1 TO HORIZLEN DO
+        BEGIN
+          K := TREADL[I];
+          IF (THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+             (THREAD[J] = TIE3[K])  THEN
+          WRITE(SHOWARPD) ELSE
+          WRITE(SHOWARPL);
+        END;
+      WRITELN;
+      END;
+    END;
+    WRITELN;
+    WRITELN;
+    OKSET := [CHR(13)];
+    WRITE('              PRESS <RETURN> TO CONTINUE');
+    CH := GETCHAR(OKSET);
+    IF CH = CHR(13) THEN
+    EXIT(PCRTOUT)
+  END;
+END;
+
+
+PROCEDURE HARDCOPY;  {Outputs color and weave pattern to printer}
+
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN('                    SETUP FOR  PRINTER-->');
+  WRITELN('                    10 Characters per INCH');
+  WRITELN('                     8 Lines per INCH');
+  WRITELN;
+  WRITELN('        ***  NOTE---USE ASCII 96 PRINT WHEEL ON QUME ***');
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITELN('                   PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  BEGIN
+    REWRITE(FT,'PRINTER:');
+    SETUP1;
+    WRITELN(FT,CHR(12));
+    WRITELN(FT);
+    BEGIN
+      FOR I := 1 TO VERTLEN DO
+      BEGIN
+        FOR J := 1 TO HORIZLEN DO
+        BEGIN
+          K := TREADL[I];
+          IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR 
+             (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['D','d'])
+             THEN WRITE(FT,SHOWARPD)
+          ELSE IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+                  (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['L','l'])
+             THEN WRITE(FT,SHOWARPL)
+          ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                  (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['D','d'])
+             THEN WRITE(FT,SHOWARPD)
+          ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                  (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['L','l'])
+             THEN WRITE(FT,SHOWARPL)
+        END;
+      WRITELN(FT);
+      END;
+    END;
+  END;
+  WRITELN(FT,CHR(12));
+  CLOSE(FT);
+END;
+
+
+PROCEDURE PHARDCOPY;  {Outputs plain drawdown pattern to printer}
+
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN('                    SETUP FOR  PRINTER-->');
+  WRITELN('                    10 Characters per INCH');
+  WRITELN('                     8 Lines per INCH');
+  WRITELN;
+  WRITELN('        ***  NOTE---USE ASCII 96 PRINT WHEEL ON QUME ***');
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITELN('                   PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  BEGIN
+    REWRITE(FT,'PRINTER:');
+    WRITELN(FT);
+    WRITELN(FT);
+    PSETUP1;
+    WRITELN(FT,CHR(12));
+    WRITELN(FT);
+    WRITELN(FT);
+    BEGIN
+      FOR I := 1 TO VERTLEN DO
+      BEGIN
+        FOR J := 1 TO HORIZLEN DO
+        BEGIN
+          K := TREADL[I];
+          IF (THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+             (THREAD[J] = TIE3[K])  THEN
+          WRITE(FT,SHOWARPD)
+          ELSE WRITE(FT,SHOWARPL);
+        END;
+        WRITELN(FT);
+      END;
+    END;
+  END;
+  WRITELN(FT,CHR(12));
+  CLOSE(FT);
+END;
+
+
+PROCEDURE GRAFOUT;  {Outputs color and weave pattern}
+                    {to IDS-460 graphics printer}
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN('                    SETUP FOR IDS-460 PRINTER-->');
+  WRITELN('                    10 Characters per INCH');
+  WRITELN('                     8 Lines per INCH');
+  WRITELN('             ENABLE EXPANDED FUNCTION-- SWITCH NO. 7  ON ..');
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITELN('                     PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  BEGIN
+    REWRITE(FT,'PRINTER:');
+    SETUP1;
+    WRITELN(FT);
+    WRITELN(FT);
+    WRITE(FT,CHR(3)); {Puts IDS-460 into graphics mode}
+    BEGIN
+      FOR I := 1 TO VERTLEN DO
+      BEGIN
+        FOR J := 1 TO HORIZLEN DO
+        BEGIN
+          K := TREADL[I];
+          IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR 
+             (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['D','d'])
+          THEN DPIXEL
+          ELSE IF ((THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+                  (THREAD[J] = TIE3[K])) AND (COLOR1[J] IN ['L','l'])
+          THEN LPIXEL
+          ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                  (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['D','d'])
+          THEN DPIXEL
+          ELSE IF ((THREAD[J] <> TIE1[K]) OR (THREAD[J] <> TIE2[K]) OR
+                  (THREAD[J] <> TIE3[K])) AND (COLOR2[I] IN ['L','l'])
+          THEN LPIXEL
+        END;
+      WRITE(FT,CHR(3),CHR(14)); {Graphics CR & LF}
+      END;
+    END;
+  END;
+  WRITELN(FT,CHR(3),CHR(2)); {Disabels graphics mode}
+  WRITELN(FT,CHR(12)); {FF}
+  CLOSE(FT);
+END;
+
+
+PROCEDURE PGRAFOUT;  {Outputs plain drawdown pattern}
+                     {to IDS-460 graphics printer}
+BEGIN
+  CLEARSCREEN;
+  WRITELN;
+  WRITELN;
+  WRITELN;
+  WRITELN('                    SETUP FOR IDS-460 PRINTER-->');
+  WRITELN('                    10 Characters per INCH');
+  WRITELN('                     8 Lines per INCH');
+  WRITELN('             ENABLE EXPANDED FUNCTION-- SWITCH NO. 7  ON ..');
+  WRITELN;
+  WRITELN;
+  OKSET := [CHR(13)];
+  WRITELN('                     PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  BEGIN
+    REWRITE(FT,'PRINTER:');
+    WRITELN(FT);
+    WRITELN(FT);
+    PSETUP1;
+    WRITELN(FT);
+    WRITELN(FT);
+    WRITE(FT,CHR(3)); {Puts IDS-460 into graphics mode}
+    BEGIN
+      FOR I := 1 TO VERTLEN DO
+      BEGIN
+        FOR J := 1 TO HORIZLEN DO
+        BEGIN
+          K := TREADL[I];
+          IF (THREAD[J] = TIE1[K]) OR (THREAD[J] = TIE2[K]) OR
+             (THREAD[J] = TIE3[K])  THEN
+          DPIXEL
+          ELSE
+          LPIXEL
+        END;
+        WRITE(FT,CHR(3),CHR(14));  {Graphics CR & LF}
+      END;
+    END;
+  END;
+  WRITE(FT,CHR(3),CHR(2));  {Disable graphics mode}
+  WRITELN(FT,CHR(12));
+  CLOSE(FT);
+END;
+
+
+PROCEDURE PRINT;  {Secondary menu for output selection}
+VAR CH : CHAR;
+    OKSET : SETOFCHAR;
+BEGIN
+  CLEARSCREEN;
+  OKSET := ['S','s','P','p','G','g','Q','q'];
+  WRITELN('                 Do you want output to go to the------>');
+  WRITELN;
+  WRITELN;
+  WRITE('    --->  S)creen,  P)rinter normal,  G)raphics IDS-460,  Q)UIT ? ');
+  CH := GETCHAR(OKSET);
+  CASE CH OF
+    'S','s'  : CRTOUT;
+    'P','p'  : HARDCOPY;
+    'G','g'  : GRAFOUT;
+    'Q','q'  : BEGIN
+                 CLEARSCREEN;
+                 EXIT(PRINT);
+               END;
+  END;
+END;
+
+
+PROCEDURE PPRINT;  {Secondary menu for output selection}
+VAR CH : CHAR;
+    OKSET : SETOFCHAR;
+BEGIN
+  CLEARSCREEN;
+  OKSET := ['S','s','P','p','G','g','Q','q'];
+  WRITELN('                 Do you want output to go to the------>');
+  WRITELN;
+  WRITELN;
+  WRITE('    --->  S)creen,  P)rinter normal,  G)raphics IDS-460,  Q)UIT ? ');
+  CH := GETCHAR(OKSET);
+  CASE CH OF
+    'S','s'  : PCRTOUT;
+    'P','p'  : PHARDCOPY;
+    'G','g'  : PGRAFOUT;
+    'Q','q'  : BEGIN
+                 CLEARSCREEN;
+                 EXIT(PPRINT);
+               END;
+  END;
+END;
+
+
+
+PROCEDURE TITLE;  {Title block for program}
+BEGIN
+  OKSET := [CHR(13)];
+  CLEARSCREEN;
+  GOTOXY(0,2);
+  WRITELN('                      ***** PROGRAM DRAW4C *****');
+  GOTOXY(0,6);
+  WRITELN('        This program is for four harness looms and the output');
+  WRITELN;
+  WRITELN('        is a Drawdown to a printer or the terminal.  The program');
+  WRITELN;
+  WRITELN('        was inspired by the book "COLOR AND WEAVE" by Margaret and');
+  WRITELN;
+  WRITELN('        Thomas Windeknecht.  It is written in UCSD Pascal version');
+  WRITELN;
+  WRITELN('        IV.1 for the Sage II computer and output on a standard');
+  WRITELN;
+  WRITELN('        printer or graphics output on the IDS-460 printer.');
+  WRITELN;
+  WRITELN('                  by GEORGE. H. DODGE    December 1983');
+  WRITELN;
+  WRITELN;
+  WRITE('                        PRESS <RETURN> TO CONTINUE');
+  CH := GETCHAR(OKSET);
+  IF CH = CHR(13) THEN
+  EXIT(TITLE);
+END;
+
+ 
+
+PROCEDURE CMENU;  {Color and weave menu}
+
+VAR OKSET : SETOFCHAR;
+
+BEGIN
+  OKSET := ['A','a','B','b','C','c','D','d','P','p','Q','q'];
+  REPEAT
+    CLEARSCREEN;
+    WRITE('> Draw4C:  A)Threading  B)Tieup  C)Treadling  ');
+    WRITE('D)DrawnIn  P)rint  Q)uit---> ');
+    CH := GETCHAR(OKSET);
+    CASE CH OF
+      'A','a' : THREADING;
+      'B','b' : TYEUP;
+      'C','c' : TREADLING;
+      'D','d' : COPYTHRD;
+      'P','p' : PRINT;
+      'Q','q' : BEGIN
+                  CLEARSCREEN;
+                  MENU;
+                END;
+     END;
+ UNTIL FALSE
+ END;
+ 
+ 
+PROCEDURE PMENU;  {Plain drawdown menu}
+
+VAR OKSET : SETOFCHAR;
+
+BEGIN
+  OKSET := ['A','a','B','b','C','c','D','d','P','p','Q','q'];
+  REPEAT
+    CLEARSCREEN;
+    WRITE('> Draw4:  A)Threading  B)Tieup  C)Treadling  ');
+    WRITE('D)DrawnIn  P)rint  Q)uit---> ');
+    CH := GETCHAR(OKSET);
+    CASE CH OF
+      'A','a' : PTHREADING;
+      'B','b' : TYEUP;
+      'C','c' : PTREADLING;
+      'D','d' : COPYTHRD;
+      'P','p' : PPRINT;
+      'Q','q' : BEGIN
+                  CLEARSCREEN;
+                  MENU;
+                END;
+     END;
+ UNTIL FALSE
+ END;
+ 
+PROCEDURE MENU;  {Main program menu}
+
+VAR OKSET : SETOFCHAR;
+
+BEGIN
+  OKSET := ['P','p','C','c','Q','q'];
+  REPEAT
+    CLEARSCREEN;
+    WRITE('> DrawDown 4 :    P)lain drawdown     C)olor & weave    Q)uit---> ');
+    CH := GETCHAR(OKSET);
+    CASE CH OF
+       'P','p'  : PMENU;
+       'C','c'  : CMENU;
+       'Q','q'  : BEGIN
+                    CLEARSCREEN;
+                    EXIT(PROGRAM);
+                  END;
+ END;
+ UNTIL FALSE
+ END;
+
+
+
+BEGIN   {Main program}
+  TITLE;
+  MENU;
+END.
+
+

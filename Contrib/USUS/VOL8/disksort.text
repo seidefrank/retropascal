@@ -1,0 +1,158 @@
+(*[B+,I=1,L=n,P=1] <== Formatter Directives *)
+program disksort;
+
+const
+ n = 1000;
+ 
+type
+ shortstring = string[10];
+ stringarray = array [1.. n] of shortstring;
+ datafile = file of shortstring;
+ 
+var
+ liner: integer;
+ buf: stringarray;
+ a, b, c, d: datafile;
+ era, erb, erc, erd: boolean;
+ temp: shortstring;
+ numruns: integer;
+ numstrings: integer;
+ 
+
+procedure sort(l, r: integer);
+ 
+ var
+  i, j: integer;
+  x, w: shortstring;
+  
+ begin
+  i := l;   j := r;   x := buf[(i + j) div 2];
+  repeat
+   while buf[i] < x do i := i + 1;   while x < buf[j] do j := j - 1;
+   if i <= j then
+    begin
+     w := buf[i];   buf[i] := buf[j];   buf[j] := w;   i := i + 1;
+     j := j - 1
+    end
+  until i > j;
+  if l < j   then sort(l, j);   if i < r   then sort(i, r)
+ end (*sort*);
+
+
+procedure distribute;
+ 
+ var
+  i: integer;
+  
+ 
+ procedure copyruns(var x, y: datafile);
+  
+  begin
+   numstrings := 0;
+   while (not (eof(x))) and (not (numstrings >= n)) do
+    begin
+     numstrings := numstrings + 1;   buf[numstrings] := x ^;   get(x)
+    end;
+   sort(1, numstrings);
+   for i := 1 to numstrings do begin y ^ := buf[i];   put(y) end
+  end (*copyruns*);
+ 
+ 
+ begin (*distribute*)
+  repeat copyruns(c, a);   if not (eof(c))   then copyruns(c, b)
+  until eof(c)
+ end (*distribute*);
+
+
+procedure mergeruns(var a, b, c, d: datafile; var era, erb, erc, erd:
+ boolean);
+ 
+ var
+  buf: shortstring;
+  
+ 
+ procedure copyrecord(var a, b: datafile);
+  
+  begin buf := a ^;   get(a);   b ^ := buf;   put(b) end;
+ 
+ 
+ procedure testendofrun(var a: datafile; var era: boolean);
+  
+  begin if eof(a)   then era := true   else era := buf > a ^ end;
+ 
+ 
+ procedure mergeone(var a, b, c: datafile; var era, erb, erc: boolean);
+  
+  
+  procedure copytail(var a, b: datafile; var era, erb: boolean);
+   
+   begin
+    writeln('copytail');
+    while not era do begin copyrecord(a, b);   testendofrun(a, era) end
+   end (*copytail*);
+  
+  
+  begin (*mergeone*)
+   era := false;   erb := false;   writeln('mergeone');
+   repeat
+    if a ^ < b ^
+    then begin copyrecord(a, c);   testendofrun(a, era) end
+    else begin copyrecord(b, c);   testendofrun(b, erb) end
+   until era or erb;
+   if era   then writeln('era');   if erb   then writeln('erb');
+   copytail(a, c, era, erc);   copytail(b, c, erb, erc);
+  end (*mergeone*);
+ 
+ 
+ procedure copyrest(var a, b, c: datafile; var era, erb, erc: boolean);
+  
+  begin
+   writeln('copyrest');
+   while not eof(a) do
+    begin
+     repeat copyrecord(a, b);   testendofrun(a, era)   until era;
+     numruns := numruns + 1;
+     if not eof(a) then
+      begin
+       repeat copyrecord(a, c);   testendofrun(a, era)   until era;
+       numruns := numruns + 1
+      end
+    end
+  end (*copyrest*);
+ 
+ 
+ begin (*mergeruns*)
+  repeat
+   mergeone(a, b, c, era, erb, erc);   numruns := numruns + 1;
+   if not (eof(a) or eof(b)) then
+    begin mergeone(a, b, d, era, erb, erd);   numruns := numruns + 1
+    end
+  until eof(a) or eof(b);
+  if odd(numruns)   then copyrest(a, d, c, era, erd, erc)
+  else copyrest(a, c, d, era, erc, erd);
+  if odd(numruns)   then copyrest(b, d, c, erb, erd, erc)
+  else copyrest(b, c, d, erb, erc, erd);
+  writeln('NUMBER OF RUNS = ', numruns);
+ end (*mergeruns*);
+
+
+begin (*disksort*)
+ rewrite(a, 'file.a[120]');   rewrite(b, 'file.b[65]');
+ reset(c, 'rawdata');   writeln('distribute');   distribute;
+ close(c, lock);
+ repeat
+  numruns := 0;   writeln('Phase 1 started');   reset(a);   reset(b);
+  rewrite(c, 'file.c[120]');   rewrite(d, 'file.d[65]');
+  mergeruns(a, b, c, d, era, erb, erc, erd);
+  if numruns <> 1
+  then
+   begin
+    numruns := 2;   writeln('Phase 2 started');   close(a, purge);
+    close(b, purge);   rewrite(a, 'file.a[120]');
+    rewrite(b, 'file.b[65]');   reset(c);   reset(d);
+    mergeruns(c, d, a, b, erc, erd, era, erb);   close(c, purge);
+    close(d, purge)
+   end
+ until numruns = 1;
+ close(c, lock);
+end (*disksort*).

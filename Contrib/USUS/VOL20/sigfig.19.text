@@ -1,0 +1,192 @@
+{Note: The exponent handling routine appears in the main program because the
+ real-to-string routine was written for use in the labeling of axes in a 
+ package of plotting routines. For this purpose it desirable to be able to
+ suppress the exponent at the axis tic marks and include it in the title
+ of the axis or to write it in conventional arithmetic form rather than
+ using the E format. For use with a plotting routine or for many other
+ purposes it may be desirable to delete the code marked (**) and to remove
+ the comments on the one line bracketed with comment symbols. When this is
+ done FORMAT defines the upper limit for the mantissa (e.g., a format of
+ 0.0XXX will give numbers less than or equal to 0.0999).  Note also that this
+ simple program maps all char except '.' and '0' into 'X'. Zeros other than
+ leading zeros will be treated as X's by the routine. In a more
+ sophisticated program it might be desirable to avoid inadvertent user
+ errors by flagging char other than '.', '0', or 'X' with an error message
+ and providing an opportunity to retype the format specification.
+   This output routine can involve repeated divisions by 10; thus, it is
+ more likely to lose accuracy than an assembly language routine which avoids
+ such division, operating by shifts and rotates.---Henry E. Baumgarten}
+ 
+PROGRAM SIGFIGS;    (*Version 1.3 - 04 Feb 83*)
+
+USES {$U H19UTIL.CODE} H19UTIL;
+
+VAR     RL1,RL2 : REAL;
+        N : INTEGER;
+        FORMAT,STRG1,STRG2 : STRING;
+        NEGNO : BOOLEAN;
+        REPLY : CHAR;
+        
+PROCEDURE PREAMBLE;
+  BEGIN
+    WRITELN
+('This program demonstrates the use of two "user-friendly" real number input');
+    WRITELN
+('and output routines, the latter being rather specialized. In the real number');
+    WRITELN
+('input routine the numbers may be terminated with a space, a comma, or a');
+    WRITELN
+('carriage return.  The output routine will write either scientific format');
+    WRITELN
+('(X.XXXXXXXEXX) or selected format numbers (any number of decimal places,');
+    WRITELN
+('only about 7 of which are meaningful for the 2-word, real-number internal');
+    WRITELN
+('format).  Typical formats are: X.XXXXXXX, XXXXX., XXXXX, .XXXXX or the');
+    WRITELN
+('equivalent 0.XXXXX, and 0.000XXXX.  In all cases the output number will');
+    WRITELN
+('be rounded to the chosen number of zeros and digits (with an exponent if');
+    WRITELN
+('necessary), and a leading zero will be  appended to all fractional numbers.');
+    WRITELN
+('Typical inputs might be:  1/7, 0.00999/1, 123456789/1, or 0.31415926E1/1.');
+    END;
+    
+PROCEDURE REALTOSTR(X:REAL; FORMAT:STRING; VAR S:STRING; VAR EXPNT:INTEGER);
+  
+  VAR  DECPT,DIGIT,INTG,FRAC_DIGITS,INDEX,LEN,TEMP_EXPNT  : INTEGER;
+       FIRST_DIGIT,ZEROS,I : INTEGER;
+       BOUND : REAL;
+       CARRY,LEAD_ZERO,NEGNO : BOOLEAN;
+       S0 : STRING;
+  
+  BEGIN
+    EXPNT := 0;
+    TEMP_EXPNT := 0;
+    NEGNO := FALSE;
+    LEN := LENGTH(FORMAT);
+    IF (LEN=0) THEN
+      BEGIN
+        FORMAT := 'X.XXXXXX';
+        LEN := 8
+      END
+    ELSE FOR I := 1 TO LEN DO
+        IF NOT(FORMAT[I] IN ['0','X','.']) THEN FORMAT[I] := 'X';
+    DECPT := POS('.',FORMAT);
+    FIRST_DIGIT := POS('X',FORMAT);
+    IF (DECPT=0) THEN FRAC_DIGITS := 0 ELSE FRAC_DIGITS := LEN-DECPT;
+    ZEROS := DECPT+1-FIRST_DIGIT;
+    IF (ZEROS>0) THEN ZEROS := ZEROS-1;
+    IF (DECPT=0) THEN ZEROS := LEN+1-FIRST_DIGIT;
+    IF (ZEROS<0) THEN BOUND := 1/PWROFTEN(ABS(ZEROS))
+      ELSE BOUND := PWROFTEN(ZEROS);
+    IF (X < 0) THEN
+      BEGIN
+        NEGNO := TRUE;
+        X := ABS(X)
+      END;
+    IF (X >= BOUND) THEN
+      REPEAT
+        X := X/10;
+        EXPNT := EXPNT+1;
+      UNTIL (X < BOUND);
+    IF ((X < (BOUND/10)) AND (X <> 0)) THEN  (**)
+      REPEAT                                 (**)
+        X := X*10;                           (**) (*Omit for plot labels*)
+        EXPNT := EXPNT-1                     (**)
+      UNTIL (X >= (BOUND/10));               (**)
+    IF (X > MAXINT) THEN
+      REPEAT
+        X := X/10;
+        TEMP_EXPNT := TEMP_EXPNT + 1;
+      UNTIL (X <= MAXINT);
+    INTG := TRUNC(X);
+    STR(INTG,S);
+    X := (X-INTG)*10;
+    IF (TEMP_EXPNT>0) THEN FOR I := 1 TO TEMP_EXPNT DO
+          BEGIN
+            INTG := TRUNC(X);
+            STR(INTG,S0);
+            S := CONCAT(S,S0);
+            X := (X-INTG)*10;
+          END;
+    IF (FRAC_DIGITS > 0) THEN
+      BEGIN
+        S := CONCAT(S,'.');
+        FOR I := 1 TO FRAC_DIGITS DO
+          BEGIN
+            INTG := TRUNC(X);
+            STR(INTG,S0);
+            S := CONCAT(S,S0);
+            X := (X-INTG)*10;
+          END
+      END; 
+    IF (X >= 5) THEN
+      BEGIN
+        IF (S[1] = '0') THEN LEAD_ZERO := TRUE ELSE LEAD_ZERO := FALSE;
+        INDEX := LENGTH(S);
+        DIGIT := 0;
+        REPEAT
+          IF NOT(S[INDEX] = '.') THEN
+            BEGIN
+              DIGIT := (ORD(S[INDEX])-ORD('0'));
+              IF (DIGIT <> 0) THEN CARRY := FALSE;
+              IF (DIGIT <> 9) THEN DIGIT := DIGIT+1
+                ELSE
+                  BEGIN
+                    DIGIT := 0;
+                    CARRY := TRUE
+                  END;
+              S[INDEX] := CHR(DIGIT + ORD('0'));
+            END;
+          INDEX := INDEX-1
+        UNTIL ((INDEX = 0) OR (DIGIT > 0));
+        IF CARRY THEN
+          BEGIN
+            IF NOT(LEAD_ZERO) THEN S := CONCAT('1',S)
+               ELSE S := CONCAT('0',S);          (**) (*Delete ELSE part only*)
+            INDEX := POS('.',S);
+            IF (INDEX > 0) THEN                  (**)
+        (*  IF (INDEX > DECPT) THEN  *)
+              BEGIN
+                DELETE(S,INDEX,1);
+                INSERT('.',S,INDEX-1)
+              END;
+            DELETE(S,LENGTH(S),1);
+            EXPNT := EXPNT+1
+          END
+      END; 
+    IF NEGNO THEN S := CONCAT('-',S)
+  END;
+  
+    
+  BEGIN{program}
+    CLEARSCREEN;
+    PREAMBLE;
+    REPEAT
+      WRITELN;
+      WRITELN('Enter X and Y for X/Y (either = 0 to quit)');
+      WRITE('     ');
+      RL1 := INREAL(INPUT,INPT);
+      RL2 := INREAL(INPUT,INPT);
+      IF ((RL1 = 0) OR (RL2 = 0)) THEN EXIT(PROGRAM);
+      WRITELN;
+      WRITELN('Scientific notation? <Y/N>');
+      WRITELN;
+      IF DOIT THEN FORMAT := 'X.XXXXXX'
+      ELSE
+        BEGIN
+          WRITE('Enter format (<CR> = X.XXXXXX): ');
+          READLN(FORMAT);
+          WRITELN
+        END;
+      REALTOSTR(RL1/RL2,FORMAT,STRG1,N);
+      IF (N<>0) THEN
+        BEGIN
+          STR(N,STRG2);
+          STRG1 := CONCAT(STRG1,'E',STRG2)
+        END;
+      WRITELN(STRG1);
+    UNTIL (RL1=0)
+  END.

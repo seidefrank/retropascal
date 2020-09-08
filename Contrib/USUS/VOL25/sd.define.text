@@ -1,0 +1,976 @@
+Program DEFINE;   {$L PRINTER:}
+
+USES {$U SH/SCREEN.UNIT } SCREEN40;
+
+ var MASK,NEWMASK: SCREEN_ARR;
+     PPROMPTS,NEWPROMPTS: PROMPT_ARR;
+     VERSION,FNAME,GETP,EDITP,SAVEP,QUITP,PRNTP,CLEARP,
+     EDITP1,EDITP2,FILEPROMPT: String;
+     BLNKREC: FIELD_DEFS;
+     BLNKPROMPT: PROMPT_DEFS;
+     NFLDS,NPFLDS: Integer;
+     SAVED: Boolean;
+     CH: Char;
+
+Segment Procedure INITIALIZE;
+  var I: Integer;
+      
+  Procedure LIGHT(var TEMP: String);
+   var I: Integer;
+   begin {LIGHT}
+    for I:=1 to length(TEMP) do 
+     if not(TEMP[I] in['A'..'Z'])then TEMP[I]:=chr(ord(TEMP[I])+128);
+   end;
+  
+  Procedure SET_FILEMASK;
+   begin {set FILEMASK}
+    with MASK[1] do
+      begin
+       S_ROW:=0;  S_ID:='VOLUME';  S_LEN:=8;  S_JUS:='L';
+      end;
+     with MASK[2] do
+      begin
+       S_ROW:=1;  S_ID:='NAME';  S_LEN:=10;  S_JUS:='L';
+      end;
+     with MASK[3] do
+      begin
+       S_ROW:=2;  S_ID:='FTYPE';  S_LEN:=4;  
+       S_JUS:='L';  S_DEF:='SCRN';   
+      end;
+     with PPROMPTS[1] do  P_FLD:='Volume :';
+     with PPROMPTS[2] do
+      begin
+       P_ROW:=1;  P_FLD:='Name   :';
+      end;
+     with PPROMPTS[3] do
+      begin
+       P_ROW:=2;  P_FLD:='Type   :';
+      end;
+   end; {set MASK}
+  
+  Procedure SET_SMASK;
+   begin
+     for I:=4 to 13 do
+      with MASK[I] do
+       begin
+        S_JUS:='L';  S_LEN:=1;  S_MIN:=1;  
+       end; 
+    with MASK[4] do
+     begin
+      S_ID:='IDNAME';  S_ROW:=7;  S_LEN:=8;  S_MIN:=0;  S_SKIP:=False;
+     end;
+    with MASK[5] do
+     begin
+       S_ID:='SKIP';  S_ROW:=7;  S_COL:=40;  S_FLD:='T';
+       S_DEF:='T';  S_SKIP:=True;
+     end;
+    with MASK[6] do
+     begin
+      S_ID:='TYPE';  S_ROW:=8;  S_NA:='L';  S_DEF:='V';
+      S_FLD:='V';    S_SKIP:=True;
+     end;
+    with MASK[7] do
+     begin
+      S_ID:='JUST';  S_ROW:=8;   S_COL:=40;  S_NA:='L';
+      S_FLD:='N';   S_DEF:='N';  S_SKIP:=True;
+     end;
+    with MASK[8] do
+     begin
+      S_ID:='FROW';  S_ROW:=9;  S_NA:='N';  S_JUS:='R';  
+      S_LEN:=2;      S_DEF:='0';
+     end;
+    with MASK[9] do
+     begin
+      S_ID:='FCOL';  S_ROW:=9;  S_COL:=5;  S_NA:='N';
+      S_JUS:='R';    S_LEN:=2;  S_DEF:='0';
+     end;
+    with MASK[10] do
+     begin
+      S_ID:='ALFA';  S_ROW:=9;  S_COL:=40;  S_NA:='L';
+      S_FLD:='A';  S_DEF:='A';  S_SKIP:=True;
+     end;
+    with MASK[11] do
+     begin
+      S_ID:='LEN';  S_ROW:=10;  S_NA:='N';  S_JUS:='R';
+      S_LEN:=2;     S_DEF:='0';
+     end;
+    with MASK[12] do
+     begin
+      S_ID:='MIN';  S_ROW:=10;  S_COL:=40;  S_NA:='N';
+      S_JUS:='R';   S_LEN:=2;   S_DEF:='0';
+     end;
+    with MASK[13] do
+     begin
+      S_ID:='DEFVAL';  S_ROW:=11;  S_MIN:=0;  S_JUS:='N';  S_LEN:=40;
+     end;
+    with PPROMPTS[4] do
+     begin  P_ROW:=4;  P_COL:=29;  P_FLD:='DEFINE INPUT FIELD';  end;
+    with PPROMPTS[5] do
+     begin  P_ROW:=5;  P_COL:=29;  P_FLD:='------------------';  end;
+    with PPROMPTS[6] do
+     begin  P_ROW:=7;  P_FLD:='Field ID Name           :';  end;
+    with PPROMPTS[7] do
+     begin  P_ROW:=7;  P_COL:=40;  P_FLD:='Auto Skip (T/F)         :';  end;
+    with PPROMPTS[8] do
+     begin  P_ROW:=8;  P_FLD:='Field Type (C/D/I/V)    :';  end;
+    with PPROMPTS[9] do
+     begin  P_ROW:=8;  P_COL:=40;  P_FLD:='Justify (L/R/N)         :';  end;
+    with PPROMPTS[10] do
+     begin  P_ROW:=9;  P_FLD:='Row / Column Number     :    /';  end;
+    with PPROMPTS[11] do
+     begin  P_ROW:=9;  P_COL:=40;  P_FLD:='Alpha-Numeric (A/L/N/S) :';  end;
+    with PPROMPTS[12] do
+     begin  P_ROW:=10;  P_FLD:='Field Length            :';  end;
+    with PPROMPTS[13] do
+     begin  P_ROW:=10;  P_COL:=40;  P_FLD:='Minimum Input           :';  end;
+    with PPROMPTS[14] do
+     begin  P_ROW:=11;  P_FLD:='Default/Calculation     :';  end;
+   end; {SET_SMASK}
+
+  Procedure SET_PMASK;
+   begin
+    for I:=14 to 17 do
+     begin
+      with MASK[I] do
+       begin
+        S_ROW:=I+1;  S_COL:=16;  S_NA:='N';
+        S_LEN:=2;  S_JUS:='R';  S_MIN:=1;  S_DEF:='0';
+       end; {with}
+      with PPROMPTS[I+3] do  P_ROW:=I+1;
+     end; {for}
+    MASK[14].S_ID:='INDEX';
+    MASK[15].S_ID:='PROW';
+    MASK[16].S_ID:='PCOL';
+    with MASK[17] do
+     begin
+      S_ID:='PROMPT'; S_LEN:=40;  S_COL:=9;  S_DEF:='';
+      S_JUS:='N';  S_NA:='S';
+     end;
+    with PPROMPTS[15] do
+     begin
+      P_FLD:='DEFINE PROMPT FIELD';  P_ROW:=12; P_COL:=29;
+     end;
+    with PPROMPTS[16] do
+     begin
+      P_FLD:='-------------------';  P_ROW:=13;  P_COL:=29;
+     end;
+    PPROMPTS[17].P_FLD:='Prompt Number :';
+    PPROMPTS[18].P_FLD:='Row Number    :';
+    PPROMPTS[19].P_FLD:='Column Number :';
+    PPROMPTS[20].P_FLD:='Prompt :';
+   end; {SET_PMASK}
+
+  begin {INITIALIZE}
+   with BLNKREC do
+    begin
+     S_ID :='';
+     S_ROW:=END_SCREEN;
+     S_COL:=0;
+     S_LEN:=0;
+     S_MIN:=0;
+     S_TYP:='V';
+     S_JUS:='N';
+     S_NA :='S';
+     S_SKIP:=False;
+     S_DEF:='';
+     S_FLD:='';
+    end;
+   with BLNKPROMPT do
+    begin
+     P_ROW:=END_SCREEN;
+     P_COL:=0;
+     P_FLD:='';
+    end;
+   for I:=1 to SCREEN_FIELDS do
+    begin
+     NEWMASK[I]:=BLNKREC;
+     MASK[I]:=BLNKREC;
+     NEWPROMPTS[I]:=BLNKPROMPT;
+     PPROMPTS[I]:=BLNKPROMPT;  PPROMPTS[I].P_ROW:=0;
+    end;
+   NPFLDS:=0;  NFLDS:=0;  FNAME:='';
+   SET_FILEMASK;
+   SET_SMASK;
+   SET_PMASK;
+   VERSION:='Version IV.0';
+   for I:=1 to length(VERSION) do
+     VERSION[I]:=chr(ord(VERSION[I])+128);
+   FILEPROMPT:='<ENTER> to execute,<ESC> to abort';  LIGHT(FILEPROMPT); 
+   EDITP1:='Upper Field  Add    Back Examine Test';  LIGHT(EDITP1);
+   EDITP2:='Lower Prompt Delete Next Change  Quit:';  LIGHT(EDITP2);
+   CLEARP:='Clear current screen defintion'; LIGHT(CLEARP);
+   GETP:='Get old screen definition file'; LIGHT(GETP);
+   EDITP:='Edit screen definition file'; LIGHT(EDITP);
+   SAVEP:='Save current screen definition file'; LIGHT(SAVEP);
+   PRNTP:='Print screen definition file'; LIGHT(PRNTP);
+   QUITP:='Quit';  LIGHT(QUITP);
+  end; {initialize}
+  
+Procedure SORTRECS(var A: SCREEN_ARR; var R: Integer);  forward;
+ 
+Procedure SORTP(var A: PROMPT_ARR; var R: Integer);  forward;
+ 
+Function IVAL(NUMBER: String): Integer;  forward;
+
+Segment Procedure FILE_IO(OPT: Char);
+ var VOLNAME,FILENAME,FILETYPE: String;
+     RESULT: Integer;
+     F_EXIT,CH: Char;
+  
+ Procedure PRINT_FILE;
+  const UL3 = '=== === ===';
+        UL40 = '========================================';
+  var LP: Text;
+      IOCOL,EDGE,I: Integer;
+      WIDTH: String;
+      EXXIT: Char;
+      
+  Procedure PRINTPROMPTS;
+   begin {Print prompts}
+    if (EDGE=80) and ((NFLDS*2)+NPFLDS>50) then writeln(LP,FORM_FEED)
+     else for I:=1 to 3 do writeln(LP); 
+    writeln(LP,' ':(EDGE-25) div 2,'SCREEN PROMPT DEFINITIONS');
+    writeln(LP);
+    writeln(LP,'NO. ROW COL          PROMPT ');
+    writeln(LP,UL3,' ',UL40);
+    for I:=1 to NPFLDS do
+      with NEWPROMPTS[I] do
+       writeln(LP,I:2, P_ROW:4, P_COL:4,'  ',P_FLD);
+    writeln(LP,FORM_FEED);
+   end; {print prompts}
+   
+  begin {PRINT_FILE}
+   rewrite(LP,'PRINTER:');
+   gotoxy(0,MAXROW);  write('Printer width (80/132):');
+   IOCOL:=25;    WIDTH:='132';   EDGE:=0;
+   while not(EDGE in[80,132]) do
+    begin
+     FIELD(MAX_ROW,IOCOL,MAX_ROW,MAX_COL-40,3,1,EXXIT,'L','N',WIDTH,False);
+     EDGE:=IVAL(WIDTH);
+     if (EDGE=0) or (EXXIT=ESC_KEY) then exit(PRINT_FILE);
+    end;
+   if FNAME='' then writeln(LP)
+     else writeln(LP,'Current Screen Definition file is "',FNAME,'"');
+   writeln(LP);
+   writeln(LP,' ':(EDGE-24) div 2,'SCREEN FIELD DEFINITIONS');
+   writeln(LP);
+   write(LP,'NO. ROW COL  IDNAME  TYP SKIP  LEN MIN JUS N/A');
+   if EDGE=80 then 
+    begin
+     writeln(LP);
+     writeln(LP,UL3,' ======== === ===== ===== ',UL3);
+    end;
+   writeln(LP,' ':14,'CURRENT VALUE',' ':27,'DEFAULT VALUE');
+   if EDGE=132 then write(LP,UL3,' ======== === ===== === ',UL3,' ');
+   writeln(LP,UL40,' ',UL40);
+   for I:=1 to NFLDS do
+     with NEWMASK[I] do
+      begin
+       write(LP,I:2, S_ROW:4, S_COL:4,'  ',S_ID,' ':9-length(S_ID),S_TYP:2,'  ');
+       if S_SKIP then write(LP,'TRUE  ') else write(LP,'FALSE ');
+       write(LP,S_LEN:2, S_MIN:4, S_JUS:4, S_NA:4);
+       if EDGE=80 then writeln(LP) else write(LP,'  ');
+       writeln(LP,S_FLD,' ':41-length(S_FLD),S_DEF,' ':41-length(S_DEF));
+      end; {with/for}
+   PRINTPROMPTS;
+  end; {PRINT_FILE}
+
+ Procedure OPEN_FILE;
+    var RESULT: Integer;
+
+    begin {OPEN_FILE}
+     GET_FILE(FNAME,NEWMASK,NEWPROMPTS,RESULT);
+     gotoxy(MAX_COL-40,MAX_ROW);
+     if RESULT<>0 then
+       write('STATUS: No File Loaded - ERROR ',RESULT,ALARM_BELL)
+      else
+       begin
+        write('STATUS: File Loaded.');
+        NFLDS:=SCREEN_FIELDS;
+        SORTRECS(NEWMASK,NFLDS);
+        NPFLDS:=SCREEN_FIELDS;
+        SORTP(NEWPROMPTS,NPFLDS);
+        SAVED:=True;
+        with NEWMASK[1] do
+         begin
+          str(S_ROW,MASK[FIND('FROW',MASK)].S_FLD);
+          str(S_COL,MASK[FIND('FCOL',MASK)].S_FLD);
+          MASK[FIND('IDNAME',MASK)].S_FLD :=S_ID ;
+          str(S_LEN,MASK[FIND('LEN',MASK)].S_FLD);
+          str(S_MIN,MASK[FIND('MIN',MASK)].S_FLD);
+          if S_SKIP then MASK[FIND('SKIP',MASK)].S_FLD:='T'
+             else MASK[FIND('SKIP',MASK)].S_FLD:='F';
+          MASK[FIND('DEFVAL',MASK)].S_FLD :=S_DEF;
+          MASK[FIND('TYPE',MASK)].S_FLD[1]:=S_TYP;
+          MASK[FIND('JUST',MASK)].S_FLD[1]:=S_JUS;
+          MASK[FIND('ALFA',MASK)].S_FLD[1]:=S_NA ;
+         end;
+        with NEWPROMPTS[1] do
+         begin
+          MASK[FIND('INDEX',MASK)].S_FLD:='1';
+          str(P_ROW,MASK[FIND('PROW',MASK)].S_FLD);
+          str(P_COL,MASK[FIND('PCOL',MASK)].S_FLD);
+          MASK[FIND('PROMPT',MASK)].S_FLD :=P_FLD;
+         end;
+        exit(FILE_IO);
+      end;
+    end; {OPEN_FILE}
+  
+   Procedure SAVE;
+    var FILE_TO_SAVE: File of SCREEN_REC;
+        SIZE,RESULT,I: Integer;
+
+    begin {SAVE}
+     SAVE_FILE(FNAME,NEWMASK,NEWPROMPTS,RESULT);
+     if RESULT<>0 then
+       begin
+        gotoxy(MAX_COL-40,MAX_ROW);
+        write(ALARM_BELL,'STATUS: File not saved.','ERROR ',RESULT,ALARM_BELL);
+       end
+      else
+        begin
+         SIZE:=0;
+         gotoxy(0,MAX_ROW);
+         for I:=1 to NFLDS do SIZE:=SIZE+NEWMASK[I].S_LEN;
+         write('STATUS: File saved. Total length : ',SIZE,'.');
+         SAVED:=True;
+         write('  Press <RETURN> to continue.');
+         repeat 
+           read(Keyboard,CH);
+         until eoln(Keyboard);
+         exit(FILE_IO);
+        end; {save}
+    end; {SAVE}
+
+   begin {FILE_IO}
+    case OPT of
+     'G': begin {get prompt}
+           CLEAR_HOME ;
+           writeln(' ':28,'GET SCREEN DEFINITION');
+           writeln(' ':28,'=====================');
+          end;
+     'P': begin {print}
+           PRINT_FILE;
+           exit(FILE_IO);
+          end; {print}
+     'S': begin {save prompt}
+           CLEAR_HOME ;
+           writeln(' ':28,'SAVE SCREEN DEFINITION');
+           writeln(' ':28,'======================');
+          end;
+     end; {case}
+    DISPLAY_PROMPTS(PPROMPTS,8,10,0,2);
+    DISPLAY_SCREEN(MASK,8,20,0,2);
+    gotoxy(0,MAX_ROW-1); write(FILEPROMPT);
+    repeat 
+     SCREEN(MASK,True,1,8,20,0,2,MAX_ROW,MAX_COL-40,F_EXIT);
+     if F_EXIT=ESC_KEY then exit(FILE_IO)
+       else 
+        begin {execute}
+         VOLNAME:=MASK[1].S_FLD;
+         FILENAME:=MASK[2].S_FLD;
+         FILETYPE:=MASK[3].S_FLD;
+         EATSPR(VOLNAME);  EATSPR(FILENAME);  EATSPR(FILETYPE);
+         FNAME:=concat(VOLNAME,':',FILENAME,'.',FILETYPE);
+         case OPT of
+           'G': OPEN_FILE;
+           'S': SAVE;
+          end; {case}
+        end; {execute}
+     until False;
+   end; {FILE_IO}
+   
+Segment Procedure EDIT_FILE;
+  var F_EXIT,CH: Char;
+      X,R_OFF,I: Integer;
+      OLDVAL: Packed array[1..14] of STRINGFL;
+      TNAME: STR_ID;
+      P_MODE: Boolean;
+
+  Procedure E_MSG(MSG: String);
+   begin {E_MSG}
+    ERASE_EOL(MAX_COL-40,MAX_ROW); write(ALARM_BELL);
+    write('ERROR: ',MSG,ALARM_BELL);
+   end; {E_MSG}
+   
+  Procedure DISPLAY;
+   begin {DISPLAY}
+    if P_MODE then 
+     begin {prompt screen}
+      DISPLAY_PROMPTS(NEWPROMPTS,0,0,((MAX_ROW+1)div 2)-R_OFF,MAX_ROW-R_OFF);
+      DISPLAY_PROMPTS(PPROMPTS,R_OFF-12,0,12,18);
+      DISPLAY_SCREEN(NEWMASK,0,0,((MAX_ROW+1) div 2)-R_OFF,MAX_ROW-R_OFF);
+      DISPLAY_SCREEN(MASK,R_OFF-12,0,12,18);
+     end {prompt screen}
+     else begin {data field screen}
+      DISPLAY_PROMPTS(NEWPROMPTS,0,0,((MAX_ROW+1) div 2)-R_OFF,MAX_ROW-R_OFF);
+      DISPLAY_PROMPTS(PPROMPTS,R_OFF-4,0,4,11);
+      DISPLAY_SCREEN(NEWMASK,0,0,((MAX_ROW+1) div 2)-R_OFF,MAX_ROW-R_OFF);
+      DISPLAY_SCREEN(MASK,R_OFF-4,26,4,11);
+     end; {data field screen}
+    gotoxy(0,10+R_OFF); writeln(EDITP1); write(EDITP2);
+   end;
+
+  Procedure EXAMINE;
+   begin {Examine}
+    if PMODE then 
+      begin {examine prompt}
+       X:=IVAL(MASK[FIND('INDEX',MASK)].S_FLD);
+       if X<1 then X:=1 else if X>NPFLDS then X:=NPFLDS;
+       with NEWPROMPTS[X] do
+        begin
+         str(P_ROW,MASK[FIND('PROW',MASK)].S_FLD);
+         str(P_COL,MASK[FIND('PCOL',MASK)].S_FLD);
+         MASK[FIND('PROMPT',MASK)].S_FLD:=P_FLD;
+        end; {with}
+       DISPLAY_SCREEN(MASK,R_OFF-12,0,12,18);
+      end {examine prompt}
+     else
+      begin {examine field}
+        TNAME:=MASK[FIND('IDNAME',MASK)].S_FLD;  EATSPR(TNAME);
+        X:=FIND(TNAME,NEWMASK);
+        if X=0 then E_MSG('Invalid ID Name.')
+        else
+         begin
+          with NEWMASK[X] do
+           begin
+            MASK[FIND('IDNAME',MASK)].S_FLD :=S_ID ;
+            str(S_ROW,MASK[FIND('FROW',MASK)].S_FLD);
+            str(S_COL,MASK[FIND('FCOL',MASK)].S_FLD);
+            str(S_LEN,MASK[FIND('LEN',MASK)].S_FLD);
+            str(S_MIN,MASK[FIND('MIN',MASK)].S_FLD);
+            MASK[FIND('DEFVAL',MASK)].S_FLD:=S_DEF;
+            if S_SKIP then MASK[FIND('SKIP',MASK)].S_FLD :='T'
+               else MASK[FIND('SKIP',MASK)].S_FLD :='F';
+            MASK[FIND('TYPE',MASK)].S_FLD[1]:=S_TYP;
+            MASK[FIND('JUST',MASK)].S_FLD[1]:=S_JUS;
+            MASK[FIND('ALFA',MASK)].S_FLD[1]:=S_NA ;
+           end; {with}
+         DISPLAY_SCREEN(MASK,R_OFF-4,26,4,11);
+        end; {else}
+    end; {examine field}
+   end; {examine}
+  
+  Procedure ADD;
+   var TEMPID: STR_ID;
+       TEMPINT: Integer;
+
+   Procedure WARN(MSG: String);
+    begin {WARN}
+     gotoxy(MAX_COL-40,MAX_ROW);
+     write(ALARM_BELL,'WARNING: ',MSG);
+    end; {WARN}
+    
+   Procedure ADD_ERROR(MSG,FIELD: String);
+    begin {ADD_ERROR}
+      E_MSG(MSG);
+      if P_MODE
+       then SCREEN(MASK,True,FIND(FIELD,MASK),R_OFF-12,0,12,18,MAX_ROW,MAX_COL-40,F_EXIT)
+       else
+        begin
+         NEWMASK[NFLDS+1]:=BLNKREC;
+         SCREEN(MASK,True,FIND(FIELD,MASK),R_OFF-4,26,4,11,MAX_ROW,MAX_COL-40,F_EXIT);
+        end; {else}
+     exit(ADD);
+    end; {ADD_ERROR}
+
+    Procedure EXPR(TEXTLINE: String);
+  var CURRENT_CHAR: Char;
+      CHARCLASS,NPAREN,LASTOKEN,CH_COUNT,TOKENTYPE: Integer;
+      
+  
+  Procedure ERROR(OPT: Integer);
+   begin {error}
+    case OPT of 
+      0: ADD_ERROR('Illegal character in expression.','DEFVAL');
+      1: ADD_ERROR('Missing right parenthesis.','DEFVAL');
+      2: ADD_ERROR('Illegal operator, number expected.','DEFVAL');
+      3: ADD_ERROR('Unexpected end of expression, number expected.','DEFVAL');
+      4: ADD_ERROR('Missing operator in expression.','DEFVAL');
+      5: ADD_ERROR('Too many right parenthesis.','DEFVAL');
+     end; {case}
+    exit(EXPR);
+   end; {error}
+    
+  Procedure SCAN;
+   
+  (* The following table lists the integer returned for the token listed:
+            
+           1)   +             6)   (
+           2)   -             7)   )
+           3)   *             8)   <real>
+           4)   /             9)   <integer>
+           5)   ^            10)   <variable>
+     
+                                                                            *)
+                                                                            
+   var FINAL_STATE: Boolean;
+       STATE: Integer;
+   
+   Procedure GETCHAR;
+    
+    { Function : GETCHAR pops the next character from TEXTLINE and returns it or
+                      an end-of-line marker.
+      Input : None (TEXTLINE is global)
+      Output: A the next character in TEXTLINE.
+      Local Variables : None.
+                                                                             }
+                                                                             
+    begin {GETCHAR}
+     if CH_COUNT=length(TEXTLINE) then CURRENT_CHAR:=''
+      else 
+       begin   {return next character and bump character count}
+        CH_COUNT:=CH_COUNT+1;
+        CURRENT_CHAR:=TEXTLINE[CH_COUNT];
+       end;  {else}
+     if CURRENT_CHAR in['a'..'z','A'..'Z'] then CHARCLASS:=10 
+        else if CURRENT_CHAR in['0'..'9'] then CHARCLASS:=9
+        else if CURRENT_CHAR='.' then CHARCLASS:=8
+        else if CURRENT_CHAR=')' then CHARCLASS:=7
+        else if CURRENT_CHAR='(' then CHARCLASS:=6
+        else if CURRENT_CHAR='^' then CHARCLASS:=5
+        else if CURRENT_CHAR='/' then CHARCLASS:=4
+        else if CURRENT_CHAR='*' then CHARCLASS:=3
+        else if CURRENT_CHAR='-' then CHARCLASS:=2
+        else if CURRENT_CHAR='+' then CHARCLASS:=1
+        else if CURRENT_CHAR='' then CHARCLASS:=11
+        else if CURRENT_CHAR=' ' then CHARCLASS:=0
+        else ERROR(0);
+     end; {GETCHAR}
+    
+   begin {SCAN}
+    STATE:=0;
+    {Start state - Initialize everybody}
+    FINAL_STATE:=False;
+    while CURRENT_CHAR=' ' do GETCHAR;   {eat spaces}
+    if CHARCLASS<8 then STATE:=CHARCLASS else STATE:=CHARCLASS+3;
+    repeat
+     case STATE of
+        0,1,2,3,4,5,6,7: begin GETCHAR;  FINALSTATE:=True;  end;
+        8,9,10,14: FINALSTATE:=True;
+        11: begin {real no}
+             GETCHAR;
+             if CHARCLASS<>9 then ERROR(2)      {real no must have digit}
+               else STATE:=15;
+            end; {real no}
+        12: begin {integer}
+             GETCHAR;
+             if CHARCLASS=8 then STATE:=15
+               else if CHARCLASS<>9 then STATE:=9;
+            end;  {integer}
+        13: begin {var}
+             GETCHAR;
+             if (CHARCLASS<>10) and (CHARCLASS<>9)  then STATE:=10;
+            end;  {var}
+        15: begin {real no}
+             GETCHAR;
+             if CHARCLASS<>9 then STATE:=8;
+            end; {real no}
+      end {case}
+    until FINAL_STATE;
+    TOKENTYPE:=STATE;
+   end; {SCAN}
+   
+  
+   begin {EXPR}
+    CURRENT_CHAR:=' ';   {Initialize input buffer}
+    CH_COUNT:=0;
+    LASTOKEN:=0;
+    NPAREN:=0;
+    SCAN;
+    repeat
+      case TOKENTYPE of
+        1,2: {plus minus}
+              if LASTOKEN=12 then ERROR(2)
+                else if LASTOKEN in[1,2,3,4,5] then TOKENTYPE:=12;
+        3,4,5:if LASTOKEN<6 then ERROR(2);  {multiply,divide,exponent}
+        6: if LASTOKEN in[7,8,9,10] then ERROR(4)
+              else NPAREN:=NPAREN+1;  {left paren}
+        7: if LASTOKEN=6 then ERROR(4)
+             else if LASTOKEN<6 then ERROR(2)
+             else if NPAREN=0 then ERROR(5) else NPAREN:=NPAREN-1; {right paren}
+        8,9,10: if LASTOKEN in[7,8,9,10] then ERROR(4);   {number}
+        14: ERROR(3);
+       end; {case}
+      LASTOKEN:=TOKENTYPE;
+      SCAN;
+    until TOKENTYPE=14; {while}
+    if NPAREN>0 then ERROR(1) else if LASTOKEN<7 then ERROR(3);
+   end; {EXPR}
+   
+   Procedure TESTPROMPT;
+    begin {TESTPROMPT}
+     NPFLDS:=NPFLDS+1;
+     with NEWPROMPTS[NPFLDS] do
+      begin {test prompt info}
+       P_ROW:=IVAL(MASK[FIND('PROW',MASK)].S_FLD);
+       if (P_ROW<0) or (P_ROW>MAX_ROW) then
+         ADD_ERROR('Illegal row number.','PROW');
+       if P_ROW=MAX_ROW then WARN('Prompt defined on last row.');
+       P_COL:=IVAL(MASK[FIND('PCOL',MASK)].S_FLD);
+       if (P_COL<0) or (P_COL>MAX_COL) then
+         ADD_ERROR('Illegal column number.','PCOL');
+       P_FLD:=MASK[FIND('PROMPT',MASK)].S_FLD;
+       EATSPR(P_FLD);
+       if P_COL+length(P_FLD)>MAX_COL then WARN('Prompt defined past EOL.');
+       DISPLAY;
+       SORTP(NEWPROMPTS,NPFLDS);
+       EXAMINE;
+      end; {test info}
+    end; {TESTPROMPT}
+    
+   begin {Add}
+    if P_MODE then if NPFLDS=SCREEN_FIELDS
+      then E_MSG('Maximum number of prompts reached.')
+      else TESTPROMPT
+    else if NFLDS=SCREEN_FIELDS
+       then E_MSG('Maximum Number of Fields Reached.')
+        else with NEWMASK[NFLDS+1] do
+          begin
+           TEMPID:=MASK[FIND('IDNAME',MASK)].S_FLD;  EATSPR(TEMPID);
+           if FIND(TEMPID,NEWMASK)<>0
+              then ADD_ERROR('Duplicate ID Name.','IDNAME');
+           if TEMPID='' then ADD_ERROR('Invalid ID Name.','IDNAME')
+              else S_ID :=TEMPID;
+           if MASK[FIND('SKIP',MASK)].S_FLD[1] in['T','F','f','t'] 
+             then S_SKIP:=(MASK[FIND('SKIP',MASK)].S_FLD[1]='T') 
+                                   or
+                          (MASK[FIND('SKIP',MASK)].S_FLD[1]='t')
+               else ADD_ERROR('Auto Skip must be T or F.','SKIP');
+           S_TYP:=MASK[FIND('TYPE',MASK)].S_FLD[1];
+           if S_TYP in['c','d','i','v'] then S_TYP:=chr(ord(S_TYP)-32)
+             else if not (S_TYP in['C','D','I','V'])
+             then ADD_ERROR('Illegal field type.','TYPE');
+           S_ROW:=IVAL(MASK[FIND('FROW',MASK)].S_FLD);
+           if not (S_ROW in[0..MAX_ROW])
+             then ADD_ERROR('Illegal row number.','FROW');
+           if S_ROW=MAX_ROW then WARN('Field defined on last row.');
+           S_JUS:=MASK[FIND('JUST',MASK)].S_FLD[1];
+           if S_JUS in['l','r','n'] then S_JUS:=chr(ord(S_TYP)-32)
+             else if not (S_JUS in ['L','R','N'])
+             then ADD_ERROR('Illegal justification type.','JUST');
+           S_COL:=IVAL(MASK[FIND('FCOL',MASK)].S_FLD);
+           if not (S_COL in[0..MAX_COL])
+             then ADD_ERROR('Illegal column number.','FCOL');
+           S_NA :=MASK[FIND('ALFA',MASK)].S_FLD[1];
+           if S_NA in['a','l','n','s'] then S_NA:=chr(ord(S_NA)-32)
+             else if not (S_NA in['A','L','N','S'])
+             then ADD_ERROR('Illegal input type.','ALFA');
+           S_LEN:=IVAL(MASK[FIND('LEN',MASK)].S_FLD);
+           if not (S_LEN in[0..MAX_FLEN])
+             then ADD_ERROR('Illegal field length.','LEN');
+           if S_COL+S_LEN>MAX_COL then WARN('Field defined past EOL.');
+           S_MIN:=IVAL(MASK[FIND('MIN',MASK)].S_FLD);
+           if not (S_MIN in[0..S_LEN])
+             then ADD_ERROR('Illegal field minimum.','MIN');
+           S_DEF:=MASK[FIND('DEFVAL',MASK)].S_FLD;  
+           EATSPR(S_DEF);
+           if S_TYP='C'
+             then EXPR(S_DEF)
+             else if length(S_DEF)>0 
+               then if S_DEF[1]='['
+                then 
+                 begin
+                  TEMPID:=copy(S_DEF,2,length(S_DEF)-2);
+                  if length(TEMPID)<=LEN_ID then TEMPINT:=FIND(TEMPID,NEWMASK)
+                     else TEMPINT:=-1;
+                  if (TEMPINT=-1) or (S_DEF[length(S_DEF)]<>']')
+                   then ADD_ERROR('Illegal default field.','DEFVAL')
+                   else if TEMPINT=0
+                     then WARN('Default field undefined.')
+                     else S_FLD:=NEWMASK[TEMPINT].S_FLD;
+                 end
+               else if length(S_DEF)>S_LEN
+                then ADD_ERROR('Literal default > field length.','DEFVAL')
+                else S_FLD:=S_DEF
+             else S_FLD:='';
+          NFLDS:=NFLDS+1;
+          SORTRECS(NEWMASK,NFLDS);
+          DISPLAY;
+         end; {else}
+   end; {Add}
+  
+ Procedure NEXT(OP: Integer);
+  begin {next}
+   if P_MODE then 
+      begin {next prompt}
+       X:=IVAL(MASK[FIND('INDEX',MASK)].S_FLD)+OP;
+       if NPFLDS=0 then E_MSG('No prompts defined.')
+        else if X>NPFLDS then E_MSG('End of prompt definitions.')
+        else if X<1 then E_MSG('Begining of prompt definitions.')
+        else
+         begin
+          str(X,MASK[FIND('INDEX',MASK)].S_FLD);
+          EXAMINE;
+         end;
+      end {next prompt}
+   else 
+     begin {Next Field}
+      TNAME:=MASK[FIND('IDNAME',MASK)].S_FLD;  EATSPR(TNAME);
+      X:=FIND(TNAME,NEWMASK)+OP;
+      if NFLDS=0 then E_MSG('No fields defined.')
+        else if X>NFLDS then E_MSG('End of field definitions.')
+        else if X<1 then E_MSG('Begining of field definitions.')
+        else
+         begin
+          MASK[FIND('IDNAME',MASK)].S_FLD:=NEWMASK[X].S_ID;
+          EXAMINE;
+         end;
+     end; {Next field}
+  end; {NEXT}
+ 
+ Procedure ERASEIT(R,C,LEN: Integer);
+  begin {ERASEIT}
+   if ((R_OFF=0) and (R>=MAX_ROW div 2)) or ((R_OFF>0) and (R<R_OFF))
+     then 
+      begin
+       gotoxy(C,R);
+       write(' ':LEN);
+      end;
+  end; {ERASEIT}
+  
+  begin {EDIT_FILE}
+   CH:='L'; X:=1;  P_MODE:=False; SAVED:=False;
+   while (CH<>'q') and (CH<>'Q') do
+    begin
+     case CH of
+       'l','L': begin {Lower}
+                 CLEAR_HOME ;
+                 R_OFF:=0;
+                 DISPLAY;
+                end; {Lower}
+       'u','U': begin {Upper}
+                 CLEAR_HOME ;
+                 R_OFF:=(MAX_ROW+1) div 2;
+                 DISPLAY;
+                end; {Upper}
+       'a','A': ADD;
+       'b','B': NEXT(-1);
+       'c','C': begin {change}
+                 for I:=4 to 17 do OLDVAL[I-3]:=MASK[I].S_FLD;
+                 if P_MODE
+                  then SCREEN(MASK,True,1,R_OFF-12,0,12,18,MAX_ROW,MAX_COL-40,F_EXIT)
+                   else SCREEN(MASK,True,1,R_OFF-4,26,4,11,MAX_ROW,MAX_COL-40,F_EXIT);
+                 if F_EXIT=ESC_KEY then  
+                   begin
+                    for I:=4 to 17 do MASK[I].S_FLD:=OLDVAL[I-3];
+                    EXAMINE;
+                   end;
+                end; {change}
+       'd','D': if P_MODE then 
+                   begin {delete prompt}
+                    X:=IVAL(MASK[FIND('INDEX',MASK)].S_FLD);
+                    if (X<1) or (X>NPFLDS)
+                      then E_MSG('Illegal prompt number.')
+                      else 
+                       begin
+                        with NEWPROMPTS[X] do ERASEIT(P_ROW,P_COL,length(P_FLD));
+                        NEWPROMPTS[X]:=BLNKPROMPT;
+                        SORTP(NEWPROMPTS,NPFLDS);
+                        DISPLAY;
+                       end;
+                   end {delete prompt}
+                  else
+                   begin {Delete field}
+                    if MASK[FIND('IDNAME',MASK)].S_FLD='' then
+                      E_MSG('Invalid ID Name.')
+                     else
+                      begin
+                       TNAME:=MASK[FIND('IDNAME',MASK)].S_FLD;  EATSPR(TNAME);
+                       X:=FIND(TNAME,NEWMASK);
+                       if X=0 then E_MSG('ID Name does not exist.')
+                       else
+                        begin
+                         with NEWMASK[X] do ERASEIT(S_ROW,S_COL,S_LEN);
+                         NEWMASK[X]:=BLNKREC;
+                         SORTRECS(NEWMASK,NFLDS);
+                         DISPLAY;
+                        end;
+                      end;
+                   end; {delete field}
+       'e','E': EXAMINE;
+       'f','F': if P_MODE then 
+                 begin  
+                  ERASE_PROMPTS(PPROMPTS,R_OFF-12,0,12,18);
+                  ERASE_SCREEN(MASK,R_OFF-12,0,12,18);
+                  P_MODE:=False;
+                  DISPLAY;
+                 end;
+      'n','N': NEXT(1);
+      'p','P': if not P_MODE then
+                begin
+                 ERASE_PROMPTS(PPROMPTS,R_OFF-4,0,4,11);
+                 ERASE_SCREEN(MASK,R_OFF-4,26,4,11);
+                 P_MODE:=True;
+                 DISPLAY;
+                end;
+      't','T': begin {Test}
+                 if NFLDS=0 then E_MSG('Invalid screen file.')
+                  else
+                   begin
+                    SORTRECS(NEWMASK,NFLDS);
+                    CLEAR_HOME ;
+                    DISPLAY_PROMPTS(NEWPROMPTS,0,0,0,MAX_ROW);
+                    DISPLAY_SCREEN(NEWMASK,0,0,0,MAX_ROW);
+                    SCREEN(NEWMASK,True,1,0,0,0,MAX_ROW,MAX_ROW,MAX_COL-40,F_EXIT);
+                    CLEAR_HOME ;
+                    DISPLAY;
+                   end;
+                end; {Test}
+      end; {case}
+     gotoxy(38,11+R_OFF);  read(Keyboard,CH);
+     if CH in['A'..'Z','a'..'z'] 
+       then 
+         begin
+         ERASE_EOL(38,11+R_OFF) ;
+         write(CH) ;
+         end
+       else 
+         write(ALARM_BELL);
+    end; {While}
+   for I:=1 to NFLDS do
+      with NEWMASK[I] do
+        begin
+         EATSPR(S_FLD);
+         for X:=1 to length(S_FLD) do  if S_FLD[X]=ULINE then S_FLD[X]:=' ';
+        end;
+   SORTRECS(NEWMASK,NFLDS);
+   SORTP(NEWPROMPTS,NPFLDS);
+  end; {EDIT_FILE}
+  
+ Function IVAL (* NUMBER: String): Integer *) ;
+  var SUM,I,J,X: Integer;
+      CH: Char;
+  
+   Procedure ERR;
+    begin {ERR}
+      write(ALARM_BELL);
+      IVAL:=0 ;
+      exit(IVAL);
+    end; {ERR}
+
+  begin {IVAL}
+    SUM:=0;  X:=1;
+    EATSPR(NUMBER);  EATSPL(NUMBER);
+    for I:=1 to length(NUMBER) do
+     begin
+      CH:=NUMBER[I];
+      if CH in['0'..'9'] then SUM:=10*SUM+ord(CH)-ord('0')
+       else if (CH='-') and (I=1) then X:=-1
+       else if (CH='+') and (I=1) then X:=1
+       else ERR; 
+      end; {for I}
+     IVAL:=SUM*X;  
+  end; {IVAL}
+
+ Procedure SORTRECS; (* var A: SCREEN_ARR; var R: Integer*)
+  var TREC: FIELD_DEFS;
+      J,K,L: Integer;
+      CONT: Boolean;
+  begin {SORTRECS}
+   L:=2;  K:=R;
+   repeat  {shaker sort}
+    for J:=R downto L do
+      if (A[J-1].S_ROW+(A[J-1].S_COL/100))>(A[J].S_ROW+(A[J].S_COL/100)) then
+       begin
+        TREC:=A[J-1];  A[J-1]:=A[J];  A[J]:=TREC;  K:=J;
+       end;
+      L:=K+1;
+      for J:=L to R do
+       if (A[J-1].S_ROW+(A[J-1].S_COL/100))>(A[J].S_ROW+(A[J].S_COL/100)) then
+        begin
+         TREC:=A[J-1];  A[J-1]:=A[J];  A[J]:=TREC;  K:=J;
+        end;
+      R:=K-1;
+    until L>R; {shaker sort}
+    R:=0;  CONT:=True; 
+    while CONT do  if R=SCREEN_FIELDS then CONT:=False
+      else if A[R+1].S_ROW=END_SCREEN then CONT:=False 
+      else R:=R+1;
+  end; {SORTRECS}
+ 
+ Procedure SORTP; (* var A: PROMPT_ARR; var R: Integer*)
+  var TREC: PROMPT_DEFS;
+      J,K,L: Integer;
+      CONT: Boolean;
+  begin {SORTP}
+   L:=2;  K:=R;
+   repeat  {shaker sort}
+    for J:=R downto L do
+      if (A[J-1].P_ROW+(A[J-1].P_COL/100))>(A[J].P_ROW+(A[J].P_COL/100)) then
+       begin
+        TREC:=A[J-1];  A[J-1]:=A[J];  A[J]:=TREC;  K:=J;
+       end;
+      L:=K+1;
+      for J:=L to R do
+       if (A[J-1].P_ROW+(A[J-1].P_COL/100))>(A[J].P_ROW+(A[J].P_COL/100)) then
+        begin
+         TREC:=A[J-1];  A[J-1]:=A[J];  A[J]:=TREC;  K:=J;
+        end;
+      R:=K-1;
+    until L>R; {shaker sort}
+    R:=0;  CONT:=True; 
+    while CONT do  if R=SCREEN_FIELDS then CONT:=False
+      else if A[R+1].P_ROW=END_SCREEN then CONT:=False 
+      else R:=R+1;
+  end; {SORTP}
+ 
+ begin {DEFINE}
+  INITIALIZE;  SAVED:=True;  CH:='C';
+  while (CH<>'Q') and (CH<>'q') do
+   begin {while}
+    if CH in['c','C','e','E','g','G','p','P','q','Q','s','S'] then
+     begin 
+      CLEAR_HOME ;
+      writeln(RETURN_KEY,' ':30,'SCREEN DEFINITION');
+      writeln(' ':30,'=================');
+      writeln(' ':30,VERSION);
+      gotoxy(26,8);  writeln(CLEARP);
+      writeln(' ':26,EDITP);
+      writeln(' ':26,GETP);
+      writeln(' ':26,PRNTP);
+      writeln(' ':26,QUITP);
+      writeln(' ':26,SAVEP);
+      gotoxy(0,MAX_ROW);  write('SELECTION : _');
+     end;
+    gotoxy(12,MAX_ROW); read(Keyboard,CH);
+    if CH in['a'..'z'] then CH:=chr(ord(CH)+ord('A')-ord('a'));
+    if not(CH in['C','E','G','P','Q','S'])
+     then write(CURSOR_LEFT,ALARM_BELL)
+     else write(CH);
+    case CH of
+       'C': INITIALIZE;
+       'E': EDIT_FILE;
+       'G': FILE_IO('G');
+       'P': if NFLDS+NPFLDS=0
+             then
+               begin
+                write(ALARM_BELL,'  No prompt or field definitions.');
+                read(Keyboard,CH);
+               end
+              else FILE_IO('P');
+       'Q': if not SAVED then
+                begin
+                 write(ALARM_BELL,
+                      '  Do you want to save the current definition file?');
+                 while not(CH in['n','y','N','Y']) do read(Keyboard,CH);
+                 write(CH);
+                 if (CH='n') or (CH='N') then CH:='Q' 
+                   else 
+                    begin
+                     CH:='S';
+                     FILE_IO('S');
+                    end; {else}
+                end;
+       'S': if NFLDS+NPFLDS=0
+             then
+               begin
+                write(ALARM_BELL,'  No prompt or field definitions.');
+                read(Keyboard,CH);
+               end
+              else FILE_IO('S');
+     end; {case}
+   end; {while}
+ end. {DEFINE}
+
+

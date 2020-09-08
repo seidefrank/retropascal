@@ -1,0 +1,53 @@
+Text Fragments for Store etc.
+=============================
+
+Store description
+-----------------
+
+Welcome to 1979. Discover how generations of programmers learned programming.
+Retro Pascal ][ is a faithful implementation of the UCSD Pascal environment.
+
+The genius of the UCSD system was that itself was completely written in Pascal; its full source code is included so that you can explore and modify.
+
+...
+What will you build with this?
+
+Note that this is *not* a development environment for Windows.
+Pascal cannot interact with the Windows APIs or access the Windows file system.
+There was no Windows in 1979!
+Pascal has 64k words of RAM,
+a beautiful amber-colored text terminal,
+a single graphics screen with limited colors,
+an analog joystick (mouse/touch screen),
+and 6 "floppy disks," each limited to 77 files, that come pre-installed with the app.
+You can exchange text with other Windows programs through copy/paste, and you can take screenshots of graphics you create. That's it.
+
+# Why why why?
+
+ - learn WinRT --best done by exploring its limits
+ - how far can I stretch the existing platform without source-code change (except bugs), i.e. no features added to Pascal sources
+    - add Undo
+    - add hierarchical file system
+    - add syntax highlighting and predictive keyboard
+ - it really is my midlife-crisis project; I need some ritual (=non-productive routine) to reconnect with my youthiness :)
+
+The project started as an inquiry to learn Windows 8 programming. How do I display a terminal using the WinRT APIs and C++ with its API extensions?
+I had discovered an open-source implementation of a p-code interpreter, and that UCSD had opened up the Pascal source codes;
+and built a first version by implementing the terminal.
+It was so much fun that I decided to publish the result.
+
+Because the interpreter's GPL license, UCSD's source-code license, and the Windows Store rules conflicted,
+I had to reimplement the p-code interpreter, which turned this into a journey into the past:
+By reading many old manuals and specs, I gained deep appreciation for the ingenuity of UCSD's Pascal-system design (a complete
+operating system, editor, and compiler written in 20,000 lines of Pascal that was amazingly functional and easy use with 64 KB of RAM and without mouse or bit-mapped display);
+and the genius of early 8-bit computer technology,
+e.g. how the Apple III engineers increased the address space of the 6502 CPU and the UCSD Pascal system beyond their 64 KB limits
+(they exploited that P-machine is not a von-Neumann architecture: code and data lives in separate address spaces, and only data pointers are limited to 16 bits).
+I also traveled into my own past. UCSD Pascal was the first "proper" programming language I learned, on an Apple II,
+and I re-connected with my early fascination with computers that would come to determine my life.
+
+Of course it inspired questions of how this can be reconciled with today.
+Can it be touch-enabled? Isn't the Command Bar paradigm quite similar to Metro's Appbar?
+Can we add Undo functionality to the EDITOR--by undoing the *entire* virtual machine?
+What are the limits of such a machine today; can it, for example, handle 3D rendering and digital signal processing?
+

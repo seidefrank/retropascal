@@ -1,0 +1,303 @@
+ 
+FREEFORM:    Enter Description for Row 9 _______________ 
+User Enters: NET PROJECT EXP<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 9 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: This is to be a Calculated row. 
+ 
+FREEFORM:     =___________________________
+User Enters: (6 - 7) * C1<return> 
+Explanation: This tells FREEFORM that Row nine is the Row six minus Row seven, 
+             all multiplied by C1 which is 0.95. 
+ 
+FREEFORM:    O.K. to set values from Column calculations? Y 
+User Enters: <return> 
+Explanation:  
+ 
+FREEFORM:    Enter Row 9 Editing Format ####.##__ 
+User Enters: <return> 
+Explanation: Just defined the field to have up to four digits before the
+             decimal point and two after it. 
+ 
+FREEFORM:    Are Controls for Row 9 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             nine, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    (Will ask if the controls for each column are ok, one at a time.) 
+User Enters: <return>    (12 times) 
+Explanation: FREEFORM will not let the user change column descriptions here 
+             because automatic month descriptions were asked for.  Modify may 
+             be used later to change this information. 
+ 
+FREEFORM:    FREEFORM definition process completed for FORECAST.  FREEFORM 
+             redisplays the main menu and continues. 
+User Enters: 
+Explanation: The definition of the form is finished.  The form FORECAST,
+             however, will not be complete until Quarter totals have been 
+             inserted. 
+ 
+FREEFORM:    Enter desired option # 
+User Enters: 2 
+Explanation: Picked Modify procedure. 
+ 
+FREEFORM:    Form Name (8 alpha max.) 
+User Enters: FORECAST<return> 
+Explanation: It is necessary to modify the definition of the Form named
+             FORECAST.  Columns are to be inserted in the current Form to 
+             provide totals for each of the quarters and for the year's total. 
+             Quarter totals are to be inserted in reverse order.  This makes 
+             entering calculation strings simpler as the postions of the 
+             columns that are being summed have not been moved due to 
+             insertions. 
+ 
+FREEFORM:    Opening Control and Data files ... one moment, please 
+             When the files are opened, FREEFORM will prompt 
+Change User ID? N 
+User Enters: <return> 
+Explanation: FREEFORM first tries to open the Control and Data files associated
+             with the Form name specified once the Form name is found in the 
+             'directory' file.  Then all the 'Change' prompts appear.  All 
+             'Change' prompts default to No, so whenever it is desirable to 
+             leave a value alone, press <return>. 
+ 
+FREEFORM:    Change Form description? N 
+User Enters: <return> 
+Explanation: Do not change it. 
+ 
+FREEFORM:    Change Form creation date? N 
+User Enters: <return> 
+Explanation: Do not change it. 
+ 
+FREEFORM:    Change number of Pages? N 
+User Enters: <return> 
+Explanation: Do not change it. 
+ 
+FREEFORM:    Change number of Constants? N 
+User Enters: <return> 
+Explanation: Do not change it. 
+ 
+FREEFORM:    Change Value of a Constant? N 
+User Enters: <return> 
+Explanation: Do not change any. 
+ 
+FREEFORM:    Change Number of Rows? N 
+User Enters: <return> 
+Explanation: Do not change it. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: Y 
+Explanation: Add a Column. 
+ 
+FREEFORM:    Insert a Column? N 
+User Enters: Y 
+Explanation: Insert a Total column. 
+ 
+FREEFORM:    Enter Column # to Insert After 
+User Enters: 12<return> 
+Explanation: Insert the 4th quarter total. 
+ 
+FREEFORM:    Insert how many columns ? 1 
+User Enters: <return> 
+Explanation: Just want to insert one column immediately after column twelve. 
+ 
+FREEFORM:    Enter Description for Column 13 
+User Enters: 4th QTR<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 13 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: An Initial calculation column. 
+ 
+FREEFORM:     =___________________________
+User Enters: 10+11+12<return> 
+Explanation: October, November and December. 
+ 
+FREEFORM:    O.K. to set values from Row calculations? Y 
+User Enters: <return> 
+Explanation: "Yes" is the default. 
+ 
+FREEFORM:    Delete a Column? N 
+User Enters: <return> 
+Explanation: "No" is the default. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: Y 
+Explanation: Add a Column. 
+ 
+FREEFORM:    Insert a Column? N 
+User Enters: Y 
+Explanation: Insert a Total column. 
+ 
+FREEFORM:    Enter Column # to Insert After 
+User Enters: 9<return> 
+Explanation: Insert the 3rd quarter total. 
+ 
+FREEFORM:    Insert how many columns ? 1 
+User Enters: <return> 
+Explanation: Just want to insert one column immediately after column nine. 
+ 
+FREEFORM:    Enter Description for Column 10 
+User Enters: 3rd QTR<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 12 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: An Initial calculation column. 
+ 
+FREEFORM:     =___________________________
+User Enters: 7+8+9<return> 
+Explanation: July, August and September. 
+ 
+FREEFORM:    O.K. to set values from Row calculations? Y 
+User Enters: <return> 
+Explanation: "Yes" is the default. 
+ 
+FREEFORM:    Delete a Column? N 
+User Enters: <return> 
+Explanation: "No" is the default. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: Y 
+Explanation: Add a Column. 
+ 
+FREEFORM:    Insert a Column? N 
+User Enters: Y 
+Explanation: Insert a Total column. 
+ 
+FREEFORM:    Enter Column # to Insert After 
+User Enters: 6<return> 
+Explanation: Insert the 2nd quarter total. 
+ 
+FREEFORM:    Insert how many columns ? 1 
+User Enters: <return> 
+Explanation: Just want to insert one column immediately after column six. 
+ 
+FREEFORM:    Enter Description for Column 7 
+User Enters: 2nd QTR<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 7 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: An Initial calculation column. 
+ 
+FREEFORM:     =___________________________
+User Enters: 4+5+6<return> 
+Explanation: April, May and June. 
+ 
+FREEFORM:    O.K. to set values from Row calculations? Y 
+User Enters: <return> 
+Explanation: "Yes" is the default. 
+ 
+FREEFORM:    Delete a Column? N 
+User Enters: <return> 
+Explanation: "No" is the default. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: Y 
+Explanation: Add a Column. 
+ 
+FREEFORM:    Insert a Column? N 
+User Enters: Y 
+Explanation: Insert a Total column. 
+ 
+FREEFORM:    Enter Column # to Insert After 
+User Enters: 3<return> 
+Explanation: Insert the 1st quarter total. 
+ 
+FREEFORM:    Insert how many columns ? 1 
+User Enters: <return> 
+Explanation: Just want to insert one column immediately after column three. 
+ 
+FREEFORM:    Enter Description for Column 4 
+User Enters: 1st QTR<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 4 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: An Initial calculation column. 
+ 
+FREEFORM:     =___________________________
+User Enters: 1+2+3<return> 
+Explanation: January, February and March. 
+ 
+FREEFORM:    O.K. to set values from Row calculations? Y 
+User Enters: <return> 
+Explanation: "Yes" is the default. 
+ 
+FREEFORM:    Delete a Column? N 
+User Enters: <return> 
+Explanation: "No" is the default. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: Y 
+Explanation: Add a Column. 
+ 
+FREEFORM:    Insert a Column? N 
+User Enters: Y 
+Explanation: Insert a Total column. 
+ 
+FREEFORM:    Enter Column # to Insert After 
+User Enters: 16<return> 
+Explanation: Insert the Year total. 
+ 
+FREEFORM:    Insert how many columns ? 1 
+User Enters: <return> 
+Explanation: Just want to insert one column immediately after column sixteen. 
+ 
+FREEFORM:    Enter Description for Column 17 
+User Enters: YEAR 1980<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 17 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: An Initial calculation column. 
+ 
+FREEFORM:     =___________________________
+User Enters: 4+8+12+16<return> 
+Explanation: 1st, 2nd, 3rd and 4th QTR's. 
+ 
+FREEFORM:    O.K. to set values from Row calculations? Y 
+User Enters: <return> 
+Explanation: "Yes" is the default. 
+ 
+FREEFORM:    Delete a Column? N 
+User Enters: <return> 
+Explanation: "No" is the default. 
+ 
+FREEFORM:    Change Number of Columns? N 
+User Enters: <return> 
+Explanation: Do not add any more. 
+ 
+FREEFORM:    Are these new specifications ok? Y 
+User Enters: <return> 
+Explanation: If a mistake has been made type <N>. 
+ 
+FREEFORM:    Change Page Titles? N 
+User Enters: <return> 
+Explanation: Do not change any. 
+ 
+FREEFORM:    Change Row controls? N 
+User Enters: <return> 
+Explanation: Do not change any. 
+ 
+FREEFORM:    Change Column controls? N 
+User Enters: <return> 
+Explanation: Do not change any. 
+ 
+FREEFORM:    Are these new specifications ok? Y 
+User Enters: <return> 
+Explanation: If a mistake has been made type <N>. 
+ 
+FREEFORM:    Updating Directory, Control and Data files, one moment please... 
+User Enters:  
+Explanation: The program is now updating all the mentioned files.  FREEFORM 
+             will return to the main menu, and the Form named FORECAST is 
+             complete.  At this point, the user can run the data entry portion 
+             of FREEFORM and enter data into the form named FORECAST.  For 
+             instructions on the Data Entry procedure see Section 1.3. 
+ 
+
+

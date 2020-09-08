@@ -1,0 +1,449 @@
+{TeleTalker to Bob's Standard I/O Spec  10 Jul 82}
+PROGRAM TeleTalker;
+{$U *remunit.l3.code }
+USES RemUnit;
+CONST
+        Title       = '   R a n d y '' s    U S U S    T e l e T a l k e r';
+
+        Version     = '                   of 10 Jul 82';
+
+        Copyright   = 'Copyright 1982, Volition Systems. All rights reserved.';
+
+(* |xjm$ver|nx|f8|ef/of/wx|f8|ejb|.
+        
+          This may not be used for commercial gain without Volition's
+                           explicit written consent.
+
+UPDATE LOG:
+10 Jul 82 Initialize DleCount!
+09 Jul 82 Notes to implementors added, good luck!
+22-Oct-81 cosmetics
+07-Oct-81 Hacked to new WD.IO per Bob P's April Draft
+
+Note to implementors / adaptors
+        
+        We ask that you leave the Title..Copyright banner.
+        
+        This code was a quick hack, it is in no way warantied.  It is meant
+        to get you up, with something you can hack up yourself.
+
+        You will want to look at:
+            - DleDelay below in the CONSTant list.  It determines the delay
+              between successive blanks output to Remote.
+            - PROCEDURE CrtOutput is machine dependent to gain a bit of speed
+              rather than going through the BIOS.
+            - on my box, the IoCtrlPort is used to configure the BIOS.  Here it
+              is used to disable all special char detection on kbd input.  This
+              allows me to type in control sequences transparently.
+
+
+CONST Contd.          *)
+        DleDelay    = 66;   { MUST BE ADJUSTED FOR EACH MACHINE & BAUD RATE }
+        IOCtrlPort  = 128;
+        BlkSz       = 512;
+        BlkSzM1     = 511;
+        AttenChar   = 1;
+        StopChar    = 19;
+        StartChar   = 17;
+        XWait       = 128;
+        Dle         = 16;
+        NoControl   = 12;
+        NoCrlf      = 8;
+
+TYPE
+        Block       = PACKED ARRAY [0..BlkSzM1] OF CHAR;
+        
+VAR
+        C           : CHAR;
+        Ch          : PACKED ARRAY [0..0] OF CHAR;
+        Sending     : BOOLEAN;
+        Recording   : BOOLEAN;
+        Frozen      : BOOLEAN;
+        Chr0        : CHAR;
+        I           : INTEGER;
+        DleCount    : INTEGER;
+        XWaitState  : (XWIdle, XWWaiting, XWReady);
+        XWaitCnt    : INTEGER;
+        TextCharSet : SET OF CHAR;
+        RcvFile     : FILE;
+        RcvFilPtr   : INTEGER;
+        RcvBlk      : Block;
+        RcvBufPtr   : INTEGER;
+        RcvName     : STRING;
+        XmtFile     : FILE;
+        XmtFilPtr   : INTEGER;
+        XmtBlk      : Block;
+        XmtBufPtr   : INTEGER;
+        XmtName     : STRING;
+
+(*PROCEDURE CrtOutput (C: CHAR);
+CONST
+        SerialA                 = -1008;
+TYPE
+        SerStatType             = SET OF (
+                TransBufEmpty   ,
+                RecvrBufFull    ,
+                OverrunError    ,
+                ParityError     ,
+                FramingError    ,
+                CarrierDetect   ,
+                DataSetReady    ,
+                DataSetChange   );
+
+        SerialPort              = RECORD
+                Data            : INTEGER;
+                Status          : SerStatType
+                END {SerialPort};
+
+        SerPunType              = RECORD CASE BOOLEAN OF
+                TRUE  :( Int    : INTEGER);
+                FALSE :( Port   : ^SerialPort)
+                END {SerAdTrix};
+
+VAR
+        SerAPun                 : SerPunType;
+BEGIN
+        SerAPun.Int := SerialA;
+        WITH SerAPun.Port^ DO BEGIN
+            REPEAT  
+                UNTIL TransBufEmpty IN Status;
+            Data := ORD (C)
+            END 
+        END;
+*)
+
+procedure crtoutput ( c : char );
+var ch : packed array [ 0..1 ] of char;
+begin
+   ch [ 0 ] := c;
+   unitwrite ( 1, ch [ 0 ], 1,, 0 );
+end;
+
+PROCEDURE Init;
+VAR
+        Ok              : BOOLEAN;
+        Rslt            : Cr_BaudResult;
+        Dummy           : BOOLEAN;
+        Ch              : PACKED ARRAY [0..0] OF CHAR;
+BEGIN
+        PAGE (OUTPUT);
+        WRITELN;
+        WRITELN (Title);
+        WRITELN;
+        WRITELN (Version);
+        WRITELN;
+        WRITELN (Copyright);
+        WRITELN;
+        CrCommInit ( Cr_Orig, CHR(1), Ok, Dummy );
+        Cr_SetCommunications ( FALSE,       {Parity}
+                               FALSE,       {Even}
+                               1200,        {Baud}
+                               8,           {BitsPerChar}
+                               1,           {StopBits}
+                               Cr_Orig,     {Direction}
+                               'VA3451',    {Modem}
+                               Rslt         {Result} );
+        { UNITREAD (IOCtrlPort, Ch, 0, 0, 2);}
+        Cr_Hook (FALSE );
+        XmtName     := '';
+        RcvName     := '';
+        Sending     := FALSE;
+        Recording   := FALSE;
+        Frozen      := FALSE;
+        DleCount    := 0;
+        TextCharSet := [CHR(13), ' '..'~'];
+        Chr0        := CHR(0)
+        END;
+        
+PROCEDURE BlkWrite;
+VAR
+        HoldInx     : INTEGER;
+        HoldBuf     : PACKED ARRAY [1..BlkSz] OF CHAR;
+        SpareBlk    : Block;
+        I           : INTEGER;
+BEGIN
+        HoldInx := 0;
+        REPEAT
+            IF Cr_RemStat THEN BEGIN
+                C := CHR( ORD( ODD(ORD(Cr_GetRem)) AND ODD(127) ) );
+                CrtOutput (C);
+                IF ORD(C) = StopChar
+                    THEN Frozen := TRUE
+                    ELSE IF ORD(C) = StartChar
+                        THEN Frozen := FALSE
+                        ELSE IF (C IN TextCharSet) AND (HoldInx < BlkSz)
+                             THEN BEGIN
+                                 HoldInx := HoldInx + 1;
+                                 HoldBuf[HoldInx] := C
+                                 END
+                END;
+            I := 0;
+            WHILE (NOT Cr_RemStat) AND (I < 256) DO
+                I := I + 1;
+            UNTIL NOT Cr_RemStat;
+  {$I-} RcvBufPtr := BLOCKWRITE (RcvFile, RcvBlk, 1, RcvFilPtr);
+        WHILE RcvBufPtr = 1 DO
+            IF (BLOCKREAD (RcvFile, SpareBlk, 1, RcvFilPtr) = 1)
+                                   AND (SpareBlk = RcvBlk)
+                THEN RcvBufPtr := 0
+                ELSE RcvBufPtr := BLOCKWRITE (RcvFile,RcvBlk,1,RcvFilPtr);
+  {$I+} RcvFilPtr := RcvFilPtr + 1;
+        FOR I := 1 TO HoldInx DO BEGIN
+            RcvBlk[RcvBufPtr] := HoldBuf[I];
+            RcvBufPtr := RcvBufPtr + 1
+            END;
+        Cr_PutRem (CHR(StartChar))
+        END;
+
+PROCEDURE RawOptions;
+VAR
+        Ch                  : PACKED ARRAY [0..0] OF CHAR;
+    
+    PROCEDURE UpCase ( VAR Str : STRING );
+    VAR     I       : INTEGER;
+    BEGIN
+            FOR I := 1 TO LENGTH (Str) DO
+                IF Str[I] IN ['a'..'z']
+                    THEN Str[I] := CHR( ORD(Str[I]) - ORD('a') + ORD('A') )
+            END;
+    PROCEDURE RClose;
+    BEGIN
+            RcvBlk[RcvBufPtr] := CHR(13);
+            WHILE RcvBufPtr < (BlkSzM1) DO BEGIN
+                RcvBufPtr := RcvBufPtr + 1;
+                RcvBlk[RcvBufPtr] := Chr0
+                END;
+            Cr_PutRem (CHR(StopChar));
+            BlkWrite;
+            IF ODD(RcvFilPtr) THEN BEGIN
+                FILLCHAR (RcvBlk[0], BlkSz, Chr0);
+                Cr_PutRem (CHR(StopChar));
+                BlkWrite
+                END;
+            CLOSE (RcvFile, CRUNCH)
+            END;
+
+BEGIN {RawOptions}
+        REPEAT
+            REPEAT
+                WRITELN;
+                WRITE ('FileOptions: S(end, R(ecord, G(o, E(xit - ');
+                C := Cr_GetKb;
+                IF C = CHR(13)
+                    THEN C := 'G'
+                UNTIL C IN ['s','S','r','R','g','G','e','E'];
+            WRITELN (C);
+            CASE C OF
+              's','S': IF Sending
+                  THEN BEGIN
+                      WRITE ('Now Sending ', XmtName, ' Close it ? ');
+                      C := Cr_GetKb;
+                      IF C IN ['y','Y'] THEN BEGIN
+                          CLOSE (XmtFile, NORMAL);
+                          Sending := FALSE;
+                          WRITELN ('Closed')
+                          END
+                      END
+                  ELSE BEGIN
+                      REPEAT
+                          WRITE ('Send what textfile ? ');
+                          READLN (XmtName);
+                          UpCase (XmtName);
+                          IF LENGTH (XmtName) > 0 THEN
+                              IF XmtName[LENGTH(XmtName)] = '.'
+                                  THEN DELETE (XmtName, LENGTH(XmtName), 1)
+                                  ELSE XmtName := CONCAT (XmtName, '.TEXT');
+                    {$I-} RESET (XmtFile, XmtName); {$I+}
+                          IF IORESULT = 0 THEN BEGIN
+                              Sending := TRUE;
+                              XWaitState  := XWIdle;
+                              DleCount    := 0;
+                              WRITELN (XmtName, ' Opened')
+                              END
+                           UNTIL (LENGTH(XmtName) = 0) OR (IORESULT = 0);
+                      IF COPY (XmtName, LENGTH(XmtName)-4, 5) = '.TEXT'
+                          THEN BEGIN
+                              IF BLOCKREAD (XmtFile, XmtBlk, 1) = 0 THEN;
+                              IF BLOCKREAD (XmtFile, XmtBlk, 1) = 0 THEN
+                              END;
+                      XmtBufPtr := BlkSz
+                      END;
+              'R','r': IF Recording
+                  THEN BEGIN
+                      WRITE ('Now Recording ', RcvName,
+                               ' C(lose, P(urge  ? ');
+                      C := Cr_GetKb;
+                      CASE C OF
+                        'c','C': BEGIN
+                            RClose;
+                            Recording := FALSE;
+                            WRITELN ('Closed')
+                            END;
+                        'p','P': BEGIN
+                            CLOSE (RcvFile, PURGE);
+                            Recording := FALSE;
+                            WRITELN ('Purged')
+                            END
+                        END
+                      END
+                  ELSE BEGIN
+                      REPEAT
+                          WRITE ('Record as what textfile ? ');
+                          READLN (RcvName);
+                          UpCase (RcvName);
+                          IF LENGTH (RcvName) > 0 THEN
+                              IF RcvName[LENGTH(RcvName)] = '.'
+                                  THEN DELETE (RcvName, LENGTH(RcvName), 1)
+                                  ELSE RcvName := CONCAT (RcvName, '.TEXT');
+                {$I-}     RESET (RcvFile, RcvName);                    {$I+}
+                          IF IORESULT = 0 THEN BEGIN
+                              WRITE (RcvName, ' Exists, P(urge ? ');
+                              C := Cr_GetKb;
+                              IF C IN ['y', 'Y', 'p', 'P']
+                                  THEN BEGIN
+                                      CLOSE (RcvFile, PURGE);
+                                      WRITELN ('Purged')
+                                      END
+                                  ELSE BEGIN
+                                      CLOSE (RcvFile, LOCK);
+                                      RcvName := '';
+                                      WRITELN ('Saved')
+                                      END
+                              END;
+                          IF LENGTH(RcvName) > 0 THEN BEGIN
+                 {$I-}        REWRITE (RcvFile, RcvName);                  {$I+}
+                              IF IORESULT = 0 THEN BEGIN
+                                  Recording := TRUE;
+                                  WRITELN (RcvName, ' Opened')
+                                  END
+                              END
+                          UNTIL (LENGTH(RcvName) = 0) OR (IORESULT = 0);
+                      IF COPY (RcvName, LENGTH(RcvName)-4, 5) = '.TEXT'
+                          THEN BEGIN
+                              FILLCHAR (RcvBlk[0], BlkSz, Chr0);
+                              IF BLOCKWRITE (RcvFile, RcvBlk, 1) = 1 THEN ;
+                              IF BLOCKWRITE (RcvFile, RcvBlk, 1) = 1 THEN ;
+                              RcvFilPtr := 2
+                              END
+                          ELSE BEGIN
+                              RcvFilPtr := 0
+                              END;
+                      RcvBufPtr := 0
+                      END;
+              'E','e': BEGIN
+                  IF Recording THEN BEGIN
+                      RClose;
+                      Recording := FALSE
+                      END;
+                  Cr_CommQuit;
+                  IF Sending THEN
+                      CLOSE (XmtFile, NORMAL);
+                  EXIT (TeleTalker)
+                  END
+              END
+            UNTIL C IN ['g','G'];
+            C := Chr0
+        END;
+
+PROCEDURE NoCts;
+CONST
+        Msg         = 'LOST CARRIER';
+VAR
+        I           : INTEGER;
+BEGIN
+        WRITELN (CHR(7));
+        IF NOT Cr_KbStat
+            THEN WRITE (Msg);
+        REPEAT
+            UNTIL Cr_ClearToSend OR Cr_KbStat;
+        IF NOT Cr_KbStat
+            THEN FOR I := 1 TO LENGTH(Msg) DO
+                WRITE (CHR(8), ' ', CHR(8))
+            ELSE BEGIN
+                C := Cr_GetKb;
+                RawOptions
+                END
+        END;
+        
+BEGIN {TeleTalker}
+        Init;
+{$R-}   REPEAT
+            IF NOT Cr_ClearToSend
+                THEN NoCts;
+            IF Cr_RemStat
+                THEN BEGIN
+                    C := CHR(ORD( ODD(127) AND ODD(ORD(Cr_GetRem)) ));
+                    CrtOutput (C);
+                    IF ORD(C) = StopChar
+                        THEN Frozen := TRUE
+                        ELSE IF ORD(C) = StartChar
+                            THEN Frozen := FALSE
+                            ELSE IF Recording AND (C IN TextCharSet) THEN BEGIN
+                                RcvBlk[RcvBufPtr] := C;
+                                IF RcvBufPtr < BlkSzM1
+                                    THEN RcvBufPtr := RcvBufPtr + 1
+                                    ELSE BEGIN
+                                        Cr_PutRem (CHR(StopChar));
+                                        BlkWrite {slow machines bring inline}
+                                        END
+                                END
+                    END
+                ELSE IF NOT Frozen THEN BEGIN
+                    C := Chr0;
+                    IF Cr_KbStat
+                        THEN BEGIN
+                            C := Cr_GetKb;
+                            IF (ORD(C) = AttenChar) OR Sending
+                                THEN RawOptions
+                            END
+                        ELSE IF DleCount > 0
+                            THEN BEGIN
+                                IF (DleCount MOD 2) = 0
+                                    THEN C := ' ';
+                                DleCount := DleCount - 1
+                                END
+                            ELSE IF Sending AND (NOT Cr_RemStat) THEN
+                                IF XmtBufPtr >= BlkSz
+                                    THEN CASE XWaitState OF
+                                        XWIdle: BEGIN
+                                            XWaitState := XWWaiting;
+                                            XWaitCnt := XWait
+                                            END;
+                                        XWWaiting: IF XWaitCnt < 0
+                                            THEN XWaitState := XWReady
+                                            ELSE XWaitCnt := XWaitCnt - 1;
+                                        XWReady: BEGIN
+                            {$I-}           IF BLOCKREAD (XmtFile, XmtBlk, 1)
+                                               = 1                         {$I+}
+                                                THEN XmtBufPtr := 0
+                                                ELSE BEGIN
+                                                    CLOSE (XmtFile, NORMAL);
+                                                    WRITELN (XmtName, 
+                                                       ' Finished');
+                                                    Sending := FALSE
+                                                    END;
+                                            XWaitState := XWIdle
+                                            END
+                                        END
+                                    ELSE BEGIN
+                                        C         := XmtBlk[XmtBufPtr];
+                                        XmtBufPtr := XmtBufPtr + 1;
+                                        IF DleCount < 0
+                                            THEN BEGIN
+                                                DleCount := (ORD(C) - 32) * 2;
+                                                IF DleCount < 0
+                                                    THEN DleCount := 0;
+                                                C := Chr0
+                                                END
+                                            ELSE IF ORD(C) = Dle
+                                                THEN DleCount := -1
+                                                ELSE FOR I := 0 TO DleDelay DO;
+                                        IF NOT (C IN TextCharSet)
+                                            THEN C := Chr0
+                                        END;
+                    IF C <> Chr0
+                        THEN Cr_PutRem (C)
+                    END
+            UNTIL FALSE
+        END.
+

@@ -1,0 +1,119 @@
+
+ 
+.comment            !---------------------------------!
+.comment            !                                 !
+.comment            !       RUNON documentation       !
+.comment            !       Special characters        !
+.comment            !                                 !
+.comment            !         August 3, 1980          !
+.comment            !                                 !
+.comment            !---------------------------------!
+
+
+.page .center "^&SPECIAL CHARACTERS\&"
+
+  The eight following commands are used to control various functions.
+These functions are underlining, spacing, case,
+and the printing out of the special  characters themselves.
+The commands that set upper case override the case-changing
+dot-commands.
+
+.nofill
+
+The functions are each represented by a specific character:
+
+    &  Underline,
+    _^  Uppercase.
+
+Notice that the following "lead-in characters" have
+specific effects on the functions:
+
+    _<  turns the function on for a word,
+    _^  locks the function on until a '_\' is encountered,  
+    _\  unlocks the function.
+
+
+.center " ^&Command sequences\& " .fill .skip 1
+
+_<_&##Underline word######
+
+.leftmargin 35
+
+When prefixed to a word, this sequence causes the word to be underlined. If
+this sequence is not prefixed to a word, it will be ignored.
+
+.skip 1 .leftmargin 10
+
+_^_&##Underline lock######
+
+.leftmargin 35
+
+causes the underline lock to be set: all subsequent words will be underlined
+until the underline unlock sequence is encountered. Spaces between words will
+not be underlined.
+
+.skip 1 .leftmargin 10
+
+_\_&##Underline unlock####
+
+.leftmargin 35
+
+This sequence will only have effect if the underline lock sequence has
+previously been encountered.
+
+.skip 1 .leftmargin 10
+
+_<_^##Uppercase word######
+
+.leftmargin 35
+
+When prefixed to a word, this sequence causes the word to be output in
+uppercase. If this sequence is not prefixed to a word, it will be ignored.
+
+.skip 1 .leftmargin 10
+
+_^_^##Uppercase lock######   
+
+.leftmargin 35
+
+causes all subsequent words to be in uppercase until the uppercase unlock
+sequence is encountered. Does not effect title or centered text.
+.page
+
+.leftmargin 10
+
+_\_^##Uppercase unlock####
+
+.leftmargin 35
+
+This sequence will only have effect if the uppercase lock sequence has been
+encountered.
+
+.skip 1 .leftmargin 10
+
+_####Hard space##########
+
+.leftmargin 35
+
+This character is used while in filling or justification mode to force
+a space where needed. When one or more of
+these characters are placed between two words, the spacing will be preserved in
+the output file with no extra spacing inserted or removed due to justification
+or filling.
+
+.skip 1 .leftmargin 10
+
+__###Quote###############
+
+.leftmargin 35
+
+The character following the quote character is taken literally, and is not
+affected by any attributes in effect, except underlining.
+It can be used to print one of the lead-in characters or _# if it is
+to appear in the output file. For example, if it is desired to print a period in
+column one of the output file, the period must be prefixed with an underline.
+This character must be prefixed by itself if it is to be printed out.
+
+.justify .leftmargin 10
+
+

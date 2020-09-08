@@ -1,0 +1,272 @@
+
+                Documentation for B-Tree Unit
+                
+
+        The B-Tree is an ingenious storage structure used principally for
+     maintaining ordered indices to files. It can also be used to maintain
+     ordered data directly.  It was first reported by Bayer and McCreight
+     in 1972, although it appears to be an outgrowth of a great deal of
+     previous work on multi-way trees and ordered indices.
+     
+        The B-Tree is technically a height-balanced, muti-way tree. It is
+     perhaps best explained by analogy to a binary tree. The single best
+     explanation of both can be found in Niklaus Wirth's book Algorithms +
+     Data Structures = Programs (although the Bayer and McCreight article
+     is fairly accessible).  I will attempt to give a short course below.
+     
+        
+                       What is a Binary Tree?
+     
+        A binary tree is a data structure in which each record (called a
+     node) contains one datum, one key, and two pointers.  Each pointer
+     points to a child node, which has pointers to two more children. When
+     any pointer is null, you have reached a leaf. The first entry is
+     called the root node. A Pascal declaration of a binary tree node
+     might be:
+     
+           binary_tree_node = RECORD 
+                                person_name : sometype; 
+                                person_data : someothertype 
+                                left_child, right_child : pointers; 
+                              END;
+     
+        The person_name element would be the key, i.e. the part of the
+     record used for ordering the records.  The person_data element would
+     be the datum to be retrieved. Left_child and right_child are pointers
+     to the children.  They are deliberately not declared as Pascal
+     pointer types because they could be disk block numbers, or some other
+     sort of pointer.
+     
+        An example of what such a tree might look like is shown below. The
+     root is at the top (don't ask, it's the traditional representation
+     of a tree). Only the person_name values are shown.
+     
+        
+                                 john
+                                   |
+                        ___________|___________
+                        |                      |
+                _____frank______       ______mike________
+                |              |       |                |
+                |              |       |                |
+      _______charlie        harlan   karla     ______susie_______
+      |                                        |                |
+    alan                                     roger            zelda
+
+
+        As you can see, there is no requirement that a binary tree be
+     balanced.  A balanced tree can be searched more quickly on the
+     average, but it is very difficult to maintain balance in a binary
+     tree.  In general the cost is greater than the payoff.
+        
+        
+                         What is a B-Tree?
+     
+        A B-Tree is a multi-way tree.  It may have more than one key and
+     more than one child per node.  Generally, there are fixed-size nodes
+     which can be partly full. A simple Pascal declaration of a B-Tree
+     node might be:
+     
+        
+            B_Tree_node = RECORD
+                            count : integer;
+                            person_name1 : sometype;
+                            person_data1 : someothertype
+                            person_name2 : sometype;
+                            person_data2 : someothertype
+                            person_name3 : sometype;
+                            person_data3 : someothertype
+                            child0,
+                            child1,
+                            child2,
+                            child3 : pointers;
+                          END;
+     
+        Obviously, this could get out of hand, so some sort of array is
+     usually used.  The count variable specifies how many of the key slots
+     are filled.  Note that there is one more pointer than keys.  Although
+     this is relatively intuitive in a schematic discussion, it can cause
+     no end of trouble in writing or modifying a program if you forget. It
+     sometimes helps to think of the nodes pictorially.  The node pictured 
+     has room for 3 keys, of which 2 are in use:
+     
+       ________________________________________________________________
+       |  ptr0  |  key1  |  ptr1  |  key2  |  ptr2  |  key3  |  ptr3  |
+       |________|________|________|________|________|________|________|
+                                                    ^
+                                                    | count = 2
+        
+        
+        A B-Tree node is generally called a page.  The ingenuity of the
+     design begins with the page layout.  A B-Tree page is constrained to
+     have between k and 2k entries, where k is an arbitrary number known
+     as the order of the tree. Thus, a B-Tree of order 3 has slots for 6
+     entries, and is guaranteed to have no fewer than 3 of those slots
+     filled (an odd number is ok, it just dosn't fit the formal definition
+     as well). The root page may have fewer than k entries. The advantage
+     of multiple entries over a binary tree is analogous to that of a
+     Shell sort over a straight insertion sort: fewer comparisons are
+     needed to reach the general neighborhood of the key sought.
+     
+        Every page is either a leaf (no children) or it has j+1 children
+     if it has j keys.  All leaves are at the same level, or height (or
+     depth, pick your metaphor) as all other leaves. In other words, the
+     tree is balanced.  The main trick is in keeping the tree balanced.
+        
+        
+                The B-Tree's Balancing Act
+     
+        
+        The binary tree has one major problem.  If it is completely
+     balanced, the search time among N keys will be of order logN.  In the
+     degenerate cases (either all right or all left children) the search
+     time will be of order N. (This business about orders is called the
+     asymptotic complexity of algorithms.  If you don't know about it, you
+     probably should find someone who can explain it.  I know of no easy
+     text on the subject.) The degenerate case occurs when insertions are
+     performed in sorted order, and the closer to sorted order the keys
+     are when you start, the worse the performance of the binary tree.
+     
+        The B-Tree avoids the degeneration by staying balanced, and thus
+     its worst case performance is about as good as the average for a
+     binary tree.  In a B-Tree of order k, with N entries, the worst case
+     search time for an entry is of order log to the base k of (N+1).
+     
+        Balance is maintained during insertion as follows: Insertion
+     always occurs at a leaf.  This is not obvious, so make a diagram of a
+     B-Tree and try it.  No matter what key you choose to insert, it will
+     always lie between two keys already in the tree (except in the
+     degenerate case of a tree containing 0 or 1 entries in the root, in
+     which case you are at a leaf by definition).  Every entry in a non-
+     leaf node always points to an entry which is greater and one which is
+     smaller.  If the node pointed-to is a leaf, then you are at a leaf. 
+     If not, then a greater and a lesser entry are pointed-to, and so on. 
+     It works out that the entry immediately before or after any entry in
+     the tree is always at a leaf node.
+     
+        If the leaf is not full, the insertion is made at the appropriate
+     place in the page.  If the node is full, the central entry in the
+     node is inserted into the parent node, and the leaf's keys are
+     distributed between it and new leaf which is allocated dynamically
+     (thus creating two leaf nodes from one).  The insertion is then made
+     in the appropriate one of the two leaf nodes.  However, the parent
+     page may also be full.  The same routine occurs with insertion into
+     the parent node.  If all successive parent nodes are full, the split
+     can propagate all the way to the root, causing the tree to grow one
+     level in height (i.e. every path from root to leaf becomes one
+     longer).
+     
+        Deletion proceeds similarly, but for the complication that a key
+     to be deleted may not be at a leaf node.  If it is at a leaf node, it
+     is simply deleted.  If the key is not at a leaf node, it is swapped
+     with the next greater or smaller key, which is guaranteed to be at a
+     leaf node for the reasons discussed above.  If the page count is at
+     least k, we are done.  If the page count has fallen below k, then we
+     would be violating the page fullness constraint, so we boost the
+     count by borrowing from adjacent siblings.  This is generally called
+     balancing.  Of course, if there are fewer than m times k entries to
+     distribute among m siblings, we would still have fewer than k entries
+     in a node.  The solution is to delete one node, and distribute its
+     keys among the remaining m minus 1 siblings.  As with splitting, this
+     concatenation can propagate when the parent suffers loss of an entry
+     from having one child fewer than before.  The tree shrinks in height
+     when the root is concatenated with its two children. 
+     
+        
+                   Implementation Considerations
+     
+        There are a number of performance considerations in implementing B-
+     Trees that deserve mention.  First, one may choose to implement B-
+     Trees entirely in main memory (as is the case shown in most examples) 
+     or in secondary storage (which is their principal real-world use). 
+     For indices of any serious size, a disk implementation is called
+     for.  This means that one must consider optimizing the fetching of
+     pages into main memory.  Several common methods include:
+     
+        - Always keeping the root in memory (rewriting it when it is
+          changed) since all searches start at the root.  
+     
+        - Making pages an even multiple of the hardware page size, so that 
+          fast primitive fetches can be used.
+        
+        - Delaying the splitting of pages just as concatenation is delayed
+          by balancing among adjacent siblings. (Knuth, pp 476-479)
+     
+        - Buffering disk i/o, usually by keeping the most recently used
+          pages in main memory (in a sequential search, you will revisit 
+          a non-leaf node once for every node it points to).
+        
+        
+        Second, one would probably like generality of use.  The easiest 
+     way to achieve some generality is not to mix the data into the tree,
+     but to maintain some sort of pointer to the data. One could go so far
+     as not to keep the keys in the tree either, in order to allow
+     variable length keys.  In both cases, the pointers would point into 
+     some separately maintained (and unordered) list.  
+        
+        Finally, you can add lots of stuff to the basic idea, and tune the 
+     program lots of ways. For example, you could allow for duplicate 
+     instances of a particular key by some sort of chaining; or perform 
+     some kind of compression on the keys (compression plus duplicates 
+     could even be used to allow variable length keys).  Different 
+     strategies can be used for splitting, shifting entries around, 
+     balancing, etc.  Some have been elevated to the status of a whole 
+     separate kind of tree (B+ and B* trees, see Comer).
+     
+        
+        The B-Tree Unit (BUNIT)
+        
+        
+        The B-Tree unit presented here has been run with only trivial
+     modifications on three different p-Systems: It was developed on a
+     bastard version II.0 p-System on an Onyx micro (a Z-8000, hard-disk
+     machine), it was transported to a Northstar running version I.5, and
+     it was transported to an Apple ][ running version II.1.  As far as I
+     know it contains no machine or version dependencies.  
+        
+        BUNIT's essential character is described by the global 
+     declarations.  The trees store a single datum, which is an integer.  
+     It is envisioned that it would be a record or blocknumber on another 
+     file storing the actual data.  A key is a string of length keysize. 
+     Together, one key and one datum are a btentry. A page consists of
+     btree2k btentry's stored in an array called bentry.  A parallel array
+     called bpointer stores btree2kp (btree2k + 1) pointers, each of type
+     btpointer.  Pages also contain a count of full keys, and pointers to 
+     the page number of the parent page and the subscript of the pointer 
+     to this page in the parent.
+     
+         Pages are allocated when a tree is created, and it stays a fixed 
+     size.  The unit of allocation is actually a brecord, which has a 
+     bpage as one variant. The other variants are bdescrip and btpointer.
+     The zeroth brecord of a btree (a file of brecord) is always of the
+     bdescrip variant.  It contains nrec: the last record ever used, 
+     maxrec: a count of the number of records allocated, root: a pointer 
+     to the root of the tree, and freehead: a pointer to the head of a 
+     chain of records deallocated by concatenation of pages.  All records 
+     in the free chain are of the btpointer variant; they contain a single 
+     pointer to the next record in the chain.  A free pointer equal to 0 
+     indicates the last record in the free chain.
+        
+        
+        To use the unit without understanding it, very little 
+     documentation is required.  The interface section contains 
+     declarations and explanations of the routines accessible to the 
+     application programmer.  To start a tree, call bnew with a filename 
+     and a number of pages to allocate.  Bnew recloses the file, so bopen 
+     it before using it.  All BUNIT procedures pass around the file id, so 
+     more than one tree can be open at once.  To insert a key, just stick 
+     it in a bentry, along with an appropriate datum, and call bsearch.  
+     If you find it in the tree, don't insert it.  If it's not there, put 
+     it in by calling binsert with the page and entry indices returned by 
+     bsearch.  To delete a key, call bsearch to find out where it is, and 
+     if you find it, call bdelete with the information from bsearch.
+     
+        Procedures firstentry and lastentry will return the position of 
+     the first and last keys in the tree.  Functions nextentry and 
+     preventry will move forward and backward along the tree.  Bdump will 
+     display the contents of a brecord at your terminal, and showit will 
+     display formatted information on a particular entry.
+     
+        
+
+

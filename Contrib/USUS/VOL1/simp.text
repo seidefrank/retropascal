@@ -1,0 +1,309 @@
+                {SIMP - Simplified Integrated Modular Prose}
+               {PASCAL version by S. J. Singer   10 Feb 1979}
+
+        {This program is a further refined version of the superb}
+        {program developed by T. R. Stokes (in BASIC).  The original}
+        {information from which these programs were developed was}
+        {published in Scientific American, December 1974, p 134}
+
+
+PROGRAM SIMP;
+
+VAR     CHARACTERS: INTEGER;                    {CHAR PER LINE}
+        PARAGRAPHS: INTEGER;                    {PARAGRAPHS PER MEMO}
+        RNUM: REAL;
+    {USED IN RANDOM NO GENERATOR}
+        LINES: 0..10;
+        P: INTEGER;
+        I,J: INTEGER;
+        K: 0..3;
+        LST,FIRST: BOOLEAN;
+        CH: CHAR;
+        CRLF: PACKED ARRAY[0..2] OF CHAR;
+        A,B,C,D,F: ARRAY[0..10] OF STRING[90];  {PHRASE TABLES}
+        TABLE: ARRAY[0..3,0..10] OF BOOLEAN;    {PHRASE USAGE FLAGS}
+        TOO: STRING;
+        FROM: STRING;
+        SUBJECT: STRING;
+        BUFFER: STRING;
+        TXT: STRING[255];
+        List: TEXT;
+
+
+PROCEDURE CLEARTABL;                    {RESET PHRASE USAGE TABLE}
+
+VAR     I,J: INTEGER;
+BEGIN
+   FOR I:=0 TO 3 DO
+      FOR J:=0 TO 10 DO
+         TABLE[I,J] := TRUE
+END;
+
+
+FUNCTION RND(LO,HI:INTEGER): INTEGER;          {RANDOM NUMBER GENERATOR}
+
+VAR  Q       : REAL;
+     I       : INTEGER;
+BEGIN
+   REPEAT
+      RNUM := RNUM*21.182813+31.415917;
+      RNUM := RNUM-TRUNC(RNUM);
+      I := TRUNC(RNUM*(HI+1));
+   UNTIL I>=LO;
+   RND := I;
+END;
+
+
+FUNCTION RN(LO,HI,TBLINDX:INTEGER): INTEGER;
+{USE PHRASE ONLY ONCE/PARAGRAPH}
+
+VAR     R: INTEGER;
+BEGIN
+   REPEAT
+      R := RND(LO,HI)
+   UNTIL TABLE[TBLINDX,R];
+   TABLE[TBLINDX,R] := FALSE;
+   RN := R
+END;
+
+
+PROCEDURE INIT1;                {INITIALIZE PHRASE TABLE}
+BEGIN
+    {SIMP TABLE A}
+   A[0] := 'in respect to specific goals,';
+   A[1] := 'in particular,';
+   A[2] := 'on the other hand,';
+   A[3] := 'however,';
+   A[4] := 'similarly,';
+   A[5] := 'as a resultant implication,';
+   A[6] := 'in this regard,';
+   A[7] := 'based on integral subsystem considerations,';
+   A[8] := 'for example,';
+   A[9] := 'thus,';
+   A[10] := 'let it be noted that,';
+    {SIMP TABLE B}
+   B[0] := 
+
+'a primary interrelationship between system and/or subsystem technologies'
+   ;
+   B[1] := 'a large portion of the interface coordination communication'
+   ;
+   B[2] := 'a constant flow of effective information';
+   B[3] := 'the characterization of specific criteria';
+   B[4] := 'initiation of critical subsystem developement';
+   B[5] := 'the fully integrated test program';
+   B[6] := 'the product configuration baseline';
+   B[7] := 'any associated supporting element';
+   B[8] := 'the incorporation of additional mission restraints';
+   B[9] := 'the independent function principle';
+END;    {INIT1}
+
+PROCEDURE INIT2;                {INITIALIZE PHRASE TABLE}
+BEGIN
+    {SIMP TABLE C}
+   C[0] := 'adds overriding performance constraints to';
+   C[1] := 'must utilize and be functionallly interwoven with';
+   C[2] := CONCAT(
+           'maximizes the probability of project success and minimizes',
+               ' the cost and time required for');
+   C[3] := 'adds specific performance limits to';
+   C[4] := 'necessitates that urgent consideration be applied to';
+   C[5] := 
+
+'requires considerable systems analysis and trade off studies to arrive at'
+   ;
+   C[6] := 'is further compounded, when taking into account';
+   C[7] := 'presents extremely interesting challenges to';
+   C[8] := 
+      'recognizes the importance of other systems and the necessity for'
+   ;
+   C[9] := 'effects a significant implementation of';
+END;        {INIT2}
+
+
+PROCEDURE INIT3;                {INITIALIZE PHRASE TABLE}
+BEGIN
+    {SIMP TABLE D}
+   D[0] := 'the total system rational';
+   D[1] := 'the sophisticated hardware';
+   D[2] := 'the anticipated fourth generation equipment';
+   D[3] := 'the subsystem compatibility testing';
+   D[4] := 'the structural design based on system engineering concepts';
+   D[5] := 'the preliminary qualification limit';
+   D[6] := 'the evolution of specifications over a given period of time'
+   ;
+   D[7] := 'the philosophy of commonality and standardization';
+   D[8] := 'the greater flight-worthiness concept';
+   D[9] := 'any discrete configuration mode';
+    {SIMP TABLE F}
+   F[0] := 'It has come to my attention that ';
+   F[1] := 'I wish to point out that ';
+   F[2] := 'It is my conclusion that ';
+   F[3] := 'As part of my duty, I must assure you that ';
+   F[4] := 
+   'As a cognizant support representative, I would like to report that '
+   ;
+   F[5] := 'I feel it is imperative I inform you that ';
+   F[6] := 
+     'Due to or in spite of the present status, I must advise you that '
+   ;
+   F[7] := CONCAT('In order to assess future impact/upgrade ratios,',
+               ' I feel you should consider that ');
+   F[8] := 'Acting in my advisory capacity, I wish to notify you that ';
+   F[9] := 'From an international standpoint, it is clear to me that ';
+END;    {INIT3}
+
+
+PROCEDURE PARAMETERS;           {INPUT REPORT PARAMETERS}
+BEGIN
+   PAGE (OUTPUT);
+   REWRITE (list, 'PRINTER:');
+   RNUM := 12.345;
+   CRLF[0] := CHR(13);
+   CRLF[1] := CHR(10);
+   CRLF[2] := CHR(10);
+   TXT := '     ';
+   WRITELN;
+   WRITELN;
+   WRITE('SIMPLIFIED INTEGRATED MODULAR PROSE GENERATOR':60);
+   WRITELN;
+   WRITELN;
+   WRITELN;
+   WRITE('TO: ');
+   READLN(TOO);
+   WRITE('FROM: ');
+   READLN(FROM);
+   WRITE('SUBJECT: ');
+   READLN(SUBJECT);
+   WRITELN;
+   WRITE('CHARACTERS PER LINE ');
+   READLN(CHARACTERS);
+   WRITE('PARAGRAPHS ');
+   READLN(PARAGRAPHS);
+   WRITE('PRINTED OUTPUT (Y/N) ');
+   READ(CH);
+   IF (CH<>'Y') AND (CH<>'y')
+      THEN
+         LST := FALSE
+      ELSE
+         LST := TRUE;
+   WRITELN;
+   WRITELN;
+   WRITE('ENTER A 4 DIGIT RANDOM NUMBER ');
+   READLN(RNUM)
+END;            {PARAMETERS}
+
+                {THERE ARE 4 POSSIBLE PERMUTATIONS OF THE 4 PHRASES}
+
+PROCEDURE PERM0;                {TEXT PERMUTATION 0}
+BEGIN
+   BUFFER := A[RN(0,10,0)];
+   BUFFER[1] := CHR(ORD(BUFFER[1])-32);
+   TXT := CONCAT(TXT,BUFFER,' ',B[RN(0,9,1)],' ',
+          C[RN(0,9,2)],' ',D[RN(0,9,3)],'.')
+END;    {PERM0}
+
+
+PROCEDURE PERM1;                {TEXT PERMUTATION 1}
+BEGIN
+   BUFFER := D[RN(0,9,3)];
+   BUFFER[1] := CHR(ORD(BUFFER[1])-32);
+   TXT := CONCAT(TXT,BUFFER,' ',A[RN(0,10,0)],' ',
+          C[RN(0,9,2)],' ',B[RN(0,9,1)],'.')
+END;    {PERM1}
+
+
+PROCEDURE PERM2;                {TEXT PERMUTATION 2}
+BEGIN
+   BUFFER := B[RN(0,9,1)];
+   BUFFER[1] := CHR(ORD(BUFFER[1])-32);
+   TXT := CONCAT(TXT,BUFFER,' ',A[RN(0,10,0)],' ',
+          C[RN(0,9,2)],' ',D[RN(0,9,3)],'.')
+END;    {PERM2}
+
+
+PROCEDURE PERM3;                {TEXT PERMUTATION 3}
+BEGIN
+   BUFFER := A[RN(0,10,0)];
+   BUFFER[1] := CHR(ORD(BUFFER[1])-32);
+   TXT := CONCAT(TXT,BUFFER,' ',D[RN(0,9,3)],' ',
+          C[RN(0,9,2)],' ',B[RN(0,9,1)],'.')
+END;    {PERM3}
+
+
+PROCEDURE HEADING;      {DISPLAY AND PRINT MEMORANDUM HEADING}
+BEGIN
+   WRITELN ('M E M O R A N D U M':40);
+   IF LST
+      THEN
+         BEGIN
+            WRITELN (List, '             M E M O R A N D U M');
+            WRITELN (List);
+            WRITELN (List);
+            WRITELN (List, 'TO: ', too);
+            WRITELN (List, 'FROM: ', from);
+            WRITELN (List);
+            WRITELN (List, 'COPIES TO: ALL SUBORDINATES');
+            WRITELN (List, 'SUBJECT: ', subject);
+            WRITELN (List);
+            WRITELN (List);
+         END
+END;    {HEADING}
+
+
+PROCEDURE INITIALIZE;
+BEGIN
+   INIT1;
+   INIT2;
+   INIT3;
+   PARAMETERS
+END;    {INITIALIZE}
+
+
+BEGIN                   {MAIN PROGRAM}
+   INITIALIZE;
+   FIRST := TRUE;
+   HEADING;
+   FOR P:=PARAGRAPH DOWNTO 1 DO
+      BEGIN
+         CLEARTABL;
+         LINES := RND(3,9);     {GENERATE 3 TO 9 LINES}
+         J := 1;
+         WHILE LINES > 0 DO
+            BEGIN
+               I := 0;
+               K := RND(0,3);      {PERMUTATION SELECTOR}
+               IF FIRST
+                  THEN
+                     BEGIN
+                        TXT := CONCAT(TXT,F[RND(0,9)],B[RN(0,9,1)],' ',
+                               C[RN(0,9,2)],' ',D[RN(0,9,3)],'.');
+                        FIRST := FALSE
+                     END;
+               CASE K OF
+                  0: PERM0;
+                  1: PERM1;
+                  2: PERM2;
+                  3: PERM3;
+               END;
+               REPEAT
+                  I := I + 1;
+                  J := J + 1;
+                  WRITE (TXT[I]);
+                  IF LST THEN WRITE (List, txt [i]);
+                  IF ((J >= CHARACTERS) AND (TXT[I]=' '))
+                     THEN
+                        BEGIN
+                           J := 1;
+                           IF LST THEN WRITELN (List);
+                           WRITELN
+                        END
+               UNTIL TXT[Iÿ='.';
+               LINES := LINES-1;
+               TXT := ' '
+            END;
+         WRITELN;
+         IF lst THEN WRITELN (List);
+         TXT := '     '
+      END
+END.                    {MAIN PROGRAM}

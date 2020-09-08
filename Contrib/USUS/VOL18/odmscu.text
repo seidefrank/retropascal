@@ -1,0 +1,202 @@
+{ One D****d More Screen Control Unit   24 Dec 82       }
+{|xjm$d0|nx|f8|ejm$d1|nx|f8|ejf|.}
+
+{$S++} { Enable as much swapping as you need }
+
+UNIT ScreenUnit ;
+
+{$C Copyright 1982, Volition Systems.  All rights reserved.}
+
+{--- change log
+21 Dec 82 [acd] Had to move var Disk to interface, no private files in II.x
+}
+
+INTERFACE
+
+  CONST
+    SCU_Version   = '0.0a' ;
+    SCU_Date      = '24 Dec 82' ;
+    
+  TYPE 
+    Phyle      = FILE ;
+    
+    CrtCommand = (ClrToEos, ClrToEoL , Up, Down, Right, Left ) ;
+  
+  VAR 
+    Disk     : Phyle ;
+  
+  FUNCTION InitSCU : BOOLEAN ;
+  FUNCTION ScrWidth : INTEGER ;
+  FUNCTION ScrHeight: INTEGER ;
+  PROCEDURE CrtControl( C : CrtCommand );
+  
+IMPLEMENTATION
+  
+  TYPE
+    CrtRec         = RECORD
+      Unused0      : PACKED ARRAY [0..61] OF CHAR ;
+      CrtCtrl      : PACKED RECORD
+        Escape     : CHAR;
+        Home       : CHAR;
+        EraseEoS   : CHAR;
+        EraseEoL   : CHAR;
+        NDFS       : CHAR;
+        RLF        : CHAR;
+        BackSpace  : CHAR;
+        FillCount  : 0..11;
+        ClearLine  : CHAR;
+        ClearScreen: CHAR;
+        Prefixed   : PACKED ARRAY [0..8] OF BOOLEAN
+        END;
+      CrtInfo      : PACKED RECORD
+        Height     : INTEGER;
+        Width      : INTEGER;
+        Up         : CHAR;
+        Down       : CHAR;
+        Left       : CHAR;
+        Right      : CHAR;
+        EoF        : CHAR;
+        Flush      : CHAR;
+        Break      : CHAR;
+        Stop       : CHAR;
+        CharDel    : CHAR;
+        BadCh      : CHAR;
+        LineDel    : CHAR;
+        AltMode    : CHAR;
+        Prefix     : CHAR;
+        ETx        : CHAR;
+        BackSpace  : CHAR;
+        Prefixed   : PACKED ARRAY [0..13] OF BOOLEAN
+        END;
+      Unused1      : ARRAY [0..47] OF INTEGER ;
+      Unused2      : ARRAY [0..31] OF INTEGER ;
+      Block2       : ARRAY [0..127] OF INTEGER ;
+      END ; { CrtRec }
+  
+  VAR
+    InfoRec  : CrtRec ;
+    Filler   : STRING[12] ;
+    
+  FUNCTION InitSCU ; 
+
+  { Use blockread because using a structured file would require putting  }
+  { the record declaration in the interface, since private files are not }
+  { allowed in II.x units.                                               }
+
+    CONST
+      MiscInfoName = '*SYSTEM.MISCINFO' ;
+      
+    VAR 
+      k : INTEGER ;
+    
+  BEGIN { InitSCU } 
+    
+    {$I-}
+    RESET( Disk, MiscInfoName ) ;
+    IF IORESULT = 0 THEN BEGIN
+      k := BLOCKREAD( Disk, InfoRec, 1 ) ;
+      IF (IORESULT = 0) AND (k = 1) THEN BEGIN
+        {$R-}
+        FILLCHAR( Filler[1], InfoRec.CrtCtrl.FillCount, CHR(0) ) ;
+        Filler[0] := CHR( InfoRec.CrtCtrl.FillCount ) ;
+        {$R+}
+        InitSCU := TRUE
+        END
+      ELSE
+        InitSCU := FALSE
+      END
+    ELSE 
+      InitSCU := FALSE ;
+    CLOSE( Disk )
+    {$I+}
+  
+    END { InitSCU } ;
+  
+  
+  FUNCTION ScrWidth {: INTEGER} ;
+  
+  BEGIN { ScrWidth }
+    
+    ScrWidth := InfoRec.CrtInfo.Width
+    
+    END { ScrWidth } ;
+    
+    
+  FUNCTION ScrHeight {: INTEGER} ;
+  
+  BEGIN { ScrHeight }
+    
+    ScrHeight := InfoRec.CrtInfo.Height
+    
+    END { ScrHeight } ;
+    
+    
+  PROCEDURE CrtControl
+    {     c : CrtCommand } ; 
+    
+  { Call InitSCU before using this procedure.             }
+  
+    CONST
+      CrtUnit   =  1 ;
+      NoSpec    = 12 ;
+      LineFeed  = 10 ;
+      
+    VAR
+      ca        : PACKED ARRAY [0..0] OF CHAR ;
+    
+    
+    PROCEDURE PutCrt 
+      (     Inx : INTEGER ;
+            Ch  : CHAR ) ;
+
+      VAR
+        i : INTEGER ;
+        c : PACKED ARRAY [0..0] OF CHAR ;
+
+    BEGIN { PutCrt }
+
+      IF Ch <> CHR(0) THEN WITH InfoRec.CrtCtrl DO BEGIN
+        IF Prefixed[Inx] THEN
+          WRITE( Escape ) ;
+        c[0] := Ch ;
+        UNITWRITE( CrtUnit, c[0], 1, 0, NoSpec ) ;
+        IF LENGTH( Filler ) > 0 THEN 
+          WRITE( Filler )
+        END
+      
+      END { PutCrt } ;
+
+
+  BEGIN { CrtControl }
+  
+    WITH InfoRec DO CASE c OF
+      ClrToEoS: BEGIN
+        PutCrt( 2, CrtCtrl.EraseEoS ) ;
+        END ;
+      ClrToEoL: BEGIN
+        PutCrt( 3, CrtCtrl.EraseEoL ) ;
+        END ;
+      Up: BEGIN
+        PutCrt( 5, CrtCtrl.RLF ) ;
+        END ;
+      Down: BEGIN
+        ca[0] := CHR(LineFeed) ;
+        UNITWRITE( CrtUnit, ca[0], 1, 0, NoSpec )
+        END ;
+      Left: BEGIN
+        PutCrt( 6, CrtCtrl.BackSpace ) ;
+        END ;
+      Right: BEGIN
+        PutCrt( 4, CrtCtrl.NDFS ) ;
+        END ;
+      END ; { case }
+
+    END { CrtControl } ;
+  
+BEGIN { ScreenUnit }
+  
+  { remove the BEGIN above if you are running II.0.  If you are running II.1 }
+  { or later you may place a call to InitSCU here, relieving your program of }
+  { that burden.                                                             }
+  
+  END. { One D****d More Screen Control Unit }

@@ -1,0 +1,992 @@
+1                                                                     1
+                                                               84/04/16
+
+                          Program CONVERS - Users Manual
+
+                                 John W. Dykstra
+
+                                  April 14, 1984
+
+
+
+
+
+           CONVERS handles communication between two computers  over  a
+           character-oriented  full-duplex  link, such as serial modems
+           connected  by  a  dial-up  telephone  line.   Usually,   the
+           computer  running  CONVERS  (referred to in this document as
+           the workstation) is micro- or mini-sized,  and  a  mainframe
+           machine (called the host) is on the other end of the link.
+
+           CONVERS interacts  with the host via standard host commands.
+           No special programming or modification of the host system is
+           necessary,  because  CONVERS  appears to the host as a human
+           user.  CONVERS can be used with virtually  any  host  system
+           hardware, operating system or applications programs, because
+           all interactions are controlled by  easily-written  scripts.
+           The  commands  contained  in  these  scripts actually form a
+           simple  programming  language,   which   is   interpretively
+           executed by CONVERS.
+
+           CONVERS  has  been implemented in Pascal on a system running
+           the UCSD P-system.  The design and implementation have  been
+           oriented  to  making  transportation of the program to other
+           hardware and software systems as easy as possible.
+
+           This document specifically describes Revision C of  CONVERS,
+           but  most  of the material presented applies to earlier (and
+           probably later) versions of the program.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1                                                                   1-1
+                                                               84/04/16
+        ---------------------------------------------------------------
+        1.0 CONVERS CONCEPTS AND DEFINITIONS
+
+        ---------------------------------------------------------------
+
+           1.0 CONVERS CONCEPTS AND DEFINITIONS
++              ________________________________
+
+
+           1.1 PRINCIPLES OF CONVERS OPERATION
++              _______________________________
+
+           CONVERS is controlled by text files called scripts, each  of
+           which  contains  a  sequence  of  commands.  When CONVERS is
+           started by the user or from another workstation program,  it
+           is  passed  a  parameter  string  containing the name of the
+           first script to interpret, possibly accompanied by parameter
+           definitions  for  that  script.  The initial script may pass
+           control to  other  scripts  through  operations  similar  to
+           subroutine   calls  and/or  program  branches.   Control  is
+           finally  passed  to  the  workstation  operating  system  or
+           another user program, under control of script commands.
+
+           The  language  used  in  writting scripts is similar to many
+           block-oriented programming languages.  The usual data  types
+           are available,  as are variables, constants and expressions.
+           Language statements are used to communicate with  the  host,
+           manipulate variables, and control script execution.
+
+           1.2 DATA TYPES
++              __________
+
+           CONVERS  supports  data  types of string, integer, name, and
+           boolean.
+
+           1.2.1 STRINGS
+
+           A string contains zero or  more  characters  from  the  full
+           7-bit  ASCII  set  (  including  control  characters ).  The
+           maximum permissible length of  a  string  is  determined  at
+           CONVERS compile time, and is currently set at 80 characters.
+
+           1.2.2 INTEGERS
+
+           The  range  of  values  that  an   integer   may   take   is
+           implementation  dependent,  but is guaranteed to be at least
+           0...32767.   CONVERS  does  not  support  negative   integer
+           values.
+
+           1.2.3 NAMES
+
+           Names  are used to denote CONVERS variables and files on the
+           local processor (workstation).  Variables of type  name  are
+           often used in communication with the host system.
+
+           Names  may  be  from 1 to 32 characters in length, with each
+           character selected from the alphabetic and digit characters,
+           and  the  special  characters  period  (.),  underscore (_),
+           asterisk (*), currency sign ($), and colon (:).   The  first
+
+
+1                                                                   1-2
+                                                               84/04/16
+        ---------------------------------------------------------------
+        1.0 CONVERS CONCEPTS AND DEFINITIONS
+        1.2.3 NAMES
+        ---------------------------------------------------------------
+
+           character of a name must not be a digit.
+
+           All names used by CONVERS are case-insensitive, and  may  be
+           written   in   any   combination  of  upper  and  lower-case
+           characters.  CONVERS translates user-  provided  names  into
+           upper-case, and returns them in this form if a name assigned
+           to a variable.
+
+           Names used to identify workstation files  must  follow  both
+           the  above  rules,  and any additional rules required by the
+           workstation operating system.
+
+           1.3 STRING, INTEGER AND BOOLEAN CONSTANTS
++              _____________________________________
+
+           String constants are defined with ASCII characters contained
+           within  single  quote  marks.   Any graphic character may be
+           included in a string defined in this way except  the  single
+           quote.   If  it  is necessary to use a single quote or ASCII
+           control character in a string constant, the constant may  be
+           built using the concatenation operator and the $CHR function
+           (see below).
+
+           An integer constant is expressed in decimal modulus, with no
+           embedded commas or trailing periods.
+
+           Boolean  constants  are  represented  by  the reserved words
+           TRUE, YES, FALSE and NO.
+
+           1.4 VARIABLES
++              _________
+
+           Variables may be assigned values and used (with  the  $VALUE
+           function)   in   any  expression.   There  are  no  variable
+           declarations.  The type of a variable is determined  by  the
+           type  of  the  value  assigned  to  it.   Variables  may  be
+           redefined, and the type of the new value  may  be  different
+           from  the  type  of  the  old  value.   There  is  no way to
+           "undefine" a variable.  The number of variables that can  be
+           defined is  a compile-time contant, currently set to thirty.
+
+           Variable names follow the standard rules for name formation.
+
+           Several  variable names are reserved.  Assignment of a value
+           to one of these  variables  changes  the  way  that  CONVERS
+           behaves.  These variables, and their effect, are:
+
+           DISPLAY_COMMANDS  This  variable is a boolean.  If it is set
+                             to  TRUE,  CONVERS  displays  each  script
+                             command line as it is executed.
+
+           DISPLAY_LINK      This variable is also a boolean.  If it is
+                             set to TRUE, the text  arriving  from  the
+
+
+1                                                                   1-3
+                                                               84/04/16
+        ---------------------------------------------------------------
+        1.0 CONVERS CONCEPTS AND DEFINITIONS
+        1.4 VARIABLES
+        ---------------------------------------------------------------
+
+                             host during MATCH commands is displayed.
+
+           The value of reserved variables can be changed at any  time.
+           Reserved  variable names can be used as parameters to $VALUE
+           only if they have been previously defined by a script.
+
+           The distinction between variable names and  variable  values
+           may  be difficult to understand.  A variable name used alone
+           denotes only that name.  The  $VALUE  function  (see  below)
+           must be used to obtain the value of that variable.
+
+           1.5 STRING OPERATORS
++              ________________
+
+           Terms  of  type  string  may be concatenated with the binary
+           operator //.
+
+           1.6 BOOLEAN OPERATORS
++              _________________
+
+           Terms of  type  boolean  may  be  prefixed  with  the  unary
+           operator NOT to negate their value.
+
+           1.7 FUNCTIONS
++              _________
+
+           CONVERS  includes a number of built-in functions that may be
+           used in expressions.  All function names begin with a dollar
+           sign,  and  are  case  insensitive.   The  parameters of the
+           function follow the name, enclosed in parentheses.
+
+           1.7.1 THE $CHR FUNCTION
+
+           This function has a single integer parameter, which must  be
+           in  the  range  0..127.   The  value  of the function is the
+           one-character string formed by interpreting the value of the
+           parameter as an ASCII character.
+
+           1.7.2 THE $VALUE FUNCTION
+
+           This function has a single name parameter, which must be the
+           name of a previously-defined variable.  The  value  of  that
+           variable  is  returned as the value of the function.  If the
+           $VALUE function is applied to a variable name that  has  not
+           been explicitly defined, an error message will be issued.
+
+           1.7.3 THE $DEF FUNCTION
+
+           The  single  parameter  of  this  function  is a name.  If a
+           variable of that name has been defined, the function  return
+           a  boolean  value of TRUE.  Otherwise, it returns a value of
+           FALSE.
+
+
+
+
+1                                                                   1-4
+                                                               84/04/16
+        ---------------------------------------------------------------
+        1.0 CONVERS CONCEPTS AND DEFINITIONS
+        1.7.4 THE $READ FUNCTION
+        ---------------------------------------------------------------
+
+           1.7.4 THE $READ FUNCTION
+
+           The parameter of this function is the name of a file on  the
+           workstation.  This file is opened, if it is not already, and
+           then the next line in the  file  is  read  and  returned  in
+           string  form as the value of the function.  Successive calls
+           to $READ with the same file name will result  in  successive
+           lines  being  transfered from the file.  The number of files
+           that can be open simultaneously is a compile-time  constant,
+           currently  set  at  five.   (See  the  LINE parameter of the
+           TRANSFER command.)
+
+           1.7.5 THE $EOF FUNCTION
+
+           The parameter of this function is the name of a file on  the
+           workstation.  This file is opened, if it is not already, and
+           then the status of that file is checked.   If  the  file  is
+           positioned  at  end-of-file,  then  this  function returns a
+           boolean value of  TRUE;  otherwise,  a  value  of  FALSE  is
+           returned.    The  limitation  on  simultaneously-open  files
+           described above applies.
+
+           1.7.6 THE $EQ FUNCTION
+
+           The two parameters of this function are expressions  of  any
+           matching type.  The boolean value of the function is TRUE if
+           the values of the expressions are identical; otherwise,  the
+           value of the function is FALSE.
+
+           1.7.7 THE $STR FUNCTION
+
+           The  single  parameter  of  this  function  is  a name.  The
+           characters making up this name are converted into a  string,
+           and the string is returned as the value of the function.
+
+           1.7.8 THE $NAME FUNCTION
+
+           The  single  parameter of this function is a string.  A name
+           is formed from the string, and returned as the value of  the
+           function.
+
+           1.8 SCRIPT COMMANDS
++              _______________
+
+           Each  script  command  occupies  one line.  Blank lines, and
+           lines  whose  first  non-blank  character  is  an   asterisk
+           (comment  lines),  are  ignored.   Blank  characters  at the
+           beginning  of  each  command,  and  between  parts  of  each
+           command,  are  ignored.   Script  lines  can  be  up  to  80
+           characters long.
+
+           Command lines must begin with a command name, which  follows
+
+
+1                                                                   1-5
+                                                               84/04/16
+        ---------------------------------------------------------------
+        1.0 CONVERS CONCEPTS AND DEFINITIONS
+        1.8 SCRIPT COMMANDS
+        ---------------------------------------------------------------
+
+           the usual rules for name formation.  The  remainder  of  the
+           line  specifies  parameters  (if any) for the command.  Each
+           parameter is either positional,  or  specified  by  a  name.
+           Named  parameters  cannot be specified positionally, nor can
+           positional parameters be specified with a name.   The  first
+           parameter in a command is usually positional, and subsequent
+           parameters are identified by names.
+
+           Named parameters that  do  not  require  values  are  called
+           keywords.   If a value is required, it follows an equal sign
+           ( "=" ).
+
+           Commands cannot be continued from one line to the next.
+
+           1.9 ERRORS DURING COMMAND EXECUTION
++              _______________________________
+
+           Various abnormal situations may cause  a  command  to  abort
+           during execution.  CONVERS needs a general control structure
+           to intercept these  aborts,  and  attempt  a  retry  of  the
+           failing script sequence.  However, no workable structure has
+           yet been devised.  Anyone  with  ideas  should  contact  the
+           author.
+
+           At present, CONVERS ends execution with an appropriate error
+           message if any command aborts.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1                                                                   2-1
+                                                               84/04/16
+        ---------------------------------------------------------------
+        2.0 SCRIPT COMMANDS
+
+        ---------------------------------------------------------------
+
+           2.0 SCRIPT COMMANDS
++              _______________
+
+
+           2.1 THE SEND COMMAND
++              ________________
+
+           This command sends a text line  to  the  host  system.   The
+           first (positional) parameter is the string to be transmitted
+           over the link.   This  is  followed  by  a  carriage  return
+           character, unless the NOCC parameter has been specified (see
+           below).  If the  string  parameter  is  omitted  or  a  null
+           string, only a carriage return will be transmitted.
+
+           The only possible Parameter is:
+
+            NOCR If  this  keyword  is  specified,  the  string  is not
+                 followed by a  carriage  return  character.   If  this
+                 parameter   is   omitted,   the   carriage  return  is
+                 transmitted.
+
+           This command aborts if the link carrier drops during command
+           execution.
+
+           2.2 THE MATCH COMMAND
++              _________________
+
+           This  command suspends execution of the current script until
+           a given string is received from the host system.  The  first
+           (positional)  parameter  is the string or name to be matched
+           against.  Optional parameters may follow, separated from the
+           match string by a comma.
+
+           Allowable name parameters are:
+
+           ENDING  If this keyword is coded, the matched string must be
+                   the last non- blank, non-control character  received
+                   from the host for at least 1/2 second.
+
+         ANYWHERE  If this keyword is coded, the matched string will be
+                   recognized anywhere in the character stream received
+                   from the host.  This is the default if ENDING is not
+                   specified.
+
+           PERIOD  If this parameter is coded, CONVERS  will  abort  if
+                   the matching conditions are not satisfied within the
+                   specified period.  This period is  expressed  as  an
+                   integer  number  of  tenths  of  seconds.   If  this
+                   parameter is not specified,  CONVERS  will  wait  30
+                   seconds before aborting.
+
+           This  command  aborts  if  the link carrier drops, or if the
+           match is not made within the specified time period.
+
+
+
+1                                                                   2-2
+                                                               84/04/16
+        ---------------------------------------------------------------
+        2.0 SCRIPT COMMANDS
+        2.3 THE TRANSFER COMMAND
+        ---------------------------------------------------------------
+
+           2.3 THE TRANSFER COMMAND
++              ____________________
+
+           This command transfers data to/from a workstation file.  The
+           first  (positional) parameter of this command is the name of
+           the workstation file to be transfered.  The remainder of the
+           parameters are specified with named parameters:
+
+           UPLOAD  This  keyword  specifies  that  the direction of the
+                   transfer is from the workstation to the host system.
+
+         DOWNLOAD  This  keyword  specifies  that  the direction of the
+                   transfer is from the host system to the workstation.
+                   It is assumed if UPLOAD is not specified.
+
+           TERM    This  parameter  specifies the character string from
+                   the host that terminates a DOWNLOAD operation.   All
+                   text  received from the host is compared against the
+                   contents of this string.  When a match  occurs,  the
+                   destination  file  is closed, and execution proceeds
+                   to  the  next  command.   The  line  in  which   the
+                   termination  string  was detected is not included in
+                   the file.  This parameter must  be  supplied  for  a
+                   DOWNLOAD, and has no meaning for an UPLOAD.
+
+           USECC   This  keyword  specifies that the host file includes
+                   FORTRAN-style carriage control characters.   If  the
+                   transfer   direction   is   DOWNLOAD,  '1'  carriage
+                   controls are converted to ASCII form-feeds, and  all
+                   other  carriage  controls are ignored (deleted).  If
+                   the transfer direction is UPLOAD,  lines  containing
+                   form-feeds  are  prefixed  with  '1',  and all other
+                   lines are prefixed with ' '.  Additionally,  a  line
+                   containing  only  a '1' carriage control is uploaded
+                   before the first line of the file.  The  default  if
+                   the  USECC  keyword  is not specified is to transmit
+                   each text line unchanged.
+
+           LINE    This keyword specifies that only one line is  to  be
+                   transfered.   The  specified  file  remains open, so
+                   that  additional  lines   can   be   transfered   by
+                   subsequent  commands.   The number of files that can
+                   be left open is a compile-time  constant,  currently
+                   set to five.
+
+           PROMPT  This  parameter  specifies  a  string  that  must be
+                   received from the host system before  each  line  is
+                   transfered on an UPLOAD.  The prompt is not required
+                   before the first line of the transfer, or after  the
+                   last line.
+
+
+
+
+1                                                                   2-3
+                                                               84/04/16
+        ---------------------------------------------------------------
+        2.0 SCRIPT COMMANDS
+        2.3 THE TRANSFER COMMAND
+        ---------------------------------------------------------------
+
+           PERIOD  If this parameter is coded, CONVERS  will  abort  if
+                   the  string specified by the PROMPT parameter is not
+                   detected within the specified period.   This  period
+                   is  expressed  as  an integer numbers of tenths of a
+                   second.  If this parameter is not specified, CONVERS
+                   will wait 30 seconds for each prompt.
+
+           During  uploads,  each  line  is  transmitted  followed by a
+           carriage return character.  During downloads,  the  carriage
+           return  character  is  interpreted  as  end-of-line, and all
+           other ASCII control characters are ignored.
+
+           This command aborts if the  link  carrier  drops,  or  if  a
+           prompt string is not detected within the specifed period.
+
+           2.4 THE WAIT COMMAND
++              ________________
+
+           This  command  suspends  execution  of  the  script  until a
+           carrier is detected on the link.  This command aborts if the
+           carrier is not detected within 30 seconds.
+
+           2.5 THE PAUSE COMMAND
++              _________________
+
+           This  command  suspends  execution  of  the  script  for one
+           second.
+
+           2.6 THE DEFINE COMMAND
++              __________________
+
+           This command is used to define one or more  variables.   The
+           remainder  of  the command line contains symbol definitions,
+           of the form:
+
+                   variable_name = expression
+
+           Each definition is separated from the next by a comma.
+
+           The number of variables that may be  defined  is  a  CONVERS
+           compile-time parameter, currently set at 30.  The definition
+           of a variable cannot be deleted.
+
+           2.7 THE EXECUTE COMMAND
++              ___________________
+
+           This command saves the current state of CONVERS, and  begins
+           execution  of  a  specified program.  The first (positional)
+           parameter specifies the program name.  The remainder of  the
+           command  line is passed to the called program as a parameter
+           string.
+
+
+
+
+
+
+1                                                                   2-4
+                                                               84/04/16
+        ---------------------------------------------------------------
+        2.0 SCRIPT COMMANDS
+        2.8 THE CALL COMMAND
+        ---------------------------------------------------------------
+
+           2.8 THE CALL COMMAND
++              ________________
+
+           This command passes control to another script.   The  action
+           is  quite  similar  to  a  subroutine call, in that when the
+           called script executes a RETURN command, the calling  script
+           will resume execution with the command immediately following
+           the CALL.
+
+           The first (positional) parameter is the name of  the  called
+           script.  Variable definitions may follow, separated from the
+           script name by a comma.   These  definitions  are  performed
+           before  execution  of  the  called script begins, and may be
+           used as parameters to the called script.
+
+           All variable definitions  remain  valid  across  CALL's  and
+           RETURN's;  i.e.,  variables  are declared globally.  Scripts
+           may be called recursively.   The  maximum  depth  of  script
+           nesting is  a compile-time parameter, currently set at five.
+
+           2.9 THE RETURN COMMAND
++              __________________
+
+           This command returns control to the script that  called  the
+           current  one.   If  the  current  script  was  called by the
+           CONVERS parameter string,  execution  of  the  program  ends
+           normally.
+
+           2.10 THE QUIT COMMAND
++               ________________
+
+           This  command  immediately  terminates execution of CONVERS.
+           If the current script is not the top level, a trace-back  of
+           script CALL's will be displayed.
+
+           2.11 THE IF COMMAND
++               ______________
+
+           This  command  marks the beginning of a sequence of commands
+           that are conditionally executed.  The sole parameter of  the
+           command is a boolean expression.  If the expression is true,
+           commands between this IF and a matching IFEND or  ELSE  will
+           be  executed.   If the value of the expression is false, the
+           following commands will be skipped.
+
+           IF, ELSE and WHILE ranges may be nested to a  maximum  depth
+           that is a compile- time constant (currently set to five).
+
+           2.12 THE ELSE COMMAND
++               ________________
+
+           This   command  reverses  the  effect  of  the  most  recent
+           outstanding IF command.  If the expression in the IF command
+           was  true,  commands following the ELSE will be skipped.  If
+           the IF expression was false,  commands  following  the  ELSE
+           will  be  executed.   The ELSE command is illegal outside of
+
+
+1                                                                   2-5
+                                                               84/04/16
+        ---------------------------------------------------------------
+        2.0 SCRIPT COMMANDS
+        2.12 THE ELSE COMMAND
+        ---------------------------------------------------------------
+
+           the range of an IF command.
+
+           2.13 THE IFEND COMMAND
++               _________________
+
+           This command marks the end of the range  of  a  matching  IF
+           command.
+
+           2.14 THE WHILE COMMAND
++               _________________
+
+           This  command  marks the beginning of a sequence of commands
+           (terminated by a WHILEND  command)  that  will  be  executed
+           repeatedly.    The  boolean  expression  that  is  the  only
+           parameter of the WHILE command controls the repetition.   If
+           this  expression  is  false  the  first  time  the  WHILE is
+           executed, the commands within the range  of  the  WHILE  are
+           skipped.
+
+           2.15 THE WHILEND COMMAND
++               ___________________
+
+           This  command marks the end of the range of a matching WHILE
+           command.
+
+           2.16 THE DIAL COMMAND
++               ________________
+
+           This command executes an  autodial  operation  on  equipment
+           with  that  feature.   The  single positional parameter is a
+           string  specifying  the  number  to  be  dialed.   The   ':'
+           character  is  used  to indicate where the modem should wait
+           for a new dial tone before proceeding.
+
+           This command  aborts  if  the  equipment  does  not  support
+           autodialing,  or  if  the communications software detects an
+           error.
+
+           2.17 THE HANGUP COMMAND
++               __________________
+
+           This command terminates the communication link on  equipment
+           with  this  feature.   This command is usually used with the
+           DIAL command.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1                                                                   3-1
+                                                               84/04/16
+        ---------------------------------------------------------------
+        3.0 EXECUTION OF CONVERS
+
+        ---------------------------------------------------------------
+
+           3.0 EXECUTION OF CONVERS
++              ____________________
+
+
+           Each CONVERS script exists as a separate text  file  on  the
+           workstation.  The file name is the name of the script.
+
+           When CONVERS is started by the workstation operating system,
+           it looks for a workstation file called CMDLINE.  If the file
+           exists,  the  first line is used as CONVERS' command string.
+           If the file does not exist, CONVERS gets a parameter  string
+           from  the  user  via  the keyboard.  (Hitting the escape key
+           results in immediate exit from CONVERS.)
+
+           The first expression in the parameter string is the name  of
+           the  first script to be executed.  The remainder of the line
+           is interpreted as a series of variable definitions.
+
+           The variables DISPLAY_COMMANDS and DISPLAY_LINK control  the
+           display  of  debugging information (see the previous section
+           on variables).  When either of these variables is true,  the
+           information  requested is shown in a "window" on the display
+           screen.  During script debugging, these variables can be set
+           to  TRUE  in  the  parameter  string.   (See  the section on
+           variables for more information.)
+
+           (Note: The link display advances to the first position of  a
+           new  line upon receipt of an ASCII line-feed character.  The
+           carriage return character is ignored.)
+
+           The escape key on the workstation keyboard may  be  used  to
+           abort  CONVERS  execution  at  any time.  This is especially
+           useful during script debugging, when CONVERS cannot  find  a
+           string that it is trying to MATCH.
+
+           The UCSD operating system currently does not provide a means
+           to  pass  a  parameter  string  to  an  executing   program.
+           Therefore, the program first looks for a parameter string on
+           a file called CMDLINE.TEXT on the system  device.   If  that
+           file  does  not  exist or is empty, the user is prompted for
+           the parameter string after program execution begins.
+
+           If the EXECUTE command includes a  parameter  string  to  be
+           passed  to  the  called program, that string is written as a
+           one-line file called CMDLINE.TEXT on the system device.
+
+
+
+
+
+
+
+
+
+1                                                                   4-1
+                                                               84/04/16
+        ---------------------------------------------------------------
+        4.0 SAMPLE SCRIPTS
+
+        ---------------------------------------------------------------
+
+           4.0 SAMPLE SCRIPTS
++              ______________
+
+
+
+
+           Script ON_CIS:
+
+               *
+               *  this script logs onto the CompuServ network.
+               *
+               Display, 'Waiting for carrier...'
+               Wait
+               Display, 'Logging onto system...'
+               Pause
+               Send
+               Match, 'NAME:'
+               Send, 'CIS'
+               Match,       'ID:', ANYWHERE
+               *
+               *  Substitute your own user id in the following command.
+               *
+               Send,      'userid'
+               Match,       'WORD:', ANYWHERE
+               *
+               *  Substitute your own password in the following command.
+               *
+               Send,      'password'
+               Display, 'Waiting for prompt from MUSUS...'
+               Match,     'FUNCTION:', ANYWHERE
+               Send,      'op;br;t'
+               Match, 'Function:', ANYWHERE
+               Display, 'Logged onto MUSUS'
+               Return
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1                                                                   4-2
+                                                               84/04/16
+        ---------------------------------------------------------------
+        4.0 SAMPLE SCRIPTS
+
+        ---------------------------------------------------------------
+
+           Script GET_LATEST:
+
+               *
+               *  this script gets the latest mail summary from MUSUS,
+               *  and puts it into file MUSUS_SUM.TEXT.
+               *
+               Display, 'Logging onto CompuServ...'
+               Call, on_cis
+               Display, 'Downloading message summary...'
+               Send, 'qs;n'
+               Transfer,musus_sum, term='Function:'
+               Display, 'Logging off CompuServ...'
+               Send, 'off'
+               Match, 'CONNECT', ANYWHERE
+               Display, 'Executing summary review program...'
+               Execute, look_sum
+               *
+               *  Program look_sum displays each summary line,
+               *  and asks whether I want to see the full message.
+               *  If I do, the program writes the message number
+               *  into file MUSUS_NUM.  At the end of the
+               *  summary, CONVERS is called with script GET_MSGS.
+               *
+
+
+           Script GET_MSGS:
+
+               *
+               *  This script downloads selected messages from
+               *  MUSUS to the workstation.  The message numbers
+               *  are specified, one per line, on file musus_num.
+               *
+               Display, 'Logging onto CompuServ...'
+               Call, on_cis
+               Define, cret_prompt = 'T)', to_end_prompt = 'END):'
+               While, NOT $EOF ( musus_num )
+                 Define, line = $READ ( musus_num )
+                 Display, 'Downloading message ' // $VALUE( line )
+                 Send, 'ri;' // $VALUE ( line )
+                 Transfer, log, DOWNLOAD, TERM = $VALUE ( cret_prompt )
+                 Send, 'rr'
+                 Transfer, log, DOWNLOAD, TERM = $VALUE ( cret_prompt )
+                 Send, 'ns'
+                 Transfer, log, DOWNLOAD, TERM = $VALUE (to_end_prompt )
+                 Send, 't'
+               Whilend
+               Display, 'Logging off CompuServ...'
+               Send, 'off'
+               Match, 'CONNECT', ANYWHERE
+               Return
+
+
+
+1                                                                   4-3
+                                                               84/04/16
+        ---------------------------------------------------------------
+        4.0 SAMPLE SCRIPTS
+
+        ---------------------------------------------------------------
+
+
+           Script PRINT:
+
+               *               Script PRINT
+               *
+               *                Version C5
+               *
+               *  This script prints a file (with added
+               *  carriage controls) on a system running
+               *  the Control Data NOS/VE operating system.
+               *
+               *  Parameters:   FILE - name of the file on local
+               *                       processor (defaults to
+               *                       *LISTING );
+               *                TITLE - banner page heading for
+               *                        listing (defaults to name
+               *                        specified for parameter FILE)
+               *
+               *
+               If, NOT $DEF( file )
+                 Define, file = *LISTING
+               Ifend
+               *
+               If, NOT $DEF( title )
+                 Define, title = $VALUE( file )
+               Ifend
+               *
+               Define, ctl_t = $CHR( 20 ), quote = $CHR ( 39 )
+               Display, 'Configuring host for file transfer...'
+               Send, 'collect_text, $LOCAL.listing'
+               Match, '?'
+               Display, 'Uploading file ' // $STR( $VALUE( file ))
+               Transfer, $VALUE(file), UPLOAD, ADDCC, prompt='?'
+               Send, '**'
+               Match, '/'
+               Display, 'Executing host print command...'
+               Send, 'prif $LOCAL.listing,title='//$STR($VALUE(title))
+               Match, '/'
+               Display, 'Printing competed'
+               Return
+
+
+
+
+
+
+
+
+
+
+
+
+
+1                                                                     1
+                                                               84/04/16
+
+                                 Table of Contents
+
+
+           1.0 CONVERS CONCEPTS AND DEFINITIONS  . . . . . . . .    1-1
+           1.1 PRINCIPLES OF CONVERS OPERATION . . . . . . . . .    1-1
+           1.2 DATA TYPES  . . . . . . . . . . . . . . . . . . .    1-1
+             1.2.1 STRINGS . . . . . . . . . . . . . . . . . . .    1-1
+             1.2.2 INTEGERS  . . . . . . . . . . . . . . . . . .    1-1
+             1.2.3 NAMES . . . . . . . . . . . . . . . . . . . .    1-1
+           1.3 STRING, INTEGER AND BOOLEAN CONSTANTS . . . . . .    1-2
+           1.4 VARIABLES . . . . . . . . . . . . . . . . . . . .    1-2
+           1.5 STRING OPERATORS  . . . . . . . . . . . . . . . .    1-3
+           1.6 BOOLEAN OPERATORS . . . . . . . . . . . . . . . .    1-3
+           1.7 FUNCTIONS . . . . . . . . . . . . . . . . . . . .    1-3
+             1.7.1 THE $CHR FUNCTION . . . . . . . . . . . . . .    1-3
+             1.7.2 THE $VALUE FUNCTION . . . . . . . . . . . . .    1-3
+             1.7.3 THE $DEF FUNCTION . . . . . . . . . . . . . .    1-3
+             1.7.4 THE $READ FUNCTION  . . . . . . . . . . . . .    1-4
+             1.7.5 THE $EOF FUNCTION . . . . . . . . . . . . . .    1-4
+             1.7.6 THE $EQ FUNCTION  . . . . . . . . . . . . . .    1-4
+             1.7.7 THE $STR FUNCTION . . . . . . . . . . . . . .    1-4
+             1.7.8 THE $NAME FUNCTION  . . . . . . . . . . . . .    1-4
+           1.8 SCRIPT COMMANDS . . . . . . . . . . . . . . . . .    1-4
+           1.9 ERRORS DURING COMMAND EXECUTION . . . . . . . . .    1-5
+
+           2.0 SCRIPT COMMANDS . . . . . . . . . . . . . . . . .    2-1
+           2.1 THE SEND COMMAND  . . . . . . . . . . . . . . . .    2-1
+           2.2 THE MATCH COMMAND . . . . . . . . . . . . . . . .    2-1
+           2.3 THE TRANSFER COMMAND  . . . . . . . . . . . . . .    2-2
+           2.4 THE WAIT COMMAND  . . . . . . . . . . . . . . . .    2-3
+           2.5 THE PAUSE COMMAND . . . . . . . . . . . . . . . .    2-3
+           2.6 THE DEFINE COMMAND  . . . . . . . . . . . . . . .    2-3
+           2.7 THE EXECUTE COMMAND . . . . . . . . . . . . . . .    2-3
+           2.8 THE CALL COMMAND  . . . . . . . . . . . . . . . .    2-4
+           2.9 THE RETURN COMMAND  . . . . . . . . . . . . . . .    2-4
+           2.10 THE QUIT COMMAND . . . . . . . . . . . . . . . .    2-4
+           2.11 THE IF COMMAND . . . . . . . . . . . . . . . . .    2-4
+           2.12 THE ELSE COMMAND . . . . . . . . . . . . . . . .    2-4
+           2.13 THE IFEND COMMAND  . . . . . . . . . . . . . . .    2-5
+           2.14 THE WHILE COMMAND  . . . . . . . . . . . . . . .    2-5
+           2.15 THE WHILEND COMMAND  . . . . . . . . . . . . . .    2-5
+           2.16 THE DIAL COMMAND . . . . . . . . . . . . . . . .    2-5
+           2.17 THE HANGUP COMMAND . . . . . . . . . . . . . . .    2-5
+
+           3.0 EXECUTION OF CONVERS  . . . . . . . . . . . . . .    3-1
+
+           4.0 SAMPLE SCRIPTS  . . . . . . . . . . . . . . . . .    4-1
+
+
+
+
+
+
+
+
+
+
+1
+--EOR--

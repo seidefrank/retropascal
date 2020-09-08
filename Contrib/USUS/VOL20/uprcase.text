@@ -1,0 +1,120 @@
+PROGRAM UPPERCASE;  {Version 1.1, 26 Oct 81}
+
+VAR CH,REPLY : CHAR;
+    SFIN,SFOUT : STRING;
+    FIN,FOUT : TEXT;
+    I,RSLT : INTEGER;
+    SKIP : BOOLEAN;
+
+PROCEDURE CLEARSCREEN;
+  VAR LF : PACKED ARRAY [1..24] OF CHAR;
+       I : INTEGER;
+  BEGIN
+    GOTOXY(0,23);
+    FOR I := 1 TO 24 DO LF[I] := CHR(10);
+    UNITWRITE(1,LF,24);
+    GOTOXY(0,0)
+  END;
+  
+PROCEDURE CLEARSPACE (X,Y,N : INTEGER);
+  VAR I : INTEGER;
+      CS :PACKED ARRAY [1..160] OF 0..255;
+  BEGIN
+    GOTOXY(X,Y);
+    FOR I := 1 TO N DO CS[I] := 32;
+    FOR I := N+1 TO N+N DO CS[I] := 8;
+    UNITWRITE(1,CS[1],N);
+    UNITWRITE(1,CS[N+1],N)
+  END;
+  
+(*$I-*)
+PROCEDURE GETINFILE;
+  BEGIN
+    REPEAT
+      BEGIN
+        READLN(SFIN);
+        RESET(FIN,SFIN);
+        RSLT := IORESULT;
+        IF RSLT <> 0 THEN
+          BEGIN
+            IF RSLT = 10 THEN 
+              BEGIN
+                SFIN := CONCAT(SFIN,'.TEXT');
+                RESET(FIN,SFIN);
+                RSLT := IORESULT
+              END;
+            IF RSLT <> 0 THEN
+              BEGIN
+                GOTOXY(0,20);
+                WRITE('IO error',RSLT:3,'.  Correct and type <SP> to continue or Q(uit)');
+                REPEAT READ (KEYBOARD, REPLY) UNTIL REPLY IN ['Q','q',' '];
+                CLEARSPACE(0,20,72);
+                IF REPLY IN ['Q','q'] THEN
+                  BEGIN
+                    CLOSE(FOUT,LOCK);
+                    EXIT(PROGRAM)
+                  END
+                  ELSE CLEARSPACE(36,4,LENGTH(SFIN))
+              END
+          END
+      END
+    UNTIL RSLT = 0
+   END;
+(*$I+*)
+
+(*$I-*)
+PROCEDURE GETOUTFILE;
+  BEGIN
+    REPEAT
+      READLN(SFOUT);
+      REWRITE(FOUT,SFOUT);
+      RSLT := IORESULT;
+      IF RSLT <> 0 THEN
+        BEGIN
+          GOTOXY (0,20);
+          WRITE('IO error',RSLT:3,'. Correct and type <SP> to continue or Q(uit)');
+          REPEAT READ(KEYBOARD,REPLY) UNTIL REPLY IN ['Q','q',' '];
+          CLEARSPACE(0,20,72);
+          IF REPLY IN ['Q','q'] THEN
+            BEGIN
+              CLEARSCREEN;
+              EXIT(PROGRAM)
+            END
+            ELSE CLEARSPACE(37,2,LENGTH(SFOUT))
+        END
+      UNTIL RSLT = 0
+  END;
+(*$I+*)
+
+BEGIN
+  CLEARSCREEN;
+  WRITELN('This program copies files in upper case.');
+  WRITELN;
+  WRITE('Enter output file (upper case file): ');
+  GETOUTFILE;
+  WRITELN;
+  WRITE('Enter input file (lower case file): ');
+  GETINFILE;
+  WRITELN;
+  WRITELN('Lines copied');
+  SKIP := FALSE;
+  I := 1;
+  WHILE (NOT EOF(FIN)) DO
+    BEGIN
+      WHILE (NOT EOLN(FIN)) DO
+        BEGIN
+          READ(FIN,CH);
+          IF (CH IN ['''','{','}']) THEN SKIP := NOT SKIP;
+          IF (CH >= 'a') AND (CH <= 'z') AND NOT SKIP THEN
+            CH := CHR(ORD(CH) - 32);
+          WRITE(FOUT,CH)
+        END;
+      READLN(FIN);
+      WRITELN(FOUT);
+      WRITE('.');
+      IF ((I MOD 50) = 0) THEN WRITELN;
+      I := I+1
+    END;
+  CLOSE(FOUT,LOCK);
+  CLOSE(FIN)
+END.

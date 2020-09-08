@@ -1,0 +1,194 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <None Include="lib\config.h.in">
+      <Filter>lib</Filter>
+    </None>
+    <None Include="turtle_graphics\turt.asm.text">
+      <Filter>turtle_graphics</Filter>
+    </None>
+    <None Include="turtle_graphics\turtlegr.text">
+      <Filter>turtle_graphics</Filter>
+    </None>
+    <None Include="aegis.conf">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="AUTHORS">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="BUILDING">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="configure">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="install-sh">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="LICENSE">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="Makefile.in">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="README">
+      <Filter>license and readme</Filter>
+    </None>
+    <None Include="man\man1\ucsdpsys_svolcvt.1">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\ucsdpsys_svolio.1">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\ucsdpsys_vm.1">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\ucsdpsys_vm_license.1">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\ucsdpsys_xturtleserver.1">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\z_copyright.so">
+      <Filter>man</Filter>
+    </None>
+    <None Include="man\man1\z_exit.so">
+      <Filter>man</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="lib">
+      <UniqueIdentifier>{ac83235f-4865-4e8a-991d-2a0c2cf22a71}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="turtle_graphics">
+      <UniqueIdentifier>{cd70819c-153d-480d-a44a-b4b4f51031b2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ucsdpsys_vm">
+      <UniqueIdentifier>{7cb24e10-c8aa-45d8-ba0e-dbc451b2b9b6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="license and readme">
+      <UniqueIdentifier>{5cbcee6e-6ea1-4adb-aeea-a9a8495fc277}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="man">
+      <UniqueIdentifier>{76e9b600-a442-4ea6-ad6b-778ca47b5cb3}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="lib\byte_sex.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\diskio.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\memory.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\progname.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\version.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\version_stamp.c">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\array.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\long_integer.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\main.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\native6502.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\printer.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\ptrace.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\search.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\sets.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\stack.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\term.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\turtlegr.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\unit_io.c">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="lib\byte_sex.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\diskio.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\gcc_attributes.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\memory.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\patchlevel.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\pcode.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\progname.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\psystem.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\version.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\version_stamp.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\array.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\long_integer.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\native6502.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\printer.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\ptrace.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\search.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\sets.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\stack.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\term.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+    <ClInclude Include="ucsdpsys_vm\turtlegr.h">
+      <Filter>ucsdpsys_vm</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

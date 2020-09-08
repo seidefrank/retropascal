@@ -1,0 +1,72 @@
+                    DOCUMENTATION FOR USUS LIBRARY VOLUME 9
+                                     Games
+
+     The programs on this disk represent games in various stages of develop-
+ment, from ADVENTURE, which is superb and complete, to SPACEWAR, which will
+work fine now if you and a friend have your Microengines hooked together,
+but needs work for other configurations.
+
+ADVENTURE.....There are a number of files on this disk that comprise the game 
+              Adventure, all of which boil down to four (a code file and three 
+              data files) when the game is actually run.  This is the FULL, 
+              ORIGINAL FORTRAN Adventure, translated into UCSD Pascal via a 
+              PL/I version.  Several of us have played it, and we have all 
+              found it the fastest disk-based ADVENTURE going.  Splendid job, 
+              Mike Turner!
+              
+              To get started, READ THE DOCUMENTATION, which tells you how to 
+              set up the data files with ADVINIT, and don't forget 
+              ADV.MISCINFO, which tells the system how big your screen is.  
+              Total setup time with a fresh disk is about 10 minutes, required 
+              once only.
+              
+STARTREK......Barry Demchak wrote a good if relatively routine Pascal version
+              of the BASIC classic; it has the added feature of Klingon
+              starbases to make life interesting.  
+              
+              Startrek always seems to inspire game programmers to further 
+              heights, and if this is your passion, Barry's given you a good 
+              start...maybe add real time?  If so, several caveats:  use a
+              counter to time moves, rather than the system clock, which few
+              of us have (and scale the counter with a startup query of slow,
+              medium, or fast processor).  Put all your screen control in one
+              place so we can find it, perhaps in your own screen control unit
+              (a USUS standard screen control unit is being drafted).
+              
+CASTLES.......This is Pat Horton's implementation of a strategic board game.  
+              Board and move codes are described in CASTLES.DOC, which you 
+              should probably have printed out and sitting beside you when you
+              play.
+              
+SPACEWAR......Pat Horton has done an excellent job of putting together the
+              start of the classic battling space ships.  It is designed to be
+              used with two computers hooked together by their remote ports
+              (or is it two terminals and one computer?).  To get an idea of
+              how the game functions with only one terminal, delete the 8th
+              line from the end ("WHILE NOT...") and play with one ship
+              inoperative.
+              
+              Playing is easy, since there are only five commands.  Control H, 
+              J, K, and L are used to control the ship:  ^H and ^L turn it 45 
+              degrees to the right and to the left; ^J causes the ship to 
+              accelerate in its current direction; and ^K causes the ship to
+              fire.  Typing a "q" or "Q" quits the game.
+              
+              This version lacks a sun, although there seems to be a 
+              gravitational field pulling you toward the center.  If you move 
+              to the edge of the screen, you'll bounce back like a tennis 
+              ball, rather than appearing on the other side of the screen as 
+              is usually done.  "Bullets" fired have little momentum, and 
+              mostly follow your ship; I saw only one at a time.  Action
+              happens only if you or your opponent press a key, though it
+              keeps up with "repeat" keys nicely and moves fast.  Pat has
+              done a nice job of indicating the orientation of your ship (it
+              requires all printing ASCII characters, however, and may not
+              work on a standard Apple).  There are several instances of 
+              writing an ESC-"*" sequence to the screen, which I believe is 
+              meant to clear it.
+              
+              
+                                 Good playing!!
+                        Jim Gagne, USUS Library Chairman
+       Datamed Research, Inc., 1433 Roscomare Road, Los Angeles, CA 90024

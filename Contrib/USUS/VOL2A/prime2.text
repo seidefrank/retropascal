@@ -1,0 +1,19 @@
+program primes;
+  var range,sample,test : integer;
+      prime: boolean;
+begin
+  read(range);
+  writeln(2);
+  for sample:=3 to range do
+    begin
+      prime:=TRUE; test:=1;
+      repeat
+        begin
+          test:=test+1;
+          if sample mod test=0 then prime:=FALSE;
+          end
+        until (not prime) or (test>=sample div test);
+      if prime then write(CHR(9),sample);
+      end;
+end.
+

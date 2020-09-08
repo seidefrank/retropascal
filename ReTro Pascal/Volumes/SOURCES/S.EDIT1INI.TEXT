@@ -1,0 +1,605 @@
+(* --- HEAD --- *)
+(*$U-*)
+CONST
+  VIDLENG = 7;  (* Number of characters in a volume ID *)
+  TIDLENG = 15;	(* Number of characters in a title ID *)
+
+TYPE
+
+  DATEREC=PACKED RECORD
+	    MONTH: 0..12;
+	    DAY:   0..31;
+	    YEAR:  0..100
+	  END;
+
+  VID = STRING[VIDLENG];
+
+  TID = STRING[TIDLENG];
+
+  INFOREC = RECORD
+	      TRASH1,TRASH2: INTEGER;
+	      ERRSYM,ERRBLK,ERRNUM: INTEGER;    (* Error com for EDIT *)
+	      TRASH3: ARRAY [0..2] OF INTEGER;
+	      GOTSYM,GOTCODE: BOOLEAN;
+	      WORKVID,SYMVID,CODEVID: VID;      (* Perm&Cur workfile volumes *)
+	      WORKTID,SYMTID,CODETID: TID       (* Perm&Cur workfile titles *)
+	    END (*INFOREC*) ;
+
+  SYSCOMREC = RECORD
+		JUNK: ARRAY [0..6] OF INTEGER;
+		LASTMP: INTEGER;
+		EXPANSION: ARRAY [0..20] OF INTEGER;
+		MISCINFO: PACKED RECORD
+			    NOBREAK,STUPID,SLOWTERM,
+			    HASXYCRT,HASLCCRT,HAS8510A,HASCLOCK: BOOLEAN
+			  END;
+		CRTTYPE: INTEGER;
+		CRTCTRL: PACKED RECORD
+			   RLF,NDFS,ERASEEOL,ERASEEOS,HOME,ESCAPE: CHAR;
+			   BACKSPACE: CHAR;
+			   FILLCOUNT: 0..255;
+			   CLEARSCREEN,CLEARLINE: CHAR;
+			   PREFIXED: PACKED ARRAY [0..8] OF BOOLEAN
+			 END;
+		CRTINFO: PACKED RECORD
+			   WIDTH,HEIGHT: INTEGER;
+			   RIGHT,LEFT,DOWN,UP: CHAR;
+			   BADCH,CHARDEL,STOP,BREAK,FLUSH,EOF: CHAR;
+			   ALTMODE,LINEDEL: CHAR;
+			   BACKSPACE,ETX,PREFIX: CHAR;
+			   PREFIXED: PACKED ARRAY [0..13] OF BOOLEAN;
+			 END
+	      END (*SYSCOM*);
+
+VAR (* I.4 Globals as of 30-Jan-78 *)
+  SYSCOM: ^SYSCOMREC;
+  TRASHY: ARRAY [0..5] OF INTEGER;
+  USERINFO: INFOREC;
+  TRASHYY: ARRAY [0..4] OF INTEGER;
+  SYVID,DKVID: VID;
+  THEDATE: DATEREC;
+
+
+SEGMENT PROCEDURE EDITOR(XXX,YYY: INTEGER); 
+CONST
+  (* Unless otherwise noted all constants are upper bounds
+     from zero.					        *)
+
+  MAXBUFSIZE=32767;
+{.fs#  MAXSW=84; } (* Maximum allowable SCREENWIDTH *)
+{.fs#  MAXSTRING=127; }
+{.fs} MAXSW=223; (* Maximum allowable SCREENWIDTH, using max GOTOXY-addressable *)
+{.fs} MAXSTRING=254; { buffer size, using max addressable string }
+  MAXCHAR=1023;  (* The maximum number of characters on a line in the EBUF *)
+  TIDLENG=15;  (* From SYSCOM *)
+  CHARINBUF=2048;  (* For final version. Not used. *)
+  MAXOFFSET=1023; (* Maximum offset in a page *)
+  MAXPAGE=255; (* Ridiculous upper bound! *)
+
+  (* The following ASCII characters are hard-wired in *)
+  HT=9; LF=10; EOL=13; DLE=16; SP=32;
+  DC1=17; BELL=7; RUBOUT=127; CR=13;
+
+
+TYPE
+  PTRTYPE=0..MAXBUFSIZE;
+  BUFRTYPE=PACKED ARRAY [0..0] OF CHAR;
+  BLOCKTYPE=PACKED ARRAY [0..511] OF CHAR;
+  ERRORTYPE=(FATAL,NONFATAL);
+  OFFSET=0..MAXOFFSET;
+  PAGE=0..MAXPAGE;
+  NAME=PACKED ARRAY [0..7] OF CHAR;
+  PTYPE=PACKED ARRAY [0..MAXSTRING] OF CHAR;
+  COMMANDS=(ILLEGAL,ADJUSTC,COPYC,DELETEC,FINDC,INSERTC,JUMPC,LISTC,MACRODEFC,
+	    PARAC,QUITC,REPLACEC,SETC,VERIFYC,XECUTEC,ZAPC,REVERSEC,FORWARDC,UP,
+{.fs}       HOMEC,ENDC, { go to begin and end of line }
+{.fs}       HELPC,      { H(elp }
+{.fs}       PASTEC,     { C(opy -> V(rom file }
+	    DOWN,LEFT,RIGHT,TAB,DIGIT,DUMPC,ADVANCE,SPACE,EQUALC,SLASHC);
+  CTYPE=(FS,GOHOME,ETOEOL,ETOEOS,US);
+  SCREENCOMMAND=(WHOME,ERASEEOS,ERASEEOL,CLEARLNE,CLEARSCN,UPCURSOR,
+		 DOWNCURSOR,LEFTCURSOR,RIGHTCURSOR);
+  KEYCOMMAND=   (BACKSPACEKEY,DC1KEY,EOFKEY,ETXKEY,ESCAPEKEY,DELKEY,UPKEY,
+		 DOWNKEY,LEFTKEY,RIGHTKEY,NOTLEGAL);
+
+  HEADER=    (* Page Zero layout changed 22-JUN-78 *)
+    RECORD CASE BOOLEAN OF
+      TRUE: (BUF: PACKED ARRAY[0..MAXOFFSET] OF CHAR);
+      FALSE:(DEFINED:    BOOLEAN; (* New file nulls => false *)
+	     COUNT:      INTEGER;  (* The count of valid markers *)
+	     NAME:       ARRAY [0..9] OF PACKED ARRAY [0..7] OF CHAR;
+	     PAGEN:      PACKED ARRAY [0..9] OF PAGE;
+	     POFFSET:    PACKED ARRAY [0..9] OF OFFSET;
+	     AUTOINDENT: BOOLEAN; (* Environment stuff follows *)
+	     FILLING:    BOOLEAN;
+	     TOKDEF:     BOOLEAN;
+	     LMARGIN:    0..MAXSW;
+	     RMARGIN:    0..MAXSW;
+	     PARAMARGIN: 0..MAXSW;
+	     RUNOFFCH:   CHAR;
+	     CREATED:    DATEREC;
+	     LASTUSED:   DATEREC;
+{.fs#	     FILLER:     PACKED ARRAY [0..891] OF CHAR) }
+             LASTCURSOR: INTEGER; { CURSOR variable at time of save }
+	     FILLER:     PACKED ARRAY [0..889] OF CHAR)
+    END;
+
+
+
+VAR
+  CURSOR: 0..MAXBUFSIZE;
+  BUFCOUNT: 0..MAXBUFSIZE;       (* Number of valid characters in the EBUF *)
+  STUFFSTART: 0..MAXBUFSIZE;     (* GETLEADING            *)
+  LINESTART: 0..MAXBUFSIZE;      (*            sets       *)
+  BYTES,BLANKS: INTEGER;         (*                 these *)
+  CH: CHAR;
+  DIRECTION: CHAR;               (* '>' or '<' *)
+  REPEATFACTOR: INTEGER;
+  BUFSIZE: INTEGER;
+  SCREENWIDTH: INTEGER;          (* Moved to var 26-Jan *)
+  SCREENHEIGHT: INTEGER;         (*   "    "  "    "    *)
+  COMMAND: COMMANDS;
+  LASTPAT: 0..MAXBUFSIZE;
+  EBUF: ^BUFRTYPE;
+  FILLIT: STRING[11];
+  KIND: ARRAY [CHAR] OF INTEGER; (* for token find *)
+  LINE1PTR: 0..MAXBUFSIZE;
+  MIDDLE: INTEGER;               (* Middle line on the screen *)
+  NEEDPROMPT: BOOLEAN;
+  ETX,BS,DEL,ESC,BSPCE: INTEGER;  (* Moved from CONST 30-Jan-78 BSPCE: 11/2/78*)
+{.fs# ADJUSTPROMPT,INSERTPROMPT,DELETEPROMPT,COMPROMPT: STRING; }
+{.fs} ADJUSTPROMPT,INSERTPROMPT,DELETEPROMPT: STRING;
+{.fs} COMPROMPT: STRING[MAXSW];
+  {Promptline  11/2/78 M. Bernard}
+  TRASH: INTEGER;                (* Totally without redeeming social value *)
+  TARGET: PTYPE;
+  SUBSTRING: PTYPE;
+  SLENGTH,TLENGTH: INTEGER;      (* Length of target and substring *)
+  SDEFINED,TDEFINED: BOOLEAN;    (* Whether the strings are valid *)
+  COPYLENGTH,COPYSTART: PTRTYPE; (* For Copyc *)
+  COPYLINE,COPYOK: BOOLEAN;      (*    "      *)
+  INFINITY: BOOLEAN;             (* for slashc *)
+  THEFILE: FILE;
+  TRANSLATE: ARRAY [CHAR] OF COMMANDS;
+  PAGEZERO: HEADER;
+  MSG: STRING;
+{.fs# PROMPTLINE: STRING; }
+{.fs} PROMPTLINE: STRING[MAXSW];
+  BLANKAREA: ARRAY [0..MAXSW] OF CHAR;
+{.fs# SAVETOP: STRING;               (* Dumb terminal patch - for BLANKCRT(1) *) }
+{.fs} SAVETOP: STRING[MAXSW];        (* Dumb terminal patch - for BLANKCRT(1) *)
+  SCREEN: PACKED RECORD (* Screen Control Record *)
+	    PREFIX: CHAR;
+{.fs#	    HEIGHT,WIDTH: 0..255; }  { unused; using SCREENWIDTH/HEIGHT instead }
+	    CANUPSCROLL,CANDOWNSCROLL,SLOW: BOOLEAN;
+	    HASPREFIX: PACKED ARRAY [SCREENCOMMAND] OF BOOLEAN;
+	    CH:        PACKED ARRAY [SCREENCOMMAND] OF CHAR
+	  END;
+  KEYBRD: PACKED RECORD (* Keyboard Control Record *)
+	    PREFIX: CHAR;
+	    HASPREFIX: PACKED ARRAY [KEYCOMMAND] OF BOOLEAN;
+	    CH:        PACKED ARRAY [KEYCOMMAND] OF CHAR
+	  END;
+{.fs} CURRENTFILENAME: STRING; { current filename selected at startup or Q W(rite }
+
+{.fs#} { segments are no longer needed in Retro Pascal, with unlimited codespace }
+{.fs# SEGMENT PROCEDURE NUM2; BEGIN END;      SEGMENT PROCEDURE NUM3; BEGIN END; }
+{.fs# SEGMENT PROCEDURE NUM4; BEGIN END;      SEGMENT PROCEDURE NUM5; BEGIN END; }
+{.fs# SEGMENT PROCEDURE NUM6; BEGIN END;      SEGMENT PROCEDURE NUM7; BEGIN END; }
+{.fs# SEGMENT PROCEDURE NUM8; BEGIN END;      SEGMENT PROCEDURE NUM9; BEGIN END; }
+
+(* Forward declared procedures.. all procedures are in MISC and UTIL *)
+
+PROCEDURE ERROR(S:STRING;HOWBAD:ERRORTYPE); FORWARD;
+PROCEDURE ERASETOEOL(X,LINE:INTEGER); FORWARD;
+FUNCTION  GETCH:CHAR; FORWARD;
+PROCEDURE CLEARSCREEN; FORWARD;
+PROCEDURE ERASEOS(X,LINE:INTEGER); FORWARD;
+PROCEDURE CLEARLINE(Y:INTEGER); FORWARD;
+FUNCTION  MAPTOCOMMAND(CH:CHAR): COMMANDS; FORWARD;
+FUNCTION  UCLC(CH:CHAR): CHAR; FORWARD;
+PROCEDURE PROMPT; FORWARD;
+PROCEDURE REDISPLAY; FORWARD;
+FUNCTION  MIN(A,B:INTEGER): INTEGER; FORWARD;
+FUNCTION  MAX(A,B:INTEGER): INTEGER; FORWARD;
+FUNCTION  SCREENHAS(WHAT: SCREENCOMMAND): BOOLEAN; FORWARD;
+FUNCTION  HASKEY(WHAT: KEYCOMMAND): BOOLEAN; FORWARD;
+PROCEDURE CONTROL(WHAT: SCREENCOMMAND); FORWARD;
+PROCEDURE PUTMSG; FORWARD;
+PROCEDURE HOME; FORWARD;
+PROCEDURE ERRWAIT; FORWARD;
+PROCEDURE BLANKCRT(Y: INTEGER); FORWARD;
+FUNCTION  LEADBLANKS(PTR:PTRTYPE;VAR BYTES: INTEGER): INTEGER; FORWARD;
+PROCEDURE CENTERCURSOR(VAR LINE: INTEGER; LINESUP: INTEGER; NEWSCREEN:BOOLEAN);
+  FORWARD;
+PROCEDURE FINDXY(VAR INDENT,LINE: INTEGER); FORWARD;
+PROCEDURE SHOWCURSOR; FORWARD;
+FUNCTION  GETNUM: INTEGER; FORWARD;
+PROCEDURE GETLEADING; FORWARD;
+FUNCTION  OKTODEL(CURSOR,ANCHOR:PTRTYPE):BOOLEAN; FORWARD;
+PROCEDURE LINEOUT(VAR PTR:PTRTYPE; BYTES,BLANKS,LINE: INTEGER); FORWARD;
+PROCEDURE UPSCREEN(FIRSTLINE,WHOLESCREEN:BOOLEAN; LINE: INTEGER); FORWARD;
+PROCEDURE READJUST(CURSOR: PTRTYPE; DELTA: INTEGER); FORWARD;
+PROCEDURE THEFIXER(PARAPTR: PTRTYPE;RFAC: INTEGER;WHOLE: BOOLEAN); FORWARD;
+PROCEDURE GETNAME(MSG:STRING; VAR M:NAME); FORWARD;
+{.fs} PROCEDURE COPYTOCLIPBOARD; FORWARD;
+
+(* --- INIT      --- *)
+
+{.fs} FUNCTION ENDSWITH(S, SUFFIX: STRING): BOOLEAN;
+{.fs}   VAR I: INTEGER;
+{.fs} BEGIN
+{.fs}   I:=POS(SUFFIX,S)-1;
+{.fs}   ENDSWITH:=(I>0) AND (I=LENGTH(S)-LENGTH(SUFFIX));
+{.fs} END;
+
+{.fs} { append an extension to a file name if it is not there }
+{.fs} { based on EDITOR source }
+{.fs} { This is a straight copy from RETROSTUFF so we don't need an extra segment. }
+{.fs} PROCEDURE APPENDEXTENSION(VAR FILENAME: STRING; EXT: STRING);
+{.fs}   VAR I, XLEN: INTEGER;
+{.fs}   FUNCTION UCLC(CH:CHAR):CHAR; (* Map Lower Case to Upper Case *)
+{.fs}   BEGIN { from EDITOR source }
+{.fs}     IF CH IN ['a'..'z'] THEN UCLC:=CHR(ORD(CH)-32) ELSE UCLC:=CH
+{.fs}   END;
+{.fs} BEGIN
+{.fs}   IF FILENAME='' THEN EXIT(APPENDEXTENSION);
+{.fs}   FOR I:=1 TO LENGTH(FILENAME) DO FILENAME[I]:=UCLC(FILENAME[I]); { up-case }
+{.fs}   IF (ENDSWITH(FILENAME,'.LIBRARY')) AND (EXT='.CODE') THEN
+{.fs}     EXIT(APPENDEXTENSION);    { .LIBRARY files are also code }
+{.fs}   XLEN:=LENGTH(EXT)-1;
+{.fs}   IF (NOT ENDSWITH(FILENAME,EXT)) AND                 { tail is not ext }
+{.fs}      (FILENAME[LENGTH(FILENAME)]<>'.') AND            { final . inhibits }
+{.fs}      (FILENAME[LENGTH(FILENAME)]<>':') THEN           { volume name }
+{.fs}     FILENAME:=CONCAT(FILENAME,EXT);
+{.fs}   IF FILENAME[LENGTH(FILENAME)]='.' THEN              { remove inhibitor }
+{.fs}     DELETE(FILENAME,LENGTH(FILENAME),1);
+{.fs} END;
+
+{.fs# SEGMENT} PROCEDURE INITIALIZE;
+LABEL 1;
+VAR 
+  BLOCK: ^BLOCKTYPE;
+  ONEWD: ^INTEGER;
+  DONE,OVFLW: BOOLEAN;
+  CH: CHAR;
+  I,QUIT,GAP,BLKS,PAGE,NOTNULS: INTEGER;
+  FILENAME: STRING;
+  BUFFER: PACKED ARRAY [0..1023] OF CHAR;
+
+PROCEDURE MAP(CH:CHAR; C:COMMANDS);
+BEGIN
+  TRANSLATE[CH]:=C;
+  IF CH IN ['A'..'Z'] THEN TRANSLATE[CHR(32+ORD(CH))]:=C; (* LC TOO *)
+END;
+
+PROCEDURE DEFPROMPTS; (* DEFINES VARIABLE PROMPTLINES MAB 11/2/78*)
+BEGIN
+  COMPROMPT:=
+{.fs} ' Edit: I(nsert D(elete X(change C(opy Z(ap A(djust F(ind R(eplace J(ump S(et Q(uit H(elp ';
+{.fs} {0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789}
+{.fs} IF (SCREENWIDTH+1)<LENGTH(COMPROMPT) THEN
+{.fs} COMPROMPT:=
+{.fs# ' Edit: A(djst C(py D(lete F(ind I(nsrt J(mp R(place Q(uit X(chng Z(ap  [E.6f]'; }
+{.fs} ' Edit: I(nsrt D(lete X(chng C(py Z(ap A(dj F(ind R(place J(mp S(et Q(uit H(elp ';
+{.fs} {01234567890123456789012345678901234567890123456789012345678901234567890123456789}
+  INSERTPROMPT:=
+{.fs# ' Insert: Text {<bs> a char,<del> a line}  [<etx> accepts, <esc> escapes]'; }
+{.fs} ' Insert: Text {<backspace> a char}  [<ctrl-enter> accepts, <esc> escapes]';
+  DELETEPROMPT:=
+{.fs# ' Delete: < > <Moving commmands> {<etx> to delete, <esc> to abort}'; }
+{.fs} ' Delete: < > <Moving commmands> {<ctrl-enter> to delete, <esc> to abort}';
+  ADJUSTPROMPT:=
+  ' Adjust: L(just R(just C(enter <left,right,up,down arrows> {<ctrl-enter> to leave}';
+  IF (SCREENWIDTH+1)<LENGTH(COMPROMPT) THEN
+  BEGIN
+{.fs# INSERTPROMPT:=' Insrt: {<bs>,<del>} [<etx> accepts, <esc> aborts]';    }
+{.fs# DELETEPROMPT:=' Delete: <vector keys> {<etx> deletes, <esc> aborts}';  }
+{.fs# ADJUSTPROMPT:=' Adjst: L(ft R(ght C(ntr <vector keys> <etx> to leave'; }
+{.fs} INSERTPROMPT:=' Insrt: {<bs>} [<ctrl-enter> accepts, <esc> aborts]';
+{.fs} DELETEPROMPT:=' Delete: <arrow keys> {<ctrl-enter> deletes, <esc> aborts}';
+{.fs} ADJUSTPROMPT:=' Adjst: L(ft R(ght C(ntr <arrow keys> <ctrl-enter> to leave';
+{.fs# COMPROMPT:=' Edit: A, C, D, F, I, J, R, Q, X, Z  [E.6f]';  }
+{.fs} COMPROMPT:=' Edit: I, D, X, C, Z, A, F, R, J, Q, H ';
+{.fs}            {0123456789012345678901234567890123456789}
+  END;
+END;
+
+PROCEDURE READFILE;
+BEGIN
+  CLEARSCREEN;          (* Dumb terminal patch *)
+  WRITELN('>Edit:');
+  WRITE('Reading');
+  IF BLOCKREAD(THEFILE,PAGEZERO,2)<>2 THEN ERROR('Reading file',FATAL);
+{.fs} IF PAGEZERO.DEFINED AND (PAGEZERO.LASTCURSOR<>0) THEN
+{.fs}   CURSOR:=PAGEZERO.LASTCURSOR; { cursor position at last save }
+  WRITE('.');
+  PAGE:=1;
+  DONE:=FALSE; OVFLW:=FALSE;
+  WITH USERINFO DO
+    WHILE NOT (DONE OR OVFLW) DO
+      BEGIN
+	DONE:= BLOCKREAD(THEFILE,BUFFER,2)=0;
+	IF NOT DONE THEN
+	  BEGIN
+	    WRITE('.');
+	    NOTNULS:=SCAN(-1024,<>CHR(0),BUFFER[1023])+1024;
+{.fs#       OVFLW:=NOTNULS+BUFCOUNT>=BUFSIZE-10; }          { INTEGER overflow! }
+	    OVFLW:=BUFCOUNT>=BUFSIZE-NOTNULS-10;
+	    IF OVFLW THEN NOTNULS:=0;
+	    MOVELEFT(BUFFER[0],EBUF^[BUFCOUNT],NOTNULS);
+	    IF PAGE+PAGE=ERRBLK THEN CURSOR:=BUFCOUNT+ERRSYM; (* errblk>0 only *)
+	    BUFCOUNT:=BUFCOUNT+NOTNULS;
+	    PAGE:=PAGE+1;
+	  END;
+      END;
+{.fs} IF CURSOR>BUFCOUNT THEN CURSOR:=BUFCOUNT; { to be safe }
+  IF IORESULT<>0 THEN ERROR('Disk error',NONFATAL) ELSE
+    IF NOT DONE THEN ERROR('Buffer overflow.',NONFATAL);
+END;
+
+PROCEDURE LOADFROMSYSCOM;
+(* A rather perverted procedure that takes the syscom^.crtcntrl record
+   and loads it into the Screen Control Record and the syscom^.crtinfo
+   record and loads it into the Keyboard Control Record *)
+BEGIN
+
+  WITH SYSCOM^ DO
+    BEGIN
+
+      (* Miscellaneous stuff *)
+
+      WITH SCREEN DO
+	BEGIN
+	  PREFIX:=CRTCTRL.ESCAPE;
+{.fs#	  HEIGHT:=CRTINFO.HEIGHT-1; } { unused; using SCREENHEIGHT instead }
+{.fs#	  WIDTH:=CRTINFO.WIDTH-1;   } { unused; using SCREENWIDTH instead }
+	  CANUPSCROLL:=TRUE; CANDOWNSCROLL:=FALSE;
+        END;
+
+      KEYBRD.PREFIX:=CRTINFO.PREFIX;
+
+      (* The screen ... *)
+
+      SCREEN.CH[WHOME]:=CRTCTRL.HOME;            
+      SCREEN.HASPREFIX[WHOME]:=CRTCTRL.PREFIXED[4];
+
+      SCREEN.CH[ERASEEOS]:=CRTCTRL.ERASEEOS;
+      SCREEN.HASPREFIX[ERASEEOS]:=CRTCTRL.PREFIXED[3];
+
+      SCREEN.CH[ERASEEOL]:=CRTCTRL.ERASEEOL;
+      SCREEN.HASPREFIX[ERASEEOL]:=CRTCTRL.PREFIXED[2];
+
+      SCREEN.CH[CLEARLNE]:=CRTCTRL.CLEARLINE;
+      SCREEN.HASPREFIX[CLEARLNE]:=CRTCTRL.PREFIXED[7];
+
+      SCREEN.CH[CLEARSCN]:=CRTCTRL.CLEARSCREEN;
+      SCREEN.HASPREFIX[CLEARSCN]:=CRTCTRL.PREFIXED[6];
+
+      SCREEN.CH[UPCURSOR]:=CRTCTRL.RLF;
+      SCREEN.HASPREFIX[UPCURSOR]:=CRTCTRL.PREFIXED[0];
+
+      SCREEN.CH[DOWNCURSOR]:=CHR(LF);
+      SCREEN.HASPREFIX[DOWNCURSOR]:=FALSE;
+
+      SCREEN.CH[LEFTCURSOR]:=CRTCTRL.BACKSPACE;
+      SCREEN.HASPREFIX[LEFTCURSOR]:=CRTCTRL.PREFIXED[1];
+
+      SCREEN.CH[RIGHTCURSOR]:=CRTCTRL.NDFS;
+      SCREEN.HASPREFIX[RIGHTCURSOR]:=CRTCTRL.PREFIXED[8];
+
+      (* ... and the keyboard *)
+
+      KEYBRD.CH[BACKSPACEKEY]:=CRTINFO.BACKSPACE;
+      KEYBRD.HASPREFIX[BACKSPACEKEY]:=CRTINFO.PREFIXED[12];
+
+      KEYBRD.CH[DC1KEY]:=CHR(DC1); (* Not in record *)
+      KEYBRD.HASPREFIX[DC1KEY]:=FALSE;
+
+      KEYBRD.CH[EOFKEY]:=CRTINFO.EOF;
+      KEYBRD.HASPREFIX[EOFKEY]:=CRTINFO.PREFIXED[9];
+
+      KEYBRD.CH[ETXKEY]:=CRTINFO.ETX;
+      KEYBRD.HASPREFIX[ETXKEY]:=CRTINFO.PREFIXED[13];
+
+      KEYBRD.CH[ESCAPEKEY]:=CRTINFO.ALTMODE;
+      KEYBRD.HASPREFIX[ESCAPEKEY]:=CRTINFO.PREFIXED[10];
+
+      KEYBRD.CH[DELKEY]:=CRTINFO.LINEDEL;
+      KEYBRD.HASPREFIX[DELKEY]:=CRTINFO.PREFIXED[11];
+
+      KEYBRD.CH[UPKEY]:=CRTINFO.UP;
+      KEYBRD.HASPREFIX[UPKEY]:=CRTINFO.PREFIXED[3];
+
+      KEYBRD.CH[DOWNKEY]:=CRTINFO.DOWN;
+      KEYBRD.HASPREFIX[DOWNKEY]:=CRTINFO.PREFIXED[2];
+
+      KEYBRD.CH[LEFTKEY]:=CRTINFO.LEFT;
+      KEYBRD.HASPREFIX[LEFTKEY]:=CRTINFO.PREFIXED[1];
+
+      KEYBRD.CH[RIGHTKEY]:=CRTINFO.RIGHT;
+      KEYBRD.HASPREFIX[RIGHTKEY]:=CRTINFO.PREFIXED[0];
+
+      BSPCE:=ORD(CRTINFO.BACKSPACE);  {Went soft 11/2/78 M. Bernard}
+
+      {Now test to see that the essential keys have been given a
+       value other than null.  If not then assign them a default
+       value.  Hopefully, this will end up an INTERP change--M. Bernard}
+
+       IF BSPCE=0 THEN BSPCE:=8;
+       IF KEYBRD.CH[ETXKEY]=CHR(0) THEN KEYBRD.CH[ETXKEY]:=CHR(3);
+
+
+    END;
+END;
+
+PROCEDURE MAPSPECIAL(K:KEYCOMMANDS;C:COMMANDS);
+BEGIN
+  IF NOT KEYBRD.HASPREFIX[K] THEN MAP(KEYBRD.CH[K],C);
+END;
+
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+
+      (* Load Screen and Keyboard Control Records from SYSCOM *)
+
+      LOADFROMSYSCOM;
+
+
+      (* Init the translate table *)
+
+      FILLCHAR(TRANSLATE,SIZEOF(TRANSLATE),ILLEGAL);
+      MAP('A',ADJUSTC);   MAP('C',COPYC);     MAP('D',DELETEC);
+      MAP('F',FINDC);     MAP('I',INSERTC);   MAP('J',JUMPC);
+      MAP('L',LISTC);     MAP('M',MACRODEFC); MAP('P',PARAC);
+      MAP('Q',QUITC);     MAP('R',REPLACEC);  MAP('S',SETC);
+      MAP('V',VERIFYC);   MAP('X',XECUTEC);   MAP('Z',ZAPC);
+      MAP(',',REVERSEC);  MAP('>',FORWARDC);  MAP('.',FORWARDC);
+      MAP('+',FORWARDC);  MAP('-',REVERSEC);  MAP('?',DUMPC);
+      MAP('/',SLASHC);    MAP('=',EQUALC);    MAP('<',REVERSEC);
+{.fs} MAP('B',HOMEC);     MAP('E',ENDC);      MAP('H',HELPC);
+      MAP('O',UP);        MAP('L',DOWN);
+
+
+      (* Arrows *)
+
+      (* NEXTCOMMAND and GETNUM handle VT-52 style vector keys *)
+      WITH KEYBRD DO
+	BEGIN
+	  MAPSPECIAL(UPKEY,UP); MAPSPECIAL(DOWNKEY,DOWN);
+	  MAPSPECIAL(LEFTKEY,LEFT); MAPSPECIAL(RIGHTKEY,RIGHT);
+	END;
+      MAP(CHR(EOL),ADVANCE); (* CR IS ADVANCE *)
+      MAP(CHR(HT),TAB);
+      MAP(CHR(SP),SPACE);
+
+
+      (* Digits *)
+
+      FOR CH:='0' TO '9' DO MAP(CH,DIGIT);
+
+
+      (* Variable buffer sizing... added 17-Jan-78 *)
+
+      QUIT:=10512+       (* Sizeof(editcore)-Sizeof(initialize) *)
+	    512;        (* Slop! *)
+      MARK(EBUF);
+      BLKS:=0;
+      REPEAT
+	NEW(BLOCK);
+	BLKS:=BLKS+1;
+	GAP:=MEMAVAIL+MEMAVAIL
+      UNTIL ((GAP>0) AND (GAP<QUIT)) OR (BLKS=63);
+      BUFSIZE:=BLKS*512-1;
+      NEW(ONEWD); ONEWD^:=0;  (* Sentinel for end of buffer - for M(unch *)
+
+
+      (* Open the workfile *)
+      
+      (*Init FILLIT for writing nulls in front of all control ch's*)
+      FILLCHAR(FILLIT,SIZEOF(FILLIT),0);
+      IF SYSCOM^.CRTCTRL.FILLCOUNT<=11 THEN
+	FILLIT[0]:=CHR(SYSCOM^.CRTCTRL.FILLCOUNT)
+      ELSE
+	FILLIT[0]:=CHR(11);
+      FILLCHAR(EBUF^,BUFSIZE+1,CHR(0));
+      EBUF^[0]:=CHR(EOL);
+      BUFCOUNT:=1;
+      CURSOR:=1;
+      CLEARSCREEN;
+      WRITELN('>Edit:');
+{.fs} CURRENTFILENAME:=''; { no S(ave }
+      IF USERINFO.GOTSYM THEN
+	BEGIN
+	  RESET(THEFILE,CONCAT(USERINFO.SYMVID,':',USERINFO.SYMTID));
+	  IF IORESULT<>0 THEN ERROR('Workfile lost.',FATAL)
+	END
+      ELSE
+	BEGIN
+	  MSG:=
+{.fs#  'No workfile is present. File? (<ret> for no file, <esc-ret> to exit) '; }
+{.fs}  'No workfile present. File? (<ret> for no file, <esc><enter> to exit) ';
+	  REPEAT
+	    WRITELN(MSG);
+	    WRITE(': ');
+{.fs}       FILENAME:='..TEXT'; FILENAME[1]:=CHR(3); { completion for TEXT files }
+	    READLN(INPUT,FILENAME);
+	    IF LENGTH(FILENAME)=0 THEN
+	      BEGIN
+		FILLCHAR(PAGEZERO,SIZEOF(PAGEZERO),CHR(0)); GOTO 1;
+	      END;
+	    IF FILENAME[1]=SYSCOM^.CRTINFO.ALTMODE THEN EXIT(EDITOR);
+	    { To escape if entered by accident. MAB 12/8/78 }
+{.fs#	    FOR I:=1 TO LENGTH(FILENAME) DO FILENAME[I]:=UCLC(FILENAME[I]);         }
+{.fs#	    IF ((POS('.TEXT',FILENAME)<>LENGTH(FILENAME)-4) OR                      }
+{.fs#	       (LENGTH(FILENAME)<=4)) AND (FILENAME[LENGTH(FILENAME)]<>'.') THEN    }
+{.fs#	      FILENAME:=CONCAT(FILENAME,'.TEXT');                                   }
+{.fs#	    IF FILENAME[LENGTH(FILENAME)]='.' THEN                                  }
+{.fs#	      DELETE(FILENAME,LENGTH(FILENAME),1);                                  }
+{.fs}       APPENDEXTENSION(FILENAME,'.TEXT');  { do this consistently }
+	    OPENOLD(THEFILE,FILENAME);
+	    MSG:='Not present. File? ';
+	  UNTIL IORESULT=0;
+{.fs}     IF NOT ENDSWITH(FILENAME,':') THEN CURRENTFILENAME:=FILENAME; { for S(ave }
+	END;
+
+
+      (* Read in the file *)
+
+      READFILE;
+      1: IF (EBUF^[BUFCOUNT-1]<>CHR(EOL)) OR (BUFCOUNT=1) THEN
+	BEGIN
+	  EBUF^[BUFCOUNT]:=CHR(EOL);
+	  BUFCOUNT:=BUFCOUNT+1;
+	END;
+
+
+      (* Initialize everything else! *)
+
+      DIRECTION:='>';
+      LASTPAT:=1; (* Init to the beginning of the buffer (for equalc) *)
+      COPYOK:=FALSE;
+      LINE1PTR:=1;
+      (* These do not yet go through the Screen and Keyboard control
+	 records *)
+      WITH SYSCOM^.CRTINFO DO
+	BEGIN
+	  ESC:=ORD(ALTMODE);
+	  BS:=ORD(CHARDEL);
+	  DEL:=ORD(LINEDEL);
+	  SCREENWIDTH:=WIDTH-1;
+{.fs}     IF SCREENWIDTH>MAXSW THEN SCREENWIDTH:=MAXSW; { risk of buffer overflow }
+	  SCREENHEIGHT:=HEIGHT-1;
+	  MIDDLE:=(SCREENHEIGHT DIV 2) + 1;
+	END;
+      ETX:=ORD(KEYBRD.CH[ETXKEY]); {Changed from SYSCOM assignment 11/2/78 MAB}
+      MAP(CHR(BS),LEFT);                     (* Map backspace key for now *)
+      SYSCOM^.MISCINFO.NOBREAK := TRUE;
+      {Including the command prompt line}
+      DEFPROMPTS;
+      SDEFINED:=FALSE; TDEFINED:=FALSE; (* No substring or target *)
+      WITH PAGEZERO DO
+	IF NOT DEFINED THEN 
+	  BEGIN
+	    FILLCHAR(BUF,1024,CHR(0));
+	    CREATED:=THEDATE; LASTUSED:=THEDATE;
+	    TOKDEF:=TRUE; (* Default mode is T(oken *)
+	    FILLING:=FALSE; AUTOINDENT:=TRUE; RUNOFFCH:='^';
+	    LMARGIN:=0; PARAMARGIN:=5; RMARGIN:=SCREENWIDTH;
+	    DEFINED:=TRUE;
+	  END;
+    END(* WITH *);
+
+
+  (* Initialize the KIND array for token find *)
+
+  FOR CH:=CHR(0) TO CHR(255) DO KIND[CH]:=ORD(CH);  (* Make them all unique *)
+  FOR CH:='A' TO 'Z' DO KIND[CH]:=ORD('A');
+  FOR CH:='a' TO 'z' DO KIND[CH]:=ORD('A');
+  FOR CH:='0' TO '9' DO KIND[CH]:=ORD('A');
+  KIND[CHR(EOL)]:=ORD(' '); KIND[CHR(HT)] :=ORD(' ');
+  FILLCHAR(BLANKAREA,SIZEOF(BLANKAREA),' ');
+  SAVETOP:='';
+
+END(* INITIALIZE *);

@@ -1,0 +1,79 @@
+     MAILER DOCUMENTATION
+
+     MAILER is a simple mailing-list maintenance program.
+It creates and updates two fundamental data structures:
+(1) a file of mailing records with fields for name, street,
+city, state, zipcode, and phone number; and (2) an unbalanced
+binary tree of keys, used to sort the records and to locate
+a given record in the file.  The keys may be any of the
+fields in the mailing records, at the user's discretion.
+
+     When entered, the program prompts for the name of the
+file to be handled.  If the file doesn't exist, the program
+creates one, and initializes all its records to empty.  It
+then prompts for the field which is to be used to sort and
+search the file.
+
+     Once this initialization is done, the user is given
+a prompt line with seven options:
+
+ A(dd M(odify P(rint F(ile N(ewsort S(et Q(uit
+
+The use of these seven options is as follows.
+
+     ADD:  Permits the user to add a new record to the file.
+
+     MODIFY:  Allows modification of an existing record.
+The user is asked for a target string, and the tree of
+keys is searched for a match.  Matching is done by substrings,
+so the string need not be complete; "Kirk", for example, will
+match "Kirkwood" and "Kirkstein".  The record numbers and
+keys of all matches are displayed; if more than one record is
+found, the user is prompted for a particular record number.
+Then the record may be modified on a field-by-field basis.
+Two special inputs are recognized: <cr> leaves the given
+field unchanged, while <cntrl-x> skips the rest of the
+record.  Note: MODIFY can be used simply to examine a given
+record by entering <cntrl-x> as the first response.
+
+     PRINT produces a printout of the mailing list to an
+arbitrary textfile, sorted according to the key field in
+effect at the time.  The user may choose to print only
+a subset of the file, by entering one of three options:
+ALL prints everything in the file; ONLY prints only those
+records whose keyfields contain the user-specified target
+string; EXCEPT prints everything except those records whose
+keyfields contain the user-specified target strings.  For
+example, specifying "ONLY" and the target string "CA", if
+the state keyfield is in effect, will list only those records
+whose state is California.  Not all fields of the record need
+be printed; see the SET option.  NOTE: Names may be entered 
+last-name-first, to aid alphabetization, but they will be 
+printed out first-name-first.  Thus "Mundie, David" is printed 
+out as "David Mundie".
+
+
+     FILE closes the current address file, and opens a new one.
+
+     NEWSORT is used to change the field used for sorting and
+accessing records.  For example, if the fields are currently
+being sorted by name, the user may type N(ewsort, then
+Z(ip to sort them by zipcode.
+
+     SET is used to set the print fields used by PRINT.  The
+default is to print everything except the phone number. The
+new set of fields to be printed is specified by entering a
+string containing the appropriate letters; for example, entering
+'np' will cause PRINT only to print out the name and the
+phone number.
+
+     QUIT, obviously, is used to exit the program.
+
+
+     -NOTE-
+
+     No explicit provision is made for deleting records.  The
+same effect, however, can be had by MODIFYing the records to
+contain a special field, such as @.  PRINTing with an 
+except '@' option will ignore deleted records; they may be
+reused by a MODIFY using '@' as the target. 

@@ -1,0 +1,1906 @@
+{$S+}
+{$G+}
+{***************************************************************}
+{                                                               }
+{                        PTP                                    }
+{                                                               }
+{               PASCAL  TRANSFER  PROGRAM                       }
+{                                                               }
+{                                                               }
+{  (C) COPYRIGHT 1979  J. MARK GANG                             }
+{                                                               }
+{                                                               }
+{  PERMISSION GRANTED FOR NON-COMMERCIAL USE BY INDIVIDUALS.    }
+{  ALL OTHER RIGHTS RESERVED.                                   }
+{                                                               }
+{  HISTORY:                                                     }
+{       VERSION 1.0   JULY 1979                                 }
+{                                                               }
+{***************************************************************}
+
+{Note 1: In several places in this program it was necessary to set
+         the length of a string. The length is held in byte 0 of the 
+         string. In order to assign to this byte it is necessary that
+         range checking be turned of.
+}
+
+program ptp ();
+const
+   SYSTEMNAME = '34.52N098.16W408-267-4913/MARKG'; {UNIQUE FOR EACH SYSTEM}
+   
+   ATTENCHAR=05;                        {^E - used to get to menu}
+   BLKSZ = 512;                         {disk block size}
+   MAXR41SZ=127;                        {maximum radix 41 character count}
+   MAXDATASZ = 64;                      {max amount of data in LTB blocks}
+   MAXREXMIT = 16;                      {maximum number of retransmit attempts}
+   MAXDUPSEQ = 5;                       {max allowed dup seq before correction}
+   NOPPS = 2;                           {number of pps streams -1}
+   ANSTIMEOUT = 6000;                   {receiver timeout (1000 = 1 sec at 4mHz)}
+   ORGTIMEOUT = 5000;                   {a different timeout for org made}
+   LTBHDLEN = 2;                        {length of the LTB header}
+   XPPSTBLSZ = 20;                      {maximum xmit process to process streams}
+   RPPSTBLSZ = 20;                      {maximum rec process to process streams}
+   
+   {process numbers}
+   CTRL = 0;                            {process number of control process}
+   LSTNER=1;                            {process number of file xfer listener}
+   FTPREC = 2;                          {process number of file xfer receiver}
+   FTPSND = 3;                          {process number of file xfer sender}
+   TERM = 4;                            {process number of terminal hanndler}
+   GETFILE = 5;                         {process number of remote file requester}
+   SINK = 6;                            {dummy process to dump unwamted input}
+
+   {control messages codes}
+   IWN = 0;                             {I won't}
+   PDN = 64;                            {Please don't - hex 40}
+   IW  = 128;                           {I will - hex 80}
+   PD  = 192;                           {Please do - hex C0}
+   SF  = 17;                            {send file - hex 11}
+   RF  = 18;                            {receive file - hex 12}
+   AF  = 19;                            {accept file - hex 13}
+   
+type
+    string20=string[20];
+    seqno=0..7;
+    bytesz=0..255;
+    iam= (ORG, ANS);
+    coroutine = (rltb, xltb, done);
+    blk= packed array [0..BLKSZ] of char;
+    
+    word = record case integer of       {address word as int or two char}
+                0: (intval: integer);
+                1: (byteval: packed record
+                       hibyte, lobyte : char;
+                       end);
+                end;
+    
+    byte = packed record case char of
+            'a':(hdr:  packed record    {LTB header format}
+                  oob: seqno;
+                  seq: seqno;
+                  esc: 0..1;
+                  oa : iam;
+                  end);
+            'b':(ppsh: packed record    {PPS header format}
+                 seq: seqno;
+                 fil: seqno;
+                 lst: boolean;
+                 fst: boolean;
+                 end);
+            'c':(bte:bytesz);
+            'd':(ch: char);
+            'e':(op: packed record      {control character format}
+                msg: 0..63;
+                flavor: 0..3;
+                end);
+         end;
+   
+   ltbarray = packed array [0..MAXR41SZ] of byte;       {LTB buffer}
+   datarray = packed array [0..MAXDATASZ] of byte;      {send data buffer}
+
+   pps = packed record                  {PPS header record format}
+           ppsnum:bytesz;
+           pseq:seqno;
+           active:boolean;
+           fstblk:boolean;
+           lstblk:boolean;
+           srcproc:bytesz;
+           destproc:bytesz;
+         end;
+
+   xppsrec = array [0..XPPSTBLSZ] of pps;       {open PPS xmit table}
+   rppsrec = array [0..RPPSTBLSZ] of pps;       {open PPS receive table}
+
+{---------------- GLOBALS ------------------------------------------}
+
+var
+    c:char;
+    {-- TEST --}
+    ppsmon:boolean;                     {indicates PPS tracing is on}
+    ftpmon:boolean;                     {indicates ftp tracing is on}
+    loopbk:boolean;                     {internal loop back for debugging}
+    trace:boolean;                      {LTB tracing}
+    serbuf:array[0..512] of char;       {loopback buffer}
+    serptr:integer;                     {loopback buffer pointer}
+    {-- SCHEDULING/SEQUENCE/FLOW --}
+    mynode:iam;                         {indicates sex of this site during a connection}
+    i:integer;                          {answer delay counter}
+    timeout: integer;                   {holds timeout constant}
+    ansbrkt,orgbrkt:char;               {hold answer and orignate break characters}
+    xmtgen:seqno;                       {seq no for next LTB generated}
+    rcvoob:seqno;                       {old block not yet received }
+    xmtoob:seqno;                       {oldest LTB not yet acked by other end}
+    sch:coroutine;                      {next LTB process to be run}
+    {-- XMIT LTB --}
+    r41:string;                         {holds r41 character set}
+    datasize: integer;                  {current data size}
+    rexmtcnt:integer;                   {number of consetive rexmits attempted}
+    xbuf,tbuf:ltbarray;                 {LTB xmit buffers}
+    xlen,tlen:integer;                  {LTB xmit buffer pointers}
+    {-- REC LTB --}
+    dupseqcnt: integer;                 {cnt of consetive dup seq received}
+    {-- PPS --}
+    rppstbl:rppsrec;                    {receive PPS table}
+    xppstbl:xppsrec;                    {xmit PPS table}
+    pollpps:bytesz;                     {next process to be polled by PPS xmitter}
+    {-- CTRL --}
+    ctrlppsno:bytesz;                   {hold control process PPS number (always 0)}
+    {--- TERMINAL---}
+    termppsno:bytesz;                   {holds terminal handler PPS number}
+    {-- FTP XMITTER --}
+    xfile:file;                         {fileid of file to be xmitted}
+    xfilptr:integer;                    {xmit file pointer}
+    xblk:blk;                           {number of blocks xmitted}
+    xbufptr:integer;                    {pointer into xmit data buffer}
+    xname:string20;                     {name of file to be xmitted}
+    destname:string20;                  {destination name of file being xmitted}
+    xeof:boolean;                       {xmit file EOF flag}
+    xppsno:bytesz;                      {holds xmit ftp process number}
+    xfiletype:bytesz;                   {indicates type of file being xfered (not used in version 1.0)}
+    xfilesize:word;                     {indicates size of file to be xfered (not used in version 1.0)}
+    fsndstate: (idle, initiate, request, send, terminate, ack, extabort);
+                                        {state of file xfer xmitter process}
+    fsndcode:bytesz;                    {holds control to be sent}
+    {---- LISTENER ------}
+    lstnerxpps:bytesz;                  {holds listener reply process number}
+    lstnreply:byte;                     {holds listener reply control code to be sent}
+    {---- FTP RECEIVER ----}
+    rfile:file;                         {ftp receive file fileid}
+    rfilptr:integer;                    {receive file block pointer}
+    rblk:blk;                           {receive buffer}
+    rbufptr:integer;                    {receive buffer pointer}
+    rname:string20;                     {receive file name}
+    srcname:string20;                   {name of file at sending end}
+    receiving:boolean;                  {indicates ftp receiver is active}
+    frxpps:bytesz;                      {receiver reply PPS process number}
+    frreply:byte;                       {ftp receiver reply code}
+    rectype:bytesz;                     {file type to be received(not used in version 1.0)}
+    recsize:word;                       {size of file to be received (not used in version 1.0)}
+    {--- GET FILE ---}
+    getstr:string[41];                  {name of remote file to be gotten}
+    {---- TERMINAL---}
+    kbinterrupt:boolean;                {keyboard has a character ready}
+    kbchar:char;                        {character from keyboard}
+    {--- MENU --- }
+    menuexit:boolean;                   {flag to indicate to exit the menu}
+
+procedure xpps (var xbuf:ltbarray; var xlen:integer); forward;
+procedure rpps (var rbuf:ltbarray; var rstrt:integer; var rcnt:integer); 
+forward;
+procedure sched; forward;
+procedure ctrlxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure ctrlrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure fsndxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure lstnerrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure lstnerxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure fsndrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+function frecstart(buf:ltbarray; strt, last:integer):boolean; 
+forward;
+function rmtsndstart(buf:ltbarray; strt, last:integer):boolean; 
+forward;
+procedure frecxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure frecrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure getxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure getrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure termxmit (var dbuf:datarray; var dlen:integer; ppstat:pps); 
+forward;
+procedure termrec (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure sinker (buf:ltbarray; strt, last:integer; ppstat:pps); 
+forward;
+procedure menu; forward;
+procedure init; forward;
+
+{--- external procedures ----}
+function serread:char; external;
+procedure serwrite(c:char); external;
+function kbstat: boolean; external;
+function srecstat: boolean; external;
+procedure modemInit (direction: iam); external;
+procedure hangup; external;
+
+{-------------------- LTB RECEIVER SECTION --------------------------------}
+
+procedure byteprint (c: char);
+
+{purpose: Print all characters use decimal when not a printing character}
+
+begin
+    if (ord(c) < 32) or (ord(c) = 255) then
+        write ('<',ord(c),'>')
+    else
+        write (c);
+end;
+
+
+procedure getserial(var c:char); 
+
+{purpose : Get a character for the LTB receiver from either the loopback
+           buffer or the serial line  - if no character arrives 
+           on the serial line by TIMEOUT return a turnaround character
+}
+
+var
+   i:integer;
+begin
+    if loopbk then
+        begin
+        c := serbuf[serptr];
+        if trace then byteprint (c);
+        serptr := serptr +1;
+        end
+    else
+        begin
+        i:=0;
+        repeat
+            i:=i+1;
+        until (i=timeout) or (srecstat=TRUE);
+        if i=timeout then
+            begin
+            if trace then
+                writeln ('RECEIVER TIMEOUT');
+            if mynode = ORG then
+                c:=ansbrkt
+            else
+                c:=orgbrkt;
+            end
+        else
+            begin
+            c := serread ;
+            if trace then byteprint (c);
+            end;
+       end;
+end;
+
+
+
+procedure m41wd1 (var buf:ltbarray; var len:integer);
+
+{purpose: Convert 3 bytes of mod 41 to 2 bytes of binary
+          repeat thur entire buffer, output is placed back in 
+          source buffer, length is set to the length of the converted form.
+}
+
+var
+   i,j:integer;
+   tmp:word;
+begin
+   j:=0;
+   i:=0;
+   while j < len do
+      begin
+      tmp.intval := buf[j].bte + ((buf[j+1].bte + (buf[j+2].bte*41))*41);
+      buf[i].ch := tmp.byteval.lobyte;
+      buf[i+1].ch := tmp.byteval.hibyte;
+      j:= j+3;
+      i:= i+2;
+      end;
+   len := i;
+end;
+    
+    
+    
+procedure r41m41(var c:char);
+
+{purpose: Converts a character from radix 41 character set to mod 41}
+
+var
+   co,cv,i:integer;
+begin
+   co := ord(c);
+   if c = '(' then cv := 0
+   else
+   if (co > 47) and (co < 58) then   {'0' to '9'}
+       cv := co - 47
+   else
+   if (co > 64) and (co < 91) then   {'A' to 'Z'}
+       cv := co - 54
+   else
+   if c = '*' then cv := 37
+   else
+   if c = '+' then cv := 38
+   else
+   if c = '-' then cv := »9
+   else
+   if c = ')' then cv := 40
+   else
+   cv := 41;    {invalid character}
+   c := chr (cv);          {convert back to char}
+end;
+    
+    
+    
+procedure hdxscanner (var rbuf:ltbarray; var rcnt:integer);
+
+{purpose: Pack incomming stream into LTB packets. Expects one 
+          packet per transmission.
+}
+var
+    turncnt, atcnt:integer;
+    c:char;
+begin
+    if trace then begin writeln; write ('LTB REC ='); writeln; end;
+    atcnt := 3;
+    turncnt:=3;
+    rcnt := 0;
+    repeat
+       getserial(c);                {get character from serial line}
+       if c = '@' then
+           begin
+           if turncnt < 3 then turncnt := turncnt+1;
+           if (rcnt = 0) and (atcnt > 0) then atcnt := atcnt -1;
+           if rcnt <> 0 then atcnt := 1; {stop after first data block}
+           end
+       else
+           if ((c=ansbrkt) and (mynode=ORG)) or ((c=orgbrkt) and (mynode=ANS)) then
+               begin
+               turncnt:=turncnt-1;
+               end
+           else
+               begin
+               if (rcnt < MAXR41SZ) and (atcnt = 0) then
+                   begin
+                   r41m41(c);
+                   if ord(c)<>41 then {valid char}
+                       begin
+                       rbuf[rcnt].ch := c;
+                       rcnt := rcnt+1;
+                       end
+                   end
+               else
+                  if atcnt < 3 then atcnt := atcnt+1;
+               end
+   until turncnt=0;
+end;
+    
+    
+function ckcksum (rbuf:ltbarray; rcnt:integer) : boolean;
+
+{purpose: Check checksum of an incomming LTB packet}
+
+var
+   ck0,ck1:integer;     {running checksums}
+   i:integer;
+begin
+   ck0 := 0;
+   ck1 := 0;
+   i:=0;
+   while i < rcnt do
+       begin
+       ck0 := ck0 + ord(rbuf[i].ch);
+       i:=i+1;
+       ck1 := ck1 + ord(rbuf[i].ch);
+       i := i+1;
+       end;
+   ck0 := ck0 mod 256;
+   ck1 := ck1 mod 256;
+   if (ck0 <> 0) or (ck1 <> 0) then
+      begin
+      writeln ('ck0=',ck0,' ck1=',ck1);
+      ckcksum := false
+      end
+   else
+      ckcksum := true;
+end;
+   
+   
+   
+procedure ltbframer;
+
+{purpose: Checks validity of incomming LTB packet. Updates sequence
+          numbers as needed. Check to see if a character has been 
+          typed on the keyboard before returning to the LTB xmitter.
+}
+
+label
+    1;
+var
+    rbuf:ltbarray;
+    rstrt, rcnt,i:integer;
+    c:char;
+    ch:packed array [0..0] of char;
+begin
+       hdxscanner (rbuf, rcnt);
+       if rcnt >= MAXR41SZ then
+           begin
+           writeln; writeln ('REC ERROR - LTB TOO LONG');
+           goto 1;
+           end;
+       if (rcnt mod 3) <> 0 then
+           begin
+           writeln; 
+           writeln ('REC ERROR -  NOT MULTIPLE OF THREE RADIX-41 CHARACTERS');
+           goto 1;
+           end;
+       m41wd1 (rbuf, rcnt);     {convert 3 byte m41 to 2 binary}
+       if rcnt < 4 then
+           begin
+           writeln; writeln ('REC ERROR - TIMEOUT OR LTB TOO SHORT.');
+           goto 1;
+           end;
+       if ckcksum (rbuf, rcnt) = FALSE then
+          begin
+          writeln; writeln ('REC ERROR - RECEIVE CHECKSUM');
+          goto 1;
+          end;
+      if (odd(ord(rbuf[1].ch))) and (ord(rbuf[rcnt-1].ch)=0)
+           then rcnt:=rcnt-1;
+      rcnt:=rcnt-2;         {delete checksum bytes}
+      if trace then 
+         begin
+         writeln;
+         writeln ('RECEIVED ',rcnt,' BYTES');
+         end;
+      if rcnt <> ord(rbuf[1].ch) then        {lengths not equal}
+           begin
+           writeln; writeln ('REC ERROR - LTB LENGTH CHECK ERROR');
+           goto 1;
+           end;
+     with rbuf[0], hdr do
+         begin
+         if (oa = mynode) and not loopbk or (oa <> mynode) and loopbk then
+             begin
+             writeln; writeln ('REC ERROR - LTB O/A MODE INCORRECT.');
+             goto 1;
+             end;
+         if esc = 1 then  {should always be zero}
+             begin
+             writeln; writeln ('REC ERROR - PROTOCOL ESCAPE NON ZERO.');
+             goto 1;
+             end;
+         if loopbk then
+            xmtoob := (seq+1) mod 8
+         else
+            xmtoob:= oob;
+         if seq = rcvoob-1 then
+             begin
+             writeln; writeln ('REC ERROR - DUPLICATE SEQUENCE RECEIVED.');
+             if dupseqcnt = MAXDUPSEQ then
+                 begin
+                 datasize := datasize div 2;
+                 writeln; writeln ('DATA SIZE REDUCED TO ',datasize);
+                 if datasize < 8 then datasize := 8;
+                 dupseqcnt := dupseqcnt + 1;
+                 end
+             else
+                 dupseqcnt := dupseqcnt + 1;
+             goto 1;
+             end;
+         if seq <> rcvoob then
+             begin
+             writeln; writeln ('REC ERROR - UNEXPECTED SEQUENCE RECEIVED.');
+             goto 1;
+             end
+         else
+             rcvoob:=(rcvoob+1) mod 8;
+             rstrt := LTBHDLEN;
+         end;
+         {if length less than or equal to LTBHDLEN then no data in this LTB}
+         if rcnt > LTBHDLEN then rpps (rbuf, rstrt, rcnt);
+1:
+if sch<>done then sch := xltb;
+
+if kbstat then {this is a safe place to check for a keyboard interrupt}
+    begin
+    unitread(2,ch[0],1,0,0);
+    if ch[0]=chr(ATTENCHAR) then 
+        menu
+    else
+        begin
+        kbinterrupt:=TRUE;
+        kbchar:=ch[0]
+        end
+    end
+end;
+
+{--------------- LTB XMITTER SECTION ----------------------------}
+
+
+
+procedure mkhdr(var buf:ltbarray; length:integer);
+
+{purpose: Create LTB header for packet to sent}
+
+begin
+    with buf[0], hdr do
+    begin
+        oob := rcvoob;
+        seq := (xmtgen+7) mod 8;
+        esc := 0;
+        oa  := mynode;
+    end;
+    buf[1].ch := chr(length);
+end;
+    
+    
+    
+procedure gencksum( var buf:ltbarray; var len:integer );
+
+{purpose: Generate checksum for LTB packet to be sent}
+
+var ck0,ck1,i:integer;
+begin
+    ck0 := 0; ck1 := 0;
+    i := 0;
+    buf[ ord(buf[1].ch) ].ch := chr(0);
+    while i<ord(buf[1].ch) do
+        begin
+        ck0 := ck0+ ord(buf[i].ch);
+        i := i+1;
+        ck1 := ck1 + ord(buf[i].ch);
+        i := i+1;
+        end;
+    len := ord( buf[1].ch );
+    buf[len+(len mod 2)].ch := chr( 256 - (ck0 mod 256) );
+    buf[len+((len + 1) mod 2)].ch := chr( 256 - (ck1 mod 256) );
+    len := len + 2;
+    if odd(len) then
+        begin
+            buf[len].ch := chr(0);
+            len := len + 1;
+        end;
+end;
+        
+
+
+procedure binm41(inbuf:ltbarray; var outbuf:ltbarray; inlen:integer;var otlen:integer);
+
+{purpose: Convert incomming buffer from binary to mod 41 and place in output buffer}
+
+var i,k,out,dtmp:integer;
+    wd,tmp:word;
+begin
+    out:=0;
+    i:=0;
+    while i<inlen do
+        begin
+        wd.byteval.lobyte := inbuf[i].ch;
+        i:=i+1;
+        wd.byteval.hibyte := inbuf[i].ch;
+        i:=i+1;
+        for k:=0 to 2 do
+            begin
+            if wd.intval < 0 then   {correct for overflow problem}
+                begin
+                tmp.byteval.lobyte := wd.byteval.hibyte;
+                tmp.byteval.hibyte := chr (0);
+                dtmp := (tmp.intval div 41)*256;
+                tmp.intval := tmp.intval mod 41;
+                wd.byteval.hibyte := tmp.byteval.lobyte;
+                end
+            else
+                dtmp := 0;
+                
+            outbuf[out+k].ch := chr( wd.intval mod 41 );
+            wd.intval  := (wd.intval div 41) + dtmp;
+            end;
+        out:=out+3;
+        end;
+    otlen:=out;
+end;
+
+
+
+procedure m41r41( var buf:ltbarray; len:integer);
+
+{purpose: Convert buffer from mod 41 to radix 41 character set}
+
+var i:integer;
+begin
+    for i:=0 to len-1 do
+        buf[i].ch := r41[ ord( buf[i].ch ) + 1 ];
+end;
+
+
+
+procedure putserial( c:char );
+
+{purpose: Put a character out to either the loopback buffer or the
+          the serial line
+}
+begin
+    if loopbk then
+        begin
+        serbuf[serptr] := c;
+        serptr := serptr+1;
+        end
+    else
+        begin
+        serwrite(c);
+        end;
+    if trace then byteprint(c);
+end;
+
+
+
+procedure endxmit;
+
+{purpose: Send turnaround characters.}
+
+var
+   i:integer;
+begin
+   for i:=1 to 5 do
+      begin
+      if mynode = ANS then
+          putserial ('[')
+      else
+          putserial (']');
+      end;
+end;
+      
+      
+      
+procedure xmitblk( buf:ltbarray; len:integer);
+
+{purpose: Send the LTB buffer.}
+
+var i:integer;
+begin
+    for i:=0 to 6 do
+        putserial( '@' );
+    for i:=0 to len-1 do
+        putserial( buf[i].ch );
+    putserial( '@' );
+end;
+
+
+
+procedure ltbsend(var xbuf:ltbarray; xlen:integer);
+
+{purpose: Create an LTB packet containing the data, send it,
+          and do turnaround.
+}
+
+var
+   i:integer;
+begin
+        if trace then 
+           begin
+           writeln;
+           writeln ('XMIT ',xlen,' BYTES');
+           end;
+        mkhdr (xbuf, xlen);              {update header info}
+        gencksum (xbuf, xlen);           {generate checksum, return total length} 
+        if trace then
+            begin
+            writeln;
+            for i:=0 to xlen-1 do
+               byteprint (xbuf[i].ch);
+            writeln;
+            end;
+        binm41(xbuf,tbuf,xlen,tlen);        {convert to m41}
+        m41r41(tbuf,tlen);                  {convert to r41}
+        xmitblk(tbuf,tlen);                    {transmit}
+        endxmit;
+end;
+    
+    
+    
+procedure xmitltb;
+
+{purpose: Determine if the previous packet must be retransmitted or
+          if a new packet can be sent. In the case of excessive 
+          retransmission attempts aborts the program.
+}
+var
+  ylen:integer;
+begin
+   if rexmtcnt >= MAXREXMIT then
+       begin
+       writeln;
+       writeln ('EXCESSIVE RETRANSMISSION ATTEMPTS -- CONNECTION ABORTED');
+       sch := done;
+       end
+   else
+       begin
+       if xmtoob = xmtgen then  
+           begin
+           xlen := 2;
+           xpps (xbuf, xlen);
+           rexmtcnt := 0;
+           dupseqcnt := 0;
+           xmtgen := (xmtgen+1) mod 8;     {increment seq number}
+           ylen := xlen;
+           ltbsend (xbuf, ylen);
+           end
+       else
+           begin
+           rexmtcnt := rexmtcnt+1;
+           ylen := xlen;
+           ltbsend (xbuf, ylen);
+           end;
+       end;
+if sch<>done then sch := rltb;
+end;
+
+
+{----------- LTB GENERAL ------------------------------------}
+
+
+procedure sched;
+
+{purpose: Low level dispatcher for the LTB receiver and transmitter.}
+
+begin
+    repeat
+         serptr := 0;
+         case sch of
+             xltb:xmitltb;
+             rltb:ltbframer;
+             end;
+   until sch=done;
+end;
+             
+             
+             
+procedure ltbinit;
+
+{purpose: Initialize LTB values at startup.}
+begin
+    { Define radix 41 character set. }
+    r41 := '(0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*+-)';
+    xmtgen := 0;
+    rcvoob := 0;
+    xmtoob := 0;
+    rexmtcnt := 0;
+    serptr:=0;
+    dupseqcnt := 0;
+    datasize := MAXDATASZ;
+    if loopbk then
+        sch := xltb
+    else
+        sch := rltb;
+end;
+
+
+{-------------------- PPS TRANSMIT  --------------------------}
+
+
+
+procedure ppsinit;
+
+{purpose:Initialize PPS tables at startup.}
+
+var 
+  i:integer;
+begin
+    for i:= 0 to XPPSTBLSZ do
+        begin
+        with xppstbl[i] do
+            begin
+            active := FALSE;
+            ppsnum := i;
+            end;
+        end;
+    for i:= 0 to RPPSTBLSZ do
+        begin
+        rppstbl[i].active := FALSE;
+        end;
+    pollpps:=0;
+end;
+
+
+
+procedure ppsopen (src, dest:integer; var ppsno:bytesz);
+
+{purpose: Open a new xmit PPS, enter the source and the destination process
+          numbers in the xmit PPS table. The number of the PPS that is opened
+          is returned to the caller.
+}
+begin
+   ppsno := 0;
+   while xppstbl[ppsno].active and (ppsno<>XPPSTBLSZ) do
+        ppsno := ppsno+1;
+   if ppsno = XPPSTBLSZ then
+      begin
+      writeln; writeln('PPS xmit table full');
+      end
+   else
+      begin
+      with xppstbl[ppsno] do
+          begin
+          active := TRUE;
+          srcproc := src;
+          destproc := dest;
+          pseq := 0;
+          fstblk := TRUE;
+          lstblk := FALSE;
+          if ppsmon then
+             begin
+             writeln; writeln ('Opening xmit PPS ',ppsno,' source ',src,
+                                ' destination ',dest);
+             end;
+          end;
+     end;
+end;
+
+
+
+procedure ppsclose (ppsno:bytesz);
+
+{purpose: Close the specified xmit PPS number. 
+          Note: One more transmission (last block) will occur on this stream.
+}
+begin
+    if xppstbl[ppsno].active = FALSE then
+        begin
+        if ppsmon then
+            begin
+            writeln; writeln ('Request to close inactive xmit PPS ',ppsno);
+            end
+        end
+    else
+        begin
+        xppstbl[ppsno].lstblk := TRUE;
+        if ppsmon then
+            begin
+            writeln; writeln ('Closing xmit PPS ',ppsno);
+            end;
+        end;
+end;
+
+
+procedure mkppshdr (var xbuf:ltbarray; var xlen:integer;
+                    dbuf:datarray; dlen:integer; ppsno:integer);
+
+{purpose: Build the PPS header.}
+
+var
+   i,len:integer;
+begin
+   with xppstbl[ppsno] do
+       begin
+       if ppsmon then
+           begin
+           writeln; 
+           write ('Sending PPS ',ppsno,' seq no ',pseq);
+           if fstblk then write(' - first block');
+           if lstblk then write(' - last block');
+           end;
+       with  xbuf[xlen], ppsh do
+          begin
+          fst := fstblk;    
+          lst := lstblk;
+          fil := 0; {zero filler}
+          seq := pseq;
+          end;
+       xbuf[xlen+1].ch := chr(ppsno);
+       if fstblk then
+           begin
+           xbuf[xlen+2].ch := chr(dlen+5);
+           len:=dlen+5;
+           xbuf[xlen+3].ch := chr(srcproc);
+           xbuf[xlen+4].ch := chr(destproc);
+           xlen := xlen+5;
+           fstblk := FALSE;
+           end
+       else
+           begin
+           xbuf[xlen+2].ch := chr(dlen+3);
+           len:=dlen+3;
+           xlen := xlen+3;
+           end;
+       if ppsmon then writeln (' - length ',len);
+       pseq := (pseq +1) mod 8;
+       if lstblk then
+           begin
+           active := FALSE;    
+           lstblk := FALSE;
+           end;
+       end;
+   
+   for i:=0 to dlen-1 do {move user data to xmit buffer}
+       begin
+       xbuf[xlen].ch := dbuf[i].ch;
+       xlen := xlen+1;
+       end;
+end;
+             
+
+
+procedure xpps;
+
+{purpose: Poll processes with active xmit PPS's for one with something
+          to send.
+}
+
+var
+   dbuf:datarray;
+   orgxlen,dlen:integer;
+   ppstat:pps;
+   ppsno:bytesz;
+begin
+    orgxlen := xlen;
+    dlen :=0;
+    ppsno:= pollpps;    {Continue from where last poll + 1}
+    repeat  {poll sending processes for out going}
+       if xppstbl[ppsno].active then
+           begin
+           ppstat := xppstbl[ppsno];
+           with ppstat do
+               begin
+               case ord(srcproc) of
+                   {as you can see dynamic process creation is impossible}
+                   CTRL:   ctrlxmit (dbuf, dlen, ppstat);
+                   LSTNER: lstnerxmit (dbuf, dlen, ppstat);
+                   FTPREC: frecxmit (dbuf, dlen, ppstat);
+                   FTPSND: fsndxmit (dbuf, dlen, ppstat);
+                   TERM:   termxmit (dbuf, dlen, ppstat);
+                   GETFILE:    getxmit  (dbuf, dlen, ppstat);
+                   end;
+               if (dlen>0) or fstblk or lstblk then
+                   mkppshdr (xbuf, xlen, dbuf, dlen, ppsno);
+               end;
+           end;
+       ppsno := (ppsno +1)mod XPPSTBLSZ;
+    until (ppsno = pollpps) or (xlen > orgxlen);
+    pollpps := ppsno;
+end;
+
+
+
+{--------- PPS RECEIVER ---------------}
+
+procedure rpps; 
+
+{purpose: Check incomming PPS packets and pass to destination process.}
+
+label
+   1;
+var
+   i:integer; {debug}
+   index,ppsno:bytesz;
+   ppstat:pps;
+begin
+   ppsno := rbuf[rstrt+1].bte;
+   if ppsmon then
+      begin
+      writeln; writeln ('Receiving PPS ',ppsno,' length ',rbuf[rstrt+2].bte);
+      end;
+   index:=0;
+   while (index<RPPSTBLSZ) and ((rppstbl[index].ppsnum <> ppsno) or
+          (rppstbl[index].active=FALSE))  do index := index+1;
+   with rbuf[rstrt].ppsh do
+       begin
+       if index=RPPSTBLSZ then {not in table}
+           begin
+           if not fst then 
+               begin
+               writeln;
+               writeln ('PPS ERROR - received packet on inactive PPS number ',ppsno);
+               goto 1;
+               end
+           else {add new pps to table}
+               begin
+               index:=0;
+               while (index<RPPSTBLSZ) and rppstbl[index].active do
+                    index:=index+1;
+               if index=RPPSTBLSZ then
+                   begin
+                   writeln;writeln('PPS RECEIVE TABLE FULL');
+                   goto 1;
+                   end
+               else
+                   begin
+                   with rppstbl[index] do
+                       begin
+                       ppsnum := ppsno;
+                       active := TRUE;
+                       srcproc := ord(rbuf[rstrt+3].ch);
+                       destproc := ord(rbuf[rstrt+4].ch);
+                       pseq := 0;
+                       if ppsmon then
+                          begin
+                          writeln; 
+                          writeln ('Receiving new PPS ',ppsnum,' source ',
+                                    srcproc,' destination ',destproc);
+                          end;
+                       rstrt := rstrt + 2;
+                       end;
+                   end;
+               end;
+           end
+       else {found active pps in table}
+           begin
+           if fst then
+              begin
+              writeln;
+             writeln ('PPS ERROR - RECEIVED UNEXPECTED FIRST BLOCK ON ',ppsno);
+              goto 1;
+              end;
+          end;
+          
+       {if we get this far this is an active pps}
+       with rppstbl[index] do
+              begin
+              rstrt := rstrt + 3;
+              fstblk := fst;
+              lstblk := lst;
+              if seq <> pseq then
+                  begin
+                  writeln;
+                  writeln ('REC PPS ERROR - unexpected sequence number ',seq);
+                  pseq := seq; {for now we simply correct set the number}
+                  end
+              else
+                  pseq := (pseq+1) mod 8;
+              if lst then active := FALSE;
+              end;
+       ppstat := rppstbl[index];
+       case ord(ppstat.destproc) of
+           CTRL:   ctrlrec ( rbuf, rstrt, rcnt-1, ppstat);
+           LSTNER: lstnerrec ( rbuf, rstrt, rcnt-1, ppstat);
+           FTPREC: frecrec ( rbuf, rstrt, rcnt-1, ppstat);
+           FTPSND: fsndrec ( rbuf, rstrt, rcnt-1, ppstat);
+           TERM:   termrec ( rbuf, rstrt, rcnt-1, ppstat);
+           GETFILE:    getrec  ( rbuf, rstrt, rcnt-1, ppstat);
+           SINK:   sinker (rbuf, rstrt, rcnt-1, ppstat);
+           end;
+      end;
+1:
+end;
+
+
+procedure rppsredirect (ppsno, newdest:bytesz);
+
+{purpose: Redirect all further packets received on the specified PPS stream to
+          the specified destination process.
+}
+var
+    index:integer;
+begin
+   index:=0;
+   while (index<RPPSTBLSZ) and ((rppstbl[index].ppsnum <> ppsno) or
+          (rppstbl[index].active=FALSE))  do index := index+1;
+   if index<>RPPSTBLSZ then
+       begin
+       with rppstbl[index] do
+           begin
+           destproc:=newdest;
+           if ppsmon then
+               begin
+               writeln;
+ writeln ('PPS REC - Redirecting PPS ',ppsnum,' to destination ',destproc);
+               end;
+           end;
+      end;
+end;
+
+{------------------ SINK ----------------------}
+{a dummy receiver process to dump unwanted input }
+procedure sinker;
+begin
+end;
+
+
+
+{--------------- CONTROL PROCESS ----------------------}
+
+{In version 1.0 this process only sends the system address.}
+procedure ctrlinit;
+begin
+   ppsopen (CTRL, CTRL, ctrlppsno);
+end;
+
+procedure ctrlxmit;
+var
+  i:integer;
+  sysname: string[40];
+begin
+   sysname := SYSTEMNAME;
+   if ppstat.fstblk then
+      begin
+      for i:=1 to length (SYSTEMNAME) do
+          dbuf[i-1].ch:=sysname[i];
+      dlen:=i-1
+      end
+end;
+
+procedure ctrlrec;
+var
+   i:integer;
+begin
+    for i:=strt to last do
+        byteprint (buf[i].ch);
+end;
+
+{--------------- FTP SENDER ---------------------------}
+
+
+
+procedure fsndinit;
+
+{purpose: Initialize ftp sender at startup.}
+
+begin
+    fsndstate:=idle;
+    xfiletype:=0;
+    xfilesize.intval:=0;
+end;
+
+
+
+procedure ftpstart;
+
+{purpose: Does setup for file sending when requested locally.}         
+
+var 
+  cnt:integer;
+begin
+    if fsndstate<>idle then
+        begin
+        {$I-}
+        writeln;writeln ('Sender is busy transfering ',xname,' to ',destname);
+        write ('Do you wish to abort this transfer ? (Y/N):');
+        read (c);
+        writeln;
+        if c in ['Y','y'] then
+            begin {set up conditions that indicate end to sender}
+            fsndstate:=extabort;
+            fsndcode:=PDN + AF; {abort receiver}
+            menuexit := TRUE;
+            end;
+        end
+    else
+        begin
+        writeln; writeln; write ('Name of file to be sent: ');
+        readln (xname);
+        writeln; write ('Name of destination file: ');
+        readln (destname);
+        writeln;
+        reset (xfile, xname);
+        if IORESULT <> 0 then 
+            begin
+            writeln ('Unable to open ',xname);
+            end
+        else
+            begin
+               fsndstate:=initiate;
+               ppsopen (FTPSND, LSTNER, xppsno);
+               menuexit := TRUE;
+           end;
+       end;
+    {$I+}
+end;
+
+
+
+function rmtsndstart;
+
+{purpose: Does setup for file sending when requested from remote.}
+
+var
+    i,slash:integer;
+begin
+   {$I-}
+   {$R-}
+   if fsndstate<>idle then {already busy}
+       rmtsndstart:=FALSE 
+   else
+       begin
+       i:=strt;
+       while buf[i].ch<>'/' do i:=i+1;
+       slash:=i;
+       xname[0]:=chr(slash-strt);  {See Note 1}
+       for i:= 0 to slash-strt do
+           xname[i+1]:=buf[strt+i].ch;
+       destname[0]:=chr(last-slash); {See Note 1}
+       for i:=1 to last-slash do
+           destname[i]:=buf[slash+i].ch;
+       if ftpmon then
+           begin
+           writeln;writeln ('Remote start opening ',xname,' to ',destname);
+           end;
+       reset (xfile, xname);
+       if IORESULT<>0 then   {counld not open file}
+           rmtsndstart:=FALSE 
+       else
+           begin
+           ppsopen (FTPSND, LSTNER, xppsno);
+           fsndstate:=initiate;
+           rmtsndstart:=TRUE
+           end
+       end
+{$R+}
+{$I+}
+end;
+
+
+procedure fsndxmit;
+
+{purpose: Transmits file contents to FTP receiver.}
+
+var
+    i, cnt:integer;
+    c:char;
+    tmpstr:string[41];
+begin
+    if (fsndstate=terminate) or (fsndstate=extabort) then
+        begin
+        ppsclose (xppsno);
+        close (xfile);
+        dbuf[dlen].bte:=fsndcode;
+        dlen := 1;
+        if fsndstate=extabort then
+            fsndstate:=idle
+        else
+            fsndstate:=ack;
+        end;
+    
+    while (dlen<datasize) and (fsndstate=send) do
+       begin
+       if xbufptr = BLKSZ then        {get next blk from disk}
+           begin
+           write ('.');
+           if EOF(xfile) then {note: this eof occurred on the previous read}
+               begin
+               fsndstate:=terminate;
+               fsndcode:= PD + AF;
+               end
+           else
+               begin
+               {$I-}
+               cnt := blockread (xfile, xblk, 1, xfilptr);
+               {$I+}
+               xfilptr := xfilptr+1;
+               if IORESULT <> 0 then
+                   begin
+                   fsndstate:=terminate;
+                   fsndcode:=PDN + AF;
+                   writeln; 
+                   writeln ('File sender I/O error ',IORESULT,' file ',
+                             xname,'...');
+                   end
+               else
+                   xbufptr := 0;
+               end
+           end
+       else
+          begin
+          dbuf[dlen].ch := xblk[xbufptr];
+          if ftpmon then 
+              byteprint (dbuf[dlen].ch);
+          dlen := dlen+1;
+          xbufptr := xbufptr+1;
+          end;
+      end;
+   
+   if (fsndstate=initiate) and ppstat.fstblk then
+      begin
+      writeln;
+      write ('Request to transfer ',xname,' to ',destname,'...');
+      dbuf[0].bte:= PD + RF;  { please do receive file}
+      dbuf[1].bte:= xfiletype; {always 0 in version 1.0}
+      dbuf[2].ch:= xfilesize.byteval.lobyte; {in blocks - 0 if not known}
+      dbuf[3].ch:= xfilesize.byteval.hibyte; {in blocks - 0 if not known}
+      dlen:=3;
+      tmpstr:= concat(xname,'/',destname);
+      for i:= 1 to length(tmpstr) do
+          dbuf[i+dlen].ch:=tmpstr[i];
+      dlen:=i+dlen;
+      xeof:= FALSE;
+      xbufptr := BLKSZ;
+      xfilptr:=0;
+      fsndstate:=request;
+      end 
+end;
+
+
+
+procedure fsndrec;
+
+{purpose: Receives control information from FTP receiver.}
+
+begin
+   case fsndstate of
+      request:
+               if buf[strt].bte= (IW + RF) then { i will receive file}
+                   begin
+                   writeln ('accepted');
+                   fsndstate:=send;
+                   end             
+               else
+                   begin
+                   writeln ('refused');
+                   fsndstate:=extabort;
+                   end;
+     
+     ack:
+              begin
+              if buf[strt].bte= (IW + AF) then { i will accept this file}
+                  writeln('accepted')
+              else
+                  writeln ('refused - code: ',buf[strt].bte);
+              fsndstate:=idle
+              end;
+     
+     send:    
+              if buf[strt].bte= (IWN + AF)  then
+                  begin
+                  writeln;
+                  writeln ('Transfer of ',xname,' to ',rname,' aborted by receiver.');
+                  fsndcode:=PDN + AF;
+                  fsndstate:=extabort;
+                  end
+     end
+ end;
+
+{------- LISTNEER ------------}
+
+{ This process acts as a well known process to setup file transfers.}
+
+procedure lstnerrec;
+
+{purpose: Receiver for listener.}
+
+var
+    i:integer;
+    begin
+    {$I-}
+    if ppstat.fstblk then
+        begin
+        if ftpmon then
+            begin
+            writeln; writeln ('Listener requested to:',buf[strt].bte);
+            end;
+        if buf[strt].bte= (PD + RF) then { please receive file}
+            begin
+            ppsopen (LSTNER, ppstat.srcproc, lstnerxpps);
+            ppsclose (lstnerxpps);
+            strt:=strt+1;
+            if frecstart (buf,strt,last) then {FTP receiver ready}
+                begin
+                lstnreply.bte:= IW + RF;  { i will receive file};
+                rppsredirect (ppstat.ppsnum, FTPREC)
+                end
+            else {receiver not ready}
+                begin
+                lstnreply.bte := IWN + RF; { i will not receive file}
+                rppsredirect (ppstat.ppsnum, SINK) {sink any futher input}
+                end
+            end
+        else
+            if buf[strt].bte= (PD + SF) then { please do send file}
+                begin
+                ppsopen (LSTNER, ppstat.srcproc, lstnerxpps);
+                ppsclose (lstnerxpps);
+                strt:=strt+1;
+                if rmtsndstart(buf, strt, last) then 
+                    lstnreply.bte := IW + SF { i will send file}
+                else
+                    lstnreply.bte := IWN + SF; { i will not send file}
+                if ftpmon then
+                    begin
+                    writeln; 
+                    write ('LISTENER - remote request to transfer ');
+                    if lstnreply.bte= (IWN + SF) then
+                        writeln(' refused')
+                    else
+                        writeln(' accepted');
+                    end;
+                end
+            else {unknown request}
+               if ftpmon then
+                   begin
+                   writeln;
+                   writeln ('LISTENER - Unknown request type ',buf[strt].bte)
+                   end;
+       end
+    else {not first block}
+        if ftpmon then
+            begin
+            writeln;
+            writeln ('LISTENER - Not first block on PPS ',ppstat.ppsnum);
+            end;
+{$I+}
+end;
+
+
+
+procedure lstnerxmit;
+
+{purpose: Sends listener control responses.}
+
+begin
+   dbuf[0].ch := lstnreply.ch;
+   dlen:=1;
+   if ftpmon then
+       begin
+       writeln; writeln ('Listener reply:',lstnreply.bte);
+       end;
+end;
+
+
+
+{------- FTP RECEIVER -------------}
+
+procedure frecinit;
+
+{purpose: Initializes FTP receiver at startup.}
+
+begin
+    receiving:=FALSE;
+end;
+
+
+
+function frecstart;
+
+{purpose: Setup receiver for a file transfer.}
+
+var
+  slash,i:integer;
+begin
+    frecstart:=FALSE;
+    if not receiving then 
+         begin {initialization for receiver }
+         rectype:=buf[strt].bte;
+         strt:=strt+1;
+         recsize.byteval.lobyte:=buf[strt].ch;
+         strt:=strt+1;
+         recsize.byteval.hibyte:=buf[strt].ch;
+         i:=strt+1;
+         while buf[i].ch<>'/' do i:=i+1;
+         slash:=i;
+         {$R-}
+         srcname[0]:=chr(slash-strt-1);  {See Note 1}
+         {$R+}
+         for i:= 1 to slash-strt-1 do
+             srcname[i]:=buf[strt+i].ch;
+         {$R-}
+         rname[0]:=chr(last-slash);  {See Note 1}
+         {$R+}
+         for i:=1 to last-slash do
+             rname[i]:=buf[slash+i].ch;
+         writeln('Receiving file ',rname,' from ',srcname,
+                 ' type=',rectype,' size (blocks)=',recsize.intval);
+         {$I-}
+         reset (rfile,rname);
+         if IORESULT=0 then {file already exists}
+            begin
+            writeln ('Local file ',rname,' already exists, transfer aborted.');
+            close (rfile);
+            end
+         else
+            begin
+            rewrite (rfile, rname);
+            if IORESULT<>0 then
+               writeln ('Unable to create local file ',rname)
+            else
+               begin
+               rfilptr:=0;
+               rbufptr := 0;
+               receiving := TRUE;
+               frecstart:=TRUE;
+               end
+           end
+    end
+{$I+}
+end;
+
+
+procedure frecrec;
+
+{purpose: Receives data sent by FTP sender.}
+
+var
+cnt,i:integer;
+begin
+    {$I-}
+    if ppstat.lstblk then  {last block of a file transfer}
+       begin
+       receiving := FALSE;
+       writeln;
+       if buf[strt].bte= (PDN + AF) then
+           begin
+           close (rfile);
+           rppsredirect (ppstat.ppsnum, SINK);
+           writeln ('Received abort request on transfer of ',rname);
+           end
+       else
+           begin
+           close (rfile, lock);
+           if IORESULT <> 0 then
+              begin
+              writeln ('FTP REC - close error ',IORESULT,' on ',rname);
+              ppsopen (FTPREC, ppstat.srcproc, frxpps);
+              ppsclose (frxpps);
+              frreply.bte:=IWN + AF;
+              end
+           else
+              begin
+              writeln ('FTP REC - transfered ',rfilptr,' blocks to ',rname);
+              ppsopen (FTPREC, ppstat.srcproc, frxpps);
+              ppsclose (frxpps);
+              frreply.bte:=IW + AF; {i will accept file}
+              end
+           end
+       end;
+    
+    if ppstat.fstblk then   {the first block of a file transfer}
+        begin
+        if ftpmon then 
+             begin
+             writeln;
+             writeln ('FTP REC - received unexpected first block from ',
+                      ppstat.ppsnum)
+             end
+       end
+    else {not first block}
+       if receiving then
+          begin
+          if ftpmon then
+             begin
+             writeln;
+             writeln ('REC=');
+             end;
+          i:= strt;
+          while (i<=last) and (receiving) do
+             begin
+             rblk[rbufptr] := buf[i].ch;
+             if ftpmon then 
+                 byteprint (rblk[rbufptr]);
+             i:=i+1;
+             rbufptr := rbufptr+1;
+             if rbufptr = BLKSZ then
+                begin
+                write (',');
+                cnt := blockwrite (rfile, rblk, 1, rfilptr);
+                rfilptr := rfilptr+1;
+                rbufptr := 0;
+                if IORESULT <> 0 then
+                   begin
+                   receiving := FALSE;
+                   writeln;
+                   frreply.bte:=IWN + AF; {i will not accept file}
+                   end;
+                end;
+             end;
+        end;
+    
+{$I+}
+end;
+    
+
+procedure frecxmit;
+
+{purpose: Sender FTP receiver control messages to FTP sender.}
+
+begin
+   dbuf[0].ch := frreply.ch;
+   dlen:=1;
+end;
+
+
+
+{------------ GET - REQUEST A FILE FROM REMOTE ----------------}
+
+{Local process to request a file from remote node.}
+
+procedure getftp;
+
+{purpose: Get name of remote file from user.}
+
+var
+    getxpps:bytesz;
+    gname,localname:string[20];
+begin
+    writeln;writeln; write ('Transfer remote file: ');
+    readln (gname);
+    writeln;
+    write ('To local file: ');
+    readln (localname);
+    writeln;
+    write ('Transfer of ',gname,' to ',localname,'...');
+    ppsopen (GETFILE, LSTNER, getxpps);
+    ppsclose (getxpps);
+    getstr:=concat (gname,'/',localname);
+    menuexit:=TRUE;
+end;
+
+
+procedure getxmit;
+
+{purpose: Send remote transfer request to remote listener.}
+
+var
+    i:integer;
+begin
+   dbuf[0].bte:= PD + SF; { please  do send file}
+   for i:=1 to length(getstr) do
+       dbuf[i].ch:=getstr[i];
+   dlen:=i;
+end;
+
+procedure getrec;
+begin
+    if buf[strt].bte= (IW + SF) then {i will send file}
+        writeln ('initiated')
+    else
+        writeln ('refused - code: ',buf[strt].bte);
+end;
+
+
+
+{----------------- TERMINAL PROCESS --------------------------------}
+
+procedure terminit;
+
+{purpose: Initialize terminal process at setup time.}
+
+begin
+   kbinterrupt:=FALSE;
+   ppsopen (TERM, TERM, termppsno);
+end;
+
+
+procedure termrec;
+
+{purpose: Receive messages from remote terminal process.}
+
+var
+   i:integer;
+begin
+  writeln ;
+  for i:=strt to last do
+      begin
+      write (buf[i].ch);
+      end;
+  writeln;
+end;
+
+
+
+procedure termxmit;
+
+{purpose: Send ~erminal communications to remote terminal process.}
+
+var
+   c : char;
+   chc:packed array[0..0] of char;
+begin
+   if kbinterrupt then          {user wants wants to talk}
+       begin
+       kbinterrupt:=FALSE;
+       writeln;
+       write ('> ');
+       write (kbchar);
+       dbuf[0].ch := kbchar;
+       dlen := dlen+1;
+       while (dbuf[dlen-1].ch<>chr(13)) and (dlen<datasize) do
+           begin
+           unitread (2,chc[0], 1,0,0);
+           dbuf[dlen].ch:=chc[0];
+           write (dbuf[dlen].ch);
+           dlen := dlen +1;
+           end;
+       end;
+end;
+
+{------------ RAW TERMINAL MODE ---------------}
+
+{Process which allows raw data typed on the terminal to be sent over
+ the serial line, used for debugging. Also used to allow login to timesharing
+ systems.
+ }
+
+procedure rawterm;
+var 
+   c:char;
+   termdone:boolean;
+   ch:packed array [0..0] of char;
+begin
+    termdone:=FALSE;
+    repeat
+        if kbstat then
+            begin
+            unitread (2,ch[0],1,0,0);
+            if ch[0]=chr(ATTENCHAR) then 
+               termdone:=TRUE
+            else 
+               begin
+               write(ch[0]);
+               putserial(ch[0])
+               end
+            end;
+        if srecstat then
+            begin
+            c:=serread;
+            write (c);   
+            end;
+   until termdone=TRUE;
+end;
+
+{--------------------- MENU ---------------------------}
+
+    
+procedure monitor;
+
+{purpose: Allows the user to control tracing for debugging.}
+
+begin
+    repeat
+        writeln;
+        write('Trace LTB ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': trace := TRUE;
+        'n','N': trace :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Trace PPS ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': ppsmon := TRUE;
+        'n','N': ppsmon :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Trace FTP ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': ftpmon := TRUE;
+        'n','N': ftpmon :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Local loopback test ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': begin
+                     ansbrkt:=']'; orgbrkt:='[';
+                     loopbk := TRUE;
+                 end;
+        'n','N': begin
+                     ansbrkt:='['; orgbrkt:=']';
+                     loopbk := FALSE;
+                 end
+        end;
+    until c in ['y','Y','n','N'];
+    writeln; write ('Enter data size: ');
+    readln (datasize);
+    if (datasize < 8) or (datasize >MAXDATASZ) then datasize := MAXDATASZ;
+    writeln;
+end;
+
+
+procedure exiter;
+
+{purpose : Terminates PTP program after warning user if transfers are in progress.}
+
+var
+   c:char;
+begin
+   {$I-}
+   if receiving or (fsndstate <> idle) then
+      begin
+      writeln; 
+      write('Currently engaged in file transfer.');
+      writeln; write ('Are you sure you want to exit? (Y/N): ');
+      read (c);
+      if (c='Y') or (c='y') then
+          begin
+          close (rfile,lock);
+          close (xfile);
+          hangup;
+          exit(ptp);
+          end;
+      end
+   else
+      begin
+      hangup;
+      exit(ptp);
+      end;
+{$I+}
+end;
+
+      
+procedure menu;
+
+{purpose: Main menu loop.}
+
+begin
+    menuexit := FALSE;
+    repeat
+        writeln;
+        write ('G(et S(end M(onitor R(aw  I(nitialize E(xit: ');
+        read (c);
+        case c of
+            'S','s':ftpstart;
+            'E','e':exiter;
+            'M','m':monitor;
+            'R','r':rawterm;
+            'I','i':init;
+            'G','g':getftp;
+            end;
+    until eoln or menuexit;
+end;
+
+
+{------------------- INITIALIZATION  -----------------}
+
+procedure init;
+
+{purpose: Calls individual initialization procedures.}
+
+begin
+    ltbinit;
+    ppsinit;
+    ctrlinit;
+    terminit;
+    frecinit;
+    fsndinit;
+    modemInit (mynode);
+end;
+    
+begin    {main}
+    writeln;
+    writeln ('Pascal Transfer Program (PTP) Version 1.0 7/24/79');
+    writeln;
+    trace := FALSE;
+    ppsmon := FALSE;
+    ftpmon := FALSE;
+    loopbk := FALSE;
+    ansbrkt := '[';
+    orgbrkt := ']';
+    repeat
+        writeln;
+        write('Answer or Originate ? (A/O)');
+        read(c);
+        case c of
+        'a','A': begin
+                 mynode := ANS;
+                 timeout := ANSTIMEOUT
+                 end;
+        'o','O': begin
+                 mynode := ORG;
+                 timeout := ORGTIMEOUT
+                 end;
+        end;
+    until c in ['a','A','o','O'];
+    writeln;
+    init;
+    if mynode = ANS then
+        begin
+        for i:=0 to 10000 do;           {should really wait for carrier detect}
+        endxmit
+        end;
+   sched;
+   hangup;
+end.
+

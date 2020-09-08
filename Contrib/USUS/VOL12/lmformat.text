@@ -1,0 +1,253 @@
+
+{$   l-printer:}
+
+PROGRAM lmformat;
+
+{$copyright (c) 1981 by Lee Meador, Arlington, TX 76010 }
+
+{ Program formats Pascal programs by capitalizing keywords and }
+{  making everthing else lower case. This makes a nice listing }
+{ LMFORMAT was run on itself at one time                       }
+{ You can add any more words you want capitalized to the list  }
+{  but be sure to keep it in alphabetical order                }
+{                                                              }
+{ Problems: words in comments should be left alone completely  }
+{  and single quotes in comments will throw it all off         }
+{  a nice feature would change any bracket comments to (**)    }
+{   or vice versa but should check for close comment inside    }
+{  it could be speeded up with BLOCKREAD and WRITE             }
+{  a lot more keywords should be added to these common ones    }
+
+VAR fin         : text;         { input file variable       }
+    fout        : text;         { output file variable      }
+    line        : STRING;       { keep the input line here  }
+    inname,                     { input file name from user }
+    outname     : STRING;       { output file name, too     }
+    debug       : BOOLEAN;      { true to trace program     }
+    lineno      : INTEGER;      { counts the lines of text  }
+    
+PROCEDURE process(VAR line:STRING);
+
+{ process one line to change SPECIAL words to caps      }
+
+VAR i           : INTEGER;      { count chars in the line   }
+    inquotes    : BOOLEAN;      { true when inside quotes   }
+
+PROCEDURE tryem;
+
+{ try to change the word beginning at 'I' if its special    }
+
+PROCEDURE trymatch(trystring:STRING);
+
+{ try to match (and change to caps) the word in trystring   }
+
+PROCEDURE changeit;
+
+{ IT matches! so change the word to all caps                }
+
+VAR j           : INTEGER;      { counts chars in the word  }
+
+BEGIN
+   IF debug THEN WRITELN('ENTERING CHANGEIT',
+      copy(line,i,length(trystring)));
+   
+   FOR j := 0 TO length(trystring)-1 DO
+      IF line[i+j] IN ['a'..'z'] THEN
+         line[i+j] := chr(ord(line[i+j])-32);
+   EXIT(tryem);  { dont try to match any more cause we already did }
+   
+END;
+
+BEGIN
+   
+   IF debug THEN WRITELN('ENTERING TRYMATCH -> ',trystring);
+   
+   { if the line is too short, dont bother }
+   
+   IF i+length(trystring)-1 > length(line) THEN EXIT(trymatch);
+   
+   { it has to match and have the next char (after the word) be }
+   {  either an non-alphanumberic or off the end of the string  }
+   
+   IF (copy(line,i,length(trystring)) = trystring)  
+      THEN IF length(line) > i+length(trystring) 
+         THEN IF NOT (line[i+length(trystring)] 
+                     IN ['a'..'z','A'..'Z','0'..'9']) 
+            THEN changeit { non-alphanumeric after word }
+            ELSE { null }
+         ELSE changeit;   { end of line after word      }
+   
+   { maybe we didnt match -- so dont try to match any more if the }
+   {  word we are trying is alphbetically after the word in the   }
+   {  line. The keywords are alphabetized by first letter.        }
+   
+   IF line[i] < trystring[1] THEN EXIT(tryem);
+   
+END; { trymatch }
+
+BEGIN
+   IF debug THEN WRITELN('ENTERING TRYEM --> ',
+      copy(line,i,length(line)-(i-1)));
+   
+   { try to match each of these keywords - in alphabetic order    }
+   
+   trymatch('and');
+   trymatch('array');
+   trymatch('begin');
+   trymatch('boolean');
+   trymatch('case');
+   trymatch('char');
+   trymatch('close');
+   trymatch('const');
+   trymatch('div');
+   trymatch('downto');
+   trymatch('do');
+   trymatch('else');
+   trymatch('end');
+   trymatch('exit');
+   trymatch('external');
+   trymatch('false');
+   trymatch('file');
+   trymatch('forward');
+   trymatch('for');
+   trymatch('function');
+   trymatch('get');
+   trymatch('gotoxy');
+   trymatch('goto');
+   trymatch('if');
+   trymatch('implementation');
+   trymatch('integer');
+   trymatch('interface');
+   trymatch('in');
+   trymatch('label');
+   trymatch('mod');
+   trymatch('nil');
+   trymatch('not');
+   trymatch('of');
+   trymatch('or');
+   trymatch('packed');
+   trymatch('page');
+   trymatch('procedure');
+   trymatch('program');
+   trymatch('put');
+   trymatch('readln');
+   trymatch('read');
+   trymatch('real');
+   trymatch('record');
+   trymatch('repeat');
+   trymatch('reset');
+   trymatch('rewrite');
+   trymatch('seek');
+   trymatch('segment');
+   trymatch('separate');
+   trymatch('set');
+   trymatch('string');
+   trymatch('then');
+   trymatch('to');
+   trymatch('true');
+   trymatch('type');
+   trymatch('unit');
+   trymatch('until');
+   trymatch('uses');
+   trymatch('var');
+   trymatch('while');
+   trymatch('with');
+   trymatch('writeln');
+   trymatch('write');
+END; { tryem }
+
+BEGIN { process }
+
+   IF debug THEN WRITELN('ENTERING PROCESS ->');
+   IF debug THEN WRITELN('   ',line);
+   
+   { change all the letters that arent in quotes to lower case first }
+   
+   inquotes := FALSE;
+   
+   FOR i := 1 TO length(line) DO 
+      IF NOT inquotes 
+         THEN IF line[i] = '''' 
+            THEN inquotes := TRUE
+            ELSE IF line[i] IN ['A'..'Z'] 
+                 THEN line[i] := chr(ord(line[i])+32)
+                 ELSE { null }
+         ELSE IF line[i] = ''''
+            THEN inquotes := FALSE
+            ELSE { null };
+   
+   { try all the keywords beginning at every position of the line }
+   { we do save a little time by not bothering if the char at a   }
+   {  position isnt alphabetic -- which all keywords begin with   }
+   {  then when we finish trying a word we skip to the next       }
+   {  possible place a match could occur -- next non-alphanum     }
+   { Oh yes, dont try to match inside quotes                      }
+   
+   inquotes := FALSE;
+   
+   FOR i := 1 TO length(line) DO
+      IF NOT inquotes
+         THEN IF line[i] = ''''
+            THEN inquotes := TRUE
+            ELSE IF line[i] IN ['a'..'z'] { dont try non-lc chars }
+               THEN BEGIN
+                  tryem; { a possible place -- try it }
+                  IF i < length(line) THEN 
+                     WHILE (line[i+1] IN ['a'..'z','A'..'Z','0'..'9']) AND
+                           (i < length(line)-1) DO 
+                        i := succ(i) { skip alphanums after try }
+                 END
+               ELSE { null }
+         ELSE IF line[i]= ''''
+            THEN inquotes := FALSE
+            ELSE { null }  { no trying inside quotes }
+   
+END; { process }
+
+BEGIN
+   
+   debug := FALSE; { set to true to print out a trace on console }
+   
+   { open input file }
+   
+   PAGE(output);
+   GOTOXY(0,5);
+   WRITE('Input File name: ');
+   READLN(inname);
+   IF length(inname)=0 THEN inname := 'SYSTEM.WRK.TEXT';
+   
+   RESET(fin,inname);
+   
+   { then open output file }
+   
+   GOTOXY(0,7);
+   WRITE('Output File name: ');
+   READLN(outname);
+   IF length(outname)=0 THEN outname := 'SYSTEM.WRK.TEXT';
+   
+   REWRITE(fout,outname);
+   
+   { now read, change and write each line }
+   
+   lineno := 0;
+   
+   WHILE NOT eof(fin) DO BEGIN
+      IF lineno MOD 50 = 0 THEN BEGIN
+         WRITELN;
+         WRITE('<',lineno:4,'> ');
+        END;
+      WRITE('.');
+      lineno := succ(lineno);
+      READLN(fin,line);
+      process(line);
+      WRITELN(fout,line);
+     END;
+     
+   { finally save the output ... thats it }
+   
+   CLOSE(fout,lock);
+   
+   WRITELN('Your output is on ',outname);
+   
+END.
+

@@ -1,0 +1,99 @@
+Contents of this volume                       Austin Tate, ERCC 22-Feb-82
+-------------------------------------------------------------------------
+
+This volume holds a mailing address data base, mailing label and forms
+letter production utility called MAIL along with associated text files
+and utilities.
+
+MAIL was initially written by Patrick Horton at Associated Computer
+Industries.  It was subsequently updated and modified by Austin Tate
+at the Edinburgh Regional Computing Centre.  The copyright was transfered
+to Austin Tate in February 1982 by ACI.
+
+The files available are:
+
+MAIL.TEXT               The main program which has include files for the rest
+MAIL1.TEXT              The include files follow.
+MAIL2A.TEXT
+MAIL2B.TEXT
+MAIL3.TEXT
+MAIL4.TEXT
+MAIL5.TEXT
+MAIL6.TEXT
+MAIL7.TEXT
+MAIL8.TEXT
+MAIL9.TEXT
+
+SCREENOPSX.TEXT        The MAIL program uses a UNIT SCREENOPS for screen
+SCREENOPSA.TEXT        control.  In version IV and other systems which
+                       provide a compatible SCREENOPS UNIT just use that.
+                       If one is not available on your system, the two files
+                       provided should provide enough of the SCREENOPS
+                       functions to allow MAIL to work.  SCREENOPSX should
+                       work with any VDU which uses FF (ASCII 12 decimal)
+                       as the Clear Screen and Home control character.
+                       SCREENOPSA is specifically for the Apple II and will
+                       get the control characters from the *SYSTEM.MISCINFO
+                       for UCSD II.1.
+                       
+MAIL.INIT.TEXT         A utility to initialise a MAIL data base from a
+                       text file holding names and addresses. See the
+                       documentation for more details.
+                       
+MAIL.DOC.TEXT          The documentation.  It was prepared with the UCSD
+                       Advanced Systems Editor (ASE) from Volition Systems
+                       and may be too large to edit with the standard
+                       in-memory UCSD editor.  You should be able to list
+                       it though.
+                       
+MAIL.READ.TEXT         This note.
+
+MAIL.E.G.TEXT          A "form letter" which serves as an example of the
+                       use of MAIL for building your own form letters.
+MAIL.LETT.TEXT         A sample straightforward form letter, you could model
+                       your own on this.
+MAIL.FORM.TEXT         A "form" which can be used as a form letter to print
+                       the information held i the data base about an
+                       individual.  Usefule for reports, etc.
+MAILINITEG.TEXT        An example file which can be used as input to the
+                       MAIL.INIT utility to create a MAIL data base from
+                       existing name and address lists.  Use this as a
+                       sample to get the format correct.
+                       
+MAIL.CODE              On some disks, the code files for the MAIL and
+MAIL.INIT.CODE         MAIL.INIT programs may be present.
+
+MAIL.DATA              On some disks, the data files created (by default)
+MAIL.INFO.DATA         by the MAIL program may be present.  If they are
+                       present, the MAIL system will use these and not ask
+                       you for your own mail files.  Rename or destroy
+                       these two to start your own mailing lists.
+                       
+Preparation
+-----------
+
+The MAIL and MAIL.INIT programs have been made to be compatible with
+a wide range of UCSD systems.  However, some changes are required to
+the sources to allow compilation on pre-version IV UCSD systems.
+
+1. Choose a suitable SCREENOPS UNIT if your system does not provide one
+   and compile it to SCREENOPS.CODE on the prefix disk.  The MAIL sources
+   assume that the inerface pert of SCREENOPS can be found in SCREENOPS.CODE.
+   
+2. For the Apple II, edit the compiler directive at the head of file
+   MAIL.TEXT to include the V- option.  This is marked in the sources.
+   
+3. For UCSD versions which do not provide many segment slots (e.g., II.0
+   Apple Pascal 1.0, etc) edit the SEGMENT PROCEDURE declarations in
+   MAIL6.TEXT - for Add and Change procedures - to be normal PROCEDURES.
+   The sources are marked appropriately.  This will have the effect of
+   cutting down on heap space available for sorting, etc. so try to use
+   the maximum number of segments that you can.
+   
+4. Now you should be able to compile MAIL.  Run the program and it will
+   deal with all necessary file initialisation.  You can pre-initialise
+   the mail data base from a text file holding names and addresses with
+   the utility MAIL.INIT (prior to running MAIL)if you wish.
+
+
+

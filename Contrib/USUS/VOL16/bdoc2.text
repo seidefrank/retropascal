@@ -1,0 +1,243 @@
+        
+        Understanding BUNIT
+     
+        Understanding the BUNIT well enough to modify it, for example,
+     takes a little more effort.  The following is necessarily a little
+     skimpy.  It is meant to be read while holding the listings in the
+     other hand.  The program is layered, or built-up.  First a number of
+     primitive operators were built.  The file BIO contains the i/o
+     primitives, which were built first.  Should one want to implement
+     buffering, for example, most of the changes would be isolated in
+     these functions.  Of the BIO functions, only bnew is not obvious. It
+     basically sets up the descriptor record, creates an empty root page,
+     and marks page 2 as free, pointing back to the descriptor.  By
+     seeking a record npages away, it allocates space, then closes the
+     file with a lock to make it permanent.  The filesize allocated by
+     bnew is what you are stuck with.  If the file cannot be opened, it
+     returns a false result, otherwise it returns true.
+     
+        The next primitives implemented were those in BDEBUG. Errtrap is 
+     called with an error message at points where "impossible" things are 
+     about to occur. It does nothing except warn you and wait for a 
+     carriage return.  Bdump and showit are fairly obvious.
+     
+        BHKEEP contains the next set of primitives implemented.  Broot 
+     reads the descriptor record to find the page number of the root page 
+     and returns that value.  Getpage is the dynamic page allocation 
+     routine.  It examines the freehead variable in the descriptor page to 
+     see if any free records are present.  If so, the first is removed 
+     from the chain, and the various pointers updated to promote the next 
+     record in the chain.  If the free chain is empty, it goes to the end 
+     of the pages in use (pointed to by nrec in the descriptor).  If 
+     there are no records left, it calls errtrap.  Note that it only 
+     allocates up to the number of records set when bnew was called.
+     
+        Freepage does the reverse of getpage. It deallocates pages which 
+     have been discarded in the process of concatenation by returning them 
+     to the free list.  Newroot is called when a split has propagated to 
+     the root and a new root is required.  The new root will contain only 
+     the central entry from the old root, and pointers to the old root and 
+     its new sibling.
+     
+        BMAIN and BINTERN contain the parts that do most of the work of
+     the unit.  Bsearch is relatively simple. Given a key and a tree, it
+     returns true if the key exists and false if not.  If the key exists, 
+     pgnbr and entrynbr will contain the position of the key, otherwise 
+     they will contain the position where insertion should take place.  
+     Bsearch calls bpgscan to look at each individual page and determine 
+     whether the key is there.  Bpgscan searches the page, stopping at the 
+     point where the key is found, the point where a larger key is 
+     encountered, or the end of the page, whichever comes first.  It 
+     returns, in i, the place where it stopped, and a boolean result 
+     indicating whether it found the key.  Note that bpgscan is presently 
+     implemented as a binary search.  The present page size is probably 
+     the smallest for which a binary search holds any advantage over a 
+     linear search.  If bpgscan returns true, then bsearch is done, 
+     otherwise, bsearch looks at the pointer in position i.  If the 
+     pointer is 0, we have reached a leaf without finding the key, and we 
+     are done.  If the pointer is not 0, we read the page pointed-to and 
+     start again.
+     
+        Binsert and bsplit are mutually recursive.  If, in the course of 
+     insertion, overflow occurs, then binsert will call bsplit to move 
+     half of the entries to a new page, and put the central entry into the 
+     parent page.  Bsplit calls binsert to perform that insertion into the 
+     parent.  Note that the fact that binsert may be called to do an 
+     insertion at a non-leaf page (when it is called by bsplit) is the 
+     reason for requiring the argument inspointer.  In application 
+     programs, that argument must always be zero, since the insertion will 
+     always be at a leaf.  This double-purpose use of binsert adds a 
+     little to its complexity and is a case where additional layering 
+     might present a cleaner (and safer) application program interface.
+     
+        Binsert reads the page where insertion is to occur and determines 
+     whether it is full.  If so it first attempts to balance among 
+     siblings by calling bbalance.  Stack overflow can occur on recursive 
+     split/insert calls on a deep tree, especially if the balance 
+     constants are large.  This is due to the size of the arrays used for 
+     balancing.  Removing the call to bbalance will eliminate the problem 
+     at the price of lowering storage utilization.  It should also speed 
+     insertion significantly.  
+     
+        If the call to bbalance fails to make room in the page, split is
+     called.  Finally, bshiftr is called to move the empty space to the
+     right place in the page, and the entry and pointer are written.  Note
+     that binsert may modify the position variables pgnbr and entrynbr by
+     calling bbalance, but that these modifications are only local to
+     binsert.  Consequently, do not count on these variables containing a
+     correct position following a call to binsert.  An explicit call to
+     bsearch is required.
+     
+        Bsplit is passed a tree and the number of a page to split.  It 
+     returns the page number of the page it created.  It copies the left 
+     half of the page into a buffer called oldrec, and the right half into 
+     a buffer called newrec.  If the old page was the root, then a new 
+     root is created containing just the central entry, otherwise binsert 
+     is called to put the central entry into the parent.  In either event, 
+     the left and right half buffers are written out.
+     
+        Fixpointer, called by both binsert and bsplit, is an imperfect
+     solution to an interesting design problem.  Backpointers are
+     maintained in the tree so that for any node you can travel up or down
+     without maintaining a search path. This simplifies several of the
+     routines, notably sequential searches.  It also makes it likely that
+     a corrupted file can be recovered, since the backpointers are
+     redundant information.  Unfortunately, the backpointers extract a
+     serious performance penalty.  Every time that an entry is moved
+     around in a page, the backpointer of its child must be updated.  If
+     several entries are moved, several pointers must be updated. 
+     Fixpointer does this job in a rather straightforward way.  Of course,
+     it must read a page to update it, and it is this additional I/O that
+     is the performance killer. Consequently, operations like insertion
+     and deletion perform nowhere near their "book optimum".  Searches, on
+     the other hand, are just as fast.  In applications where updating is
+     infrequent, this design is satisfactory.  With frequent updates, the
+     performance would probably be unacceptable.
+     
+        The sequential search routines firstentry, lastentry, nextentry, 
+     and preventry are rather standard tree-traversals.  If you follow the 
+     use of back-pointers, and the order in which entries are stored, 
+     these routines should be easy to follow.  If you don't understand any 
+     of that stuff, puzzling out these procedures could be tough, but is 
+     guaranteed to be educational.
+     
+        
+        The Balancing Act
+     
+     
+        Given the theoretical explanation of a btree, most of the
+     remaining routines are easily understood.  The exception is bbalance.
+     It was difficult to write; it was nearly impossible to debug; and it
+     will not be easy to understand.  I do not recommend attempting to
+     mess with it unless you are willing to devote a good deal of time to
+     it.
+     
+        Bbalance is passed a tree, a page and position around which to
+     balance (parent_pointer and entry_pointer), and a page and position 
+     to keep track of (markpage and markentry).  It reads all of the 
+     required pointers and entries into a pair of gigantic arrays, then
+     writes out a more or less even number to each of the siblings.  It
+     does this even if there is no advantage to be gained, since it can't
+     know that until it has read all of the sibling pages.  If the number
+     of entries per page will be fewer than k, bbalance returns a page to
+     the freelist and distributes the entries among the remaining
+     siblings.  Thus it serves the concatenation function as well as the
+     balancing function.  Three global constants are of particular
+     importance to bbalance. Bal is the number of siblings over which it
+     will attempt to balance. Halfbal is bal DIV 2.  Maxentries is the
+     size of the giant arrays, and it must be at least (2k + 1) * (bal +
+     1).  Some performance tuning of these constants is probably desirable
+     based on the choice of page and entry size.
+     
+        A lot of the code in bbalance is bookkeeping to keep track of 
+     markentry and markpage.  Bbalance may be called in the middle 
+     of binsert, before the actual insertion has taken place.  Bbalance 
+     will move things around, and binsert has to know where to perform the 
+     insertion after bbalance is done.  Markpage and markentry serve this 
+     purpose. The bookkeeping gets particularly complicated if the 
+     position where insertion is to take place is beyond the last valid 
+     entry in the page.  In this case, the markentry is decremented by one 
+     at the beginning of bbalance, and the flag moved_marker is set to 
+     true.  Markentry and markpage are then reset later.
+     
+        The main body of bbalance checks that we are not trying to balance 
+     the root (parent_pointer = 0), reads in the page in question, does 
+     some initialization, and then calculates the positions at which to 
+     begin and end the balancing( first and last).  There are four cases:
+      
+     IF      The number of valid entries is less than bal. In order not to   
+             balance past both ends of the page, we set first to the first 
+             entry in the page and last to the last entry in the page.
+     
+     ELSE IF Entry_pointer is so far to the left that we might balance off   
+             the left end of the page.  To avoid this, we set first to
+             the beginning of the page and last to bal-1.
+     
+     ELSE IF Entry_pointer is so far to the right that the analogous   
+             problem may occur there.  In this case we set last to the last 
+             entry in the page, and first to (count-(bal-1)).
+     
+     ELSE    No odd cases exist, so we set first to (entry_pointer- halfbal),
+             and last to (entry_pointer+halfbal).
+        
+        
+        Having established the limits of balancing, bbalance calls local 
+     procedure fill_arrays to read up the appropriate pages and stick them 
+     into the giant arrays.  Then it calculates the number of entries each 
+     sibling will have after balancing (newcount).  If that number is less 
+     than k, it calls condense to return a page to the freelist and 
+     recalculate.  In either event, it calculates how many pages will have 
+     an extra entry (extras), since you hardly ever get a newcount with no 
+     remainder.  
+     
+        If we didn't run into an odd case in condense (see below), 
+     continue will be true, and we will write out the children.  First we 
+     write out any children with an extra entry, then any children with 
+     the average number of entries.  A call to the local procedure 
+     write_child accomplishes this.  Finally we write out the parent page, 
+     and check to see if it has fallen below k entries.  If so, we 
+     recursively call bbalance to remedy the situation.  We can, in some 
+     cases, reach the root recursively.  Since bbalance uses a lot of 
+     memory for its activation record (remember the giant arrays?), stack 
+     overflow is a possibility here with certain combinations of page size 
+     and bal.  This tail recursion could easily be replaced by a giant 
+     loop around the present body of bbalance, with a little extra code to 
+     move up the tree each iteration as necessary.  This would cause the 
+     same activation record to be reused repeatedly, but at some expense 
+     to the readability of the code.
+     
+        Fill_arrays is basically just two loops controlled by index 
+     variables outer (for the outer loop) and inner (for the inner loop).  
+     Outer varies from first to last, and controls the reading and 
+     processing of pages, inner controls the processing of entries within 
+     a page.  The indexing is very complicated, partly because you have to 
+     stick the entries from the parent in among the entries from the
+     children, but leave the pointers from the parent unmolested.  Since 
+     each child page has one more pointer than entries, it works out, but 
+     not without a lot of thought.  Ep_index (entry/pointer index) and 
+     temp_index are indices to the giant arrays, but ep_index lags 
+     temp_index. 
+     
+        Write_child is pretty much the opposite of fill_arrays, except 
+     that the outer loop has been moved out of the procedure to account 
+     for the different number of entries per child induced by remainders 
+     in the division (extras).  It also has a lot more bookkeeping to 
+     contend with for markpage and markentry.  Note that place is an index 
+     into the big arrays which marks where markentry ended up during 
+     fill_arrays.
+     
+        Condense serves the concatenation function in a fairly obvious 
+     way.  It returns the rightmost child page to the freelist, throws 
+     away its pointer in the parent page (by calling bshiftl), and 
+     recalculates newcount and last.  It also deals with a special case.  
+     If we are attempting to condense the root page, and it contains only 
+     one entry, it is much easier to deal with as a special case.  We copy 
+     the two children into the root page, return both children (there can 
+     only be two if the root has only one entry) to the freelist, and fix 
+     up some back-pointers.  By setting continue to false, the body of 
+     bbalance is informed that it is not necessary to write the children.
+     
+        If you followed all of that, I salute you.
+
+
+

@@ -1,0 +1,387 @@
+PROCEDURE WriteA (Character: char);
+VAR  I: Width;
+     TestNo: Integer;
+BEGIN
+  CharCount := CharCount + 1;  Oldest := CharCount MOD BufferSize;
+  WITH UnWritten [Oldest] DO
+    BEGIN
+      IF CharCount > BuffSzP1
+        THEN BEGIN
+          IF ChIsEndLine
+            THEN BEGIN
+              IF IndentAfterEOL < 0
+                THEN BEGIN
+                  Write (Outfile, Blanks: - IndentAfterEOL);
+                  OutputCol := OutputCol - IndentAfterEOL;
+                END
+                ELSE BEGIN
+                  IF Increment < 0
+                    THEN BEGIN
+                      I := WriteRightCol - OutputCol + 1;
+                      IF I > 0 THEN Write (Outfile, Blanks: I);
+                      TestNo := LineNumber;  I := 0;
+                      REPEAT TestNo := TestNo DIV 10;  I := I + 1;
+                      UNTIL TestNo = 0;
+                      Write (Outfile, Zeroes: (6 - I), LineNumber: I);
+                      LineNumber := LineNumber - Increment;
+                      IF LineNumber > 9999
+                      THEN LineNumber := LineNumber - 10000;
+                      Writeln (Outfile);
+                    END
+                    ELSE BEGIN
+                      Writeln (Outfile);
+                      IF Increment > 0
+                        THEN BEGIN
+                          Write (Outfile, LineNumber: 4,' ');
+                          LineNumber := LineNumber + Increment;
+                        END
+                    END;
+                  IF IndentAfterEOL > 0
+(* ORIGINAL:      THEN Write (Outfile, Blanks: IndentAfterEOL); INSTEAD: -JLG-*)
+                  THEN WRITE (OUTFILE, CHR (16), CHR (INDENTAFTEREOL + 32));
+                  OutputCol := IndentAfterEOL + 1;
+                END;
+              ChIsEndLine := false;
+            END (*IF ChIsEndLine*)
+            ELSE BEGIN Write (Outfile, ch);  OutputCol := OutputCol + 1; END;
+        END (*IF CharCount > *);
+      Ch := Character;  WriteColumn := WriteColumn + 1;
+    END (*with*)
+END (*WriteA*);
+
+
+PROCEDURE FlushUnwrittenBuffer;
+
+BEGIN
+  WriteA (' ');
+  WITH UnWritten [Oldest] DO
+    BEGIN  ChIsEndLine := true;  IndentAfterEOL := 0;  END;
+  WriteColumn := 0;  FOR I := 0 TO BuffSzM1 DO WriteA (' ');
+END;
+
+
+PROCEDURE StartNewLineAndIndent;
+
+BEGIN
+  IF PackerIsOff AND DisplayIsOn
+    THEN BEGIN
+      WriteA (' '); LastSymbol := PeriodSymbol;
+      WITH UnWritten [Oldest] DO
+        BEGIN
+          ChIsEndLine := true;
+          IndentAfterEOL := WriteLeftCol + LeftMargin - 1;
+        END;
+      WriteColumn := WriteLeftCol + LeftMargin;
+    END
+END;
+
+
+PROCEDURE ReadACharacter;
+
+
+PROCEDURE WriteIncludeEnd;
+TYPE  futz = RECORD
+               CASE boolean OF
+                 TRUE: (s: string); 
+                FALSE: (n: PACKED ARRAY[0..160] OF 0..255)
+             END;
+VAR  i, SaveMargin: Margins;
+     x: futz;
+BEGIN
+  x.s := '{The INCLUDE file has been completed.}';
+  SaveMargin := LeftMargin;
+  LeftMargin := 0;
+  StartNewLineAndIndent;  StartNewLineAndIndent;
+  FOR i := 1 TO x.n[0] DO WriteA (x.s[i]);
+  StartNewLineAndIndent;
+  LeftMargin := SaveMargin
+END;
+
+
+PROCEDURE DoReadACharacter (VAR f: text);
+
+BEGIN
+  IF ReadColumn > ReadRightCol
+    THEN BEGIN
+      IF ReadRightCol < MaxReadRightCol
+        THEN BEGIN NextChIsEOL := true;  Readln (f)  END
+        ELSE ReadColumn := 2
+    END
+    ELSE IF ReadColumn = 1 THEN
+      WHILE ReadColumn < ReadLeftCol DO
+        BEGIN
+          IF EOLN (f) 
+            THEN ReadColumn := 1
+            ELSE BEGIN ReadColumn := ReadColumn + 1;  Get (f) END
+        END;
+  IF NextChIsEOL
+    THEN BEGIN
+      Character := ' ';  NextChIsEOL := false; ChIsEOL := true;
+      ReadColumn := 1;
+      IF NoFormatting
+        THEN BEGIN
+          WriteA (' ');
+          WITH UnWritten [Oldest] DO
+            BEGIN
+              ChIsEndLine := true;
+              IndentAfterEOL := WriteLeftCol - 1;
+            END;
+          WriteColumn := WriteLeftCol - 1;
+        END;
+    END
+    ELSE IF NOT eof (f)
+      THEN BEGIN
+        Character := f^;  ReadColumn := ReadColumn + 1;
+        NextChIsEOL := EOLN (f);  Get (f);  ChIsEOL := false;
+        IF NoFormatting THEN WriteA (Character)
+      END
+      ELSE BEGIN FlushUnwrittenBuffer; EXIT (Program) END
+END (*DoReadACharacter*);
+
+
+BEGIN {ReadACharacter - added to allow for INCLUDE files - JLG}
+  IF InIncludeFile 
+    THEN IF EOF (IncludeFile)
+      THEN BEGIN
+        WriteIncludeEnd;
+        DoReadACharacter (Infile);
+        InIncludeFile := false;
+        Close (IncludeFile, Lock)
+      END
+      ELSE DoReadACharacter (IncludeFile)
+    ELSE DoReadACharacter (Infile);
+END;
+
+
+PROCEDURE WriteSymbol;
+
+VAR  I: Width;
+     NumberBlanksToWrite: OptionSize;
+
+
+PROCEDURE WriteLongString (StringLength: Width;  VAR LongString: SymbolString);
+VAR  SaveMargin: Margins;
+     MaxLength, LineLength: Width;
+     EndString: SymbolString;
+BEGIN
+  SaveMargin := LeftMargin;  LeftMargin := 0;  
+  StartNewLineAndIndent;  MaxLength := WriteRightCol - WriteLeftCol + 1;
+  IF StringLength <= MaxLength
+    THEN FOR LineLength := 1 TO StringLength DO WriteA(LongString[LineLength])
+    ELSE BEGIN
+      LineLength := 0;
+      REPEAT  LineLength := LineLength + 1;  WriteA (LongString[LineLength])
+      UNTIL (LineLength > MaxLength -3) 
+         OR ((LineLength > MaxLength - 9) AND (LongString[LineLength] = ' '));
+      WriteA('''');  WriteA(',');  EndString[1] := '''';
+      FOR I := 1 TO StringLength - LineLength DO 
+        EndString[I+1] := LongString[I+LineLength];
+      WriteLongString (StringLength - LineLength + 1, EndString);
+    END;
+  LeftMargin := SaveMargin;
+END;
+  
+  
+BEGIN
+  IF DisplayIsOn
+    THEN BEGIN
+      NumberBlanksToWrite := SymbolGap;
+      IF (LastSymbol IN [LeftParenth, LeftBracket, PeriodSymbol]) OR
+          (SymbolName IN [Semicolon, RightParenth, RightBracket,
+          CommaSymbol, PeriodSymbol, ColonSymbol]) OR (SymbolName IN
+          [LeftBracket, LeftParenth]) AND (LastSymbol = Identifier)
+        THEN NumberBlanksToWrite := 0
+        ELSE IF (SymbolName IN AlphaSymbols) AND (LastSymbol IN AlphaSymbols)
+          THEN IF WriteColumn <= WriteRightCol
+            THEN BEGIN
+              WriteA (' ');  NumberBlanksToWrite := SymbolGap - 1;
+            END;
+      IF WriteColumn + Length + NumberBlanksToWrite - 1 > WriteRightCol
+        THEN BEGIN
+          WriteA (' ');
+          WITH UnWritten [Oldest] DO
+            BEGIN
+              ChIsEndLine := true;
+              IF PackerIsOff
+                THEN BEGIN
+                  IndentAfterEOL := WriteLeftCol - 1 + LeftMargin +
+                    LongLineIndent;
+                  WriteColumn := WriteLeftCol + LeftMargin +
+                    LongLineIndent;
+                  I := WriteRightCol - LeftMargin - LongLineIndent 
+                     - WriteLeftCol + 1;
+                  IF I < Length 
+                    THEN IF Symbol[1] = ''''
+                      THEN BEGIN 
+                        ChIsEndLine := false;
+                        WriteLongString (Length, Symbol);
+                        Length := 0     {suppress writing string AGAIN}
+                      END
+                      ELSE IF I < 10 THEN Length := 10 ELSE Length := I;
+                END
+                ELSE BEGIN
+                  IF Length > WriteRightCol - WriteLeftCol + 1
+                    THEN Length := WriteRightCol - WriteLeftCol + 1;
+                  IndentAfterEOL := WriteLeftCol - 1;
+                  WriteColumn := WriteLeftCol
+                END;
+            END (*with*);
+        END (*then*)
+        ELSE FOR I := 1 TO NumberBlanksToWrite DO WriteA (' ');
+      FOR I := 1 TO Length DO WriteA (Symbol [I]);
+    END (*IF DisplayIsOn*);
+  LastSymbol := SymbolName
+END (*WriteSymbol*);
+
+
+PROCEDURE CopyACharacter;
+
+BEGIN
+  IF DisplayIsOn
+    THEN BEGIN
+      IF (WriteColumn > WriteRightCol) OR 
+         ((WriteColumn + 7 > WriteRightCol) AND (Character  = ' '))     (*JLG*)
+        THEN BEGIN
+          WHILE (Character = ' ') AND NOT ChIsEOL DO
+            ReadACharacter;
+          IF NOT ChIsEOL THEN StartNewLineAndIndent
+        END;
+      IF ChIsEOL
+        THEN BEGIN
+          LeftMargin := 0;  StartNewLineAndIndent;
+          LeftMargin := ActualLeftMargin
+        END
+        ELSE WriteA (Character)
+    END;
+  ReadACharacter
+END (*CopyACharacter*);
+
+
+
+
+PROCEDURE DoFormatterDirectives;
+
+CONST  Invalid = -1;
+TYPE  ParamCount = 1..2;
+      Params = ARRAY [ParamCount] OF integer;
+VAR  Specification: Params;
+     FormatOption: char;
+     PrevDisplay, PrevNoFormatting: boolean;
+     EndDirectiv: CharSet;
+
+
+PROCEDURE ReadIn (N: ParamCount; VAR Specification: Params);
+
+VAR I: ParamCount;
+
+BEGIN
+  FOR I := 1 TO N DO
+    BEGIN
+      WHILE NOT (Character IN (Digits + EndDirectv)) DO CopyACharacter;
+      Specification [I] := 0;
+      IF NOT (Character IN EndDirectiv)
+        THEN 
+          REPEAT
+            Specification [I] := 10 * Specification [I] + ORD (Character)
+              - ORD ('0');
+            CopyACharacter
+          UNTIL NOT (Character IN Digits)
+        ELSE Specification [I] := Invalid;
+    END
+END (*ReadIn*);
+
+
+BEGIN (*DoFormatterDirectives*);
+  EndDirective := ['*', ']', '}'];                                 (*JLG*)
+  REPEAT IF Character IN ['A'..'G', 'I', 'L', 'N', 'P', 'R', 'S', 'W']
+    THEN BEGIN
+      FormatOption := Character;
+      CASE FormatOption OF
+        'A', 'E', 'I', 'G', 'P', 'L', 'S':
+          BEGIN
+            ReadIn (1, Specification);
+            IF (Specification [1] < WriteRightCol - WriteLeftCol - 9)
+                OR (FormatOption = 'P')
+              THEN CASE FormatOption OF
+                'A':  DeclarAlignment := Specification [1];
+                'E':  IF Specification [1] < 4
+                        THEN BEGIN
+                          ProcNamesWanted := Specification [1] > 1;
+                          EndCommentsWanted := Odd(Specification [1])
+                        END;
+                'G':  SymbolGap := Specification [1];
+                'I':  IndentIndex := Specification [1];
+                'L':  LongLineIndent := Specification [1];
+                'P':  ProcSeparation := Specification [1];
+                'S':  StatmtSeparation := Specification [1]
+              END (*case*)
+          END (*1st 7 letters*);
+        'W', 'R', 'N':
+          BEGIN
+            ReadIn (2, Specification);
+            IF Specification [2] <> Invalid
+              THEN CASE FormatOption OF
+                'W':  IF (Specification [1] > 0) AND (Specification [2] <
+                          BufferSize - 2) AND (Specification [2] -
+                          Specification [1] > 8)
+                        THEN BEGIN
+                          WriteLeftCol := Specification [1];
+                          WriteRightCol := Specification [2]
+                        END;
+                'R':  IF (Specification [1] > 0) AND (Specification [2] -
+                          Specification [1] > 8)
+                        THEN BEGIN
+                          ReadLeftCol := Specification [1];
+                          ReadRightCol := Specification [2]
+                        END;
+                'N':  BEGIN
+                        LineNumber := Specification [1];
+                        Increment := Specification [2];
+                        WHILE NOT (Character IN (['<'] + EndDirectv))
+                            AND (Character <> '>') DO
+                          CopyACharacter;
+                        IF Character = '>' THEN Increment := - Increment
+                      END
+              END (*case*);
+          END (*Next 2 letters*);
+        'B', 'C', 'D', 'F':
+          BEGIN
+            REPEAT CopyACharacter
+            UNTIL Character IN (['+', '-'] + EndDirectv);
+            IF Character IN ['+', '-']
+              THEN CASE FormatOption OF
+                'B':  IF DisplayIsOn THEN BunchWanted := Character = '+';
+                'C':  PackerIsOff := Character = '-';
+                'D':  BEGIN
+                        PrevDisplay := DisplayIsOn;
+                        DisplayIsOn := Character = '+';
+                        IF PrevDisplay AND NOT DisplayIsOn
+                          THEN BEGIN
+                            WriteA ('*'); WriteA (')');
+                            SavedBunch := BunchWanted;
+                            BunchWanted := false
+                          END
+                          ELSE IF NOT PrevDisplay AND DisplayIsOn
+                            THEN BEGIN
+                              StartNewLineAndIndent;  WriteA ('(');
+                              WriteA ('*');  BunchWanted := SavedBunch
+                            END
+                      END;
+                'F':  BEGIN
+                        PrevNoFormatting := NoFormatting;
+                        NoFormatting := Character = '-';
+                        DisplayIsOn := NOT NoFormatting;
+                        IF PrevNoFormatting AND NOT NoFormatting
+                          THEN ReadACharacter;
+                        IF NOT PrevNoFormatting AND NoFormatting
+                          THEN WriteA ('-');
+                      END
+              END (*case*)
+          END (*boolean parameters*)
+      END (*main case statement*);
+    END (*then*)
+    ELSE IF NOT (Character IN EndDirectv) THEN CopyACharacter
+  UNTIL Character IN EndDirectv;
+  IF Character = ']' THEN CopyACharacter
+END (*DoFormatterDirectives*);
+

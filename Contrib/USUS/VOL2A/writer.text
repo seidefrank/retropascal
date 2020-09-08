@@ -1,0 +1,417 @@
+PROGRAM WRT;
+  
+  VAR
+    FILES : ARRAY [ 1..9 ] OF STRING ;
+    GOTFILES : BOOLEAN ;
+    FILENAME : STRING ; 
+    DATE : STRING ; 
+    DOUBLESPACE : CHAR ;
+    COMMAND : CHAR ;
+    NUMBERS : CHAR ;
+    TOPORBOTTOM : CHAR ;
+    PAPERSIZE : INTEGER ;
+    LEFTMARGIN : INTEGER ;
+    TOPMARGIN : INTEGER ;
+    BOTTOMMARGIN : INTEGER ;
+    NUMFILES : INTEGER ;
+    NUMPRINTS : INTEGER ;
+    ENDLINES : INTEGER ;
+     
+     { * * * * * * * * * * }
+
+PROCEDURE WRTPAGE ( PRINTFILE : STRING ) ;
+
+  VAR
+    INP : TEXT ;
+    CH : CHAR ;
+    PR : FILE OF CHAR;
+    LINE : STRING ;
+    DONE : BOOLEAN ;
+    MARGINLINES : INTEGER ;
+    PAGENUMBER : INTEGER ;
+    EXTRALINES : INTEGER ;
+    FILLERLINES : INTEGER ;
+    MARGINSPACES : INTEGER ;
+    LINESLEFT : INTEGER ;
+    LINESUSED : INTEGER ;
+    PROMPTER : CHAR ;
+    
+     { ------------------- }
+  
+BEGIN
+  
+  WRITELN ( 'Printing...' ) ;
+  REWRITE (PR,'PRINTER : ');
+  RESET ( INP, PRINTFILE ) ;
+  PAGE ( PR ) ;
+  PAGENUMBER := 0 ;
+  DONE := FALSE ;
+  
+  WHILE NOT EOF (INP) DO
+    BEGIN
+      PAGENUMBER := PAGENUMBER + 1 ;
+      WRITELN ( PR ) ;
+      IF ( NUMBERS = 'Y' ) AND ( TOPORBOTTOM = 'T' ) THEN
+        BEGIN
+          WRITELN ( PR , '-' : 36 , PAGENUMBER , '-' ) ;
+        END ;
+    IF PAGENUMBER = 1 THEN
+      BEGIN
+WRITELN ( PR , DATE : 67 ) ;
+WRITELN ( PR , PRINTFILE : 42 ) ;
+
+IF TOPORBOTTOM = 'T' THEN LINESUSED := TOPMARGIN + 4
+  ELSE LINESUSED := TOPMARGIN + 3 ;
+      END { IF }  
+        ELSE 
+IF TOPORBOTTOM = 'T' THEN LINESUSED := TOPMARGIN + 2
+          ELSE
+        LINESUSED := TOPMARGIN + 1 ;
+    FOR MARGINLINES := 1 TO TOPMARGIN DO
+      WRITELN (PR) ;
+     
+     LINESLEFT := PAPERSIZE - LINESUSED ;
+     { WRITELN ( LINESUSED ) ;
+     WRITELN ( LINESLEFT ) ;
+     WRITELN ( ENDLINES ) ;
+     READ ( KEYBOARD , PROMPTER ) ; }
+     WHILE ( LINESLEFT > ENDLINES ) AND ( NOT DONE ) DO
+       BEGIN
+         FOR MARGINSPACES := 1 TO LEFTMARGIN DO
+           WRITE ( PR , ' ' ) ;
+        
+         READLN ( INP, LINE ) ;  WRITELN ( PR, LINE ) ;
+         
+         IF DOUBLESPACE = 'Y' THEN 
+           BEGIN
+             WRITELN (PR) ;
+             LINESLEFT := LINESLEFT - 2 ;
+           END
+         ELSE
+           LINESLEFT := LINESLEFT - 1 ;
+         
+         IF EOF ( INP ) THEN DONE := TRUE ;
+      END { WHILE } ;
+    
+    FOR MARGINLINES := 1 TO BOTTOMMARGIN DO
+      WRITELN ( PR ) ;
+    IF EOF ( INP ) THEN
+      BEGIN
+        EXTRALINES := ( LINESLEFT - ENDLINES ) ;
+        FOR FILLERLINES := 1 TO EXTRALINES DO 
+        WRITELN ( PR ) ;
+      END ;
+    IF ( NUMBERS = 'Y' ) AND ( TOPORBOTTOM = 'B' ) THEN
+      BEGIN
+        WRITELN ( PR , '-' : 36 , PAGENUMBER , '-' ) ;
+      END ;
+    
+    { PAGE ( PR ) ; }
+    
+     { ------------------- }
+    
+  END ;
+  CLOSE (INP) ;
+END { WRTPAGE } ;
+
+     { * * * * * * * * * * }
+
+PROCEDURE HELPINSTR ;
+  
+  VAR
+    PROMPTER : CHAR ;
+    FILLERLINES : INTEGER ;
+  
+  BEGIN
+    PAGE ( OUTPUT ) ;
+      WRITELN ;
+      WRITELN ( 'INSTRUCTIONS:' ) ;
+      WRITELN ( 'TO USE ANY OF THE FOLLOWING COMMANDS,' ) ;
+      WRITELN ( 'SIMPLY ENTER THE FIRST LETTER OF THAT' ) ;
+ WRITELN ( 'COMMAND, AND THE REST IS SELF-EXPLANATORY.' ) ;
+      WRITELN ( 'WHEN YOU ARE READY TO BEGIN PRINTING,' ) ;
+      WRITELN ( 'SIMPLY TYPE A CARRIAGE RETURN' ) ;
+    FOR FILLERLINES := 1 TO 8 DO
+      WRITELN ;
+      WRITE ( '( < CR > to continue ) ' ) ;
+    READLN ( KEYBOARD , PROMPTER ) ;
+    PAGE ( OUTPUT ) ;
+  END { HELPINSTR } ;
+
+     { * * * * * * * * * * }
+
+PROCEDURE HELPCMNDS ;
+  
+  VAR
+    PROMPTER : CHAR ;
+    FILLERLINES : INTEGER ;
+  
+  BEGIN
+    WRITELN ;
+    WRITELN ( 'COMMANDS:' ) ;
+      WRITELN ( 'D : DATE' ) ;
+      WRITELN ( 'F : FILENAME ( UP TO 9 )' ) ;
+      WRITELN ( 'H : HELP' ) ;
+      WRITELN ( 'L : LIST OF PRINTFILES' ) ;
+      WRITELN ( 'M : MARGINS ( LEFT, TOP, BOTTOM' ) ;
+ WRITELN ( 'N : PAGENUMBERS ( TOP OR BOTTOM OF PAGE ) ' ) ;
+      WRITELN ( 'P : PAPERSIZE ( NUMBER OF LINES )' ) ;
+      WRITELN ( 'S : DOUBLSPACING' ) ;
+    FOR FILLERLINES := 1 TO 5 DO
+      WRITELN ;
+      WRITE ( '( < CR > to continue ) ' ) ;
+  END { HELPCMNDS } ;
+
+     { * * * * * * * * * * }
+
+PROCEDURE HELPDFLTS ;
+  
+  VAR
+    PROMPTER : CHAR ;
+    FILLERLINES : INTEGER ;
+  
+  BEGIN
+    READLN ( KEYBOARD , PROMPTER ) ;
+    PAGE ( OUTPUT ) ;
+      WRITELN ;
+      WRITE ( 'REMEMBER - THE FOLLOWING FUNCTIONS ARE ' ) ;
+      WRITELN ( 'AUTOMATICALLY SET:' ) ;
+      WRITELN ( 'LEFT MARGIN:10' ) ;
+      WRITELN ( 'TOP MARGIN:4' ) ;
+      WRITELN ( 'BOTTOM MARGIN:4' ) ;
+      WRITELN ( 'PAGENUMBERS:YES ( TOP OF PAGE ) ' ) ;
+      WRITELN ( 'PAPERSIZE:66 LINES' ) ;
+      WRITELN ( 'DOUBLESPACES:YES' ) ;
+    FOR FILLERLINES := 1 TO 7 DO
+      WRITELN ;
+      WRITE ( '( < CR > to continue ) ' ) ;
+    READLN ( KEYBOARD , PROMPTER ) ;
+    PAGE ( OUTPUT ) ;
+  
+  END { HELPDFLTS } ;
+
+     { * * * * * * * * * * }
+                      
+PROCEDURE MARGINS ;
+
+  VAR
+    MARGINTYPE : CHAR ;
+  
+  BEGIN
+    REPEAT
+      BEGIN
+        WRITE ( 'MARGINS: L(eft, T(op, B(ottom ' ) ;  
+        WRITELN ( '( < CR > to leave ) ' ) ;
+        READ ( KEYBOARD , MARGINTYPE ) ;
+          
+          CASE MARGINTYPE OF
+            'L' : BEGIN WRITE ( 'left margin?' ) ;  
+                  READLN ( INPUT , LEFTMARGIN ) ; END ; 
+            'T' : BEGIN WRITE ( 'top margin?' ) ;
+                  READLN ( INPUT , TOPMARGIN ) ; END ; 
+            'B' : BEGIN WRITE ( 'bottom margin?' ) ;
+                  READLN ( INPUT , BOTTOMMARGIN ) ; END ;
+          END { CASE } ;
+        
+        PAGE ( OUTPUT ) ;
+      END { REPEAT } ;
+    UNTIL MARGINTYPE = ' ' ;
+  END { MARGINS } ;
+
+     { * * * * * * * * * * }
+
+PROCEDURE HELPMARGINS ;
+
+  BEGIN
+    
+    IF COMMAND = 'M' THEN
+      MARGINS
+        ELSE
+          BEGIN
+            HELPINSTR ;
+            HELPCMNDS ;
+            HELPDFLTS ;
+          END { IF } ;
+
+  END { HELPMARGINS } ;
+
+     { * * * * * * * * * * }
+
+PROCEDURE READFILENAME ;
+
+  VAR
+    COUNTER : INTEGER ;
+    STILLREADING : BOOLEAN ;
+    
+  BEGIN 
+    GOTFILES := TRUE ;
+    COUNTER := 1 ;    STILLREADING := TRUE ;
+    WHILE ( COUNTER < 10 ) AND ( STILLREADING = TRUE ) DO 
+      BEGIN
+        
+        WRITE ( 'FILENAME / CR : ' ) ;
+        READLN ( FILENAME ) ;
+    
+        IF FILENAME <> '' THEN 
+          BEGIN
+            FILES [ COUNTER ] := FILENAME ;
+            NUMFILES := COUNTER ;
+            COUNTER := COUNTER + 1 ;
+          END { IF }
+        ELSE
+          STILLREADING := FALSE ;
+      END { WHILE } ;
+  END { READFILENAME } ;
+     
+     { * * * * * * * * * * }
+     
+PROCEDURE CARRYOUT ;
+  
+  VAR
+    NEWDATE , NEWFILE : STRING ;
+    PROMPTER : CHAR ;
+    LIST : INTEGER ;
+  
+  BEGIN 
+    CASE COMMAND OF
+          
+      'D' : BEGIN WRITE ( 'date today?' ) ; 
+              READLN ( NEWDATE ) ; 
+              IF NEWDATE <> '' THEN DATE := NEWDATE ;
+            END ;
+      'F' : READFILENAME ;
+      'H' : HELPMARGINS ;
+      'L' : BEGIN WRITELN ( '( < CR > to continue ) ' ) ;
+              FOR LIST := 1 TO NUMFILES DO
+              WRITELN ( FILES [ LIST ] ) ;
+              READ ( KEYBOARD , PROMPTER ) ;
+            END ;
+      'M' : HELPMARGINS ;
+      'N' : REPEAT 
+              BEGIN PAGE ( OUTPUT ) ; 
+              WRITE ( 'do you want pagenumbers?' ) ;
+              READ ( KEYBOARD , NUMBERS ) ; 
+              PAGE ( OUTPUT ) ;
+              IF NUMBERS = 'Y' THEN
+                BEGIN
+                  WRITE ( 'T(op or B(ottom?' ) ;
+                  READ ( KEYBOARD , TOPORBOTTOM ) ; 
+                END
+              END ;
+            UNTIL ( NUMBERS = 'Y' ) OR ( NUMBERS = 'N' ) ;
+      'P' : BEGIN WRITE ( 'what is your papersize? ' ) ;
+              READLN ( INPUT , PAPERSIZE ) ; END ;
+      'S' : REPEAT BEGIN PAGE ( OUTPUT ) ;
+              WRITE ( 'do you want doublespaces?' ) ; 
+              READ ( KEYBOARD , DOUBLESPACE ) ; END ;
+       UNTIL ( DOUBLESPACE = 'Y' ) OR ( DOUBLESPACE = 'N' ) ;
+
+    END { CASE } ;
+  END { CARRYOUT } ;
+     
+     { * * * * * * * * * * }
+     
+PROCEDURE SETVARS ;
+  
+  VAR
+    NUMSETS : INTEGER ;
+  
+  BEGIN
+    GOTFILES := FALSE ;
+    LEFTMARGIN := 10 ;
+    TOPMARGIN := 4 ;
+    BOTTOMMARGIN := 4 ;
+    NUMBERS := 'Y' ;
+    DOUBLESPACE := 'N' ;
+    PAPERSIZE := 66 ;
+    DATE := ' ' ;
+    TOPORBOTTOM := 'T' ;
+    NUMFILES := 0 ;
+    
+    FOR NUMSETS := 1 TO 9 DO
+      FILES [ NUMSETS ] := ' ' ;
+  
+  END ;
+     
+     { * * * * * * * * * * }
+
+PROCEDURE INITIALIZE ;
+  VAR
+    TORB : STRING ;
+    INTROSPACES : INTEGER ;
+    DELAY , DELAYARG : INTEGER ;
+    ASTERISKS : INTEGER ;
+  
+  BEGIN
+    PAGE ( OUTPUT ) ;
+    
+    FOR INTROSPACES := 1 TO 4 DO
+      WRITELN ;
+    FOR ASTERISKS := 1 TO 63 DO
+      WRITE ( '*' ) ;
+    WRITELN ;
+    WRITELN ;
+    WRITELN ( '               WELCOME TO WRITER VER.I.' ) ;
+    WRITELN ;
+    FOR ASTERISKS := 1 TO 63 DO
+      WRITE ( '*' ) ;
+      
+    FOR DELAY := 1 TO 2000 DO 
+      BEGIN
+        DELAYARG := 0 ;
+        DELAYARG := DELAYARG + 1 ;
+      END ;
+    
+    SETVARS ;
+    
+    PAGE ( OUTPUT ) ;
+    REPEAT
+      WRITE ( 'WRITER: D(ate, F(ilename, H(elp, ' ) ;
+      WRITELN ( 'L(ist, M(argins, N(umbers, ' ) ;
+      WRITELN ( 'P(apersize, S(pacing ( < CR > to leave )' ) ;
+        { DATE, FILENAME, HELP, LIST, MARGINS,
+        NUMBERS, PAPERSIZE, SPACING }
+      WRITELN ;
+      
+      IF TOPORBOTTOM = 'T' THEN TORB := 'TOP'
+        ELSE TORB := 'BOTTOM' ;
+      
+      WRITELN ( 'number of files:' , NUMFILES ) ;
+      WRITELN ( 'date:' , DATE ) ; 
+      WRITELN ( 'left margin:' , LEFTMARGIN ) ;
+      WRITELN ( 'top margin:' , TOPMARGIN ) ;
+      WRITELN ( 'bottom margin:' , BOTTOMMARGIN ) ;
+      WRITELN ( 'doublespaces:' , DOUBLESPACE ) ;
+      WRITE ( 'pagenumbers:' , NUMBERS ) ;
+      IF NUMBERS = 'Y' THEN
+        WRITELN ( ' ( ' , TORB , ' OF PAGE )' )
+      ELSE
+        WRITELN ;
+      WRITELN ( 'papersize:' , PAPERSIZE ) ;
+      
+      READ ( KEYBOARD , COMMAND ) ;
+        PAGE ( OUTPUT ) ;
+      CARRYOUT ;
+        PAGE ( OUTPUT ) ;
+    UNTIL COMMAND = ' ' ;
+    
+    IF TOPORBOTTOM = 'T' THEN 
+      ENDLINES := BOTTOMMARGIN
+        ELSE 
+          ENDLINES := BOTTOMMARGIN + 3 ;
+     
+     
+END { INITIALIZE } ;
+     
+     { * * * * * * * * * * }
+
+BEGIN
+  
+  INITIALIZE ;
+  
+  IF GOTFILES = FALSE THEN READFILENAME ; 
+  
+  FOR NUMPRINTS := 1 TO NUMFILES DO
+    WRTPAGE ( FILES [ NUMPRINTS ] ) ;
+
+END.

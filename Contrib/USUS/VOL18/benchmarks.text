@@ -1,0 +1,97 @@
+
+     Benchmarks
+
+     There are a bunch of benchmarks on this disk.  They serve various
+purposes and some overlap in what they are designed to test.  Some (such as
+the Byte benchmark) are included only because there is an existing database of 
+results already so that you can get an immediate (although rough) idea of the 
+performance of your iron in comparison to other popular types.
+
+     If you should feel so inclined, you may run some or all of the benchmarks 
+and report (on the forms provided, please) the results to me (preferably by US
+Mail).
+
+     George Schreyer
+     412 North Maria Avenue
+     Redondo Beach, Ca.
+     90277
+
+     I will try to condense the results that I receive into some form of 
+digestable format.  Presenting tables of performance numbers will be too 
+cumbersome, so I will probably rank the speed of various computers based on a 
+few of the pertanent benchmarks and note any hardware which is particularly
+fast or slow at some particular operation, such as reals or somesuch.
+
+     I will describe the purpose of each of them (if I know it) and what it is
+primarily designed to test.  
+
+     PWROF2. This benchmark test integer arithmetic exclusively.  It computes
+the first 90 powers of 2.
+
+     QUICKSORT.  This is the conventional recursive quicksort algorithm which 
+sorts 10000 integers.  It tests integer arithmetic and it uses recursion 
+and array indexing heavily.
+
+     NUMBERIO.  This one writes a file of 25,000 real numbers and then reads 
+them back.  It tests file I/O speed but is not particularly sensitive to
+disk access time as only a few blocks are read and written, and no long head 
+seeks are involved.  UCSD Pascal I/O is generally slow.
+
+     8QUEENS.  This benchmark is another test of recursion and iterive 
+constructs such as IF-THEN and FOR loops.
+
+     PRIMES.  This one finds the first 1000 primes.  It is more 
+computationally intensive than PWROF2.
+
+     ANCEST.S.  This one manipulates sets.
+
+     WHETSTONE.  This is a pascal implementation (from the original ALGOL) of 
+the "magic" WHETSTONE benchmark.  It is a collection of weighted procedures 
+which exercise the numerical capabilities of a machine.  It is often quoted in 
+performance comparisons of various mainframes.  It is written to foil 
+optimizing compilers and force execution of all of its constructs.  It is 
+rather heavily biased to test real numbers.
+
+     SIEVE.  This is the infamous Byte Benchmark, modified to compile under 
+UCSD.  It is NOT modified to run the fastest under UCSD as a considerable 
+database has been accumlated with the version supplied.  Within the file, you 
+will find the results of several types of computers.
+
+     BENCH.USUS.  This is the benchmark published in NL#4 by Jon Bondy.  It is 
+a series of short loops which test specific constructs of UCSD Pascal.  This 
+one (and the similar following ones) will probably be my best basis for 
+machine and UCSD version comparison.
+
+     LONG_INT.  This is similar to BENCH.USUS except that it specifically 
+tests the performance of long interger operations.  Long integers are
+implemented differently in different UCSD implementations, and I am interested 
+if there are any significant differences in the performance between versions.
+
+     INTRINSICS.  This one tests the results of several of the system 
+intrinsics such as SIN and COS.  Again, I expect a wide variance of results 
+from different UCSD systems.
+
+     QUR.  This simple test indicates the general response of the operating 
+system and disk system.  Its result changes radically for different disk 
+systems and very radically between versions II.0 and IV.0.
+
+     COMPKILLER.  This one is designed to crash your computer.  It indicates,
+in a simple minded way, how big a program your system can compile by 
+measuring the available size of the compiler symbol table.  Version IV.0 isn't 
+nice enough to tell you this.
+
+     STARS.  This one measures the speed of single character I/O.  It produced 
+some suprising results under the LSI-11 extended memory implementation of 
+IV.1.
+
+     SEGMASHER.  Segmasher tests the speed of segment swaps.  Further 
+instructions are given in the file.
+
+     If this is all too much work to consider, then please just run two of the 
+easist, SIEVE and QUR and submit just that data ALONG WITH YOUR SYSTEM 
+CONFIGURATION AND p-SYSTEM VERSION!  SIEVE will more or less indicate your
+system's processor speed and QUR will evaluate (among other things) your disk
+system speed.
+
+     regards - gws
+

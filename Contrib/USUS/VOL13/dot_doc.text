@@ -1,0 +1,378 @@
+
+         
+.comment        !----------------------------------!
+.comment        !                                  !
+.comment        !       RUNON documentation        !
+.comment        !          Dot Commands            !
+.comment        !                                  !
+.comment        !         August 9, 1980           !
+.comment        !                                  !
+.comment        !----------------------------------!
+
+
+.page .center " ^&DOT COMMANDS\& " .justify
+
+  The dot commands are divided into four types as shown in the table
+below.   They differ in the number and type of their parameters.
+The parameter, or parameters, if any, must follow the command on the
+same line.
+
+.nofill
+
+^&Example   command            Parameters\&
+
+  1.       .BREAK              None
+
+  2.       .INDENT n           One numeric parameter required
+
+  3.       .PAPERSIZE m n      Two numeric parameters required
+
+  4.       .TITLE /text/       Text required
+
+.justify
+
+  All dot commands begin with a period. They may be in   
+upper, lower or mixed case.
+Commands can be abbreviated indefinitely so long as they are distinct.
+For example, ^^.includ, .inclu, .incl,\^ and <^.inc are all acceptable
+abbreviations for <^.include.  Notice that <^.in is ^&not\&, because there is a
+conflict with the <^.indent command.
+
+   
+  The three case commands (.SAMECASE, .LOWERCASE, .UPPERCASE) affect all 
+text in the source file, including the .CENTER and .TITLE commands.
+  Any command errors will cause an error message to be sent to the terminal, and
+execution will cease. The following is a list of all current <^runon dot 
+commands. 
+
+.skip 2 .fill .center " ^&Dot commands\& " .skip 1
+
+.comment     !------------------------------------------------------!
+.comment     !                                                      !
+.comment     !  Below we make extensive use of a little trick       !
+.comment     !  that enables us to format boxes with labels.        !
+.comment     !  Once Runon starts forming a new output line,        !   
+.comment     !  any commands that might change the width of the     !
+.comment     !  output line do not take effect until the line is    !
+.comment     !  output. With the left margin set normally, the      !
+.comment     !  label is placed into the output line. Enough        !
+.comment     !  hard spaces are placed on the end of the label      !
+.comment     !  to the desired left margin of the box, minus one.   !
+.comment     !  The left margin is then changed to the desired      !      
+.comment     !  setting. Filling proceeds normally from there.      !        
+.comment     !  At the end of each box, the margin is reset.        !
+.comment     !  Needless to say, this trick works only in filling   !
+.comment     !  or justification mode.                              !
+.comment     !                                                      !
+.comment     !------------------------------------------------------!
+ 
+<^.autopara######## 
+ 
+.leftmargin 28 
+ 
+enables <^autoparagraph mode, in which all source file lines that 
+begin with a space character cause a combination of a <^.skip and
+an <^.indent to occur. This feature is disabled in <^nofill mode. The
+distances to skip and indent may be respecified by using the <^.autoset
+command, described below.
+ 
+.skip 1 .test 7 .leftmargin 10 
+ 
+<^.autoset m n##### 
+ 
+.leftmargin 28 
+ 
+sets new skip (m) and indent (n) values for use in autoparagraphing. The 
+skip that is performed is in terms of ^&single lines\& rather than in terms of
+the spacing factor. The m parameter may range from 0 to 5, and n may range
+from 1 to the right margin setting.
+ 
+.skip 1 .test 5 .leftmargin 10 
+ 
+<^.break########### 
+ 
+.leftmargin 28 
+ 
+causes the current line to be output with no justification, and places the 
+next word of the source text at the beginning of the next line. If the current
+line is empty, no break is performed.
+ 
+.skip 1 .test 6 .leftmargin 10 
+ 
+<^.center /text/### 
+ 
+.leftmargin 28    
+ 
+causes a <^.break, and centers the text on the line following the command in 
+the middle of the output page as determined by the current settings of the
+left and right margins. If there is nothing, or only spaces, between the text
+delimiters, an error occurs.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.comment ...##### 
+ 
+.leftmargin 28 
+ 
+the remainder of the line following this command will be ignored. 
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.figure n######## 
+ 
+.leftmargin 28 
+ 
+leaves n blank lines free to make room for a figure or a diagram. If there are     
+less than n lines left on the page, text continues to fill this page and the
+diagram is placed at the top of the next page. n can range from 2 to the
+number of printable lines on a page (defined as page length (usually 66
+lines) minus 14 (length of top and bottom borders)). Thus, on a standard
+size page, the figure parameter may range from 2 to 52.
+ 
+ 
+.skip 1 .leftmargin 10
+ 
+<^.fill############ 
+ 
+.leftmargin 28 
+  
+places as much text on the current line as can fit. This allows the use   
+of a 'ragged-right' margin. All blank lines are discarded, as are 'redundant'
+spaces, i.e. more than one non-HARD SPACE in a row.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.justify######### 
+ 
+.leftmargin 28 
+ 
+places as much text on the current line as can fit, like <^.fill, 
+and then redistributes the text on the line to create a smooth right
+margin. As with <^.fill, blank lines and extraneous spaces are discarded.      
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.nofill########## 
+ 
+.leftmargin 28 
+ 
+causes all text to be output 'as is,' with no filling or justification.
+Blank lines and spaces are output 'as is'. If a line 
+is longer than the maximum line length minus the current left margin, it
+is truncated on the right end, without warning.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.samecase######## 
+ 
+.leftmargin 28 
+ 
+causes all text in the source file to be taken as being in the same 
+case as the one in which it appears. This is the default case setting.   
+ 
+.skip 1 .testpage 4 .leftmargin 10 
+ 
+<^.lowercase####### 
+ 
+.leftmargin 28 
+ 
+causes all text in the source file to be taken as being in lower 
+case. This mode is useful for displays lacking lower case capability
+(e.g. the Apple II). To output upper case text in lower case mode,
+use the special characters for capitalization. To have a single upper
+case character (as the first letter of a sentence, for example), prefix
+the character with the 'quote' special character ('__').    
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.uppercase#######   
+ 
+.leftmargin 28 
+ 
+causes all text in the source file to be taken as being in upper   
+case. This mode is the inverse of <^.lowercase.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.include /text/## 
+ 
+.leftmargin 28 
+ 
+text is taken to be a filename. The file is opened and <^runon proceeds to 
+process the text in the named file.  When <^runon finishes that file,
+processing reverts to the 'interrupted' file. Any and all changes effected by
+included files will remain in effect. An included file may itself include
+another file, to a depth of five files.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.indent n######## 
+ 
+.leftmargin 28 
+ 
+causes a <^.break and sets the next line to begin n spaces from the left 
+margin.  n can range from 1 to the line width (left margin minus
+right margin).
+ 
+.skip 1 .leftmargin 10               
+ 
+<^.leftmargin n#### 
+ 
+.leftmargin 28 
+ 
+sets the left margin to be the nth column. n must be greater than zero and     
+less than the right margin setting.
+ 
+.skip 1 .leftmargin 10   
+ 
+<^.noautopara######       
+ 
+.leftmargin 28 
+ 
+disables autoparagraph mode. Any leading spaces in the source file have   
+no effect.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.onnumber######## 
+ 
+.leftmargin 28 
+ 
+turns on page numbering. 
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.offnumber####### 
+ 
+.leftmargin 28 
+ 
+turns off page numbering; continues to keep track of page number.    
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.number n######## 
+ 
+.leftmargin 28 
+ 
+sets the next page number to n. 
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.onpage########## 
+ 
+.leftmargin 28 
+ 
+enables paging of output. 
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.offpage######### 
+ 
+.leftmargin 28 
+ 
+disables paging, titling of output. 
+ 
+.skip 1 .testpage 5 .leftmargin 10 
+ 
+<^.page############ 
+     
+.leftmargin 28       
+ 
+causes a page break to occur. Ignored in non-paging mode. If this command 
+appears twice in succession, with no intervening text or skips, the second
+invocation is ignored.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.papersize m n### 
+ 
+.leftmargin 28 
+ 
+sets the length of the page to m lines, and sets the width to n characters. 
+The left margin is reset to 10, and the right margin is set to the new  
+page width minus 10.
+m may be no less than 20, and n is resticted to the range 30 to 132.
+ 
+.skip 1 .leftmargin 10 
+   
+<^.rightmargin n###  
+ 
+.leftmargin 28 
+ 
+sets the right margin to the nth column, with a lower limit of the left margin 
+and an upper limit of 132.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.skip n########## 
+ 
+.leftmargin 28 
+ 
+causes a <^.break and skips (n times the spacing factor) lines. 
+If there are fewer than n lines left on
+the current page, output begins at the top of the next page. n may not be
+greater than the number of lines on the page; see <^.figure.              
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.spacing n####### 
+ 
+.leftmargin 28 
+ 
+sets the inter-line spacing. When n is equal to 1, there are no blank 
+lines inserted; when it equals 2 the file is output double-spaced.
+n may range from 1 to 5.
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.standard########   
+ 
+.leftmargin 28 
+ 
+resets all settings to their default values. The values used are those 
+listed in the Defaults section, with the exception of the case, which
+must be changed explicitly.
+ 
+.skip 1 .testpage 6 .leftmargin 10  
+
+<^.testpage n######    
+
+.leftmargin 28 
+
+used to preserve pieces of text, to insure they are not broken across page 
+boundaries. If less than (n times spacing factor) lines remain on the 
+current page, a page break occurs. This command is ignored in 
+non-paging mode. 
+ 
+.skip 1 .leftmargin 10 
+ 
+<^.title /text/#### 
+ 
+.leftmargin 28 
+ 
+takes text to be new title of the document. This title is output at the top of 
+each subsequent page.  If there is no text, the title is set to null.      
+ 
+.skip 3 .leftmargin 10 .justify
+  
+  When using a command that takes a text parameter, the text must 
+be delimited, shown above using the "/" symbol.  
+The delimiter is taken to be the first non-blank character
+following the command.  If no matching right delimiter is found,
+an error condition results.
+
+.nofill .test 10
+
+The following symbols may be used to delimit text:  
+
+   ! " _# $ % & ' ( ) * + , - . / : ; _< = > ? @ [ _\ ] _^ __ 
+
+(in short, all the 'graphic' characters save the curly
+brackets, accent, and vertical bar). 
+.justify
+
+  The text may contain embedded special characters. See the
+section entitled <&Special <&Characters for more details.
+
+.skip 1
+

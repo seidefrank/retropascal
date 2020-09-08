@@ -1,0 +1,70 @@
+
+(*END LEXICAL_UNITS;*)
+   segment procedure la_init;
+(*------------------------------------------------------------------*)
+(*                                                                 -*)
+(*   DESCRIPTION: INITIALIZATION OF BUFFER                         -*)
+(*   ------------                                                  -*)
+(*                                                                 -*)
+(*   SPECIALITIES: MUST BE CALLED BEFORE FIRST CALL OF LA_NEXT_SYM -*)
+(*   -------------                                                 -*)
+(*------------------------------------------------------------------*)
+const smallest_char_num = 0;    (*ADJUST*)
+      biggest_char_num  = 255;  (*ADJUST*)
+var   loop_i , chr_type : char;
+   begin  (* LA_INIT*)
+(* CHAR_TYPE_TABLE INIT*)
+   for loop_i := chr(smallest_char_num) to chr(biggest_char_num) do
+      char_type_table [loop_i] := non_ada;
+      for chr_type := 'A' to 'F' do char_type_table [chr_type] := letter_a_f;
+      for chr_type := 'G' to 'Z' do char_type_table [chr_type] := letter_g_z;
+      for chr_type := 'a' to 'z' do char_type_table [chr_type] := low_letter;
+      for chr_type := '0' to '9' do char_type_table [chr_type] := digit;
+      char_type_table [eof_char]  := eofc;
+      char_type_table [chr (cr) ] := nwline;
+      char_type_table [chr (lf) ] := nwline;
+      char_type_table [chr (vt) ] := nwline;
+      char_type_table [chr (ff) ] := nwline;
+      char_type_table [chr (nul)] := ignore;
+      char_type_table [chr (del)] := ignore;
+      char_type_table [chr (ht) ] := htab;
+      char_type_table ['''']:= quote;
+      char_type_table ['"'] := dquote;
+      char_type_table ['%'] := dquote;
+      char_type_table ['-'] := hyphen;
+      char_type_table ['&'] := ampersand;
+      char_type_table ['('] := lpar;
+      char_type_table [')'] := rpar;
+      char_type_table ['*'] := asterisk;
+      char_type_table ['+'] := plus;
+      char_type_table [','] := comma;
+      char_type_table ['.'] := point;
+      char_type_table ['/'] := slash;
+      char_type_table [':'] := colon;
+      char_type_table [';'] := semicolon;
+      char_type_table ['<'] := langle;
+      char_type_table ['='] := equal;
+      char_type_table ['>'] := rangle;
+      char_type_table ['|'] := vbar;
+      char_type_table ['!'] := vbar;
+      char_type_table ['_'] := underscore;
+      char_type_table [' '] := blank;
+      char_type_table ['#'] := other_graphics;
+      char_type_table ['?'] := other_graphics;
+      char_type_table ['@'] := other_graphics;
+      char_type_table ['['] := other_graphics;
+      char_type_table [']'] := other_graphics;
+      char_type_table ['~'] := other_graphics;
+      char_type_table ['|'] := other_graphics;
+      char_type_table ['['] := other_graphics;
+(* BUFFER INITIALIZATION*)
+      line_no := 0;
+      current := sfirst;
+      last_char := current;
+      current_char := chr (cr) ;
+      buffer [current] := chr (cr) ;
+      buffer [current + 1] := chr (cr);
+      lu_error_symbol (lu_eof_sym, last_symbol);
+      last_pos := so_nil_position;
+   end;   (*LA_INIT*)
+

@@ -1,0 +1,88 @@
+
+
+Pascal Compiler IV.0 C1a-4                                                            Page   1 
+16 November 1981
+
+    2   2    1:d    1  {$l#5:ud.udelst.text}
+    3   2    1:d    1  
+    4   2    1:d    1  type bigstring=string[255];
+    5   2    1:d    1  var havechain,inredirect,outredirect,monitoropen,inmonitor:boolean;
+    6   2    1:d    6    function redirect(command:bigstring):boolean;
+    7   2    1:d    1    procedure exception(stopchaining:boolean);
+    8   2    1:d    1    procedure chain(command:bigstring);
+    9   2    1:d    1    
+   10   2    1:d    1    procedure initcommand;
+   11   2    1:d    1    procedure startmonitor;
+   12   2    1:d    1    procedure stopmonitor(saveit:boolean);
+   13   2    1:d    1    procedure getchainline(var command:bigstring);
+   14   2    1:d    1    
+   15   2    1:d    1  USES {$U COMMANDIO.CODE} COMMANDIO;
+   16   2    1:d    1  
+   17   2    1:d    1  CONST
+   18   2    1:d    1    CLEAR_SCREEN = 12;
+   19   2    1:d    1    ESC_KEY = 27;
+   20   2    1:d    1    
+   21   2    1:d    1  VAR
+   22   2    1:d    1    CH   : CHAR;
+   23   2    1:d    2    LINE : STRING;
+   24   2    1:d   43    I    : INTEGER;
+   25   2    1:d   44  
+   26   2    1:0    0  BEGIN
+   27   2    1:1    0    WRITE(CHR(CLEAR_SCREEN));
+   28   2    1:1    9    GOTOXY(26,0);
+   29   2    1:1   13    WRITE('UNIVERSAL DATA ENTRY');
+   30   2    1:1   26    GOTOXY(26,1);
+   31   2    1:1   30    WRITE('====================');
+   32   2    1:1   43    GOTOXY(26,2);
+   33   2    1:1   47    WRITE('Version IV.0');
+   34   2    1:1   60    LINE := 'Define a UDE data file';
+   35   2    1:1   68    FOR I := 2 TO LENGTH(LINE) DO
+   36   2    1:2   84      LINE[I] := CHR(ORD(LINE[I])+128);
+   37   2    1:1  106    GOTOXY(20,8);
+   38   2    1:1  110    WRITE(LINE);
+   39   2    1:1  121    LINE := 'Maintain a UDE data file';
+   40   2    1:1  129    FOR I := 2 TO LENGTH(LINE) DO
+   41   2    1:2  145      LINE[I] := CHR(ORD(LINE[I])+128);
+   42   2    1:1  167    GOTOXY(20,10);
+   43   2    1:1  171    WRITE(LINE);
+   44   2    1:1  182    LINE := 'Sort a UDE data file';
+   45   2    1:1  190    FOR I := 2 TO LENGTH(LINE) DO
+   46   2    1:2  206      LINE[I] := CHR(ORD(LINE[I])+128);
+   47   2    1:1  228    GOTOXY(20,12);
+   48   2    1:1  232    WRITE(LINE);
+   49   2    1:1  243    LINE := 'List a UDE data file';
+   50   2    1:1  251    FOR I := 2 TO LENGTH(LINE) DO
+   51   2    1:2  267      LINE[I] := CHR(ORD(LINE[I])+128);
+   52   2    1:1  289    GOTOXY(20,14);
+   53   2    1:1  293    WRITE(LINE);
+   54   2    1:1  304    LINE := 'Copy a UDE or GENLIST data file';
+   55   2    1:1  312    FOR I := 2 TO LENGTH(LINE) DO
+   56   2    1:2  328      LINE[I] := CHR(ORD(LINE[I])+128);
+   57   2    1:1  350    GOTOXY(20,16);
+   58   2    1:1  354    WRITE(LINE);
+
+
+Pascal Compiler IV.0 C1a-4                                                            Page   2 
+16 November 1981
+
+   59   2    1:1  365    GOTOXY(0,23);
+   60   2    1:1  369    WRITE('Enter selection or <ESC> :');
+   61   2    1:1  382    REPEAT
+   62   2    1:2  382      GOTOXY(27,23);
+   63   2    1:2  386      READ(CH);
+   64   2    1:2  395      IF CH = CHR(ESC_KEY) THEN EXIT(PROGRAM);
+   65   2    1:2  404      CASE CH OF
+   66   2    1:2  407        'D','d' : CHAIN('#4:SD/DEFINE');
+   67   2    1:2  416        'M','m' : CHAIN('#4:UD/MAINT');
+   68   2    1:2  425        'S','s' : CHAIN('#4:UD/SORT');
+   69   2    1:2  434        'C','c' : CHAIN('#4:UD/COPY');
+   70   2    1:2  443        'L','l' : CHAIN('#4:UD/LIST');
+   71   2    1:2  452      END;
+   72   2    1:1  455    UNTIL CH IN ['D','d','M','m','S','s','C','c','L','l'];
+   73   2    1:1  465    GOTOXY(40,23);
+   74   2    1:1  470    WRITE('One Moment Please');
+   75   2    1:1  483    CHAIN('#4:UD/UDE');
+   76   2     :0    0  END.
+
+End of Compilation.
+

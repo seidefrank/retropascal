@@ -1,0 +1,119 @@
+{**********************************************}
+{                                              }
+{           UCSD Pascal Filehandler            }
+{                                              }
+{    Release level:  II.0 February, 1979       }
+{                                              }
+{                                              }
+{    Written by Roger T. Sumner                }
+{      Release level I.4, Winter 1977          }
+{                                              }
+{    Written by Steven S Thomson               }
+{      Release level F.5a Summer 1979          }
+{      Release level II.0 Winter 1978-79       }
+{                                              }
+{    Institute for Information Systsems        }
+{    UC San Diego, La Jolla, California        }
+{                                              }
+{    Kenneth L. Bowles, Director               }
+{                                              }
+{                                              }
+{**********************************************}
+
+
+{     Copyright (C) 1979 Regents of the University of California.     }
+{     Permission to copy or distribute this software or documen-      }
+{     tation in hard or soft copy granted only by written license     }
+{     obtained from the Institute for Information Systems.            }
+
+
+SEGMENT PROCEDURE FILEHANDLER(ZZZZZ,ZZZZZZ : INTEGER);
+
+CONST 
+  DIRLASTBLK    = 6;      DUPDIRLASTBLK = 10;     SHSTRLENG = 25;
+  MAXTITLE      = 40;     HALFMAXDIR    = 39;
+
+  VOLONLINE     = 1013;   FILEUNBLKDEXP = 1020;   NOWRK         = 1027;
+  TEXTLOST      = 1014;   FILEBLKDEXP   = 1021;   NOWILD        = 1028;
+  CODELOST      = 1015;   FILEVOLEXP    = 1022;   BADFORM       = 1029;
+  FOUNDFILE     = 1016;   VOLEXP        = 1023;   ILLFILEVOL    = 1030;
+  BLKDEXP       = 1017;   FILEFULL      = 1024;   ILLCHANGE     = 1031;
+  UNBLKDEXP     = 1018;   WRKSAVED      = 1025;   BADDEST       = 1032;
+  FILEEXP       = 1019;   NODIR         = 1026;   BLKD          = 1033;
+						  UNBLKD        = 1034;
+
+TYPE
+  UNTYPED  = FILE;
+
+  TIDRANGE = 0..TIDLENG;
+
+  MATCHES  = (FILEFOUND, NOFILES, FILESNOGOOD, ABORTIT);
+  LOCATION = (SOURCE,DESTINATION,NEITHER);
+  CHECKS   = (BADTITLE, BADUNIT, NOVOL, BADDIR,
+	       BADFILE, UNBLKDVOL, OKDIR, OKFILE);
+
+  CHCKS    = SET OF CHECKS;
+
+  LONGSTRING  = STRING[255];
+  SHORTSTRING = STRING[SHSTRLENG];
+  STRNG       = STRING[MAXTITLE];
+
+  ABLOCK      = ARRAY [0..255] OF INTEGER;
+
+  BITMAP      = PACKED RECORD
+		  DIRENTRY : PACKED ARRAY [DIRRANGE] OF BOOLEAN;
+		  ENTRIES : DIRRANGE;
+		END;
+
+
+VAR
+  GBUFBLKS             : INTEGER;      { Blocks available in transfer buffer   }
+  SOURCEUNIT, DESTUNIT,                { Units related to source & dest. files }
+  GUNIT                                { Unit # that last volsearch returned   }
+		       : UNITNUM;
+
+  CH                   : CHAR;         { General purpose chararcter            }
+
+  GDIR                 : DIRP;         { Pointer to the directory in use       }
+  LFIBP                : FIBP;         { Pointer to the header of file LFIB    }
+
+  FAST,                                { SYSCOM^ [NOT SLOWTERM & (WIDTH > 79)] }
+  MARKING,                             { Must use STATUS bit in directory      }
+  QUESTION, WILDCARD,                  { Is wildcard option being used ?       }
+  TEXTSAVED, CODESAVED                 { Workfiles saved ?                     }
+		       : BOOLEAN;
+
+  LASTSTATE            : CHECKS;        { State of last call to scaninput      }
+  FOUND                : MATCHES;       { Result of dir. search for a file     }
+
+  GBUF                 : WINDOWP;       { Pointer to the transfer buffer       }
+
+  GKIND                : FILEKIND;      { Filetype (e.g., TEXT,CODE,DATA...)   }
+
+  DIRMAP               : BITMAP;        { Keeps track of the files to be used  }
+                                        { in a wildcard operation              }
+
+  BLOCKPTR             : ^ABLOCK;       { Pointer to one-block of data         }
+
+  LFIB                 : UNTYPED;       { General purpose file                 }
+
+  VOLNAME1, VOLNAME2,                   { Volume names of source & destination }
+                                        { files respectively, as inputted      }
+  DESTVID, SOURCEVID,                   { Explicit volume name associated with }
+                                        { source & dest units respectively     }
+  GVID,                                 { Last volname returned by scaniput    }
+  GVID2                                 { Last volname entered into scaniput   }
+                       : VID;
+
+  SOURCETITLE,                          { Source file with exlicit volume name }
+  STRING2,STRING4,                      { Suffix strings to wildcards          }
+  GTID                                  { Last title returned by scaniput      }
+                       : TID;
+
+  STRING1, STRING3     : SHORTSTRING;   { Prefix strings to wildcards          }
+  MONTHSTR             : STRING[48];    { Contains abbr. for the months        }
+  TYPESTR              : STRING[32];    { Contains abbr. for the file types    }
+  FROMWHERE, TOWHERE   : STRNG;         { Source & destination files           }
+  INSTRING             : LONGSTRING;    { Input string                         }
+
+

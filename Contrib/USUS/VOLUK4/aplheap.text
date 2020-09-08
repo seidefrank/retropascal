@@ -1,0 +1,218 @@
+(*$D-*)
+(* note that these are dirty routines that are machine/implementation *)
+(* dependant, particularly the mixing of integer/byte sizes/pointers  *)
+
+procedure outofheap;
+begin
+writeln('**** out of heap space (', areasize, ' allocated) ****');
+exit(scanner)
+end; {outofheap}
+
+procedure setupheap;
+begin
+areasize := 0;
+if memavail < 1
+then outofheap
+else
+  begin
+    new(freestore.ptr);
+    writeln(')APL : ', memavail*2, ' bytes available');
+    freestore.ptr^ := endofstore
+  end
+end; {setupheap}
+
+procedure getextrablock(pptr: pointer; var sizethisone: integer);
+var
+  blockptr: ^block;
+begin
+if memavail < blocksize
+then outofheap
+else
+  begin
+    new(blockptr);
+    sizethisone := blockbytes + pptr^;
+    blockptr^[blocksize] := endofstore;
+    areasize := areasize + blockbytes
+  end
+end; {getextrablock}
+
+procedure getxxx(size: integer; var heap: xxx);
+var
+  p, q: storeptr;
+  sizethisarea: integer;
+begin
+p.ptr := freestore.ptr;
+q.ptr := freestore.ptr;
+size := size + extrabytes + (size mod 2);
+sizethisarea := 0;
+while (sizethisarea < size) and (q.ptr^ <> endofstore) do
+  begin
+    p.ptr := q.ptr;
+    while (p.ptr^ mod 2) = used do
+      p.int := p.int + p.ptr^ - used;
+    q.ptr := p.ptr;
+    while ((q.ptr^ mod 2) = unused) and (q.ptr^ <> endofstore) do
+      q.int := q.int + q.ptr^;
+    sizethisarea := q.int - p.int; (* note that this sets the unused flag *)
+    if p.ptr^ <> endofstore
+    then p.ptr^ := sizethisarea
+  end;
+while sizethisarea < size do
+  getextrablock(p.ptr, sizethisarea);
+if sizethisarea > size
+then
+  begin
+    q.int := p.int + size;
+    q.ptr^ := sizethisarea - size (* note that this sets the unused flag *)
+  end;
+p.ptr^ := size + used;
+p.int := p.int + extrabytes;
+heap.ptr := p.ptr
+end; {getxxx}
+
+procedure getvalu{var valu: typevaluesptr};
+var
+  dummyvalu: values;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyvalu), dummyxxx);
+valu := dummyxxx.valus
+end; {getvalu}
+
+procedure getoper{var oper: operandptr};
+var
+  dummyoper: operandtab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyoper), dummyxxx);
+oper := dummyxxx.ops
+end; {getoper}
+
+procedure gettoken{var token: tokenptr};
+var
+  dummytoken: tokentable;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummytoken), dummyxxx);
+token := dummyxxx.tokens
+end; {gettoken}
+
+procedure getfunc{var func: ptrfunctab};
+var
+  dummyfunc: functab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyfunc), dummyxxx);
+func := dummyxxx.funcs
+end; {getfunc}
+
+procedure getsubr{var subr: typesubrtabptr};
+var
+  dummysubr: subrtab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummysubr), dummyxxx);
+subr := dummyxxx.subrs
+end; {getsubr}
+
+procedure getfparm{var fparm: fparmptr};
+var
+  dummyfparm: fparmtab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyfparm), dummyxxx);
+fparm := dummyxxx.fparms
+end; {getfparm}
+
+procedure getvalt{var valt: typevaltabptr};
+var
+  dummyvalt: valtab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyvalt), dummyxxx);
+valt := dummyxxx.valts
+end; {getvalt}
+
+procedure getvarr{var varr: vartabptrtype};
+var
+  dummyvarr: vartab;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyvarr), dummyxxx);
+varr := dummyxxx.vars
+end; {getvarr}
+
+procedure getvfunc{var vfunk: typevfuncptr};
+var
+  dummyvfunc: vfunc;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummyvfunc), dummyxxx);
+vfunk := dummyxxx.vfuncs
+end; {getvfunc}
+
+procedure getdim{var dim: dimenptr};
+var
+  dummydim: dimeninfo;
+  dummyxxx: xxx;
+begin
+getxxx(sizeof(dummydim), dummyxxx);
+dim := dummyxxx.dims
+end; {getdim}
+
+procedure ridxxx(var heap: xxx);
+begin
+heap.int := heap.int - extrabytes;
+heap.ptr^ := heap.ptr^ - used
+end; {ridxxx}
+
+procedure ridvalu{var valu: typevaluesptr};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.valus := valu;
+ridxxx(dummyxxx)
+end; {ridvalu}
+
+procedure ridoper{var oper: operandptr};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.ops := oper;
+ridxxx(dummyxxx)
+end; {ridoper}
+
+procedure ridtoken{var token: tokenptr};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.tokens := token;
+ridxxx(dummyxxx)
+end; {ridtoken}
+
+procedure ridfunc{var func: ptrfunctab};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.funcs := func;
+ridxxx(dummyxxx)
+end; {ridfunc}
+
+procedure ridsubr{var subr: typesubrtabptr};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.subrs := subr;
+ridxxx(dummyxxx)
+end; {ridsubr}
+
+procedure ridfparm{var fparm: fparmptr};
+var
+  dummyxxx: xxx;
+begin
+dummyxxx.fparms := fparm;
+ridxxx(dummyxxx)
+end; {ridfparm}
+
+(*$D+*)
+

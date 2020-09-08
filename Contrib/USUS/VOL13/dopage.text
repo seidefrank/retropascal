@@ -1,0 +1,638 @@
+ 
+{**********************************************************************
+ 
+  DO_PAGE is called in order to begin each new page of output, other
+  than the first.  If page numbering is in effect, the current page
+  number is written out.  If a title exists, it too is written out.
+ 
+  The routine also takes care of 'pending figures' - that is,
+  if a figure was too large to fit on the previous page, it is
+  placed at the top of the current one.
+ 
+  PUT_TITLE takes care of processing and centering the title. Notice
+  that the global attribute set, LOCK_STATUS, is saved and set to
+  nil before SCANNER is called, and restored afterwards. This ensures
+  that SCANNER will not process the title improperly. Note that the
+  current line, PAGEINFO.CURRLINE, is reset to 0 as the title is
+  output using OUT_PROC, which increments the current line.
+ 
+**********************************************************************}
+ 
+ 
+Procedure do_page;
+ 
+const
+   down_skip = 2;
+ 
+var
+   i : posint;
+ 
+ 
+ 
+      Procedure put_title; 
+ 
+      var
+         temp_buf    : buffer;
+         save_status : attrib_set;
+ 
+      begin
+         temp_buf := blank_buf;
+ 
+         save_status := lock_status;
+         lock_status := [];
+ 
+         scanner(pageinfo.title.st,
+                 pageinfo.title.en,
+                 pageinfo.title.str,
+                 temp_buf);
+ 
+         lock_status := save_status;
+ 
+         center_buffer(temp_buf,
+                       1,
+                       sysvars[new].paper_width,
+                       pageinfo.title.en,
+                       tilwide                 );
+ 
+         output_buf := temp_buf;
+ 
+         out_proc(brk);
+ 
+         pageinfo.currline := 0;
+      end;  { put_title }
+ 
+ 
+ 
+begin  { do_page }
+ 
+   page(dest);
+   writeln(dest);
+   writeln(dest);
+ 
+   if sysvars[new].numbering then
+      begin
+         for i := 1 to (sysvars[new].paper_width - maxnumsize - r_offset) do
+            write(dest, blank_char);
+         writeln(dest, pageinfo.currpage:5);
+      end
+   else
+      writeln(dest);
+ 
+   writeln(dest);
+ 
+   pageinfo.currline := 0;
+   pageinfo.currpage := pageinfo.currpage + 1;
+ 
+   if pageinfo.title.en >= pageinfo.title.st
+      then put_title
+      else writeln(dest);
+ 
+   for i := 1 to down_skip do
+      writeln(dest);
+ 
+   if pageinfo.figure_pending then
+      begin
+         pageinfo.figure_pending := false;
+         putline(pageinfo.figure_size);
+      end;
+ 
+end;  { do_page }
+ 
+{**********************************************************************
+ 
+  PUT_LINE puts CR/LF pairs into the output file at the end of each
+  output line.  It is called by the skip, figure, and page routines.
+ 
+  If there is not enough space on the page to skip the desired number
+  of lines (when in paging mode), the routine calls DO_PAGE, which
+  then outputs any pending figure.  The essential features of DO_PAGE
+  are simulated here, with the exception of the actual paging itself,
+  when not in paging mode.
+ 
+  PUT_LINE is declared FORWARD as it is called by DO_PAGE.  There is
+  no possibility of infinite recursion.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+{***********************************************}
+{                                               }
+{    Forward declaration in SYSGEN file.        }
+{-----------------------------------------------}
+{                                               }
+{    Procedure putline(n : posint); Forward;    }
+{                                               }
+{***********************************************}
+ 
+ 
+Procedure putline;
+ 
+var
+   crlf : posint;
+ 
+begin
+   pageinfo.currline := pageinfo.currline + n;
+ 
+   if sysvars[new].paging then
+      begin
+         if pageinfo.currline < sysvars[new].printable_lines then
+            for crlf := 1 to n do
+               writeln(dest)
+         else
+            do_page;
+      end
+   else  { not paging }
+      begin
+         for crlf := 1 to n do
+             writeln(dest);
+ 
+         if pageinfo.currline > sysvars[new].printable_lines then
+            begin
+               pageinfo.currline := pageinfo.currline -
+                  sysvars[new].printable_lines;
+ 
+               pageinfo.currpage := pageinfo.currpage + 1;
+ 
+               if pageinfo.figure_pending then
+                  begin
+                     pageinfo.figure_pending := false;
+                     putline(pageinfo.figure_size);
+                  end;
+            end
+      end
+end;  { putline }
+ 
+ {**********************************************************************
+ 
+  SHOVE_BUFFER writes the output buffer to the output file,
+  taking into account the attributes of each character, if it has
+  any.
+ 
+  After the buffer has been 'shoved', several important global variables
+  are reset.  The current VERSION of SYSVARS is set to point to the
+  NEW values, the 'visible character count' is set to zero, the
+  'invisible character count' is set to zero, and the output buffer is
+  cleared.  If a figure has been set, it is output; otherwise,
+  (spacing factor) number of lines are output.
+ 
+**********************************************************************}
+ 
+ 
+Procedure shove_buffer;
+ 
+var
+   i, j    : posint;
+   khar    : char;
+   attribs : attrib_set;
+ 
+ 
+begin
+ 
+   for i := 1 to output_buf.en do
+      begin
+         attribs := output_buf.str[i].atts;
+         khar := output_buf.str[i].ch;
+         if attribs <> [] then
+            begin
+               if attribs = [xpand] then
+                  for j := 1 to output_buf.str[i].length do  
+                     write(dest, blank_char)
+               else
+                  begin
+                     if u_line in attribs then
+                        begin
+                           write(dest, underline);
+                           write(dest, bs);
+                        end;
+                     if l_case in attribs then
+                        begin
+                           if khar in uc_letters then
+                              khar := chr(ord(khar) + lcoffset);
+                        end
+                     else
+                        if u_case in attribs then
+                           if khar in lc_letters then
+                              khar := chr(ord(khar) - lcoffset);
+                     write(dest, khar);
+                  end; { else }
+            end { if attribs }
+         else  { no attributes }
+            write(dest, khar);
+ 
+      end;  { for }
+ 
+   sysvars[new].version := new;
+   output_buf := blank_buf;
+   vc_in_line := 0;
+   ic_in_line := 0;
+ 
+   if pageinfo.figure_set then
+      begin
+         pageinfo.figure_set := false;
+         putline(pageinfo.figure_size);
+      end
+   else
+      putline(sysvars[new].spacing);
+ 
+end;  { shove_buffer }
+ 
+{**********************************************************************
+ 
+  MOVE_WORD moves the next word, starting from the STth element of
+  the internal buffer (aka INTERNAL_BUF) into the output buffer
+  (OUTPUT_BUF) starting with its EN+1st element.  The aforementioned
+  counters get updated; the ST pointer to one beyond the end of
+  the word in the internal buffer, and the EN pointer to the end of
+  the word in the output  buffer.  A space is appended to the end
+  of each word.
+ 
+  (A word is defined to be any contiguous sequence of characters,
+   delimited by SOFT_SPACEs.)
+ 
+  Other variables that get updated are: VC_IN_LINE, which contains
+  the number of visible chars in the output buffer; IC_IN_LINE,
+  which contains the number of invisible characters in the buffer;
+  EO_INPUT, which signals that the internal buffer is empty; and
+  EO_OUTPUT, which signals the output buffer as being full.
+ 
+  CHARS_FIT is a function used to determine if
+ 
+    a) there is enough space for the visible-length of the 
+       word between the margins;
+    b) the total number of characters in the word added
+       to the number of characters already in the buffer
+       does not exceed the length of the buffer.
+ 
+**********************************************************************}
+ 
+Procedure move_word(var eo_input, eo_output : boolean);
+ 
+var
+   vc_in_word,
+   ic_in_word,
+   buf_pos     : posint;
+   ablank,
+   aword,
+   ic_only     : boolean;
+   curr_char   : char_rec;
+ 
+ 
+      Procedure move_to_output(first_ch, last_ch : posint);
+ 
+      var
+         word_len,
+         offset    : posint;
+ 
+      begin
+         word_len := last_ch - first_ch + 1;
+ 
+         for offset := 1 to word_len do
+            output_buf.str[output_buf.en + offset] :=
+               internal_buf.str[offset + first_ch - 1];
+ 
+         internal_buf.st := last_ch + 1;
+         output_buf.en := output_buf.en + word_len;
+      end;  { move_to_output }
+ 
+ 
+      Function chars_fit : boolean;
+  
+      begin
+         chars_fit :=
+            ((vc_in_line + vc_in_word) <= sysvars[v].chars_in_line) and  
+               ((sysvars[v].lm + vc_in_line + vc_in_word +
+                  ic_in_word + ic_in_line) <= maxlinewidth);
+      end;  { chars_fit }
+ 
+ 
+begin  { move_word }
+   ic_in_word := 0;
+   vc_in_word := 0;
+   ablank := true;
+   aword := true;
+   buf_pos := internal_buf.st;
+ 
+   while ablank and (buf_pos <= internal_buf.en) do
+      if internal_buf.str[buf_pos] = soft_space
+         then buf_pos := buf_pos + 1
+         else ablank := false;
+ 
+   internal_buf.st := buf_pos;
+ 
+   if buf_pos > internal_buf.en then
+      eo_input := true
+   else
+      begin
+         ic_only := true;
+ 
+         while aword and (buf_pos <= internal_buf.en) do
+            begin
+               curr_char := internal_buf.str[buf_pos];
+ 
+               if curr_char = soft_space then
+                  aword := false
+               else
+                  begin
+                     buf_pos := buf_pos + 1;
+ 
+                     if curr_char.length > 0 then 
+                        begin
+                           vc_in_word := vc_in_word + curr_char.length;
+                           ic_only := false;
+                        end
+                     else
+                        ic_in_word := ic_in_word + 1;
+                  end;
+            end; { while }
+ 
+         if vc_in_word > sysvars[v].chars_in_line then
+            error(wdlen, buf_pos - 1, input_buf.str);
+ 
+         if chars_fit then
+            begin
+               move_to_output(internal_buf.st, buf_pos - 1);
+               vc_in_line := vc_in_line + vc_in_word;
+               ic_in_line := ic_in_line + ic_in_word;
+ 
+               if buf_pos > internal_buf.en then
+                  eo_input := true;
+ 
+               if vc_in_line < sysvars[v].chars_in_line then
+                  begin
+                     if not(ic_only) then
+                        begin
+                           vc_in_line := vc_in_line + 1;
+                           output_buf.en := output_buf.en + 1;
+                           output_buf.str[output_buf.en] := soft_space;
+                        end;
+                  end
+               else
+                  eo_output := true;
+            end
+         else
+            eo_output := true;
+ 
+   end { else }
+end; { move_word }
+ 
+{**********************************************************************
+ 
+  JUSTIFY is essentially an implementation of Findlay and Watt's
+  text-justification algorithm (see F & W, p.238).  It justifies
+  the text in the output buffer, between the STth and right-marginth
+  positions.
+ 
+**********************************************************************}
+ 
+ 
+Procedure justify;
+ 
+var
+   i, gaps, spread, pos : posint;
+   extraspaces          : integer;
+ 
+ 
+begin
+ 
+   i := output_buf.en;
+ 
+   while output_buf.str[i] = soft_space do
+      i := i - 1;
+ 
+   output_buf.en := i;
+ 
+   extraspaces := sysvars[v].rm - (output_buf.en - ic_in_line);
+   if extraspaces > 0 then
+      begin
+         gaps := 0;
+ 
+         for i := output_buf.st to output_buf.en do
+            if output_buf.str[i] = soft_space then
+               gaps := gaps + 1;
+ 
+         if gaps > 0 then
+            begin
+               pos := output_buf.st;
+               while pos <= output_buf.en do
+                  if output_buf.str[pos] = soft_space then  
+                     begin
+                        spread := extraspaces div gaps;
+                        if spread > 0 then
+                           with output_buf.str[pos] do
+                              begin
+                                 atts := [xpand];
+                                 length := spread + 1;
+                              end; { with }
+                        extraspaces := extraspaces - spread;
+                        gaps := gaps - 1;
+                        pos := pos + spread + 1;
+                     end
+                  else
+                     pos := pos + 1;
+            end; { if }
+      end; { if }
+end; { justify }
+ 
+{**********************************************************************
+ 
+  This is the top level of the output-processor.  CMD contains a
+  representation of the command to be performed.  NORM is the case
+  where text is processed normally (i.e. not by explicit command).
+ 
+  The modules described:
+ 
+    BRK     This is the break command.  If the output buffer is not
+            empty, it merely causes the output buffer to be written
+            to the destination file.
+ 
+    FIG     If a figure is set, this errors out; otherwise, it
+            sees if there is room remaining on the page for
+            the figure.  If so, the figure is put out immediately,
+            if the current output line is empty. Otherwise, the
+            figure is SET. If there isn't enough room on the current
+            page, the figure is PENDING.
+ 
+    INDT    Causes a BRK; indents next line N-1 spaces beyond
+            the left margin.
+ 
+    PAG     Causes a BRK; if it pages on break, does not page output
+            file, else pages file. Ignored in non-paging mode.
+ 
+    TSTPAG  Tests if at least N lines are left on the current page,
+            and if not, causes a BRK and a PAG. Ignored in non-paging
+            mode.
+ 
+    SKP     Causes a BRK; puts out N * SPACING blank lines.
+ 
+    NORM    'Normal' entry to output processor.
+ 
+            If in filling or justification mode, an auto-paragraph
+            is done if AP_MODE and LEAD_BLANK are set. Otherwise, the
+            left margin is put into the output buffer, if it is empty.
+            Then, as many words as possible are put into the output
+            buffer, until the output buffer is full or the internal
+            buffer is empty. If the output buffer is full, the text
+            is then justified, if in justify mode, and shoved out.
+ 
+            In nofill mode, the leftmargin is first put into the
+            output buffer, and then the internal buffer is mapped into
+            the output buffer.  If the input line is blank, as deter-
+            mined by READLINE, only a carriage return is shoved.
+            If the length of the text in the internal buffer exceeds
+            MAXLINEWIDTH - LM, it is truncated.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+{*******************************************}
+{                                           }
+{   header is located in SYSGEN file        }
+{-------------------------------------------}
+{                                           }
+{   Procedure out_proc(cmd : commandtype);  }
+{                                           }
+{   var                                     }
+{      i, j      : posint;                  }
+{      v         : old_new;                 }
+{      eo_input,                            }
+{      eo_output : boolean;                 }
+{                                           }
+{*******************************************}
+ 
+ 
+ 
+Procedure put_left_margin;
+ 
+begin
+   output_buf.en := sysvars[new].lm - 1;
+   output_buf.st := sysvars[new].lm;  
+end;  { put_left_margin }
+ 
+ 
+ 
+Procedure break;
+ 
+begin
+  if output_buf.en >= output_buf.st then
+     shove_buffer
+  else
+     sysvars[new].version := new;
+end; { break }
+ 
+ 
+ 
+Procedure auto_indent;
+ 
+begin
+   lead_blank := false;
+ 
+   break;
+   putline(sysvars[new].ap_skip);
+ 
+   n := sysvars[new].ap_indent;
+   if (sysvars[sysvars[new].version].lm + n) >
+       sysvars[sysvars[new].version].rm then
+          error(aphgh, 0, input_buf.str);
+   out_proc(indt);
+end;  { auto_indent }
+ 
+ 
+ 
+begin  { output processor }
+ 
+   case cmd of
+      brk    : break;
+      fig    : if not(sysvars[new].paging) then
+                  putline(n)
+               else
+                  if (sysvars[new].printable_lines -
+                       pageinfo.currline) < n then
+                     begin
+                        pageinfo.figure_pending := true;
+                        pageinfo.figure_size := n;
+                     end
+                  else
+                     if output_buf.st > output_buf.en then
+                        putline(n)
+                     else
+                        begin
+                           pageinfo.figure_set := true;
+                           pageinfo.figure_size := n;
+                        end;
+      indt   : begin
+                  break;
+                  vc_in_line := n;
+                  output_buf.st := sysvars[new].lm + n;
+                  output_buf.en := sysvars[new].lm + (n - 1);
+               end;
+      pag    : begin
+                  break;
+                  if not((pageinfo.currline = 0) and
+                     sysvars[new].paging) then
+                        do_page;
+               end;
+      tstpag : if sysvars[new].paging and
+                  ((pageinfo.currline + n * sysvars[new].spacing) > 
+                     sysvars[new].printable_lines) then
+                        begin
+                           break;
+                           if not(pageinfo.currline = 0) then
+                              do_page;
+                        end;  
+      skp    : begin
+                  break;
+                  putline(n * sysvars[new].spacing);
+               end;
+      norm   : begin
+                  v := sysvars[new].version;
+ 
+                  if sysvars[v].fill_mode <> nofilling then
+                     begin
+                        if lead_blank and sysvars[new].ap_mode then
+                           begin
+                              auto_indent;
+                              v := new;
+                           end
+                        else
+                           if output_buf.en = 0 then
+                              put_left_margin;
+                        eo_input := false;
+                        eo_output := false;
+                        while not(eo_input) and not(eo_output) do
+                           move_word(eo_input, eo_output);
+                        more_input := not(eo_input);
+                        if eo_output then
+                           begin 
+                              if sysvars[v].fill_mode = justification
+                                 then justify;
+                              shove_buffer;
+                           end;
+                     end
+                  else  { nofilling mode }
+                     begin
+                        if not(blankline) then
+                           begin
+                              put_left_margin;
+                              i := internal_buf.st;
+                              j := output_buf.en + 1;
+                              while (i <= internal_buf.en) and
+                                 (j <= maxlinewidth) do
+                                 begin
+                                    output_buf.str[j] := internal_buf.str[i];
+                                    i := i + 1;
+                                    j := j + 1;
+                                 end; { while }
+                              output_buf.en := j - 1;
+                           end;
+                        shove_buffer; 
+                     end
+               end;  { norm }
+   end;  { case }
+end;  { out_proc }
+ 
+ 
+ 

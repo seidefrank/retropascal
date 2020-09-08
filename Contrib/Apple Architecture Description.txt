@@ -1,0 +1,1902 @@
+APPENDIX A: ARCHITECTURE OF THE P-MACHINE
+
+
+TECHNICAL INFORMATION
+
+INTRODUCTION
+
+The Apple Pascal "Pseudo-machine", or "P-machine", a version of 
+the UCSD Pascal P-machine, is the software-generated "device" which
+executes P-code as its "machine" language.  Every computer operating
+under a form of UCSD Pascal has been programmed to "look like" this
+common P-machine, from the viewpoint of a program being executed.
+The P-machine supports the following:
+
+
+1.	Variable addressing, including strings, byte arrays, packed
+    fields, and dynamic variables
+
+2.	Logical, integer, real, set, array, and string top-of-stack
+    arithmetic and comparisons
+
+3.	Multi-element structure comparisons
+
+4.	Several types of branches
+
+5.	Procedure and function calls and returns, including
+    overlayable procedures
+
+6.	Miscellaneous procedures used by systems programs
+
+This appendix, to be used in conjunction with the next appendix
+OPERATION OF THE P-MACHINE, describes the P-machine "hardware,"
+communication with the operating system, error handling, and the
+mnemonic instruction set.
+
+
+HARDWARE EMULATION: REGISTERS
+
+The P-machine uses 16-bit words, with two 8-bit bytes per word.  
+It has an evaluation stack, several registers, and a user memory 
+containing a program stack and a heap.  All registers are pointers to 
+word-aligned structures, except IPC, which is a pointer to byte-aligned 
+instructions.  The registers, sometimes referred to as "pseudo-variables",
+are:
+
+SP:	evaluation Stack Pointer.  A pointer to the current "top" of 
+    the evaluation stack (one byte beyond the last byte in use).  In the
+    Apple, the evaluation stack uses a portion of the 6502's hardware
+    stack, starting in hex memory location 1FF and growing down toward
+    hex location 100.  It is used to pass parameters, return function
+    values, and as an operand source for many instructions.  The
+    evaluation stack is extended by loads, and is cut back by stores
+    and arithmetic operations.
+
+IPC: Interpreter Program Counter.  Contains the address of the next
+     instruction to be executed, in the code segment of the currently
+     executing procedure.
+
+SEG: SEGment pointer points to the procedure dictionary of the 
+     segment to which the currently executing procedure belongs.
+     (See this manual's appendix OPERATION OF ThE P-MACHINE for
+     illustrations.)
+
+JTAB: Jump TABle pointer.  A pointer to the table of attributes and
+      jump table entries in the procedure code section of the currently
+      executing procedure.  (See this manual's appendix OPERATION OF THE
+      P-MACHINE for illustrations.)
+
+KP:	program stacK Pointer.  A pointer to the current top of the
+    program stack.  The program stack starts in high user memory and
+    grows downward toward the heap.  (See this manual's appendix
+    OPERATION OF THE P-MACHINE for illustrations.)
+
+HP:	Markstack Pointer.  A pointer to the low byte of MSSTAT, in the
+    topmost Markstack on the program stack, in the activation record 
+    of the currently executing procedure.  Variables local to the current
+    procedure are accessed by indexing off MP.
+
+NP:	New Pointer.  A pointer to the current top of the dynamic heap
+    (one byte beyond the last byte in use). The heap starts in low 
+    user memory and grows upward toward the program stack.  It contains all
+    dynamic variables (see Jensen and Wirth, Chapter 10).  It is
+    extended by the standard procedure 'new', and is cut back by the
+    standard procedure 'release'.
+
+BASE: BASE Procedure.  A pointer to the activation record of the 
+      most recently invoked base procedure (lex level 0).  Global (lex
+      level 0) variables are accessed by indexing off BASE.
+
+
+
+COMMUNICATION BETWEEN OPERATING SYSTEM AND THE P-MACHINE
+
+It is sometimes necessary for the operating system and the P-machine
+to exchange information.  Hence there exists a variable SYSCOM in 
+the outer block of the operating system, and a corresponding area in
+memory known to the P-machine.  The fields in SYSCOM actually 
+relevant to this communication are:
+
+IORSLT: Contains the error code returned by the last activated or
+     terminated I/O operation (see I/O Error Messages in this manual's
+     TABLES appendix, and the Apple Pascal Language Reference Manual's
+     description of Apple Pascal's read and write procedures).
+
+XEQERR: Contains the error code of the last execution error (see
+     the Error Handling section in this appendix, and Execution Error
+     Messages in the TABLES appendix).
+
+SYSUNIT:	Contains the volume number of the device from which the
+     operating system was booted (usually the boot disk drive, volume 4).
+
+BUGSTATE: (Not used; intended for future debugging routines.)
+
+GDIRP: Contains a pointer to the most recent disk directory read
+     in, unless dynamic allocation or deallocation has taken place
+     since then (see the MRK, RLS, and NEW instructions).
+
+STKBASE, LASYMP, SEG, JTAB: Contains copies of the BASE, MP, SEG and
+     JTAB registers.
+
+BOMBP: Contains a pointer to the activation record of the operating
+     system routine EXECERROR when an execution error occurs (see the
+     Error Handling section of this appendix).
+
+BOMIPC: Contains the value of IPC when an execution error occurs.
+
+HLTLINE:	(Not used; intended for future debugging routines.)
+
+BRKPTS: (Not used; intended for future debugging routines.)
+
+CRTINFO.EOF: Contains the end-of-file character (see discussion of the
+     reconfiguration program in this manual's chapter UTILITY PROGRAMS).
+
+CRTINFO.FLUSH: Contains the flush-output character (see the discussion
+     of the reconfiguration program in the chapter UTILITY PROGRAMS).
+
+CRTINFO.STOP:	Contains the stop-output character (see discussion of the
+     reconfiguration program in this manual's chapter UTILITY PROGRAMS).
+
+CRTINFO.BREAK: Contains the break-execution character (see discussion
+     of the reconfiguration program in the chapter UTILITY PROGRAMS).
+
+SEGTABLE: Contains the segment dictionary for the operating system
+     (segments 0, and 2 through 6) and for the currently executing 
+     system or user program (segment 1: main program; 7 through 21:
+     segment procedures and regular Units; 22 through 31: Intrinsic
+     Units) (see the appendix OPERATION OF ThE P-MACHINE for
+     illustrations).
+
+
+
+ERROR HANDLING
+
+Whenever an execution error occurs, the P-machine stops executing the
+current instruction (ideally leaving the evaluation stack in as nice a
+condition as possible) and transfers control to the interpreter's XEQERR
+routine. This routine does the following:
+
+1.	Enters the error code into SYSCOM^.XEQERR,
+
+2.	Calculates what HP will be after step 4, and sets SYSCOM^.BOMBP
+    to that (the size of EXECERROR's activation record must be
+    known by the P-machine),
+
+3.	Stores the current value of IPC into SYSCOM^.BOMIPC
+
+4.	Points IPC to a CXP 0,2 P-code instruction (call operating
+    system procedure EXECERROR) and
+
+5.	Resumes execution of interpreter code, starting with the CXP
+
+
+
+OPERAND FORMATS
+
+Although an element of a structure may occupy as little as one bit, as
+in a PACKED ARRAY OF boolean, variables in the P-machine are always
+aligned on word boundaries. Words consist of two bytes of which the even-
+address byte is least significant.  All top-of-stack operations expect
+their operands to occupy at least one word on the evaluation stack, even
+if not all the information in a word is valid.  The least significant bit
+of a word is bit 0, the most significant is bit 15.
+
+BOOLEAN:	One word.  Bit 0 indicates the value (false=0, true=1),
+     and this is the only information used by boolean comparisons.
+     However, the boolean operators LAND, LOR, and LNOT operate on all
+     16 bits.
+
+INTEGER:	One word, two's complement, capable of representing values
+     in the range -32768..32767.
+
+LONG INTEGER: 3..11 words.  A variable declared as INTEGER[n] is
+     allocated ((n+3) DIV 4) + 2 words.  Regardless of the value of the
+     integer, its actual size agrees with its allocated size.  Each
+     decimal digit of a long integer is stored as four bits of Binary
+     Coded Decimal.   The format of long integers is as follows:
+
+           word n (tos-n):   high byte contains the two least significant
+                             decimal digits (BCD).
+           "   "   "         "     "     "     "     "     "      "     "
+           "   "   "         "     "     "     "     "     "      "     "
+
+           word 2 (tos-2):   low byte contains the two most significant
+                             decimal digits (BCD).
+
+           word 1 (tos-1):   low byte contains the sign (all zeros=plus,
+                             all ones = minus); high byte not used.
+
+           word 0 (tos-0):   contains the allocated length, in words.
+
+SCALAR (user-defined):    One word, in range 0..32767.
+
+CHAR:	One word, with low byte containing character.  The internal
+     character set is "extended" ASCII, with 0..127 representing the
+     standard ASCII set, and 128..255 as a user-defined character set.
+
+REAL:	Two words, whose format is implementation dependent.  The
+     is arranged so that only the interpreter needs to know the
+     detailed internal format of REALs (beyond the fact that they
+     occupy two words).  In general, the format for 32-bit real
+     numbers is as follows:
+
+                                   Word 1 (tos)           Word 0 (tos)
+					   ____________^____________	    __^__
+					  /                         \    /     \
+                 Bit:     31       30...23     22..16 and 15..0
+                 Item:   Sign     Exponent    Mantissa
+
+
+POINTER:	One or three words, depending on type of pointer.
+
+     Pascal pointers, internal word pointers: one word, containing
+     a word address.
+
+     Internal byte pointers: one word, containing a byte address.
+
+     Internal packed field pointers:  three words.
+          word 2 (Tos-2): word pointer to word field is in.
+          word 1 (Tos-1): field width (in bits).
+          word 0 (Tos-0): right bit number of field.
+
+
+SET:    0..31 words in activation record, 1..32 words on evaluation
+     stack.  Sets are implemented as bit vectors, always with a lower
+     index of zero.  A set variable declared as  SET OF m..n  is
+     allocated  (n+15) DIV 16  words.  When a set is in the activation
+     record, all words allocated contain valid information (the set's
+     actual size agrees with its allocated size).
+
+     When a set is on the evaluation stack, it is represented by a word
+     containing the length (tos), and then that number of words of
+     information.  The set may be padded with extra words (to compare
+     it with another set of different size, say), the length word
+     indicating the number of words in the structure padded.   Before
+     being stored back in the activation record, a set must be forced
+     back to the size allocated to it, by issuing an ADJ instruction.
+
+RECORDS and ARRAYS: Any number of words.  Arrays are stored in forward
+     order, with higher-indexed array elements appearing in higher-
+     numbered memory locations.  Only the address of the record or array
+     is loaded onto the evaluation stack, never the structure itself.
+     Packed arrays must have an integral number of elements in each
+     word, as there is no packing across word boundaries (it is
+     acceptable to have unused bits in each word).  The first element in
+     each word has bit 0 as its low-order bit.
+
+STRINGS:    1..128 words.  Strings are a flexible version of PACKED
+     ARRAYs OF char.  A string[n] occupies  (n DIV 2)+1  words.  Byte 0
+     of a string is the current length of the string, and bytes
+     1..length(string) contain valid characters.
+
+CONSTANTS:    Constant scalars, sets, and strings may be imbedded in
+     the instruction stream, in which case they have special formats.
+
+     All scalars (excluding reals) greater than 127:  Two bytes,
+     high byte first.
+
+     Strings:    All string literals take  length(literal)+1  bytes, and
+     are word aligned.  The first byte is the length, the rest are the
+     actual characters.  This format applies even if the literal should
+     be interpreted as a PACKED ARRAY OF CHAR.
+
+     Reals and sets:    Word aligned, and in REVERSE word order.
+
+
+
+THE P-MACHINE INSTRUCTION SET
+
+INSTRUCTION FORMATS
+
+Instructions on the P-machine are one or two bytes long, followed by
+zero to four parameters.  Most parameters specify one word of
+information, and are one of five basic types:
+
+UB:	Unsigned Byte.  High order byte of parameter is implicitly zero.
+
+SB:	Signed Byte.  High order byte is sign extension of bit 7.
+
+DB:	Don't-care Byte.  Can be treated as SB or UB, as value is always
+    in the range 0..127.
+
+B:	Big.  This parameter is one byte long when used to represent
+    values in the range 0..127, and is two bytes long when
+    representing values in the range 128..32767.  If the first
+    byte is in 0..127, the high byte of the parameter is
+    implicitly zero.  Otherwise, bit 7 of the first byte is
+    cleared and it is used as the high order byte of the
+    parameter.  The second byte is used as the low order byte.
+
+W:	Word.  The next two bytes, low byte first, give the parameter value.
+    Any exceptions to these formats are noted in the instruction 
+    descriptions.
+
+
+CONVENTIONS AND NOTATION
+
+The program stack, which starts at user high memory and grows downward,
+contains program code segments and activation records for currently
+active procedures, and data segments associated with INTRINSIC UNITs.
+
+The evaluation stack, which starts at hex location 1FF and grows
+downward toward hex 0 contains operands and other temporary items
+needed during expression evaluation.  When an instruction is said to
+"push" an item, that item is placed on the top of the evaluation stack
+(remember that the evaluation stack grows downward).
+
+In referring to operands on the evaluation stack (for example,  tos or
+tos-1), each operand can contain from one word to 256 words, depending
+on the context.  Also, unless specifically noted to the contrary,
+operands used by an instruction are popped off the evaluation stack
+(removed from the stack and not put back there) as they are used.
+
+Abbreviations are used widely, but use fairly simple conventions.
+Parameters are written as  X  or  Xn , where  X  is  UB , SB , DB , B
+or  W , and  n  is an integer indicating the parameter position in the
+instruction (used in the descriptions to differentiate between several
+parameters that would otherwise have the same name).  The term tos
+means the operand on the top of the evaluation stack,  tos-1  is the
+next operand, etc.  The ~Aark Stack Control Word, or MSCW, is simply
+called the Markstack.
+
+Many instructions refer to the activation record of a procedure, and
+this appendix assumes the reader has a general knowledge of procedure-
+calling in stack machines, and the concept of stack frames.  An
+activation record as defined in this appendix specifically consists of:
+
+1)	the local variables for the procedure,
+
+2)	parameters passed to the procedure at the time of its invocation,
+
+3)	space for storing the value returned by the procedure, if the
+    procedure is a function, and
+
+4)	the Markstack, containing addressing information (Static Links),
+    and information on the calling procedure's environment when the
+    procedure was called (see this manual's appendix, OPERATION OF
+    THE P-MACHINE, for illustrations).
+
+The dynamic chain refers to the calling chain, traversed using the
+Markstack Dynamic Links (MSCW.MSDYN).  The static chain refers to the
+lexical or ancestor chain, traversed using the Markstack Static Links
+(MSCW.MSSTAT).
+
+The columns of information in the various instruction descriptions may
+be labelled as follows:
+
+
+Column	  Column      Column            Column
+  1          2           3                 4
+
+Op-Code	  Decimal   Instruction     Full Name and Operation
+Mnemonic   Op-Code   Parameters	   of the Instruction
+
+
+
+ONE-WORD LOADS AND STORES
+
+
+Constant
+
+SLDC 0       0      Short load one-word constant.  For an
+SLDC 1       1      instruction  SLDC x , push the opcode, x ,
+ :   :       :      with high byte zero.
+SLDC 127    127
+
+LDCN       159      Load constant NIL.  Push the implenentation-dependent
+                    value of NIL (0, on the Apple)
+
+LDCI       199   W  Load one-word constant.  Push W.
+
+
+
+Local
+
+SLDL 1   216        Short load local word.  For an
+SLDL 2   217        instruction  SLDL x , fetch the word with
+  :  :    :         offset  x  in MP activation record and
+SLDL 16  231        push it.
+
+LDL      202  B     Load local word.  Fetch the word with
+                    offset  B  in MP activation record and push it.
+
+LLA      198  B     Load local address.  Fetch address of
+                    the word with offset  B  in MP activation
+                    record and push it.
+
+STL      204  B     Store local word.  Store  tos  into word
+                    with offset  B  in MP activation record.
+
+
+
+Global
+
+SLDO 1   232        Short load global word.  For an
+SLDO 2   233        instruction  SLDO x , fetch the word with
+  :  :    :         offset  x  in BASE activation record and
+SLDO 16  247        push it.
+
+LDO      169  B     Load global word.  Fetch the word with
+                    offset  B  in BASE activation record and
+                    push it.
+
+LAO      165  B     Load global address.  Fetch address
+                    of word with offset  B  in BASE activation
+                    record and push it.
+
+SRO      171  B     Store global word.  Store  tos  into word
+                    with offset  B  in BASE activation record.
+
+
+
+Intermediate
+
+LOD      182  DB,B  Load intermediate word.  Fetch word with
+                    offset  B  in the activation record found
+                    by traversing  DB  Static Links, and push it.
+
+LDA      178  DB,B	 Load internediate address.  Fetch address
+                    of word with offset  B  in the activation
+                    record found by traversing  DB  Static Links,
+                    and push it.
+
+STR      184  DB,B  Store intermediate word.  Store  tos  into
+                    the word with offset  B  in activation record
+                    found by traversing  DB  Static Links.
+
+
+
+Indirect
+
+SIND 0   248        Load indirect word.  Fetch the word
+                    pointed to by  tos  and push it (this is
+                    a special case of  SIND x , described below).
+
+SIND 1   249        Short index and load word.  For an
+SIND 2   250        instruction  SIND x , index the word pointer
+  :  :    :         tos  by  x  words, and push the word pointed
+SIND 7   255        to by the result.
+
+IND      163  B     Static index and load word.  Index
+                    the word pointer  tos  by  B  words, and
+                    push the word pointed to by the result.
+
+STO      154        Store indirect word.  Store  tos  into
+                    the word pointed to by  tos-l
+
+
+
+Extended
+
+LDE      157  UB,B  Load extended word.  Fetch the word
+                    with offset  B  in data segment  UB
+                    (from an Intrinsic Unit) and push it.
+
+LAE      167  UB,B  Load extended address.  Fetch address
+                    of the word with offset  B  in data segment
+                    UB  (from an Intrinsic Unit), and push it.
+
+STE      209  UB,B  Store extended word.  Store  tos
+                    into the word with offset  B  in data
+                    segment  UB  (from an Intrinsic Unit).
+
+
+
+MULTIPLE-WORD LOADS AND STORES (REALS AND SETS)
+
+LDG      179  UB,<block>  Load multiple-word constant.  Fetch
+                    word-aligned <block> of  UB  words in
+                    reverse word order, and push the block.
+
+LDM      188  UB    Load multiple words.  Fetch a block
+                    of  UB  words, whose beginning is pointed
+                    to by  tos , and push the block.
+
+STM      189  UB    Store multiple words.  Tos  is a block
+                    of  US  words,  tos-1  is a word pointer to a
+                    similiar block.  Transfer the block from  tos
+                    to the destination block pointed at by  tos-1.
+
+
+
+BYTE ARRAY HANDLING
+
+LDB      190        Load byte.  Index the byte pointer
+                    tos-1  by the integer index  tos , and
+                    push the byte (after zeroing high byte)
+                    pointed to by the resulting byte pointer.
+
+STB      191        Store byte.  Index the byte pointer
+                    tos-2  by the integer index  tos-1 , and
+                    push the byte  tos  into the location
+                    pointed to by the resulting byte pointer.
+
+
+
+STRING HANDLING
+
+LSA      166  UB,<chars>  Load constant string address.  Push a
+                    byte pointer to the location containing
+                    UB, and then skip IPC past <chars>.
+
+SAS      170  UB    String assign.  Tos  is either a source
+                    byte pointer or a character.  (Characters
+                    always have a high byte of zero, while
+                    pointers never do.)  Tos-1  is a destination
+                    byte pointer.  UB  is the declared size of
+                    the destination string.  If the declared
+                    size is less than the current size of the
+                    source string, give an execution error;
+                    otherwise transfer all bytes of source
+                    containing valid information to the
+                    destination string.
+
+IXS      155        Index string array.  Index the byte
+                    pointer  tos-l  by the integer index  tos
+                    and push the resulting byte pointer if
+                    it is in the range 1. .current length.
+                    If not, give an execution error.
+
+
+
+RECORD AND ARRAY HANDLING
+
+MOV      168  B     Move words.  Transfer a source block of
+                    B  words, pointed to by byte pointer  tos
+                    to a similar destination block pointed to by
+                    byte pointer  tos-1
+
+INC      162  B     Increment field pointer.  Index the
+                    word pointer  tos  by  B  words and push
+                    the resultant word pointer.
+
+IXA      164  B     Index array.  Tos  is an integer index,
+                    tos-1  is the array base word pointer, and
+                    B  is the size (in words) of an array
+                    element.  Compute a word pointer to the
+                    indexed element and push the pointer.
+
+IXP      192  UB1,UB2  Index packed array.  Tos  is an
+                    integer index,  tos-1	is the array base
+                    word pointer.  UBi  is the number of
+                    elements per word, and  UB2  is the field
+                    width (in bits).  Compute a packed field
+                    pointer to the indexed field and push the
+                    resulting pointer.
+
+LPA      208  UB,(chars>  Load a packed array.  Push a byte
+                    pointer to the first location following
+                    the one that contains  UB , and then
+                    skip IPC past <chars>.
+
+LDP      186        Load a packed field.  Fetch the field
+                    indicated by the packed field pointer  tos
+                    and push it.
+
+STP      187        Store into a packed field.  Store the
+                    data  tos  into the field indicated by the
+                    packed field pointer  tos-1.
+
+
+
+DYNAMIC VARIABLE ALLOCATION
+
+NEW      158  1     New variable allocation.  Tos  is the
+                    size (in words) to allocate the variable,
+                    and  tos-1  is a word pointer to a dynamic
+                    variable.  GDIRP is a pointer to a temporary
+                    directory buffer placed in memory directly
+                    above the heap.  If GDIRP is non-NIL,
+                    set GDIRP to NIL. Store NP into the
+                    word pointed to by  tos-1 , and increment
+                    NP by  tos  words.
+
+MRK      158 31     Mark heap.  Set GDIRP to NIL if
+                    necessary; then store NP into
+                    the word indicated by word pointer  tos.
+
+RLS      158 32     Release heap.  Set GDIRP to NIL,
+                    then store the word indicated by the
+                    word pointer  tos  into NP.
+
+
+
+TOP-OF-STACK ARITHMETIC
+
+Integers
+
+Note:	Overflows do not cause an execution error.
+
+ABI      128        Absolute value of integer.  Push the
+                    absolute value of integer  tos .  Result is
+                    undefined if  tos  is initially -32768.
+
+ADI      130        Add integers.  Add  tos  and  tos-1
+                    and push the resulting sum.
+
+NGI      145        Negate integer.  Push the two's
+                    complement of  tos
+
+SBI                 Subtract integers.  Subtract  tos  from
+                    tos-1 , and push the resulting difference.
+
+MPI      143        Multiply integers.  Multiply  tos  and
+                    tos-1 , and push the resulting product.  This
+                    instruction may cause an overflow if the
+                    result is larger than 16 bits.
+
+SQI      152        Square integer.  Square  tos , and push
+                    the result.  May cause overflow if result is
+                    larger than 16 bits.
+
+DVI      134        Divide integers.  Divide  tos-1  by  tos
+                    and push the resulting integer quotient (any
+                    remainder is discarded).
+
+MODI     142        Modulo integers.  Divide  tos-1  by  tos
+                    and push the resulting remainder (as defined
+                    in Jensen and Wirth).
+
+CHK      136        Check against subrange bounds.  Insure
+                    that  tos-1 <= tos-2 <= tos , leaving  tos-2
+                    on the stack.  If conditions are not
+                    satisfied, give an execution error.
+
+EQUI     195            Tos-1  =   tos
+NEQI     203            Tos-1  <>  tos
+LEQI                    Tos-1  <=  tos
+LESI     201            Tos-1  <   tos
+GEQI     196            Tos-1  >=  tos
+GRTI     197            Tos-1  >   tos
+                    Integer comparisons.  Compare  tos-1  to  tos
+                    and push the result, TRUE or FALSE.
+
+
+
+Non-Integer Comparisons
+
+EQU      175  UB        Tos-1  =   tos
+NEQ      183  UB        Tos-1  <>  tos
+LEQ      18~0 UB        Tos-1  <=  tos
+LES      181  UB        Tos-1  <   tos
+CEQ      176  UB        Tos-1  >=  tos
+GRT      177  UB        Tos-1  >   tos
+                    Compare  tos-1  to  tos , and push the
+                    result, TRUE or FALSE.  The type of
+                    comparison is specified by UB:
+
+                      Contents of      Value of UB
+                      Tos-1 & tos      for comparison
+
+                        reals              2
+                        strings            4
+                        booleans           6
+                        sets               8
+                        byte arrays       10
+                        words             12
+
+                    Comparisons using specific values of UB
+                    are shown in the following instruction
+                    descriptions.
+
+
+Reals
+
+Note: All over/underi lows cause an execution error.
+
+FLT      138        Float top-of-stack.  Convert the integer
+                    tos  to a floating point number, and push
+                    the result.
+
+FLO      137        Float next to top-of-stack.  Tos  is a
+                    real,  tos-1  is an integer.  Convert  tos-1
+                    to a real number, and push the result.
+
+TNC      158 22     Truncate real.  Truncate (as defined in
+                    Jensen and Wirth) the real  tos  and convert
+                    to an integer, and then push the result.
+
+RND      158 23     Round real.  Round (as defined in Jensen
+                    and Wirth) the real  tos , them truncate and
+                    convert to an integer, and finally push the
+                    result.
+
+ABR      129        Absolute value of real.  Push the
+                    absolute value of the real tos.
+
+ADR      131        Add reals.  Add  tos  and  tos-1 , and
+                    push the resulting sum.
+
+NGR                 Negate real.  Negate the real  tos , and
+                    push the result.
+
+SBR      150        Subtract reals.  Subtract  tos  from
+                    tos-1 and push the resulting remainder.
+
+MPR      144        Multiply reals.  Multiply  tos  and  tos-1,
+                    and push the resulting product.
+
+SQR      153        Square real.  Square  tos and push the result.
+
+DVR      135        Divide reals.  Divide  tos-1  by  tos
+                    and push the resulting quotient.
+
+POT      158 35     Power of ten.  If the integer  tos  is
+                    in the range  0 <= tos <= 38 , push the real
+                    (and thus implementation-dependent) value
+                    10 ^ tos .  If not, give an execution error.
+                    This facility allows the rest of the system
+                    to be independent of floating point format.
+
+EQUREAL  175  2         Tos-1  =   tos
+NEQREAL  183  2         Tos-1  <>  tos
+LEQREAL  180  2         Tos-1  <=  tos
+LESREAL  181  2         Tos-1  <   tos
+GEQREAL  176  2         Tos-1  >=  tos
+GTRREAL  177  2         Tos-1  >   tos
+                    Real comparisons.  Compare the real tos-1
+                    to the real tos and push the result,
+                    TRUE or FALSE.
+
+
+Strings
+
+EQUSTR   175  4         Tos-1  =   tos
+NEQSTR   183  4         Tos-1  <>  tos
+LEQSTR   180  4         Tos-1  <=  tos
+LESSTR   181  4         Tos-1  <   tos
+GEQSTR   176  4         Tos-1  >=  tos
+GRTSTR   177  4         Tos-1  >   tos
+                    String comparisons.   Find the string pointed
+                    to by word pointer  tos-1 , compare it
+                    lexicographically to the string pointed to
+                    by word pointer  tos , and push the result,
+                    TRUE or FALSE.
+
+
+
+Logical
+
+LAND     132        Logical and.  Push the result of
+                    tos-1  AND  tos.
+
+LOR      141        Logical or.  Push the result of
+                    tos-1  OR  tos
+
+LNOT     147        Logical not.  Push the one's complement
+                    of  tos
+
+EQUBOOL  175  6         Tos-1  =   tos
+NEQBOOL  183  6         Tos-1  <>  tos
+LEQBOOL  180  6         Tos-1  <=  tos
+LESBOOL  181  6         Tos-1  <   tos
+GEQBOOL  176  6         Tos-1  >=  tos
+GRTBOOL  177  6         Tos-1  >   tos
+                    Boolean comparisons.  Compare bit 0 of
+                    tos-1  to bit	0 of  tos  and push the
+                    result, TRUE	or FALSE.
+
+
+
+Sets
+
+ADJ      160  UB    Adjust set.  Force the set  tos  to occupy
+                    UB  words, either by expansion (putting zeroes
+                    "between"  tos  and  tos-1 ) or compression
+                    (chopping of high words of set), discard the
+                    length word, and push the resulting set.
+
+SGS      151        Build a singleton set.  If the integer
+                    tos  is in the range  0 <= tos <= 511
+                    push the set  [tos] .  If not, give an
+                    execution error.
+
+SRS      148        Build a subrange set.  If the integer
+                    tos  is in the range  0 <= tos <= 511 , and
+                    the integer  tos-1  is in the same range,
+                    push the set [tos-1.. tos] (push the set []
+                    if  tos-1 > tos ).  If either integer exceeds
+                    the range, give an execution error.
+
+INN      139        Set membership.  If integer  tos-1  is
+                    in set  tos , push TRUE.  If not, push FALSE.
+
+UNI      156        Set union.  Push the union of sets  tos
+                    and  tos-1.  ( tos OR  tos-1 )
+
+INT      140        Set intersection.  Push the intersection
+                    of sets  tos  and  tos-1 .  ( tos AND tos-1 )
+
+DIF      133        Set difference.  Push the difference of
+                    sets tos-1  and tos ( tos-1 AND NOT tos ).
+
+EQUPOWR  175  8         Tos-1  =   tos
+NEQPOWR  183  8		Tos-1  <>  tos
+LEQPOWR  180  8		Tos-1  <=  (subset of) tos
+GEQPOWR  176  8		Tos-1  >=  (superset of) tos
+                    Set comparisons.  Compare set  tos-1  to the
+                    set  tos , and push the result, TRUE or FALSE.
+
+
+
+Byte Arrays
+
+EQUBYT   175	10 , B    Tos-1  =   tos
+NEQBYT   183	10 , B    Tos-1  <>  tos
+LEQBYT   180	10 , B    Tos-1  <=  tos
+LESBYT   181	10 , B    Tos-1  <   tos
+GEQBYT   176	10 , B    Tos-1  >=  tos
+GRTBYT   177	10 , B    Tos-1  >   tos
+                    Byte array comparisons.  Compare byte array
+                    tos-1  to byte array  tos , and push the
+                    result, TRUE or FALSE.  <=, <, >=, and > must
+                    be used with PACKED ARRAYs OF CHAR, only.
+                    B gives the number of bytes to compare.
+
+
+
+Records and Word Arrays
+
+EQUWORD  175  12 , B    Tos-1  =   tos
+NEQWORD  183  12 , B    Tos-1  <>  tos
+                    Word or multiword structure comparisons.
+                    Compare word structure tos-1  to word
+                    structure tos , and push the
+                    result, TRUE or FALSE.  B gives
+                    the number of bytes to compare.
+
+
+
+JUMPS
+
+Simple (non-case statement) jumps are all two bytes long.  The first
+byte is the op-code, the second is a  SB  jump offset.  If this offset
+is non-negative, it is simply added to IPC.  (A value of zero for the
+jump offset will make any jump a two-byte NOP.) If  SB  is negative,
+then  SB DIV 2  is used as a word offset into JTAB, and IPC is set to
+the byte address (JTAB~[SB DIV 2]) - contents of (JTAB[SB DIV 2]).
+
+UJP      185  SB    Unconditional jump.  Jump as
+                    described above.
+
+FJP      161  SB    False jump.  Jump if  tos  is FALSE.
+
+EFJ      211  SB    Equal false jump.  Jump if integer
+                    tos-1 <> integer tos
+
+NFJ      212  SB    Not equal false jump.  Jump if integer
+                    tos-1 = integer tos
+
+XJP      172  W1,W2,W3, <case table>
+
+                    Case jump.  W1 is word-aligned, and
+                    is the minimum index of the table.  W2  is
+                    the maximum index.  W3  is an unconditional
+                    jump instruction past the table.  The case
+                    table is  (W2 - W1 + 1) words long, and
+                    contains self-relative locations.
+
+                    If  tos , the actual index, is not in
+                    the range  W1..W2 , then point IPC at W3
+                    Otherwise, use (tos - W1) as an index into
+                    the case table, and set IPC to the byte
+                    address (casetable[tos-W1]) minus the
+                    contents of (casetable[tos-W1]).
+
+
+
+PROCEDURE AND FUNCTION CALLS
+
+The general scheme used in procedure/function invocation is
+
+1)	Find the procedure code section for the called procedure.
+    From the table of attributes (JTAB) in the called procedure's
+    code section, find the data size and parameter size of the
+    called procedure (for more details, see this manual's appendix,
+    OPERATION OF THE P-MACHINE).
+
+2)	Extend the program stack by a number of bytes equal to the
+    data size plus the parameter size.
+
+3)	Copy a number of bytes equal to the parameter size, from the
+    evaluation stack's  tos  (pointed to by SP) to the beginning
+    of the space just allocated.  This passes parameters to the
+    new procedure from its caller.
+
+4)	Build a Markstack, saving SP, IPC, SEG, JTAB, MP, and a Static
+    Link pointer to the most recent activation record of the called
+    procedure's immediate parent.
+
+5)	Calculate new values for SP, IPC, JTAB, MP, and if necessary
+    SEC.  Check for program stack overflow.
+
+6)	If the called procedure has a lex level of -1 or 0 save BASE
+    on the evaluation stack and calculate a new BASE.
+
+7)	Save KP on the program stack and calculate a new KP.
+
+
+
+CLP      206  UB    Call local procedure.  Call procedure
+                    UB, which is an immediate child of the
+                    currently executing procedure and in the
+                    same segment.  Static Link of Markstack
+                    is set to old MP.
+
+CGP      207  UB    Call global procedure.  Call procedure
+                    UB , which is at lex level 1 and in the same
+                    segment as the currently executing procedure.
+                    Static Link of the Markstack is set to BASE.
+
+CIP      174  UB    Call intermediate procedure.  Call
+                    procedure  UB  in sane segment as the
+                    currently executing procedure.  The Static
+                    Link of the Markstack is set by looking up
+                    the call chain until an activation record
+                    is found whose caller had a lex level one
+                    less than the procedure being called.  Use
+                    that activation record's Static Link as
+                    the Static Link of the new Markstack.
+
+CBP      194  UB    Call base procedure.  Call procedure
+                    UB , which is at lex level -1 or 0.  The
+                    Static Link of the Markstack is set to the
+                    Static Link in BASE's activation record.
+                    The BASE is saved, after which it is
+                    pointed at the activation record just
+                    created.
+
+CXP      205  UB1,UB2  Call external procedure.  Call procedure
+                    UB2 , in segment  UB1 .  Used to call
+                    any procedure not in the same segment
+                    as the calling procedure, including
+                    procedures at lex level -1 or 0.  It works
+                    as follows:
+
+                        1) Is desired segment in memory?
+
+                        2a) No: read in segment from disk
+                    using the information in the SEGTABLE,
+                    then build an activation record.
+
+                        2b) Yes: build activation record
+                    normally.
+
+                        3) Calculate the Static Link for
+                    the Markstack: if the called procedure has
+                    a lex level of -1 or 0, set as in CBP;
+                    otherwise set as in CIP.
+
+CSP      158  UB    Call standard procedure.  Call the
+                    standard Pascal procedure  UB , where
+                    UB  is used as an index into the CSP
+                    table in the interpreter.  All instructions
+                    with decimal op-code 158 are examples
+                    of procedure calls using the CSP
+                    instruction.
+
+RNP      173  DB    Return from non-base procedure.  DB
+                    is the number of words that should be
+                    returned as a function value (0 for
+                    procedures, 1 for non-real functions, and
+                    2 for real functions).  Copy  DB  words
+                    from the bottom of the current procedure 5
+                    activation record, and push them onto the
+                    evaluation stack.  Then use the information
+                    in the current Markstack to restore the
+                    calling procedure's correct environment.
+
+RBP      193  DB    Return from base procedure.  Move the
+                    saved base into BASE, and then proceed as
+                    in the RNP instruction.
+
+EXIT     158  4     Exit from procedure.  Tos is the
+                    procedure number,  tos-I  is the segment
+                    number.  First, set IPC to point to
+                    the exit code of the currently
+                    executing procedure.  Then, if the
+                    current procedure is the one to exit
+                    from, return control to the instruction
+                    fetch loop.
+
+                    Otherwise, change the IPC of each
+                    Markstack to point to the exit code of the
+                    procedure that invoked it, until the desiri
+                    procedure is found.
+
+                    If at any time the saved IPC of main
+                    body of the operating system is about to
+                    be changed, give an execution error.
+
+
+
+SYSTEM SUPPORT PROCEDURES
+
+Note: See the Apple Pascal Language Reference Manual for a more detailed
+description of these procedures.
+
+
+Byte-Array Procedures
+
+FLC      158  10    Fillchar(dst, len, char).  los  (char)
+                    is the source character.  Tos-1  (len) is the
+                    number of bytes in the destination array
+                    which are to be filled with the source char.
+                    Tos-2  (dst) is a byte pointer to the first
+                    byte to be filled in the destination PACKED
+                    ARRAY OF CHARacters.  Copy the character
+                    from  tos  into  tos-1  characters of the
+                    destination array.
+
+SCN      158  11    Scan(maxdisp, mask, char, start, forpast).
+                    Tos (forpast) is a two-byte quantity (usually
+                    the default integer 0) which is pushed, but
+                    later discarded without being used in this
+                    implementation.  Tos-1 (start) is a byte
+                    pointer to the first character to be
+                    scanned in a PACKED ARRAY OF CHARacters.
+                    Tos-2  (char) is the character against which
+                    each scanned character of the array is to be
+                    checked.  Tos-3  (mask) is a 0 if the check is
+                    for equality, or 1 if the check is for
+                    inequality.  Tos-4  (maxdisplacement) gives
+                    the maximum number of characters to be scanned
+                    (scan to the left if negative). If a character
+                    check yields TRUE, push the number of
+                    characters scanned (negative, if scanning to
+                    the left).  If  maxdisp  is reached before
+                    character check yields TRUE, push maxdisp
+
+MVL      158  02    Moveleft(src, dst, numbytes).  Tos
+                    (numbytes) gives the number of bytes to move.
+                    Tos-1  (dst) is a byte pointer to the
+                    destination array's first byte which will
+                    receive a moved byte.  Tos-2  (src) is a byte
+                    pointer to the source array's first byte which
+                    will be moved.  Copy  tos  bytes from the
+                    source array to the destination array,
+                    proceeding to the right through both arrays.
+
+MVR      158  03    Moveright(src, dst, numbytes).  Tos
+                    (numbytes) gives the number of bytes to move.
+                    Tos-1  (dst) is a byte pointer to the
+                    destination array's first byte which will
+                    receive a moved byte.  Tos-2  (src) is a byte
+                    pointer to the source array's first byte which
+                    will be moved.  Copy  tos  bytes from the
+                    source array to the destination array,
+                    proceeding to the left through both arrays.
+
+
+
+Compiler Procedures
+
+BPT      213  B     Breakpoint.  Not used (acts as a NOP);
+                    intended for future debugging routines.
+
+TRS      158 08     Treesearch(fcp, fcp2, name).  Tos-2  (fcp)
+                    is a byte pointer to the root of a binary tree
+                    Tos  (name) is a byte pointer to a location
+                    which contains the address of an 8-cbaracter
+                    name that you wish to find or to place in the
+                    tree.  Search the tree, looking for a record
+                    with the required name.  Store the address of
+                    the last node visited, on completion of the
+                    search, into the location pointed to by
+                    byte pointer  tos-1  (fcp2), and push the
+                    result of the search:
+
+                        0  if the last node was a record with
+                           the search name,
+                        1  if the search name should be a new
+                           record, attaching to the last tree
+                           node by the Right Link,
+                       -1  if the search name should be a new
+                           record, attaching to the last tree
+                           node by the Left Link.
+
+                    This is am assembly-language binary tree
+                    search used by the Compiler.  It is fast, b
+                    does NOT do type checking on the parameters
+                    The binary tree uses nodes of type
+
+                      CTP =  RECORD
+                              NAME: PACKED ARRAY [1..8] OF CHAR;
+                              LLINK, RLINK: ^CTP;
+                              ...
+                               other information
+                              ...
+                              END;
+
+IDS      158 07     Idsearch.  Used by the Compiler to parse
+                    reserved words and identifiers.
+
+
+
+Miscellaneous
+
+TIM      158 09     Time.  Pop two pointers to two integers,
+                    and place in those integers a 32-bit
+                    indication of the current time.  (Since
+                    the Apple has no real-time clock, this
+                    instruction acts as a NOP.  Apple sets
+                    both integers to zero.)
+
+XIT      214        Exit the operating system.  Do a
+                    "cold boot" of the system, like the
+                    operating system's H(alt command.
+
+NOP      215        No operation.  Sometimes used to reserve
+                    space in the code for later additions.
+
+
+
+APPENDIX B: OPERATION OF THE P-MACHINE
+
+
+INTRODUCTION
+
+The Apple Pascal system is a version of the UCSD Pascal system, which
+is an interpreter-based implementation of Pascal.  This means that the
+Conpiler emits code for a "Pseudo-machine" or "P-machine" which is
+emulated at run time by a program written in the machine language of the
+host.  For the Apple, this P-machine emulation program is the
+interpreter, written in the Apple's 65~2 machine language and found in
+the boot diskette's file SYSTEM.APPLE
+
+The Apple Pascal operating system and various utilities are themselves
+written in Pascal and run on the same interpreter.  Thus the entire
+system can be moved to a new host machine by rewriting the interpreter
+for the new host.  Every host computer operating under a version of UC
+Pascal has an interpreter that makes the host computer "appear", from
+the viewpoint of a program being executed, to be this same P-machine.
+This appendix describes the "run-time" or "execution-time" environment
+of the Apple Pascal P-machine.  For more information about the
+"hardware" of the P-machine, see this manual's previous appendix,
+ARCHITECTURE OF THE P-MACHINE.
+
+At the end of this appendix is a skeleton version of a large Pascal
+program, referred to throughout the appendix as "The Program".  The
+body of this appendix is a top-down description of "The Program"'s
+diskette codefile, and its execution under the Apple Pascal system.
+
+We will make occasional use of a helpful coincidence: "The Program"
+briefly sketches Out a very early version of the Apple Pascal operating
+system.  The current Apple Pascal operating system has been extended
+and changed in many ways from "The Program" shown in the examples.
+However, this will not prevent you from understanding the mechanisms
+of the P-machine's operation, which are accurately described.
+
+
+
+THE SYSTEM CODEFILE
+
+SEGMENTS
+
+If "The Program" were expanded to the complete Apple Pascal operating
+system, it would consist of at least 10,000 lines of Pascal and compile
+to more than 0 bytes of code -- just a bit too big to fit all at
+once into the memory of an Apple.  Therefore, "The Program" is overlayed
+using "segments", which let you explicitly partition a program into
+portions, only some of which need be resident in main memory at a time.
+See the Apple Pascal Language Reference Manual for details about
+segments.
+
+Segments used within a program portion must be declared before the body
+of the outer program portion.  To let an inner segment call an outer-
+program procedure, the outer program portion can declare the called
+procedure FORWARD before declaring the segment.  An example of this
+appears in "The Program", where the segment procedure COMPILER uses the
+outer program's procedure CLEARSCREEN, which was declared FORWARD.
+
+Segmenting a program does not change its meaning in any fundamental
+sense.  When a segment procedure is called (for instance, line A of "The
+Program" calls the COMPILER segment procedure), the interpreter checks
+to see if that segment is already on the program stack, due to a
+previous (and still active) invocation of the segment.  If it is,
+control is transferred and execution proceeds; if not, the appropriate
+code segment must be loaded onto the program stack from disk before the
+transfer of control takes place.  When no more active invocations of the
+segment exist, its code is removed from the program stack.  For
+instance, in "The Program", the code for the COMPINIT segment is not
+present on the stack either before or after tne execution of line A.  In
+fact, the COMPINIT segment is only present on the stack during the
+execution of "The Program"'s line B.
+
+
+
+A CODEFILE ON DISKETTE
+
+The diskette codefile resulting from compilation of "The Program" is
+diagrammed in Figure 1.  The codefile consists of a segment dictionary
+followed by a sequence of code segments.  The main program generates one
+code segment, and each segment procedure generates another code
+segment.  The ordering of code segments (from low address to high
+address) is determined by the order that one encounters segment
+procedure bodies in passing through "The Program".
+
+
+                       high diskette addresses
+
+               |===================================|  ---|
+               | Segment #0          PASCALSYSTEM  |     |
+               |-----------------------------------|     |
+               | Segment #4             EDITOR     |     |
+               |-----------------------------------|     | Code
+               | Segment #3            COMPILER    |     | Segments
+               |-----------------------------------|     |
+               | Segment #2            COMPINIT    |     |
+               |-----------------------------------|     |
+               | Segment #1          USER PROGRAM  |     |
+               |===================================|  ---|
+               |         SEGMENT DICTIONARY        |  <---- Segment
+               |===================================|        Dictionary
+
+                       low diskette addresses
+
+
+             FIGURE 1      COMPLETE CODEFILE OF "THE PROGRAM"
+
+
+
+Each code segment begins on a boundary between diskette blocks (the
+512-byte disk allocation quantum used by the Apple Pascal operating
+system).  Each segment may occupy many, many blocks; the code for these
+segments is only hinted at in the much-abbreviated version shown in "The
+Program".
+
+	   *	An overview of the relationship between Figures 1 through 7
+    (to be discussed in the following pages) is given in Figure 8 at
+    the end of this appendix.  It is helpful to study Figure 8 at this
+    point for a better understanding of the following sections.
+
+
+
+THE SEGMENT DICTIONARY
+
+The segment dictionary, in the first block of a codefile, contains an
+entry for each code segment in the file (the main program is assigned
+segment #~).  The entry includes the segment's size (in bytes) and its
+disk location.  The disk location is given as the number of blocks to
+the beginning of the code segment, relative to the beginning of the
+segment dictionary (which is also the beginning of the codefile).  This
+information is kept in the system communications area (also called
+SYSCOM; see this manual's appendix, ARCHITECTURE OF THE P-MACHINE)
+during the execution of the codefile, and is used in the loading of non-
+present segments when they are needed.  The segment dictionary also
+contains information about the code and data segments of INTRINSIC UNITs
+which the program USES.  This manual's appendix, FILE FORMATS, gives a
+more detailed account of the information in the segment dictionary.
+
+
+
+A CODE SEGMENT
+
+Figure 2 is a detailed diagram of "The Program"'s Segment #0, containing
+the code for the main program segment, PASCALSYSTEM.  Each code segment
+contains the code for that segment's outer block, as well as the code
+for each of the (non-segment) procedures within that segment.  Observe
+that CLEARSCREEN is the first main-program procedure for which code is
+generated and that it appears at the beginning of the segment.  The
+outer block code, which is generated last, appears last in the code
+segment.  Following the code for the various procedures is the code
+segment's procedure dictionary.
+
+
+
+                        high diskette addresses
+
+
+             |===========================================|  --|
+             |  Number of procedures |  Segment number   |    |
+             |     in this segment   |  of this segment  |    |
+             |-------------------------------------------|    |
+    |--------|   Procedure #1              PASCALSYSTEM  |    |
+    |        |-------------------------------------------|    |Procedure
+    |  |-----|   Procedure #2               CLEARSCREEN  |    |Dictionary
+    |  |     |-------------------------------------------|    |
+    |  |  |--|   Procedure #3                            |    |
+    |  |  |  |-------------------------------------------|    |
+    |  |  |  |                 rest of                   |    |
+    |  |  |  |           procedure  dictionary           |    |
+    |  |  |  |                                           |  --|
+    |  |  |  |===========================================|
+    |  |  |  |                                           |  --|
+    |------->|   PROCEDURE #1  (outer block of           |    |
+       |  |  |                  PASCALSYSTEM)     code   |    |
+       |  |  |-------------------------------------------|    |
+       |  |  |   Other procedures in              code   |    | Procedure
+       |  |  |   segment PASCALSYSTEM             code   |    | Code
+       |  |  |-------------------------------------------|    | Sections
+       |  |->|   PROCEDURE #3                     code   |    |
+       |     |-------------------------------------------|    |
+       |---->|   PROCEDURE #2  (CLEARSCREEN)      code   |    |
+             |===========================================|  --|
+
+
+                        low diskette addresses
+
+
+
+        FIGURE 2      DETAIL OF THE "PASCALSYSTEM" CODE SEGMENT
+
+
+
+A PROCEDURE DICTIONARY
+
+Each procedure in a code segment is assigned a procedure number,
+starting at 1 for the outer block (the main program or a segment
+procedure), and ranging as high as 149.  All references to a procedure
+are made via its number.  Translation from a procedure's number to the
+location of that procedure's code in the code segment is accomplished
+with the procedure dictionary at the end of the segment.  This
+dictionary is an array indexed by the procedure number.  Each array
+element is a self-relative pointer to the code for the corresponding
+procedure.  Since zero is not a valid procedure number, the zero-th
+entry of the dictionary is used to store the number of the code segment
+(even byte) and the number of procedures in that code segment (odd byte).
+
+
+
+A PROCEDURE CODE SECTION
+
+A more detailed diagram of the code section for a single procedure
+within a code segment is seen in Figure 3.  That figure shows the 
+code section for procedure CLEARSCREEN, in "The Program"'s main-program code
+segment, PASCALSYSTEM.  Each procedure's code section consists of two
+parts: the procedure code itself (in the lower portion of the section)
+and a table of attributes of the procedure.  These attributes are:
+
+LEX LEVEL:   Odd byte.  Specifies the depth of absolute lexical
+      nesting for the procedure.  (E.g., the Lex Level (LL) of
+      PASCALSYSTEM = -1, LL of COMPILER or CLEARSCREEN = 0,
+      LL of COMPINIT = 1 , etc.)
+
+PROCEDURE NUMBER:   Even byte.  Refers to the number given to this
+      procedure in the procedure dictionary of the parent code
+      segment.  For example, CLEARSCREEN is Procedure #2 (see
+      Figure 2).
+
+ENTER IC:   A self-relative pointer to the first instruction to be
+      executed for this procedure.
+
+EXIT IC:   A self-relative pointer to the beginning of the block of
+      procedure instructions which must be executed to terminate
+      procedure properly.
+
+PARAMETER SIZE:   The number of bytes of parameters passed to a
+      procedure from its caller.
+
+DATA SIZE:  The size of the activation record (see the later
+      sections of this appendix for details) in bytes, excluding
+      the Markstack and PARAMETER SIZE.
+
+Between these attributes and the procedure code there may be an
+optional section of memory called the "jump table".  Its entries are
+addresses within the procedure code.  JTAB is a term commonly applied
+to the six attributes just discussed and the jump table itself.  JTAB
+is also one of the system registers, which points to the attributes
+and jump table section of the currently executing procedure.
+
+
+
+|----------------|
+| PASCALSYSTEM's |
+| Procedure      |          high diskette addresses
+| Dictionary     |
+| Pointer        |      |============================|  --|
+|----------------|----->|  Lex Level  | Procedure #  |    |
+                        |----------------------------|    |
+                  |-----|          Enter IC          |    |
+                  |     |----------------------------|    |
+                  |  |--|          Exit IC           |    |
+                  |  |  |----------------------------|    | Table of
+                  |  |  |       Parameter Size       |    | Attributes
+                  |  |  |----------------------------|    | (JTAB)
+                  |  |  |          Data Size         |    |
+                  |  |  |----------------------------|    |
+                  |  |  |    (Optional Jump Table)   |  --|
+                  |  |  |============================|
+                  |  |->|                            |  --|
+                  |     |         CLEARSCREEN        |    | Procedure
+                  |     |            Code            |    | Code
+                  |---->|                            |    |
+                        |============================|  --|
+
+                            low diskette addresses
+
+
+FIGURE 3        DETAIL OF THE "CLEARSCREEN" PROCEDURE CODE SECTION
+
+
+
+SYSTEM MEMORY USE
+
+APPLE II MEMORY MAP
+
+Figure 4 is a sketch of the Apple II's memory, when running under the
+Apple Pascal operating system.
+
+This memory map is specific to the Apple II, and does not apply to any
+other computer.  It is provided for your curiosity only: a primary
+task of the transportable Apple Pascal system is to eliminate the
+necessity for the programmer to know anything about specific memory
+addresses and use.
+
+The Apple Pascal file SYSTEM.PASCAL roughly corresponds to "The
+Program"'s resident code segment named PASCALSYSTEM as discussed
+throughout this appendix.
+
+
+
+ Address (Hex)
+                     Apple Language Card            (Language Card)
+    64K (FFFF)  |=============================|    |-------------------|
+                |    SYSTEM.PASCAL (Part 2)   |<-->|    Monitor ROM    |
+                |-----------------------------|    |-------------------|
+                |         SYSTEM.APPLE        |
+    56K (E000)  |- - - - -   P-code    - - - -|    |-------------------|
+                |          Interpreter	       |<-->| _ _Interpreter_ _ |
+                |    (written in 6502 code)   |    | BIOS I/O Routines |
+    52K (D000)  |=============================|    |-------------------|                            
+
+                       Apple II Main Board
+    52K (D000)  |=============================|
+                |   I/O Expansion ROM Space   |
+                |- - - - - - - - - - - - - - -|                   
+                | I/O Device Addresses & ROMs |
+    48K (C000)  |=============================|
+                |           SYSCOM            |
+                |-----------------------------|
+                |    SYSTEM.PASCAL (Part 1)   |
+    44K (B000)  |     The Operating System    |
+                |-----------------------------|
+                |              |              |
+                |    Pascal Program Stack     |
+                |        (builds down)        |
+                |              |              |
+                |              V              |
+                | - - - - - - - - - - - - - - | <-- KP     (Top of
+                |        (Free Memory)        |   A     Program Stack)
+                |                             |   |
+    24K (6000)  |-----------------------------|   |
+                |  High-Res Graphics, Page 2  |   | (Free
+    16K (4000)  |-----------------------------|   | Memory)
+                |  High-Res Graphics, Page 1  |   |
+     8K (2000)  |-----------------------------|   |
+	            |                             |   V
+                | - - - - - - - - - - - - - - | <-- NP   (Top of Heap)
+                |    Pascal Data Heap     A   |
+                |       (builds up)       |   |
+     3K  (C00)  |-----------------------------|                   
+                |        Text Screens         |
+                |-----------------------------|
+                |   Disk & Console Buffers    |
+    .5K  (1FF)  |-----------------------------|
+                |    Evaluation Stack   |     |
+                |      (builds down)    V     |
+                | - - - - - - - - - - - - - - | <-- SP    (Top of
+   .25K  (100)  |-----------------------------|       Evaluation Stack)
+                | Zero Page Pascal System Use |
+     0K  (000)  |=============================|
+
+
+           FIGURE 4      MEMORY MAP OF ThE APPLE II
+                          WHEN USING APPLE PASCAL
+
+
+
+THE PROGRAM STACK
+
+Figure 5 is a snapshot of user memory, showing the Pascal program stack
+in some detail, during the execution of a call to procedure CLEARSCREEN
+from "The Program"'s line C, in segment procedure COMPINIT.
+
+
+                       high memory addresses
+
+                |===============================|
+                |            SYSCOM             | <-- Segment Dictionary
+                |===============================|        Information
+                |          PASCALSYSTEM         |
+                |      Resident Code Segment    |
+                |-------------------------------|
+                |          PASCALSYSTEM         |
+                |   Resident Activation Record  |
+                | - - - - - - - - - - - - - - - |
+                |           Markstack           |
+                |===============================|
+                | COMPILER         Code Segment |
+                |-------------------------------|
+                | COMPILER    Activation Record |
+                | - - - - - - - - - - - - - - - |
+                |           Markstack           |
+                |===============================|
+                | COMPINIT         Code Segment |
+                |-------------------------------|
+                | COMPINIT    Activation Record |
+                | - - - - - - - - - - - - - - - |
+                |           Markstack           |
+                |===============================|
+                | CLEARSCREEN Activation Record |
+                | - - - - - - - - - - - - - - - |
+                |           Markstack           |
+         MP --> |===============================| <-- KP  (Top of
+(Top Markstack) |                               |      Program Stack)
+                |                               |
+                |        ( Free Memory )        |
+                |                               |
+                |                               |
+                |-------------------------------| <-- NP (Top of Heap)
+                |            H E A P            |
+                |===============================|
+                       low memory addresses
+
+
+
+      FIGURE 5      DETAIL OF USER MEMORY DURING EXECUTION
+                        OF PROCEDURE "CLEARSCREEN"
+
+
+
+The Pascal heap is at the lowest part of memory available to programs;
+it grows toward high memory.  It is used to store dynamic variables,
+text files used by the Editor, and other data.  The system
+communications area (also called SYSCOM), is at the top of memory, above
+the system's resident code segment.  SYSCOM is accessible both to
+assembly-language routines in the interpreter and (as if it were part of
+the stack) and to system routines coded in Pascal.  SYSCOM serves as an
+inportant communication link between these two levels of the system (for
+more details about SYSCOM, see this manual's appendix, ARCHITECTURE OF
+THE P-MACHINE).
+
+The program stack, growing down from high memory, is used to store three
+types of items:
+
+    1.  A Code Segment for each active program segment (see Figures
+        1, 2, and 3) and for each active UNIT.
+
+    2.  An Activation Record containing local variables and Markstack
+        parameters for each procedure activation (see Figure 6).
+
+    3.  A Data Segment for each INTRINSIC UNIT which requires one,
+        loaded on the program stack just before the code
+        segment for that UNIT.
+
+
+When segment procedure COMPINIT is called in line B of "The Program",
+COMPINIT's code segment (which includes all the compiler initialization
+procedures) is loaded onto the program stack.  The COMPINIT activation
+record is then built on top of the program stack.
+
+Consider the status of operations in COMPILER, just as COMPINIT is
+called in line B.  The system registers (see this manual's appendix
+ARCHITECTURE OF THE P-MACHINE) contain the following:
+
+    SP:   evaluation Stack Pointer.  Points to the current top of
+          the evaluation stack.
+    EP:   program stacK Pointer.  Points to the current top of the
+          program stack, just beyond COMPILER's activation record.
+
+    IPC:  Interpreter Program Counter.  Points to the next COMPILER
+          instruction, immediately following line B.
+
+    SEG:  SEGment pointer.  Points to the COMPILER code segment's
+          procedure dictionary.
+
+    JTAB: Jump TABle pointer.  Points to the table of attributes
+          in COMPILER's procedure code section.
+
+    MP:   Markstack Pointer.	Points to the Markstack in COMPILER's
+          activation record. Used to find variables local to COMPILER.
+
+The call to procedure COMPINIT causes the operating conditions which
+existed in the system registers, just at the time of COMPILER's call to
+COMPINIT, to be stored in COMPINIT's Narkstack in the following manner:
+
+    System registers,            Stored in these
+    at COMPINIT call             COMPINIT Narkstack fields
+
+            SP        --->       MSSP   (MarkStack Stack Pointer)
+            IPC       --->       MSIPC	 (MarkStack Interpreter
+                                         Program Counter)
+
+            SEG       --->       MSSEG  (MarkStack SEGment pointer)
+            JTAB      --->       MSJTAB (MarkStack Jump TABle)
+            MP        --->       MSDYN  (MarkStack DYNamic link)
+
+In addition, the MarkStack STATic link field (MSSTAT) becomes a pointer
+to the activation record of the lexical parent of the called procedure.
+In particular, it points to the MSSTAT field of the parent's markstack.
+In this example, COMPINIT's MSSTAT is made to point to the MSSTAT field of
+COMPILER's Markstack.  Mter building the new procedure's activation
+record on the program stack, new values for the system registers SP, IPC,
+SEG, JYAB, and MP are established for the new procedure.
+
+If the called procedure has a lex level of -1 or 0, the contents of
+register BASE are saved on the evaluation stack, and a new value for
+BASE is calculated.  Finally, KI' is saved on top of the program stack,
+and a new value for KP is calculated.  These elements are not part of
+the COMPINIT Markstack or activation record.
+
+
+
+AN ACTIVATION RECORD
+
+Figure 6 is a diagram of the activation record which is placed on the
+stack for COMPINIT.
+
+
+                         high memory addresses
+
+                     |===========================|  --|
+                     |  Other COMPINIT variables |    |
+                     |---------------------------|    |
+                     |           BOOL            |    | Local
+                     |---------------------------|    | Variables
+                     |             I             |    |
+                     |---------------------------|    |
+                     |             J             |  --| Passed
+                     |===========================|  <----Parameters
+                     |           MSSP            |  --| (if any)
+                     | - - - - - - - - - - - - - |    |
+                     |           MSIPC           |    |
+                     | - - - - - - - - - - - - - |    |
+                     |           MSSEG           |    |
+                     | - - - - - - - - - - - - - |    | Markstack
+                     |           MSJTAB          |    |
+                     | - - - - - - - - - - - - - |    |
+                     |           MSDYN           |    |
+                     | - - - - - - - - - - - - - |    |
+                     |           MSSTAT          |    |
+              MP --> |===========================|  --|
+
+
+
+         FIGURE 6      DETAIL OF THE "COMPINIT" ACTIVATION RECORD
+
+
+In the upper portion of the activation record, space is allocated for
+variables local to the new procedure.  For example, COMPINIT's
+activation record allocates space for integer variables I and J, as well
+as boolean variable BOOL.
+
+Note that in this example no space is needed for passed parameters
+because none were passed to this procedure.  If parameters are passed,
+they occupy space after the last local variable.  If the procedure is a
+function, space is also reserved (following the last passed parameter)
+for storing the function~s returned value.
+
+The lower portion of the activation record is called a "Markstack" (also
+sometimes called a Mark Stack Control Word, or MSCW).  When a call to
+any procedure is made, the current values of the system registers, which
+characterize the operating environment of the calling procedure, are
+stored in the Markstack of the called procedure.  This allows the system
+registers to be restored to pre-call conditions when control is
+returned to the calling procedure.
+
+When the call to CLEARSCREEN is made in line C of "The Program",
+another activation record is added to the program stack.  Once again the
+register values and the appropriate Static Link are stored in the new
+Markstack (in CLEARSCREEN's activation record)) and the system
+registers are then updated.  Note that the new SEG no longer points to
+the COMPINIT segment's procedure dictionary, but to the procedure
+dictionary for the PASCALSYSTEM code segment (which contains procedure
+CLEARSCREEN).
+
+No code segment for CLEARSCREEN is added to the program stack before
+building the activation record, since the code for CLEARSCREEN is
+already present on the program stack, in the code segment for
+PASCALSYSTEM.  The invocation of CLEARSCREEN causes only an activation
+record to be added to the program stack.  When CLEARSCREEN and COMPINIT
+are completed, the COMPILER activation record will again be the top
+element on the stack.
+
+
+
+MORE ON THE PROGRAM STACK
+
+Figure 7 is a more detailed diagram of the program stack during
+execution of an instruction in CLEARSCREEN, including appropriate
+pointers for Static and Dynamic Links of CLEARSCREEN's Markstack.  Note
+where the system registers point in the program stack.  In particular,
+JTAB points to the table of attributes in the CLEARSCREEN procedure code
+section which is in the PASCALSYSTEM code segment, IPC points to the
+next instruction inside that CLEARSCREEN code, and SEG points to the
+base of the PASCALSYSTEM code segment's procedure dictionary.  SP points
+to the top of the evaluation stack, which is not shown in this diagram.
+
+
+
+OVERVIEW
+
+SUMMARY OF THE FIGURES
+
+Figure 8 illustrates a top-down process by showing the relationships
+among Figures 1 through 7.
+
+
+
+               high memory addresses
+          |=============================|<--- SEG
+          | PASCALSYSTEM   Code Segment |
+          | (includes CLEARSCREEN code) |<--- JTAB, IPC
+          |-----------------------------|
+          | PASCALSYSTEM Activation Rec.|
+          | - - - - - - - - - - - - - - |
+|-------->|          Markstack          |
+|         |=============================|
+|         | COMPILER       Code Segment |
+|         |-----------------------------|
+|         | COMPILER  Activation Record |
+|         | - - - - - - - - - - - - - - |
+|         |          Markstack          |
+|         |=============================|           --|
+|	|---->|    20        |        4     |             |
+|   |     | - - - - - - - - - - - - - - |             | Code
+|	|     |COMPINIT Procedure Dictionary|             | Segment
+| |------>|-----------------------------|             |  of
+| | | |-->|  COMPINIT  outer block code |             | COMPINIT
+| | | |   | - - - - - - - - - - - - - - |             |
+| | | |   |  COMPINIT  procedures  code |           --|
+| | | |   |=============================|
+| | | |   |  COMPINIT  local variables  |           --| Activation
+| | | |   | - - - - - - - - - - - - - - |             | Record
+| | | |   |  COMPINIT   Markstack       |<-|        --| of COMPINIT
+| | | |   |=============================|  |
+| | | |   | CLEARSCREEN local variables |  |        --|
+| | | |   |-----------------------------|  |          |
+| | | |   |           MSSP              |---------|   |
+| | | |   |- - - - - - - - - - - - - - -|  |      |   |
+| | | |---|           MSIPC             |  |      |   | Activation
+| | |     |- - - - - - - - - - - - - - -|  |      |   | Record
+| | |-----|           MSSEG             |  |      |   |  of
+| |       |- - - - - - - - - - - - - - -|  |      |   | CLEARSCREEN
+| |-------|           MSJTAB            |  |      |   |
+|         |- - - - - - - - - - - - - - -|  |      |   |
+|         |           MSDYN             |--|      |   |
+|         |- - - - - - - - - - - - - - -|         |   |
+|---------|           MSSTAT            |         | --|
+          |=============================| <- MP,  |
+          |       ( Free Memory )       | & KP    V
+          |-----------------------------|       (to
+               low memory addresses           evaluation
+                                                stack)
+
+ FIGURE 7      DETAIL OF THE PROGRAM STACK DURING
+               EXECUTION OF PROCEDURE CLEARSCREEN
+
+
+
+
+                                   A CODE SEGMENT
+
+                             |=======================|
+                             | Procedure Dictionary  |       A PROCEDURE
+    A PROGRAM CODEFILE       |=======================|       CODE SECTION
+                             | PASCALSYSTEM    code  |
+  |====================|     | outer block   section |     |==============|
+  | Main PASCALSYSTEM  |     |-----------------------|     |   Table of   |
+  |  Program Segment   |-->  | More procedures  code |     |  Attributes  |
+  |--------------------|     | in segment    sections|     |   (JTAB)     |
+  |   PASCALSYSTEM's   |     | PASCALSYSTEM          |     |--------------|
+  | Segment Procedures |     |-----------------------|     | CLEARSCREEN  |
+  |====================|     | Procedure       code  |-->  |  Procedure   |
+  | Segment Dictionary |     | CLEARSCREEN   section |     |    Code      |
+  |====================|     |=======================|     |==============|
+
+        Figure 1                      Figure 2                 Figure 3
+    Complete Codefile              Detail of the             Detail of the
+     of "The Program"              "PASCALSYSTEM"            "CLEARSCREEN"
+                                    Code Segment               Procedure
+                                                              Code Section
+
+
+
+                                 THE PROGRAM STACK
+
+       MEMORY MAP                                            A CODE SEGMENT
+                            |=========================|
+  |===================|     |      PASCALSYSTEM       |     |--------------|
+  |         |         |     |      Code Segment       |-->  | ( Figure 2 ) |
+  | The Program Stack |-->  |- - - - - - - - - - - - -|     |--------------|
+  |         |         |     |      PASCALSYSTEM       |
+  |_ _ _ _ _V_ _ _ _ _|     |    Activation Record    |      AN ACTIVATION
+  |                   |     |-------------------------|         RECORD
+  |  ( Free Memory )  |     | COMPILER   Code Segment |
+  |_ _ _ _ _ _ _ _ _ _|     |- - - - - - - - - - - - -|     |=============|
+  |         A         |     | COMPILER Activation Rec.|     |   COMPINIT  |
+  |         |         |     |-------------------------|     |    Local    |
+  |     The Heap      |     | COMPINIT   Code Segment |     |  Variables  |
+  |===================|     |- - - - - - - - - - - - -|     |-------------|
+  |___________________|     | COMPINIT Activation Rec.|-->  |  Parameters |
+  |Evaluation Stack | |     |-------------------------|     |-------------|
+  |_ _ _ _ _ _ _ _ _V_|     | CLEARSCREEN Activ'n Rec.|     |  Markstack  |
+  |===================|     |=========================|     |=============|
+
+         Figure 4                    Figure 5                  Figure 6
+        Memory Map          Detail of the Program Stack     Detail of the
+     of the Apple II          During Execution of the        "COMPINIT"
+                              "CLEARSCREEN" Procedure      Activation Record
+
+                                    Figure 7
+                         The Program Stack in More Detail
+
+
+             FIGURE 8       RELATIONSHIP OF APPENDIX FIGURES
+
+
+
+"THE PROGRAM"
+
+This is "The Program", various parts of which are used as examples
+throughout this appendix.  As mentioned in the introduction, "The
+Program" shows just the partial skeleton of a very early version of
+the Apple Pascal operating system.  Much of the code is only hinted
+at, and many of the segments used in the current version of the Apple
+Pascal operating system are missing entirely from "The Program".
+
+
+     PROGRAM PASCALSYSTEM;
+     VAR
+       SYSCOM: SYSCOMPEC;
+       CH:CEAR;
+
+       PROCEDURE CLEARSCREEN; FORWARD;
+
+       SEGMENT PROCEDURE USERPROGRAM;
+         BEGIN
+          ...
+         END;
+       SEGMENT PROCEDURE COMPILER;
+       VAR
+         SY,OP:INTEGER;
+         SYMCURSOR:INTEGER;
+
+          PROCEDURE INSYMBOL; FORWARD;
+
+          SEGMENT PROCEDURE COMPINIT;
+          VAR
+            I,J:INTEGER;
+            BOOL:BOOLEAN;
+          BEGIN
+            ...
+            I:=1;
+            CLEARSCREEN;   <-------------------------------Line C
+            INSYMBOL;
+            ...
+          END;
+
+          PROCEDURE INSYMBOL;
+          BEGIN ... END;
+
+          PROCEDURE BLOCK;
+          BEGIN ... END;
+        BEGIN (*COMPILER*)
+          ...
+          COMPINIT;        <-------------------------------Line B
+          INSYMBOL;
+          ...
+        END; (*COMPILER*)
+
+       SEGMENT PROCEDURE EDITOR;
+         BEGIN   ...  END;
+
+       PROCEDURE CLEARSCREEN
+         BEGIN
+           ...
+           WRITE(-------------------);
+           ...
+         END;
+
+     BEGIN (*PASCALSYSTEM*)
+       REPEAT
+       READ (CH);
+       CASE CH OF
+         'C':COMPILER;     <-------------------------------Line A
+         'E':EDITOR;
+         'U':USERPROGRAM
+         ...
+       END (*CASE*)
+     UNTIL CH = 'H'
+   END.

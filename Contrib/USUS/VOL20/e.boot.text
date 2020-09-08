@@ -1,0 +1,253 @@
+.TITLE    "K. G. Balke, Associates, Primary Courier Pascal Bootstrap"
+
+; Author:    Karl G. Balke
+;            Brian K. E. Balke
+; Version:   15 September 1982
+
+.INCLUDE  bios.const
+
+BIOS_BASE .EQU  0F800H             ;  Base of BIOS as loaded from Track
+                                   ;  0 of disk.
+
+S_BOOT_PSN   .EQU  8200H           ;  Location of secondary bootstrap.
+
+
+.PROC     PRIM_BOOT
+
+;  This program will be loaded into locations 2800-28FFH
+;  by the bootstrap ROM in the computer.  It will then load the
+;  secondary bootstrap and the SBIOS, sete up the initial stack
+;  contents for the secondary bootstrap, and initiate Pascal system
+;  loading.
+
+;  Set up a stack for calls to GET_DATA.
+          LD    SP, 8000H
+
+;  Initialize the Pascal stack with disk parameters per boot source.
+;  Note that this bootstrap assumes that it is being loaded from a
+;  double-sided, double-density disk in KGBA standard format.
+          LD    DE, BIOS_BASE - 5
+          LD    BC, 24
+          LD    HL, PAS_STK_TP - 1
+          LDDR
+
+;  Specify disk characteristics per table.
+          LD    HL, FDC_SPC_TB
+          LD    C, 3
+          CALL  WRT_FDC_CMD
+
+;  Disk is on line.  Restore it to track 0.
+          LD    HL, FDCTBL
+          LD    (HL), 07H          ;  Recalibrate command.
+          LD    C, 2
+          CALL  WRT_FDC_CMD
+          
+          CALL  POLL_INT
+          
+          CALL  GET_INT_ST
+          AND   0D8H
+          JR    NZ, $
+
+;  Load the secondary bootstrap from sectors 2-5 into 8200H.
+          LD    HL, S_BOOT_PSN
+          LD    DE, 47FFH
+          CALL  RD_FDC
+          AND   A
+          JR    NZ, $
+
+;  Load the SBIOS from sectors 6-8 into BIOS_BASE.
+          LD    A, 6
+          LD    (FDCTBL + 4), A
+          LD    HL, BIOS_BASE
+          LD    DE, 45FFH
+          CALL  RD_FDC
+          AND   A
+          JR    NZ, $
+
+; Initialize serial port controller timers.
+          LD    HL, DIA_SPEED
+          LD    A, 36H
+          OUT   (CNT_MDM), A
+          LD    C, CNT_REG_0
+          OUT   (C), L
+          OUT   (C), H
+          LD    HL, MDM_SPEED
+          LD    A, 76H
+          OUT   (CNT_MDM), A
+          INC   C                  ; CNT_REG_1
+          OUT   (C), L
+          OUT   (C), H
+
+; Establish the line characteristics for the Diablo printer.
+          LD    A, 4EH
+          OUT   (PRTDIA + STAT_PRT), A
+
+; Turn on port.
+          LD    A, 37H
+          OUT   (PRTDIA + STAT_PRT), A
+
+;  Bootstrap properly loaded.  Execute secondary bootstrap.
+          LD    SP, BIOS_BASE - 28
+          JP    S_BOOT_PSN
+
+
+DBG_WRT:
+          PUSH  AF
+$1:
+          IN    A, (CRT_STAT)
+          AND   01H
+          JR    Z, $1
+          POP   AF
+          OUT   (CRT_DATA), A
+          RET
+
+          
+RD_FDC:
+;  This subroutine programs the DMA according to input values,
+;  writes and executes the read command, and analyzes the result.
+
+;  On entry:
+;    (DE) = DMA termination count.
+;    (HL) = DMA buffer address.
+
+;  Program DMA.
+          LD    C, DMA_ADR
+          OUT   (C), L
+          OUT   (C), H
+          INC   C
+          OUT   (C), E
+          OUT   (C), D
+          LD    A, 41H
+          OUT   (DMA_CTL), A
+
+;  Execute read and get result.
+          LD    HL, FDCTBL
+          LD    (HL), 46H          ;  Read command.
+          LD    C, 9
+          CALL  WRT_FDC_CMD
+          CALL  GET_RD_RSLT
+          RET
+
+GET_RD_RSLT:
+;  Accept result characters from FDC and analyse error flags.
+
+;  On exit:
+;    (A) = 0 if no errors, <> 0 otherwise.
+          CALL  POLL_INT
+          CALL  GET_RSLT_BT
+          AND   0D8H
+          LD    C, A
+          CALL  GET_RSLT_BT
+          OR    C
+          LD    C, A
+          CALL  GET_RSLT_BT
+          AND   073H
+          OR    C
+          LD    C, A
+
+;  Drop rest of result message.
+          LD    B, 4
+$1:
+          CALL  GET_RSLT_BT
+          DJNZ  $1
+          LD    A, C
+          RET
+
+POLL_INT:
+;  Wait for FDC to generate interrupt, signaling that command
+;  execution is completed.
+          IN    A, (FDC_INT)
+          RLA
+          JR    NC, POLL_INT
+          RET
+
+
+GET_RSLT_BT:
+;  Poll FDC for ready to send status, and accept character.
+
+;  On exit:
+;    (A) = character.
+          IN    A, (FDC_STAT)
+          AND   0C0H
+          CP    0C0H
+          JR    NZ, GET_RSLT_BT
+          IN    A, (FDC_DATA)
+          RET
+
+GET_INT_ST:
+;  Write Sense Interrupt Status enquiry to FDC and accept response.
+
+;  On exit:
+;    (A) = response.
+          LD    HL, FDCTBL
+          LD    (HL), 08H
+          LD    C, 1
+          CALL  WRT_FDC_CMD
+          
+;  Get SR0 and save.
+          CALL  GET_RSLT_BT
+          LD    B, A
+
+;  Discard present cylinder number.
+          CALL  GET_RSLT_BT
+          LD    A, B
+          RET
+
+WRT_FDC_CMD:
+;  Output the prepared command to the FDC.
+
+;  Test FDC ready status.
+          IN    A, (FDC_STAT)
+          RLA
+          JR    NC, WRT_FDC_CMD
+
+;  Output next byte of command.
+          LD    A, (HL)
+          OUT   (FDC_DATA), A
+          INC   HL
+          DEC   C
+          RET   Z
+          JR    WRT_FDC_CMD
+          
+.ALIGN    2
+
+FDCTBL:
+;  FDC command table.  Only command and sector are variable in
+;  this application.
+.BYTE     0     ;  command
+.BYTE     0     ;  disk #
+.BYTE     0     ;  track #
+.BYTE     0     ;  head #
+.BYTE     2     ;  sector #
+.BYTE     2     ;  sector size = 2 for 512
+.BYTE     9     ;  sectors/track
+.BYTE     27    ;  gap
+.BYTE     0FFH  ;  data length (superseded by sector size)
+
+FDC_SPC_TB:
+;  FDC Specify Command Table.  Specifies characteristics of Sony
+;  3-1/4" single-sided micro-floppy drives.
+.BYTE     003H  ;  Specify instruction.
+.BYTE     01FH  ;  Head unload time/Step rate.
+.BYTE     03CH  ;  60 ms head load delay.
+
+PAS_STK_BT:
+;  Bootstrap control stack.
+.WORD     100H                     ;  Interpreter address.
+.WORD     BIOS_BASE                ;  SBIOS jump vector location.
+.WORD     100H                     ;  Lowest memory.
+.WORD     BIOS_BASE - 2            ;  Highest available memory.
+.WORD     70                       ;  Tracks/disk.
+.WORD     9                        ;  Sectors/track.
+.WORD     512                      ;  Bytes/sector.
+.WORD     MFD_INTL                 ;  Interleave.
+.WORD     1                        ;  First Pascal track.
+.WORD     MFD_SKEW                 ;  Track to track skew.
+.WORD     9                        ;  Maximum sectors/track.
+.WORD     512                      ;  Maximum bytes/sector.
+
+PAS_STK_TP:
+.WORD     0
+
+.END
+

@@ -1,0 +1,286 @@
+UNIT REMUNIT ;{ IV.0 w/ SMARTMODEM}{xL Printer: }{xL+}
+
+INTERFACE
+{============== Copyright Notice =============================================}
+{$c Copyright 1980, 1981 by Robert W. Peterson.  All Rights Reserved. }
+{============== Copyright Notice =============================================}
+
+
+{ This is a separate compilation unit intended to stand
+  between application code and a communication line.
+  Implementation of this unit follows the specifications and
+  suggestions set out in the USUS (UCSD p-System User Society)
+  Remote Unit Standard of August, 1981.
+  
+  This unit is specifically intended for the following 
+  communications environment:
+        1) A p-System which implements Unitstatus, Unitread
+           and Unitwrite in the standard manner.
+        2) The modem in use is a Hayes Microcomputer Products,
+           Inc., Smartmodem with the factory option switch 
+           settings.
+
+  
+  This unit is designed to interface to the model codes defined in the 
+  include file "SMART.TINC.TEXT".
+
+
+  The following routines are not functional:
+        CR_BREAK
+        CR_CLEARTOSEND
+        CR_DIALTONE
+        CR_SETADDRESS
+        CR_SETDTR
+        CR_SETRTS
+  
+  The following routines contain calls to UnitClear:
+        CR_ANSWER
+        CR_COMMINIT
+
+  There is code near the end of this unit which is IV.0 dependent.  For
+  versions of the p-System(tm) other than IV.0, this code must be moved
+  to CR_COMMINIT.
+
+  The author may be contacted as follows:
+  
+        USMail:
+                Robert W. Peterson
+                P.O. Box 1686
+                Plano, Texas  75074
+        
+        GTE Telemail:
+                *BVL1707
+
+        Compuserve:
+                70235,326 
+                  (usually via EMAIL or the MUSUS SIG)
+
+
+                                   Change Log
+                                   ====== ===
+  Date     What change was made & Who made the change
+---------  ----------------------------------------------------------------
+ 5 Dec 81  Remove 990 specific code.  Remove Segment procedures-Bob Peterson
+ 5 Dec 81  Partition the source to fit memory-bound editor - Bob Peterson
+ 2 Dec 81  Remove compile conditionals and debug stuff - Bob Peterson
+19 Nov 81  Add compile conditionals for debugging and Segments-Bob Peterson
+26 Oct 81  Convert from Polymorphic to 990 
+25 Aug 81  Bring up to actually adopted standard - Bob Peterson
+25 Aug 81  Add Hayes Smartmodem support - Bob Peterson
+ 3 Aug 81  Convert to IV.0 - Bob Peterson
+28 Mar 81  Original code - Bob Peterson
+
+
+ =============================================================================}
+{$P+}
+TYPE
+  CR_BAUD_RESULT    = ( CR_BAD_PARAMETER,
+                        CR_BAD_RATE,
+                        CR_SET_OK,
+                        CR_SELECT_NOT_SUPPORTED ) ;
+  CR_DIALRESULT     = ( CR_OFF_HOOK, 
+                        CR_DIALERROR,
+                        CR_NOAUTODIAL ) ;
+  CR_REM_PORT       =  PACKED RECORD
+                        PART1   : INTEGER ;
+                        PART2   : INTEGER ;
+                        END ; { CR_REM_PORT }
+  CR_STATE          = ( CR_ON, 
+                        CR_OFF, 
+                        CR_AUTO ) ;
+  CR_WHOAMI         = ( CR_ORIG,
+                        CR_ANS ) ;
+
+VAR
+  CR_ATTENCHAR          : CHAR ;
+  CR_CURRENT_PORT       : CR_REM_PORT ;
+
+{       Initialization and termination routines. }
+PROCEDURE CR_COMMINIT(  DIR             : CR_WHOAMI ;
+                        ATTENTION_CHAR  : CHAR ;
+                    VAR REMOTE_EXISTS   : BOOLEAN ;
+                    VAR DIALER_EXISTS   : BOOLEAN ) ;
+
+PROCEDURE CR_COMMQUIT ;
+
+
+{       Input status. }
+FUNCTION  CR_KBSTAT                     : BOOLEAN ;
+FUNCTION  CR_REMSTAT                    : BOOLEAN ;
+
+
+{       Input/Output operations. }
+FUNCTION  CR_GETKB                      : CHAR ;
+FUNCTION  CR_GETREM                     : CHAR ;
+PROCEDURE CR_PUTREM(                  C : CHAR ) ;
+
+
+{       Control procedures. }
+PROCEDURE CR_ANSWER ;
+PROCEDURE CR_BREAK ;
+FUNCTION  CR_CARRIER                    : BOOLEAN ;
+FUNCTION  CR_CLEARTOSEND                : BOOLEAN ;
+PROCEDURE CR_DELAY(     TENTHS          : INTEGER ) ;
+PROCEDURE CR_DIAL(      NUMBER          : STRING ;
+                        WAITCHAR        : CHAR
+                    VAR RESULT          : CR_DIALRESULT ) ;
+FUNCTION  CR_DIALTONE                   : BOOLEAN ;
+PROCEDURE CR_HOOK(      ON_HOOK         : BOOLEAN ) ;
+FUNCTION  CR_RINGING                    : BOOLEAN ;
+PROCEDURE CR_SETADDRESS(HIGHADDR        : INTEGER ;
+                        LOWADDR         : INTEGER ;
+                        VECTOR          : INTEGER ) ;
+PROCEDURE CR_SETCOMMUNICATIONS(
+                        PARITY          : BOOLEAN ;
+                        EVEN            : BOOLEAN ;
+                        RATE            : INTEGER ;
+                        CHARBITS        : INTEGER ;
+                        STOPBITS        : INTEGER ;
+                        DIR             : CR_WHOAMI ;
+                        MODEL           : STRING ;
+                    VAR RESULT          : CR_BAUD_RESULT ) ;
+PROCEDURE CR_SET_DTR(   NEW_STATE       : CR_STATE ) ;
+PROCEDURE CR_SET_RTS(   NEW_STATE       : CR_STATE ) ;
+
+IMPLEMENTATION
+{$P+}{ Page here so the option is not in the interface text. }
+CONST
+  ANSWER_AFTER          =    '3' ; { Answer after this many rings}
+  CR                    =     13 ; { Carriage Return }
+  DEFAULT_RATE          =    300 ;
+  DEFAULT_MODE          =   TRUE ; { Default to parity enabled. }
+  DEFAULT_PARITY        =   TRUE ; { Default to even parity.    }
+  DEFAULT_CHARBITS      =      7 ; { Default to seven data bits.}
+  DEFAULT_KIND          = '990/5'; { Default model code. }
+  DEFAULT_STOPBITS      =      1 ; { Default to one stop bits.  }
+  HUNG_UP               =   TRUE ;
+  KB_UNIT               =      2 ;
+  REMIN_UNIT            =      7 ;
+  REMOUT_UNIT           =      8 ;
+  TIMER                 =    600 ;
+
+{ Smartmodem return codes: }
+  SM_OK                 = '0' ;
+  SM_CONNECT            = '1' ;
+  SM_RING               = '2' ;
+  SM_NO_CARRIER         = '3' ;
+  SM_ERROR              = '4' ;
+                          {                                   Default
+                            S6 =wait for dial tone in seconds     2
+                            S7 =wait for carrier in seconds      30
+                            S8 =pause time for comma in seconds   2
+                            S9 =carrier detector response time
+                                in tenths of a second             6
+                            S10=delay between loss of carrier
+                                and hangup, in seconds            7
+                            S11=TouchTone duration and spacing
+                                in milliseconds                  70
+                            S12=escape code guard time in
+                                50ths of a second                50
+                           }
+  SM_DEFAULTS           = 'EV S10=4 S12=10' ;
+  SM_DIAL_PROLOGUE      = 'DT' ; { D=dial command; T=use tone dialing }
+  SM_LONG_WAIT          = 32000 ;
+  SM_SHORT_WAIT         =   500 ;
+  
+  
+TYPE
+  T_CLOCK = record
+            case boolean of 
+              { NOTE: TI uses binary representation for long integers.  }
+              true  : ( ticks      : integer[ 4 ] ) ;
+              false : ( hitime     : integer ;
+                        lotime     : integer ) ;
+              end ; { case }
+  TRICK                 = PACKED RECORD
+                          CASE INTEGER OF
+                          1:(A : PACKED ARRAY[0..80] OF CHAR);
+                          2:(S : STRING[80]);
+                          3:(I : INTEGER;
+                             J : INTEGER);
+                          4:(L : ARRAY[0..39] OF INTEGER);
+                          5:(B : ARRAY[0..39] OF BOOLEAN);
+                          6:(C : PACKED RECORD
+                                 CHARL  : CHAR ;
+                                 CHARR  : CHAR 
+                                 END ) ;
+                          END ; { TRICK }
+
+VAR
+  BAUD_SETTABLE         : BOOLEAN ;
+  CONTROL               : INTEGER ;
+  CURRENT_BAUD          : INTEGER ;
+  DTR_STATE             : CR_STATE ;
+  MODEL_ID              : STRING ;
+  OFF_HOOK              : BOOLEAN ;
+  RTS_STATE             : CR_STATE ;
+  UNIT_CARRIER          : BOOLEAN ;
+
+
+FUNCTION  SM_EXECUTE_COMMAND( CMD        : STRING ;
+                              WAIT_COUNT : INTEGER ) : CHAR ;    FORWARD ;
+FUNCTION  CHECK_SMARTMODEM_THERE                     : BOOLEAN ; FORWARD ;
+FUNCTION  SM_ATTENTION                               : BOOLEAN ; FORWARD ;
+{$P+}
+{  ---------------------------------------------------------  }
+{               Initialization/Termination Procedures         }
+{  ---------------------------------------------------------  }
+
+
+{ The following procedures are set up this way so that in IV.0
+  it is a simple matter to Segment the actual code.  These are not
+  time-critical routines, so even the small delay caused by the 
+  indirect call does not matter.
+  
+  To make these into IV.0 Segment procedures, simply add "SEGMENT" 
+  just before the "PROCEDURE" keyword.
+}
+
+PROCEDURE SETADDRESS(   HIGHADDR        : INTEGER ;
+                        LOWADDR         : INTEGER ;
+                        VECTOR          : INTEGER ) ;
+BEGIN
+  WITH CR_CURRENT_PORT DO
+    BEGIN
+    PART1 := HIGHADDR ;
+    PART2 := LOWADDR ;
+    END ;
+END ; { SETADDRESS }
+
+{$I HSM.UINC1.TEXT }
+{$I HSM.UINC2.TEXT }
+{$P+}
+BEGIN
+
+{  *******************************************************************  }
+{  *******************************************************************  }
+{            This code is initialization code.  Leave it here for       }
+{         IV.0 but move it to CR_COMMINIT for any other version.        }
+{         Under IV.0, this code is guaranteed to be executed before     }
+{         any other code in this unit.                                  }
+{  *******************************************************************  }
+{  *******************************************************************  }
+
+  CR_ATTENCHAR          := CHR( 5 ) ; { <control>E }
+  CR_CURRENT_PORT.PART1 :=        0 ;
+  CR_CURRENT_PORT.PART2 :=        0 ;
+
+  BAUD_SETTABLE         :=    FALSE ;
+  CONTROL               :=       12 ;
+  CURRENT_BAUD          :=      300 ;
+  DTR_STATE             :=  CR_AUTO ;
+  MODEL_ID              :=       '' ;
+  OFF_HOOK              :=    FALSE ;
+  RTS_STATE             :=  CR_AUTO ;
+  UNIT_CARRIER          :=    FALSE ;
+{  *******************************************************************  }
+{  *******************************************************************  }
+{             End of IV.0 initialization code.                          }
+{  *******************************************************************  }
+{  *******************************************************************  }
+
+   *** ; { In any version other than IV.0, remove this line. }
+
+END.
+
+

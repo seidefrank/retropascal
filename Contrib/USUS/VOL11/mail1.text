@@ -1,0 +1,231 @@
+{Mail1 - Init (holds version number and date}
+{
+22-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+SEGMENT PROCEDURE Init;
+
+PROCEDURE Rights;
+ BEGIN
+  SC_Clr_Screen;
+  WRITELN;
+  WRITELN('----------------------------------------------------------------');
+  WRITELN('ERCC WORDSET - MAIL - Text processing mailing label data manager');
+  WRITELN('               1.4    22-Feb-82');
+  WRITELN('----------------------------------------------------------------');
+  WRITELN;
+  WRITELN('authors    : Patrick R. Horton, Associated Computer Industries');
+  WRITELN('             Austin Tate, Edinburgh Regional Computing Centre');
+  WRITELN;
+  WRITELN('description: This program maintains a data file of name-address');
+  WRITELN('             information.  Selected data may be merged with a');
+  WRITELN('             document to produce form letters. Mailing labels');
+  WRITELN('             can be printed.');
+  WRITELN;
+  WRITELN('Copyright  : (C) 1982, Austin Tate, ERCC');
+  WRITELN;
+  WRITELN('document   : ERCC hosts in file MICROS.DOC_MAIL');
+  WRITELN;
+  WRITELN('----------------------------------------------------------------');
+  REPEAT
+    GOTOXY(0,22);
+  UNTIL NOT(Space_Wait(TRUE));
+END;
+
+PROCEDURE Initformat;    
+ BEGIN  
+  IF Chkfiles('#4:MAIL.INFO.DATA') THEN
+   BEGIN
+    ffilename := '#4:MAIL.INFO.DATA';                    
+    RESET(format,ffilename);
+   END
+  ELSE IF Chkfiles('#5:MAIL.INFO.DATA') THEN    
+   BEGIN
+    ffilename := '#5:MAIL.INFO.DATA';
+    RESET(format,ffilename);
+   END
+  ELSE
+   BEGIN
+    WRITELN;
+    WRITELN;  
+    WRITELN('The file MAIL.INIT.DATA was not found.');
+    WRITE('Give volume for file MAIL.INFO.DATA (<cr> for #5, <esc><cr> to quit):');
+    READLN(ffilename);
+    if length(ffilename)>0 then if ffilename[1]=CHR(27) then Exit(Mail);
+    IF LENGTH(ffilename)=0 THEN ffilename := '#5:';
+    IF (ffilename = '4') OR (ffilename='5') OR
+     (ffilename = '9') OR (ffilename='10') OR
+     (ffilename = '11') OR (ffilename='12') THEN
+     ffilename := CONCAT('#',ffilename,':');
+    IF POS(':',ffilename)=0 THEN ffilename := CONCAT(ffilename,':');
+    ffilename := CONCAT(ffilename,'MAIL.INFO.DATA[4]');     
+    Makefile(ffilename);   
+    {$I-}
+    RESET(format,ffilename);  
+    if IORESULT<>0 then
+      begin
+        ReportErr('Leaving Mail to take corrective action.','',IORESULT);
+        EXIT(MAIL);
+      end;
+    {$I+}
+    {********}
+    WITH format^ DO 
+     BEGIN
+      infilename := '*MAIL.E.G.TEXT'; 
+      ofilename := '#2:';
+      llmgin := 10;   
+      lrmgin := 10;        
+      lpin := 6;
+      lchar := 80;
+      lpsiz := 23;
+      mwide := 1;
+      mvtab := 4;
+      mmgin := 0;
+      rolodex := FALSE;
+      FOR temp := 1 TO 48 DO
+       BEGIN
+        fflags[temp] := FALSE;
+        meanings[temp] := '';
+       END;
+      meanings[48] := 'Suffx'; 
+      meanings[47] := 'Lname'; 
+      meanings[46] := 'Minit'; 
+      meanings[45] := 'Fname'; 
+      meanings[44] := 'Prefx'; 
+      poption := TRUE;
+      foption := TRUE;
+      loption := TRUE;    
+      option := FALSE;
+      ffeed:=FALSE;
+      LDirCh:='~';
+      joption:=TRUE;
+      lspage := 1;  
+      lpwid :=  4;
+      lvtab := 2;
+      spacing := 1;
+     END;
+    SEEK(format,0); 
+    PUT(format);
+   END;
+  SEEK(format,0);  
+  GET(format);
+  CLOSE(format);  
+ END;   
+
+PROCEDURE Initmail;   
+ VAR ch : CHAR;
+     t1,t2 : STRING[15];
+ 
+ PROCEDURE Getmfile; 
+  BEGIN
+   IF LENGTH(filename)=0 THEN filename := 'MAIL.DATA';   
+   IF POS(':',filename)=0 THEN
+    BEGIN
+     WRITELN;
+     WRITE('Give volume for file ',filename,' (<cr> for #5, <esc><cr> to quit):');    
+     READLN(t1);
+     IF LENGTH(t1)> 0 THEN IF t1[1] = CHR(27) THEN EXIT(Mail);
+     IF LENGTH(t1)=0 THEN t1 := '#5:';
+     IF (t1='4') OR (t1='5') OR
+        (t1 = '9') OR (t1='10') OR
+        (t1 = '11') OR (t1='12') THEN
+          t1 := CONCAT('#',t1,':');
+     IF POS(':',t1)=0 THEN t1 := CONCAT(t1,':');      
+     filename := CONCAT(t1,filename);      
+    END;
+   WRITELN;
+   WRITELN('The file can hold approximately 4 records in every 3 blocks.');
+   WRITE('How many blocks for this file (<esc><cr> to quit):');
+   READLN(t2);
+   IF LENGTH(t2)> 0 THEN IF t2[1]=CHR(27) THEN EXIT(Mail);
+   temp := Val(t2); {-9999 indicates bad string or null response}
+   if temp<0 then temp:=0;
+   IF (temp<5) OR (LENGTH(t2)>3) THEN t2 := '';  
+   IF (temp<>0) THEN 
+    BEGIN
+     IF (temp<10) AND (LENGTH(t2)<>1) THEN STR(temp,t2);     
+     IF (temp>=10) AND (temp<100) AND (LENGTH(t2)<>2) THEN STR(temp,t2);     
+     IF (temp>=100) AND (LENGTH(t2)<>3) THEN STR(temp,t2);    
+    END; 
+  END;
+ 
+
+ BEGIN    
+  IF NOT FirstFlg THEN {filename set on first Init} RESET(disk,filename)
+  ELSE IF Chkfiles('#5:mail.data') THEN
+   BEGIN
+    filename := '#5:mail.data';    
+    RESET(disk,filename);
+   END
+  ELSE IF Chkfiles('#4:mail.data') THEN
+   BEGIN
+    filename := '#4:mail.data';
+    RESET(disk,filename);
+   END
+  ELSE
+   BEGIN
+    WRITELN; 
+    WRITELN;
+    WRITELN('The file MAIL.DATA was not found.');
+    WRITELN('Enter <cr> to create new MAIL.DATA, <esc><cr> to quit,');
+    WRITE  ('      or another filename to use for data:');
+    READLN(filename);     
+    IF LENGTH(filename)<>0 THEN IF filename[1]=CHR(27) THEN EXIT(Mail);
+   IF NOT Chkfiles(filename) THEN        
+     BEGIN  
+      REPEAT
+       Getmfile;
+       if length(t2)>0 then tmpstr := CONCAT(filename,'[',t2,']')
+       else tmpstr:=filename;     
+       Makefile(tmpstr);
+      UNTIL Chkfiles(filename);          
+      RESET(disk,filename);
+      numrecs := 0;
+      Wnew0rec;    
+      CLOSE(disk);
+     END;
+    RESET(disk,filename);  
+   END;
+  END; 
+    
+
+ BEGIN {Init}            
+  recnumber  := 0;    
+  columat    := 0;  
+  increment  := 1;  
+  cnflg      := FALSE; 
+  wildcard   := '';      
+  wfield     := n;  
+  first      := NIL;
+  first2     := NIL;
+  MARK(heaptr);  
+  IF FirstFlg THEN
+    begin
+      Rights;
+      SC_Clr_Screen;
+      Initformat;   
+      Initmail;     
+      Firstflg:=FALSE;
+    end;
+  SEEK(disk,0);                                          
+  GET(disk);      
+  numrecs := Val(disk^.zip);                     
+  orignrecs := numrecs; 
+  ladd := 0;
+  Gtstdflgs;  
+  SC_Clr_Screen;
+  {assert recnumber=0 and increment=1}
+  {Step in main program will find first genuine record}
+ END (* Init *);                
+
+

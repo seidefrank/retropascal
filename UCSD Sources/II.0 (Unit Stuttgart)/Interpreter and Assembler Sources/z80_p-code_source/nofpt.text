@@ -1,0 +1,25 @@
+	.IF ~LSTFPT
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+; Copyright (c) 1978 by the Regents of the University of Califormia
+;   San Diego
+
+; Beginning of file NOFPT
+
+
+SIN     ; sin standard procedure
+COS     ; cos standard procedure
+EXP     ; exp standard procedure
+ATAN    ; atan standard procedure
+SQT     ; sqrt standard procedure
+LOG     ; log base 10
+LN      ; log base e
+        JP      NOTIMP
+
+
+; End of file NOFPT
+
+

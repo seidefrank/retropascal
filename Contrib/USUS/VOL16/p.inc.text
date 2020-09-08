@@ -1,0 +1,201 @@
+PROCEDURE Makeformat;
+ BEGIN
+  REWRITE(format,'pformat');
+  WITH format^ DO
+   BEGIN
+    pmgin       := 6;
+    lmgin       := 10;
+    rmgin       := 10;
+    tmgin       := 5;
+    lsize       := 80;
+    psize       := 66;
+    ofilename   := '#6:';
+    rflg        := TRUE;
+    pflg        := TRUE;
+    sflg        := TRUE;
+    mflg        := TRUE;
+   END; 
+  SEEK(format,0);
+  PUT(format);
+  CLOSE(format,lock);                            
+  RESET(format,'pformat');
+ END; 
+ 
+PROCEDURE Chkformat;
+ VAR ch1,ch2,ch3,ch4 : CHAR;    
+ 
+ PROCEDURE Help1; 
+  BEGIN
+   Clear;
+   WRITELN('This is the program ''P'' (for P)rint).');
+   WRITELN;
+   WRITELN('It is a program to print files and do simple text processing.');
+   WRITELN('When it is first X)ecuted it will automatically make a file ');
+   WRITELN('called ''PFORMAT'' which will contain information about where');
+   WRITELN('and how the output should be processed.');
+   WRITELN;
+   WRITELN('The program takes as input a text file. ');
+   WRITELN;
+   WRITELN('It processes that file for output. You may specify a filename'); 
+   WRITELN('for output (such as ''TEST.TEXT'') or you may specify a device');
+   WRITELN('(such as ''#6:''). The text processor does the task of right');
+   WRITELN('justification, which is filling a line with blanks so that the');
+   WRITELN('right margin is nice and even. Any time a blank line or a line ');
+   WRITELN('starting with a blank is encountered it is assumed to start a');
+   WRITELN('new paragraph.');
+   WRITELN; 
+   WRITELN;  
+   WRITELN('for further information type ''^'' followed by a <return> when');
+   WRITELN('you get the original screen prompt back.');
+   WRITELN;
+   WRITE('<return> to continue >');
+   READLN;
+  END;
+  
+  
+ PROCEDURE Dispformat;  
+  BEGIN
+   WITH format^ DO   
+    BEGIN
+     Clear;
+     WRITELN; 
+     WRITELN;
+     WRITELN('P)aragraph indentation ---->',pmgin); 
+     WRITELN('L)eft margin           ---->',lmgin);
+     WRITELN('R)ight margin          ---->',rmgin);
+     WRITELN('T)op page1 margin      ---->',tmgin);
+     WRITELN('C)haracters per line   ---->',lsize);           
+     WRITELN('N)umber of lines/page  ---->',psize);
+     WRITELN('O)utput filename       ---->',ofilename);   
+     WRITELN;
+     WRITELN; 
+     WRITE  ('S1) right justify      ---->');
+     IF rflg THEN WRITELN('Yes') ELSE WRITELN('No');    
+     WRITE  ('S2) pagination         ---->');                                             
+     IF pflg THEN WRITELN('Yes') ELSE WRITELN('No');  
+     WRITE  ('S3) stop between pages ---->');
+     IF sflg THEN WRITELN('Yes') ELSE WRITELN('No');  
+     WRITE  ('S4) use margins always ---->');        
+     IF mflg THEN WRITELN('Yes') ELSE WRITELN('No');
+     WRITELN; 
+     GOTOXY(40,4);
+     WRITELN('H)elp'); 
+     GOTOXY(40,5);
+     WRITELN('Q)uit');
+    END;           
+  END;
+ 
+ PROCEDURE Help3; 
+  VAR ch6 : CHAR;
+  BEGIN
+   GOTOXY(0,0);  
+   Clr;
+   WRITE('Which switch ? ');
+   READ(ch6);
+   FOR temp1 := 16 TO 23 DO BEGIN  GOTOXY(0,temp1); Clr; END;
+   GOTOXY(0,16);
+   CASE ch6 OF  
+    '1' : BEGIN
+           WRITELN('This is the right justification switch.');
+           WRITELN('It turns the text processor completely on or off.');  
+           WRITELN('When ON all text will be made into paragraphs');
+           WRITELN('unless specifically marked otherwise');
+           WRITE('<return> to continue');
+           READLN(keyboard); 
+           FOR temp1 := 16 TO 23 DO
+            BEGIN
+             GOTOXY(0,temp1);
+             Clr;
+            END;
+           GOTOXY(0,16);             
+           WRITELN('The method for marking text which is to be');                             
+           WRITELN('right justified or not is to include a ''~'''); 
+           WRITELN('in the text. This character (tilde) acts as');
+           WRITELN('a switch to turn the right justification on');
+           WRITELN('and off from within the text');  
+           WRITE('<return> to continue');
+           READLN(keyboard);   
+           FOR temp1 := 16 TO 23 DO
+            BEGIN
+             GOTOXY(0,temp1);
+             Clr;
+            END;
+           GOTOXY(0,16);
+           WRITELN('The switch must be on or the tilde will have no effect.');
+           WRITELN('The justification starts out on, and upon');
+           WRITELN('encountering a ''~'' it is turned off.');
+           WRITELN('every encounter of this character switches');
+           WRITELN('The right justification to its opposite state');
+          END;
+    '2' : BEGIN  
+           WRITELN('This switch specifies whether or not to');
+           WRITELN('include page numbers at the end of the');
+           WRITELN('page.');
+          END;
+    '3' : BEGIN  
+           WRITELN('This switch tells the program to stop after');
+           WRITELN('every page to allow you to change paper.');                   
+          END;
+    '4' : BEGIN              
+           WRITELN('This switch allows you to include or not');
+           WRITELN('include the top and left margins on non-');
+           WRITELN('right justified text.');
+          END;
+        END;
+  END;
+  
+ PROCEDURE Help;
+  VAR ch5 : CHAR;
+  BEGIN
+   GOTOXY(0,0);
+   Clr;
+   WRITE('Help with what? ');
+   READ(ch5);
+   FOR temp1 := 16 TO 23 DO
+    BEGIN  
+     GOTOXY(0,temp1);
+     Clr;
+    END;
+   GOTOXY(0,16);
+   CASE ch5 OF 
+    'P','p' : BEGIN  
+               WRITELN('This is the indentation at the beginning of a ');
+               WRITELN('paragraph. This only comes into play when the ');        
+               WRITELN('right justification is set to yes.');
+              END;
+    'L','l' : BEGIN
+               WRITELN('This is the left margin. It comes into play when');
+               WRITELN('either the right justification is set to yes or');
+               WRITELN('always use margins is set to yes.');   
+              END; 
+    'R','r' : BEGIN
+               WRITELN('This is the right margin setting. It is only active');
+               WRITELN('When the right justification is set to yes.');
+              END; 
+    'T','t' : BEGIN
+               WRITELN('This is the top of the page margin. It is only active');
+               WRITELN('at the top of the FIRST page, and only when right');    
+               WRITELN('justification is set to yes or always use margins');
+               WRITELN('is set to yes.'); 
+              END;
+    'C','c' : BEGIN 
+               WRITELN('This is the number of columns wide the paper is.');
+               WRITELN('If you are using 8 by 11 paper with ten characters');  
+               WRITELN('per inch then the paper is 80 characters wide.');
+              END;  
+    'N','n' : BEGIN
+               WRITELN('This is the number of lines per page. If you are');
+               WRITELN('using 8 by 11 paper with 6 lines per inch then');
+               WRITELN('the number of lines per page is 66.'); 
+              END;
+    'O','o' : BEGIN
+               WRITELN('This is the output filename. It may be a file');
+               WRITELN('such as ''TEST.TEXT'', or it may be a device. ');
+               WRITELN('The common devices are: ''#2:'' is the screen,');
+               WRITELN('''#6:'' is the parallel port printer, and ''#8:''');
+               WRITELN('is the serial port printer.');
+              END; 
+    'S','s' : Help3;
+    END;  
+  END;
+

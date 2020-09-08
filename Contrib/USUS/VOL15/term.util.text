@@ -1,0 +1,418 @@
+{$P+}
+SEGMENT PROCEDURE DUMPFILE ;{ Move a file to the comm line. }
+CONST
+  CR           = 13 ;
+  LF           = 10 ;
+  
+VAR
+  I            : INTEGER ;
+  LINEFEED     : BOOLEAN ;
+  LOGSTATUS    : BOOLEAN ;
+  PACE         : BOOLEAN ;
+  RESULT       : INTEGER ;
+  WAIT_CHARACTER : CHAR ;
+  WAIT_CR      : BOOLEAN ;
+  
+  READBUFFER   : STRING[255] ;
+  XMITFILE     : TEXT ;
+  XMITNAME     : STRING ;
+
+
+PROCEDURE DUMPIT ;
+{$N+}
+BEGIN
+
+  WRITELN ;
+  WRITELN( 'TRANSMITTING ', XMITNAME ) ;
+  WRITELN( 'USE <attention character> TO ABORT TRANSMISSION' ) ;
+  WHILE NOT EOF( XMITFILE ) DO
+    BEGIN
+    READLN( XMITFILE, READBUFFER ) ;
+    IF LENGTH( READBUFFER ) = 0  { See if the line is empty. }
+      THEN
+        READBUFFER := ' ' ; { Make the line at least a space long. }
+    
+    {
+      Write the first character before entering the loop.  This results
+    in better performance, especially when waiting for each 
+    character before sending the next.  The reason is simple:
+    The previous character is being returned while the current
+    character is being sent, resulting in a character available quite
+    soon after the program is ready to receive it.  
+      This works best when a specific character is looked for at
+    the end of each line, since any extra characters will be displayed
+    while looking for the specific character.  That is, it is best
+    if the program looks for a character at the start of each line.
+    A <return> is always available, if nothing else is appropriate.
+    }
+    IF CR_CARRIER AND (LENGTH( READBUFFER ) > 0)
+      THEN
+        CR_PUTREM( READBUFFER[1] ) ;
+    FOR I := 2 TO LENGTH( READBUFFER ) DO
+      BEGIN
+      IF NOT CR_CARRIER
+        THEN
+          BEGIN
+          WRITELN ;
+          WRITELN( 'LOST CARRIER.  TRANSMITTING ABORTED.' ) ;
+          EXIT( DUMPIT ) ;
+          END ;
+      CR_PUTREM( READBUFFER[ I ] ) ;
+      IF PACE
+        THEN
+          REPEAT
+          UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      IF CR_REMSTAT
+        THEN
+          REPEAT
+          UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      IF CR_REMSTAT
+        THEN
+          DISPLAY( CR_GETREM ) ;
+      END ;
+    CR_PUTREM( CHR( CR ) ) ;
+    IF LINEFEED
+      THEN
+        CR_PUTREM( CHR( LF ) ) ;
+    IF WAIT_CR
+      THEN
+        REPEAT
+          IF CR_REMSTAT
+            THEN
+              BEGIN
+              C := CR_GETREM ;
+              DISPLAY( C ) ;
+              END
+            ELSE
+              C := CHR( 0 ) ;
+        UNTIL (C = WAIT_CHARACTER) OR CR_KBSTAT ;
+    IF CR_KBSTAT
+      THEN
+        IF CR_GETKB = CR_ATTENCHAR
+          THEN
+            EXIT( DUMPIT ) ;
+    END
+
+END ;
+{$N-}
+
+  
+BEGIN
+
+(*$I-*)
+
+  LOGSTATUS := LOGTEXT ;
+  
+  WRITELN ;
+  WRITELN( 'DUMP A FILE TO REMOUT:' ) ;
+  WRITELN( 'To quit, enter an empty filename.' ) ;
+  WRITELN ;
+  LOGTEXT  := QUESTION( 'Log transmitted data' ) ;
+  LINEFEED := QUESTION( 'Transmit Linefeed after each carriage return ' ) ;
+  PACE     := QUESTION( 'Wait for each character to be echoed ' ) ;
+  WAIT_CR  := QUESTION( 'Wait for a returned character after each line ' ) ;
+  IF WAIT_CR
+    THEN
+      REPEAT
+        WRITELN ;
+        WRITE( 'ENTER THE CHARACTER TO WAIT FOR:' ) ;
+        REPEAT UNTIL CR_KBSTAT ;
+        WAIT_CHARACTER := CR_GETKB ;
+        IF WAIT_CHARACTER IN [' '..'~']
+          THEN
+            WRITELN( WAIT_CHARACTER )
+          ELSE
+            WRITELN( '<', ORD(WAIT_CHARACTER), '>' ) ;
+      UNTIL QUESTION( 'Is this the correct character ' )
+    ELSE
+      WAIT_CHARACTER := CHR( 0 ) ;
+  
+    REPEAT
+      WRITELN ;
+      WRITE  ( 'What is the transmit textfile name? ') ;
+      READLN ( XMITNAME ) ;
+      IF LENGTH( XMITNAME ) > 0
+        THEN
+          BEGIN
+          ADD_TEXT( XMITNAME ) ;
+          RESET  ( XMITFILE, XMITNAME ) ;
+          RESULT := IORESULT ;
+          IF RESULT = 0
+            THEN
+              BEGIN
+              DUMPIT ;
+              WRITE( XMITNAME, ' COMPLETED.' ) ;
+              LOGTEXT := LOGSTATUS ;
+              EXIT( DUMPFILE ) ;
+              END
+            ELSE
+              BEGIN
+              WRITELN ;
+              WRITELN( 'CANNOT FIND ', XMITNAME ) ;
+              END ;
+          END ;
+  UNTIL (LENGTH( XMITNAME ) = 0 ) ;
+  
+(*$I+*)
+
+  LOGTEXT := LOGSTATUS ; { Restore original logging status }
+
+END ;
+{$P+}
+SEGMENT PROCEDURE MENU ;
+CONST
+  OUTPUTLOGON           = '5' ;
+  QUIT                  = '6' ;
+  RETURNTOTERMINAL      = '8' ;
+VAR
+  GOOD                  : BOOLEAN ;
+  O                     : CHAR ;
+
+PROCEDURE BACKUP( LINES : INTEGER ) ;
+CONST
+  MAX_BACKUP    = 1024 ;
+VAR
+  I                     : INTEGER ;
+  INDEX                 : 0..LOGLIMIT ;
+  BUFFER                : PACKED ARRAY[0..MAX_BACKUP] OF CHAR ;
+BEGIN
+  IF LOGINDEX < 2
+    THEN
+      EXIT( BACKUP ) ;
+  INDEX := LOGINDEX ;
+  IF LINES > 23
+    THEN
+      LINES := 23 ;
+  I := 0 ;
+  REPEAT
+    INDEX := INDEX - 1 ;
+    IF LOG_ARRAY[INDEX] = CHR( 13 )
+      THEN
+        I := I + 1 ;
+  UNTIL { We have the requested number of lines. }
+        (I > LINES) 
+     OR { We've run out of saved characters. }
+        (INDEX = 0) 
+        { And be sure we don't overrun the buffer array. }
+     OR ((LOGINDEX - INDEX) >= MAX_BACKUP) ;
+  MOVELEFT( LOG_ARRAY[INDEX], BUFFER[0], 
+            LOGINDEX - INDEX ) ;
+  CLEAR_THE_SCREEN ; { Clear the screen. }
+  UNITWRITE( 1, BUFFER, LOGINDEX - INDEX ) ;
+END ; { BACKUP }
+
+BEGIN
+  REPEAT
+    WRITELN ;
+    WRITELN( ' ':10, 'TERMINAL PROGRAM MENU' ) ;
+    WRITELN( 'Total log space = ', LOGLIMIT,
+             '.  Space used = ', LOGINDEX,
+              ' (', LOGINDEX DIV (LOGLIMIT DIV 100),
+              '%)' ) ;
+    IF LOGOPEN AND BLOCKED
+      THEN
+        WRITELN( 'The logfile is ', BLOCKS_WRITTEN, ' blocks long.' ) ;
+    WRITE  ( '1. Set Options (Currently: ' ) ;
+    IF ECHO
+      THEN
+        WRITE( 'Half Duplex' )
+      ELSE
+        WRITE( 'Full Duplex' ) ;
+    IF LOGTEXT
+      THEN
+        WRITE( ', Logging' ) ;
+    IF FILTERCONTROL
+      THEN
+        WRITE( ', Filter' ) ;
+    IF VIDEOTEXT
+      THEN
+        WRITELN( ', Videotex)' )
+      ELSE
+        WRITELN( ')' ) ;
+    WRITELN( '2. Select Log File Name' ) ;
+    IF LOGOPEN
+      THEN
+        WRITELN( '3. Save Log (', LOG_FILE_NAME, ' is open)' )
+      ELSE
+        WRITELN( '3. Save Log' ) ;
+    WRITELN( '4. Reset (clear) Log' ) ;
+    IF LENGTH( LOGON1 ) > 0
+      THEN
+        WRITELN( '5. Send Logon String (Service is ', 
+        TIMESHARE_SERVICE, '; ID is "', LOGON1, '")' )
+      ELSE
+        WRITELN( '5. Send Logon String (No string specified)' ) ;
+    WRITELN( '6. QUIT TERMINAL PROGRAM' ) ;
+    WRITELN( '7. Transmit File' ) ;
+    WRITELN( '8. Quit Options & Return to terminal emulation' ) ;
+    WRITELN( '9. ReInitialize program' ) ;
+    WRITELN ;
+    WRITE  ( 'Select option number:' ) ;
+    REPEAT
+      READ   ( KEYBOARD, O ) ;
+    UNTIL O IN [ '1' .. '9' ] ;
+    WRITE( O ) ;
+    CASE O OF
+      '1' : OPTIONS ;
+      '2' : SETLOGFILENAME ;
+      '3' : SAVELOG ;
+      '4' : CLEARLOG ;
+      OUTPUTLOGON : SENDLOGON ;
+      QUIT: DONE := TRUE ;
+      '7' : DUMPFILE ;
+      RETURNTOTERMINAL : ;
+      '9' : INITIALIZE ;
+      END ;
+  UNTIL O IN [ OUTPUTLOGON, RETURNTOTERMINAL, QUIT, '7', '3' ] ;
+  WRITELN ;
+  IF O IN [OUTPUTLOGON, RETURNTOTERMINAL, '3']
+    THEN
+      BACKUP( 10 ) ;
+END ;
+{$P+}
+SEGMENT PROCEDURE CLEARLOG ;
+BEGIN
+  IF QUESTION( 'CLEAR LOG: Are you sure ' )
+    THEN
+      LOGINDEX := 0
+END ;
+
+{$P+}
+SEGMENT PROCEDURE SENDLOGON ;
+VAR
+  I             : 0 .. LOGLIMIT ;
+BEGIN
+  WRITELN ;
+  WRITELN ;
+  WRITELN( 'Transmitting ', TIMESHARE_SERVICE, ' logon.' ) ;
+  FOR I := 1 TO LENGTH( LOGON1 ) DO
+    BEGIN
+    CR_PUTREM( LOGON1[ I ] ) ;
+    REPEAT
+    UNTIL CR_REMSTAT OR CR_KBSTAT ;
+    IF CR_REMSTAT
+      THEN
+        DISPLAY( CR_GETREM ) ;
+    END ;
+  CR_PUTREM( CHR(CR) ) ; (* CR *)
+  REPEAT
+    IF CR_REMSTAT
+      THEN
+        BEGIN
+        C := CR_GETREM ;
+        DISPLAY( C ) ;
+        END
+      ELSE
+        C := CHR( 0 ) ;
+  UNTIL (C = LOGPROMPT) OR CR_KBSTAT ;
+  FOR I := 1 TO LENGTH( LOGON2 ) DO
+    CR_PUTREM( LOGON2[ I ] ) ;
+  CR_PUTREM( CHR(CR) ) ; (* CR *)
+END ;
+{$P+}
+SEGMENT FUNCTION QUESTION{ PROMPT : STRING ) : BOOLEAN};
+VAR
+  C             : CHAR ;
+BEGIN
+  WRITELN ;
+  WRITELN ;
+  WRITE  ( PROMPT, '(Y or N)?' ) ;
+  REPEAT
+    READ( KEYBOARD, C ) ;
+  UNTIL C IN [ 'y', 'n', 'Y', 'N' ] ;
+  WRITE( C ) ;
+  QUESTION := C IN ['y', 'Y'] ;
+END ;
+
+{$P+}
+SEGMENT PROCEDURE OPTIONS ;
+BEGIN
+  FILTERCONTROL := QUESTION( 'Do you wish to filter control characters' ) ;
+  LOGTEXT       := QUESTION( 'Do you wish to log the text' ) ;
+  ECHO          := QUESTION( 'Do you wish to echo the keyboard' ) ;
+  VIDEOTEXT     := QUESTION( 'Do you wish to respond to videotext control codes' ) ;
+  WRITELN ;
+  WRITELN ;
+  WRITELN ;
+END ;
+{$P+}
+SEGMENT PROCEDURE ADD_TEXT{ VAR S : STRING } ;
+VAR
+  I     : INTEGER ;
+  LEN   : INTEGER ;
+BEGIN
+  LEN := LENGTH( S ) ;
+  FOR I := 1 TO LEN DO  { Make the name all upper-case. }
+    IF S[I] IN ['a'..'z']
+      THEN
+        S[I] := CHR( ORD( S[I] ) - 32 ) ;
+  IF POS( ']', S ) = 0  { See if a size specified. }
+    THEN
+      IF LEN >= 5
+        THEN
+          BEGIN
+          IF    (POS( '.TEXT', S ) <> LEN - 4)
+            AND (S[LEN] <> '.')
+             THEN
+               S := CONCAT( S, '.TEXT' ) ;
+          END
+        ELSE
+          IF S[LEN] <> '.'
+           THEN
+             S := CONCAT( S, '.TEXT' ) ;
+END ;
+{$P+}
+SEGMENT PROCEDURE PROCEED ;
+BEGIN
+  { Initialize by going "off hook" then back "on hook" }
+  { This should allow manual dialing (or support direct }
+  { connection of two computers. }
+  CR_HOOK( FALSE ) ;
+  CR_HOOK( TRUE  ) ;
+  WRITELN ;
+  WRITELN( 'Proceed when connection has been made.' ) ;
+END ;
+{$P+}
+SEGMENT PROCEDURE FLUSHBLOCKED ;
+{ Write out the remaining characters in the log. }
+VAR
+  BLK_BUFFER    : PACKED ARRAY[0..1023] OF CHAR ;
+BEGIN
+  IF LOG_INDEX >= 1023
+    THEN
+      SAVE_LOG ;
+  IF LOG_INDEX > 1023
+    THEN
+      BEGIN
+      WRITELN( 'INTERNAL ERROR IN "FLUSH_BLOCKED".  PROGRAM ABORTS.' ) ;
+      IF QUESTION( CONCAT( 'Save ', LOGFILENAME ))
+        THEN
+          CLOSE( BLOCKFILE, LOCK )
+        ELSE
+          CLOSE( BLOCKFILE, PURGE ) ;
+      EXIT( PROGRAM ) ;
+      END ;
+  MOVELEFT( LOG_ARRAY[0], BLK_BUFFER[0], LOG_INDEX ) ;
+  IF LOG_INDEX < 1024
+    THEN
+      BEGIN
+      FILLCHAR( BLK_BUFFER[ LOG_INDEX ],
+                1024 - LOG_INDEX,
+                CHR( 0 ) ) ;
+      BLK_BUFFER[ LOG_INDEX ] := CHR( 13 ) ;
+      END ;
+  IF BLOCKWRITE( BLOCKFILE, BLK_BUFFER, 2 ) <> 2
+    THEN
+      WRITELN( 'Error writing last two blocks of log.' )
+    ELSE
+      BLOCKS_WRITTEN := BLOCKS_WRITTEN + 2 ;
+  LOG_INDEX := 0 ; { We've written everything. }
+END ; { FLUSHBLOCKED }
+{$P+}
+PROCEDURE CLEAR_THE_SCREEN ;
+BEGIN
+  { For some machines, this might not work!  Therefore clearing
+    the screen is centralized for easy modification.          }
+  PAGE( OUTPUT ) ; 
+END ;
+

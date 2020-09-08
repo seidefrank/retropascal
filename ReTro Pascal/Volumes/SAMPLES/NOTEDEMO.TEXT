@@ -1,0 +1,21 @@
+
+(* Simple demo of the NOTE procedure in Retro Pascal ][ -- by Frank Seide, 2013 *)
+
+program notedemo;
+  uses retrostuff, applestuff;
+  var noteval: integer;
+begin
+  write('Playing... ');
+  { We play rolling major chords chromatically upwards.                          }
+  { Passing a negative duration to NOTE means to play asynchronously. That       }
+  { allows us to play multiple sounds in parallel.                               }
+  { Times are in milliseconds. Pitches are MIDI values; 60 is C4.                }
+  { If anyone knows the time and pitch base of the actual NOTE function in Apple }
+  { Pascal, please do let me know!                                               }
+  for noteval:=60-12 to 60+12 do begin
+    note(noteval,  -300); yieldcpu(50);
+    note(noteval+4,-300); yieldcpu(50);
+    note(noteval+7,-300); yieldcpu(50);
+  end;
+  writeln('done');
+end.

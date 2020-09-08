@@ -1,0 +1,99 @@
+
+;  This section defines the constants used to identify ports, bits, 
+;  and other constant elements of the BIOS environment.
+
+
+
+;  Port assignments
+;  ---- -----------
+
+CNT_MDM   .EQU  8BH                ;  Clock divider for serial
+;                                     port controllers.
+
+CNT_REG_0 .EQU  88H                ;  Counter register 0.
+
+CNT_REG_1 .EQU  89H                ;  Counter register 1.
+
+CNT_REG_2 .EQU  8AH                ;  Counter register 2.
+
+CRT_DATA  .EQU  0A8H               ;  CRT data port.
+
+CRT_STAT  .EQU  0A9H               ;  CRT status port.
+
+DIA_DATA  .EQU  86H                ;  Output to printer.
+
+DIA_STAT  .EQU  87H                ;  Printer status register.
+
+DMA_CTL   .EQU  0B8H               ;  DMA mode port.
+
+DMA_ADR   .EQU  0B0H               ;  DMA address entry port.
+
+DMA_TCNT  .EQU  0B1H               ;  DMA terminal count.
+
+FDC_DATA  .EQU  0A1H               ;  FDC command and results.
+
+FDC_INT   .EQU  0A2H               ;  [7] indicates FDC command
+;                                     completion.
+
+FDC_STAT  .EQU  0A0H               ;  FDC status.
+
+PRT_DIA   .EQU  86H               ;  Diablo printer port address, KGB
+;                                     config.
+
+PRT_MODEM .EQU  84H                ;  Modem controller address, cur-
+;                                  rently not implemented.
+
+;  Disk Control Parameters
+;  ---- ------- ----------
+
+FDC_ONLIN .EQU  5                  ;  Ready in SR3.
+
+FMT_SKEW  .EQU  7                  ;  Sector skew to apply to disk
+                                   ;  formatting--Pascal interleave and
+                                   ;  skew are [1:0].
+
+MFD_INTL  .EQU  1                  ;  Interleave for single-sided disks.
+
+MFD_SKEW  .EQU  0                  ;  Skew for single-sided disks.
+
+DSK_RETRY .EQU  5                  ;  Number of errors to allow before
+                                   ;  reporting CRC failure.
+
+;  Serial Board Control Parameters
+;  ------ ----- ------- ----------
+
+DIA_SPEED .EQU  13                 ; Speed divisor for Diablo 630 printer
+                                   ; --9600 Baud.
+
+PRT_DSR   .EQU  7                  ; Device on-line flag.
+
+MDM_SPEED .EQU  13                 ; Dummy: no current modem device.
+
+PRT_RRDY  .EQU  1                  ; Receive register full.
+
+STAT_PRT  .EQU  1                  ; Offset of Status serial port.
+
+PRT_RTSB  .EQU  0                  ; Ready to send.
+
+PRT_THBE  .EQU  2                  ; Transmit buffer empty.
+
+
+;  Disk Control Block Offsets
+;  ---- ------- ----- -------
+
+
+;  Phone Port Offsets
+;  ----- ---- -------
+
+
+;  Phone Control Parameters
+;  ----- ------- ----------
+
+
+;  ASCII Character Codes
+;  ----- --------- -----
+
+ACR       .EQU  0DH                ;  <Carriage return>.
+AESC      .EQU  1BH                ;  <Escape>.
+
+

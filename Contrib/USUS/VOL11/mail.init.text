@@ -1,0 +1,586 @@
+{Mail.Init - convert a text file to MAIL data file}
+{
+23-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+{$S+} { V-} {pragma needed on Apple}
+PROGRAM MailInit;
+{the format accepted is that output by the print labels option of MAILER}
+{this will allow movement from the earlier supported mailing list system}
+
+{   format is   <blank>                   maps to MAIL component:
+                name                      prefix, fname, minit, lname,
+                                          suffix or title
+                address line 1            company name
+                address line 2            address
+                address line 3            city, zip or post code
+                information               miscellaneous
+                <blank>
+                <blank>
+                <blank>
+     which reflects the output format for labels printed at 6 lines per inch
+}
+     TYPE rec1 = RECORD    
+                  code    :STRING[6]; 
+                  lname   :STRING[15];   
+                  fname   :STRING[10];
+                  minit   :STRING[2];
+                  prefx   :STRING[5];
+                  suffx   :STRING[6];
+                  title   :STRING[15];
+                  coname  :STRING[30];
+                  phone   :STRING[15];   
+                  address :STRING[30];    
+                  city    :STRING[15];
+                  state   :STRING[2];
+                  country :STRING[15];
+                  zip     :STRING[8];  
+                  misc    :STRING[90];
+                  flags   :ARRAY[1..48] OF BOOLEAN; 
+                 END;   
+     VAR disk1                  : FILE OF rec1;  
+         finp                   : TEXT;
+         fname1,fname2          : STRING;
+         iname,addr1,addr2,addr3: STRING;
+         info                   : STRING[90];
+         numrecs,FLAGNO,at,temp : INTEGER;  
+         ch                     : CHAR; 
+         InputOK                : BOOLEAN;
+
+ PROCEDURE Fixit(VAR s: STRING);
+  BEGIN
+   temp := 0;
+   WHILE temp<LENGTH(s) DO 
+    BEGIN
+     temp := temp + 1;
+     IF NOT (ORD(s[temp]) IN [32..126]) THEN 
+      BEGIN
+       WRITELN('illegal char at pos=',temp,'   chr=',ORD(s[temp]));
+       DELETE(s,temp,1); 
+       temp := temp - 1;
+      END;
+    END;
+  END;
+  
+PROCEDURE Pget;
+ BEGIN
+   {$I-}
+   readln(finp);
+   readln(finp,iname);
+   readln(finp,addr1);
+   readln(finp,addr2);
+   readln(finp,addr3);
+   readln(finp,info);
+   readln(finp);
+   readln(finp);
+   readln(finp);
+   {$I+}
+   writeln('--------------------------------------');
+   writeln(iname);
+   writeln(addr1);
+   writeln(addr2);
+   writeln(addr3);
+   writeln(info);
+END; 
+
+PROCEDURE Str(i : INTEGER; VAR s : STRING);         
+ VAR startedstring : BOOLEAN;  
+     factor        : INTEGER;                  
+     numstr        : STRING[9];
+ BEGIN   
+  s := '';
+  IF i < 0 THEN  
+   BEGIN
+    s := '-';
+    i := - i;
+   END;
+  numstr := '123456789';
+  startedstring := FALSE; 
+  factor := 10000;
+  WHILE factor<>0 DO    
+   BEGIN
+    IF i >= factor THEN   
+     BEGIN
+      s := CONCAT(s,COPY(numstr,i DIV factor,1));     
+      i := i - (i DIV factor)*factor;               
+      startedstring := TRUE;
+     END
+    ELSE IF startedstring THEN s := CONCAT(s,'0');
+    factor := factor DIV 10;
+   END;  
+  IF LENGTH(s) = 0 THEN s := '0';    
+ END;  
+
+(*$I-*) 
+FUNCTION Chkfiles(var s : STRING; suffix:string) : BOOLEAN;     
+ VAR intb : BOOLEAN;
+ BEGIN
+  intb := TRUE; 
+  RESET(disk1,s);  
+  IF IORESULT <> 0 THEN
+    begin
+      close(disk1);
+      s:=concat(s,suffix);
+      reset(disk1,s);
+      if ioresult<>0 then intb := FALSE;
+    end;
+  CLOSE(disk1); 
+  Chkfiles := intb; 
+ END;  
+(*$I+*)
+ 
+PROCEDURE Uppercase(VAR s: STRING);      
+ VAR t : INTEGER;
+ BEGIN
+  FOR t := 1 TO LENGTH(s) DO
+   IF s[t] IN ['a'..'z'] THEN s[t] := CHR(ORD(s[t])-32);  
+ END;
+
+FUNCTION Val(s : STRING) : INTEGER;                     
+ VAR i,j,k: INTEGER;                      
+ BEGIN   
+  j := 0; k := 0; i := 1;         
+  IF LENGTH(s)<>0 THEN
+   BEGIN
+    IF (LENGTH(s)>0) AND (s[1] = '-') THEN
+      BEGIN
+         k := k + 1;i := -1;
+      END;        
+    IF k<LENGTH(s) THEN      
+     REPEAT
+      k := k + 1; 
+      IF (k<=LENGTH(s)) AND (s[k] IN ['0'..'9']) THEN     
+       BEGIN
+        j := j * 10; 
+        j := j + ORD(s[k]) - 48;  
+       END; 
+     UNTIL (k=LENGTH(s)) OR NOT(s[k] IN ['0'..'9']);   
+   END;
+  Val := i*j;   
+ END (* Val *);      
+      
+PROCEDURE Wnew0rec;
+ BEGIN
+  disk1^.code := 'Perm  ';
+  STR(numrecs,disk1^.zip);
+  SEEK(disk1,0);
+  PUT(disk1);
+ END;
+ 
+PROCEDURE Zerodisk1;
+ BEGIN
+  WITH disk1^ DO
+   BEGIN
+    code    := 'Perm  ';  
+    country := '';  
+    city    := '';    
+    lname   := '';
+    fname   := '';
+    minit   := '';
+    prefx   := '';
+    suffx   := '';
+    title   := '';
+    coname  := '';                     
+    phone   := '';              
+    address := '';
+    state   := '';  
+    zip     := '';
+    misc    := ''; 
+    FOR temp := 1 TO 48 DO flags[temp] := FALSE; 
+   END;
+ END; 
+      
+PROCEDURE Getname;
+ VAR tfile : TEXT;
+     token : ARRAY[1..10] OF STRING;  
+     postoken : STRING;
+     ntokens,temp1 : INTEGER;  
+     tstring : STRING;
+ 
+  PROCEDURE Decrntokens;
+   VAR temp2 : INTEGER;
+   BEGIN 
+    FOR temp2 := 1 TO ntokens - 1 DO 
+     token[temp2] := token[temp2+1];
+    ntokens := ntokens - 1;
+   END;
+   
+  PROCEDURE Chkprefix;   
+   BEGIN
+    tstring := token[1];
+    Uppercase(tstring);
+    IF POS('.',tstring)<>0 THEN DELETE(tstring,POS('.',tstring),1);
+    IF (tstring='MR') OR
+       (tstring='MRS') OR
+       (tstring='MISS') OR
+       (tstring='DR') OR
+       (tstring='MS') OR
+       (tstring='PROF') OR
+       (tstring='SIR') THEN
+     BEGIN
+      disk1^.prefx := token[1];
+      Decrntokens;
+     END;
+   END;
+   
+  PROCEDURE Chksuffix;
+   VAR cflg : BOOLEAN;
+       temp:integer;
+   BEGIN 
+    WHILE POS(' ',postoken) = 1 DO DELETE(postoken,1,1);
+    tstring := postoken; 
+    Uppercase(tstring);
+    if pos('.',tstring)<>0 then delete(tstring,pos('.',tstring),1);
+    IF (tstring = 'PHD') OR
+       (tstring = 'MD' ) OR
+       (tstring = 'DDS') OR
+       (tstring = 'II' ) OR
+       (tstring = 'III') OR
+       (tstring = 'IV' ) OR
+       (tstring = 'V'  ) OR
+       (tstring = 'MA' ) OR
+       (tstring = 'BA' ) OR
+       (tstring = 'BS' ) OR
+       (tstring = 'BSC') OR
+       (tstring = 'MS' ) OR
+       (tstring = 'MSC') OR
+       (tstring = 'AA' ) OR
+       (tstring = 'EE' ) OR
+       (tstring = 'EDS') THEN
+     BEGIN
+      disk1^.suffx := postoken; 
+     END
+     ELSE
+     BEGIN 
+      IF LENGTH(postoken)<=15 THEN disk1^.title := postoken
+       ELSE 
+        BEGIN
+         disk1^.title := '               ';
+         FOR temp := 1 TO 15 DO disk1^.title[temp] := postoken[temp];
+        END;
+     END;
+   END;   
+  
+  PROCEDURE Firstname;  
+   BEGIN
+    IF ntokens <= 1 THEN EXIT(Firstname);
+    IF LENGTH(token[1])<= 10 THEN disk1^.fname := token[1] 
+     ELSE {take initial}
+      disk1^.fname := CONCAT(COPY(token[1],1,1),'.');  
+   END; 
+   
+  PROCEDURE Middleinitial;
+   BEGIN
+    IF ntokens <= 2 THEN EXIT(Middleinitial);
+    IF LENGTH(token[2])>2 THEN  
+     BEGIN {take initial}
+      disk1^.minit := COPY(token[2],1,1); 
+      disk1^.minit := CONCAT(disk1^.minit,'.');
+     END
+    ELSE disk1^.minit := token[2];
+   END;    
+   
+  PROCEDURE Lastname;    
+   var temp:integer;
+   BEGIN
+    IF ntokens = 0 THEN EXIT(Lastname);        
+    IF ntokens <= 3 THEN
+     BEGIN
+      IF LENGTH(token[ntokens])<=15 THEN disk1^.lname := token[ntokens]
+       ELSE 
+        BEGIN
+         disk1^.lname := '               ';
+         FOR temp := 1 TO 15 DO disk1^.lname[temp] := token[ntokens][temp];
+        END;
+      ntokens := 0;
+     END  
+    ELSE
+     BEGIN
+      IF LENGTH(token[3])<=15 THEN disk1^.lname := token[3]
+       ELSE 
+        BEGIN
+         disk1^.lname := '               ';
+         FOR temp := 1 TO 15 DO disk1^.lname[temp] := token[3][temp];
+        END;
+      ntokens := ntokens - 3;
+     END;
+   END;  
+   
+   
+  PROCEDURE Anymore; 
+   BEGIN
+    IF ntokens<>0 THEN {there is more in the name}
+      begin
+        {do nothing at present}
+      end;
+   END; 
+   
+ BEGIN   
+    ntokens := 0; 
+    postoken := ''; 
+    IF POS(',',iname) > 4 THEN
+     BEGIN
+      postoken := COPY(iname,POS(',',iname)+1,LENGTH(iname)-POS(',',iname));
+      DELETE(iname,POS(',',iname),LENGTH(iname)-POS(',',iname)+1);
+     END;
+    IF LENGTH(postoken)<>0 THEN Chksuffix;
+    {now suffix coped with convert . in name to spaces for tokenisation}
+    while pos('.',iname)<>0 do iname[pos('.',iname)]:=' ';
+    WHILE (ntokens<10) AND (LENGTH(iname)>0) DO
+     BEGIN
+      ntokens := ntokens + 1;
+      token[ntokens] := '';  
+      WHILE POS(' ',iname)=1 DO DELETE(iname,1,1);
+      IF POS(' ',iname)<>0 THEN 
+       BEGIN
+        token[ntokens] := COPY(iname,1,POS(' ',iname)-1);
+        DELETE(iname,1,POS(' ',iname));   
+       END
+      ELSE 
+       BEGIN
+        token[ntokens] := iname; 
+        iname := '';  
+       END;
+      IF LENGTH(token[ntokens]) = 0 THEN ntokens := ntokens - 1;      
+     END;  
+    IF ntokens = 0 THEN EXIT(Getname);
+    IF ntokens = 1 THEN 
+     BEGIN
+      IF LENGTH(token[1])<=15 THEN disk1^.lname := token[1]
+       ELSE 
+        BEGIN
+         disk1^.lname := '               ';
+         FOR temp := 1 TO 15 DO disk1^.lname[temp] := token[1][temp];
+        END;
+      EXIT(Getname);  
+     END;
+    Chkprefix;
+    Firstname;
+    Middleinitial;
+    Lastname;
+    Anymore;
+ END; 
+ 
+PROCEDURE Chgformat;  
+ var addrcity,addrzip:string;
+     poscomma:integer;
+ BEGIN
+  Zerodisk1;
+  Getname;
+  numrecs:=numrecs+1;
+  disk1^.misc := info;    
+  IF LENGTH(addr1)<=30 THEN disk1^.coname := addr1
+   ELSE 
+    BEGIN
+     disk1^.coname := '                              ';
+     FOR temp := 1 TO 30 DO disk1^.coname[temp] := addr1[temp];
+    END;
+  IF LENGTH(addr2)<=30 THEN disk1^.address := addr2
+   ELSE 
+    BEGIN
+     disk1^.address := '                              ';
+     FOR temp := 1 TO 30 DO disk1^.address[temp] := addr2[temp];
+    END;
+  addrcity:=addr3; addrzip:='';
+  poscomma:=POS(',',addr3);
+  if poscomma>1 then
+    begin
+      addrcity:=COPY(addr3,1,poscomma-1);
+      if poscomma<>length(addr3) then
+        addrzip:=COPY(addr3,poscomma+1,length(addr3)-poscomma);
+      {remove leading spaces}
+      while pos(' ',addrzip)=1 do delete(addrzip,1,1);
+    end;
+  IF LENGTH(addrcity)<=15 THEN disk1^.city := addrcity
+   ELSE 
+    BEGIN
+     disk1^.city := '               ';
+     FOR temp := 1 TO 15 DO disk1^.city[temp] := addrcity[temp];
+    END;
+  IF LENGTH(addrzip)<=8 THEN disk1^.zip := addrzip
+   ELSE 
+    BEGIN
+     disk1^.zip := '        ';
+     FOR temp := 1 TO 8 DO disk1^.zip[temp] := addrzip[temp];
+    END;
+  IF FLAGNO<>0 THEN disk1^.Flags[FLAGNO]:=true;
+  SEEK(disk1,numrecs);
+  PUT(disk1);
+ END;        
+ 
+FUNCTION Notblankname : BOOLEAN;
+ BEGIN
+  WHILE POS(' ',iname)=1 DO DELETE(iname,1,1); 
+  Notblankname := NOT (iname='');;
+ END;
+ 
+PROCEDURE MailFile(VAR Filename:STRING);
+ VAR ch : CHAR;
+     t1,t2 : STRING[15];
+     tmpstr:STRING;
+
+{$I-}
+PROCEDURE Makefile( s : STRING);
+ VAR  tafile : FILE; 
+      tarry : packed array [1..512] of char;
+      Res,num,blkasked,written,temp   : INTEGER;
+ BEGIN
+  WRITE('Making: ',s);
+  REWRITE(tafile,s);  
+  Res:=IORESULT;
+  IF Res<>0 THEN
+    begin
+      Writeln;
+      Writeln('Error making file ',s,' IOResult=',Res);
+    end
+  else
+    begin
+      fillchar(tarry,512,chr(0));
+      temp := POS('[',s);
+      {no block number if max area to be claimed}
+      IF temp=0 THEN blkasked:=0
+      else blkasked:=VAL(COPY(s,temp+1,LENGTH(s)-temp));
+      {-9999 is fault return from VAL}
+      if blkasked<0 then blkasked:=0;
+      num:=0;
+      REPEAT      
+        if (num mod 10)=0 then WRITE('.');
+        written:=BLOCKWRITE(tafile,tarry,1);     
+        num:=num+written;
+      UNTIL (num=blkasked) or (written=0) or (IORESULT<>0); 
+      WRITELN;
+      if (blkasked<>0) and (num<>blkasked) then
+          WRITELN('Could only initialise ',num,' blocks.')
+      else WRITELN(num,' blocks initialised.');
+      CLOSE(tafile,lock); 
+      Res:=IORESULT;
+      IF Res<>0 THEN Writeln('Error closing file ',s,'IOResult=',Res);
+    end;
+ END; 
+{$I+}
+    
+ PROCEDURE Getmfile; 
+  BEGIN
+   IF LENGTH(filename)=0 THEN filename := 'MAIL.DATA';   
+   IF POS(':',filename)=0 THEN
+    BEGIN
+     WRITELN;
+     WRITE('Give volume for file ',filename,' (<cr> for #5, <esc><cr> to quit):');    
+     READLN(t1);
+     IF LENGTH(t1)> 0 THEN IF t1[1] = CHR(27) THEN EXIT(MailInit);
+     IF LENGTH(t1)=0 THEN t1 := '#5:';
+     IF (t1='4') OR (t1='5') OR
+        (t1 = '9') OR (t1='10') OR
+        (t1 = '11') OR (t1='12') THEN
+          t1 := CONCAT('#',t1,':');
+     IF POS(':',t1)=0 THEN t1 := CONCAT(t1,':');      
+     filename := CONCAT(t1,filename);      
+    END;
+   WRITELN;
+   WRITELN('The file can hold approximately 4 records in every 3 blocks.');
+   WRITE('How many blocks for this file (<esc><cr> to quit):');
+   READLN(t2);
+   IF LENGTH(t2)> 0 THEN IF t2[1]=CHR(27) THEN EXIT(MailInit);
+   temp := Val(t2); {-9999 indicates bad string or null response}
+   if temp<0 then temp:=0;
+   IF (temp<5) OR (LENGTH(t2)>3) THEN t2 := '';  
+   IF (temp<>0) THEN 
+    BEGIN
+     IF (temp<10) AND (LENGTH(t2)<>1) THEN STR(temp,t2);     
+     IF (temp>=10) AND (temp<100) AND (LENGTH(t2)<>2) THEN STR(temp,t2);     
+     IF (temp>=100) AND (LENGTH(t2)<>3) THEN STR(temp,t2);    
+    END; 
+  END;
+
+ BEGIN    
+   WRITELN;
+   WRITELN('Enter <cr> to create new MAIL.DATA, <esc><cr> to quit,');
+   WRITE  ('      or another filename to use for data:');
+   READLN(filename);     
+   IF LENGTH(filename)<>0 THEN IF filename[1]=CHR(27) THEN EXIT(MailInit);
+   IF filename='' THEN filename:='MAIL.DATA';
+   IF ChkFiles(filename,'') then
+     BEGIN
+       WRITE('File ',filename,' already exists.  Destroy it (Y/N):');
+       REPEAT
+         READ(KEYBOARD,CH);
+       UNTIL CH IN ['Y','y','N','n'];
+       Writeln(CH);
+       IF (CH='Y') OR (CH='y') THEN
+         BEGIN
+           {$I-}
+           RESET(disk1,filename);
+           CLOSE(disk1,PURGE);
+           {$I+}
+         END
+       ELSE EXIT(MailInit);
+     END;
+   IF NOT Chkfiles(filename,'') THEN        
+     BEGIN  
+      REPEAT
+       Getmfile;
+       if length(t2)>0 then tmpstr := CONCAT(filename,'[',t2,']')
+       else tmpstr:=filename;     
+       Makefile(tmpstr);
+      UNTIL Chkfiles(filename,'');          
+     END;
+ END; 
+    
+BEGIN  
+ WRITELN;
+ WRITELN('----------------------------------------------------------------');
+ WRITELN('ERCC WORDSET - MAIL Initialisation Utility 1.1 - 23-Feb-82');
+ WRITELN('----------------------------------------------------------------');
+ WRITELN;
+ InputOK:=FALSE;
+ REPEAT
+   WRITE('Enter the input filename (<esc> <return> to quit):');
+   READLN(fname2);
+   if fname2<>'' then
+     begin
+       if fname2[1]=chr(27) {ESC} then EXIT(MailInit);
+       InputOK:=Chkfiles(fname2,'.TEXT');
+     end;
+   if NOT InputOK then writeln('File ',fname2,' does not exist.');
+ UNTIL InputOK;
+ RESET(finp,fname2);
+ MailFile(fname1);
+ WRITELN;
+ WRITELN('Give a Flag number to be set on each record.');
+ WRITELN('                   0 means set no flag');
+ WRITE  ('                   1-48 are legal');
+ WRITELN;
+ REPEAT
+   WRITE('Flag number:');
+   READLN(FLAGNO);
+ UNTIL (FLAGNO>=0) and (FLAGNO<=48);
+ WRITELN;
+ {$I-}
+ REWRITE(disk1,fname1);  
+ if ioresult<>0 then
+   begin
+     writeln('Cannot open output file.');
+     exit(MailInit);
+   end;
+ {$I-}
+  numrecs:= 0;
+ WHILE NOT EOF(finp) DO 
+  BEGIN
+   Pget;  
+   IF Notblankname THEN Chgformat;      
+  END;
+ Wnew0rec; {puts count information in rec 0}
+ CLOSE(disk1,lock);
+ CLOSE(finp);
+END.
+

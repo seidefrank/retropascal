@@ -1,0 +1,49 @@
+
+                  DOCUMENTATION FOR THE PASCAL PRETTYPRINTERS
+
+     There are two Pascal source formatting and beautifying programs on this 
+disk, both from the Pascal News Number 13 (December 1978).  Because they were 
+prepared on the E6 editor, which does not allow text longer than memory (10K 
+to 25K available depending on how much RAM there is in your system), each 
+program is provided in parts that are drawn into the compiler via the I(nclude 
+compiler option.  Since I already had to partition the compiler to compile 
+both programs on my medium-sized (56K) system, I did not further split up the 
+files to fit within a smaller RAM space for editing, since they will not then
+compile.  If subfiles do not share the same name (plus a number) as the main
+file, this is noted below.  Further, each program has been modified to run
+under UCSD Pascal, usually by changing plain "Write (X)" statements to "Write
+(Outfile, X)," and similarly with read.  Initializing text was added to set up
+the input and output files at run time.  Finally, several PACK and UNPACK
+statements in FORMAT (noted within the source file) were changed to their
+equivalents, since the UCSD compiler does not support these standard
+procedures.
+
+     PRETTY.TEXT (which pulls in INITVARS.TEXT as a subfile--this contains the 
+variable initializing portion of the program) is the simpler and more 
+forgiving of the Pascal formatters.  Unlike FORMAT, programs which are 
+syntactically incorrect MAY get through the beautifying process.  What PRETTY 
+does to your file is fixed at compile time; however, it respects line ends and 
+other spacing already present within the file to a degree.
+
+     FORMAT.TEXT and subfiles is fully documented in FORMAT.DOC.TEXT, which I
+copied from the Pascal News.  Andy Mickel, then the editor of the Pascal News, 
+claims that FORMAT is especially clear-cut in its variable names and procedure 
+layout; I agree.  There is a hidden gotcha, apparantly: Pascal News Number 15
+noted letters from irate users, who found bugs in certain areas, such as the
+lack of inserted spaces before the ".." (range) symbol and "ugly breaking upon
+wraparound of several expressions in assignment statements." Fixes are
+promised in a forthcoming issue of Pascal News. Frankly, I think the thing
+works fairly well and is a big improvement over manually breaking out the
+structure of a program you plan to publish.  And it has some VERY nice
+features; I am particularly enamoured of being able to automatically add
+comments after an "END" statement pointing out of which program statement it
+is the end!
+
+     If you have the UCSD system you will note that both programs run slowly, 
+victims of multiple procedure calls for each letter of the source file and 
+output file.  This problem can be solved by 1) waiting, 2) getting a machine-
+language compiler, or, preferably, 3) hanging on until the 16-bit
+microprocessors are available, which handle procedure calls with applomb
+(particularly the M68000).  If you rewrote the reading/writing parts to accept
+UCSD-type strings, it would run faster but might not work on your next Pascal 
+system.

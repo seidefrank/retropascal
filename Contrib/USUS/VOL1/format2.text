@@ -1,0 +1,411 @@
+
+BEGIN (*ReadSymbol*)
+  IF (Character IN Letters)
+    THEN BEGIN
+      CharNumber := 1;  SymbolIsNumber := false;
+      REPEAT
+        Symbol [CharNumber] := Character;  ReadACharacter;
+        CharNumber := CharNumber + 1
+      UNTIL NOT (Character IN LettersAndDigits);
+      Length := CharNumber - 1;
+      FOR CharNumber := CharNumber TO AlfaLeng DO
+        Symbol [CharNumber] := ' ';
+        (* PACK (Symbol, 1, TestSymbol); *) 
+        (*EQUIVALENT (WITH ADDED UPPER/LOWER CASE TRANSPARENCY):  *)
+        FOR I := 1 TO AlfaLeng DO
+          BEGIN
+            TestSymbol [I] := Symbol [I];
+            IF (TestSymbol [I] IN ['a'..'z'])
+              THEN TestSymbol [I] := CHR (ORD (TestSymbol [I]) + ORD ('A') -
+                ORD ('a'))
+          END;
+      I := 1;
+      PascalSymbol [LastPascSymbol] := TestSymbol;
+      WHILE PascalSymbol [I] <> TestSymbol DO I := I + 1;
+      SymbolName := PascSymbolName [I]
+    END (*letters*)
+  ELSE IF (Character IN ['0'..'9', ' ', '(', '.', ':', '''', '<', '>'])
+    THEN CASE Character OF
+      '(':  BEGIN
+              CheckFor ('*', Comment, ReadNextCh);
+              IF (SymbolName = Comment) AND PackerIsOff
+                THEN DoComment
+                ELSE IF SymbolName = Comment THEN SkipComment
+            END;
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+            BEGIN
+              SymbolIsNumber := true;  CharNumber := 1;
+              REPEAT
+                Symbol [CharNumber] := Character;  ReadACharacter;
+                CharNumber := CharNumber + 1
+              UNTIL NOT (Character IN Digits + ['.']);
+              IF Character IN ['B', 'E']
+                THEN BEGIN
+                  Symbol [CharNumber] := Character;  ReadACharacter;
+                  CharNumber := CharNumber + 1;
+                  IF Character IN Digits + ['+', '-']
+                    THEN REPEAT
+                      Symbol [CharNumber] := Character;  ReadACharacter;
+                      CharNumber := CharNumber + 1
+                    UNTIL NOT (Character IN Digits)
+                END;
+              Length := CharNumber - 1;  SymbolName := Identifier;
+            END (*numbers*);
+      ' ':  BEGIN
+              REPEAT ReadACharacter UNTIL Character <> ' ';  ReadSymbol
+            END;
+      '>', ':':
+            CheckFor ('=', OtherSymbol, ReadNextCh);
+      '<':  BEGIN
+              CheckFor ('=', OtherSymbol, ReadNextCh);
+              IF SymbolName <> OtherSymbol 
+                THEN CheckFor ('>', OtherSymbol, DontReadNextCh)
+            END;
+      '.':  IF LastSymbol <> EndSymbol
+              THEN CheckFor ('.', Range, ReadNextCh)
+              ELSE SymbolName := PeriodSymbol;
+      '''': BEGIN
+              CharNumber := 1;
+              REPEAT
+                REPEAT
+                  Symbol [CharNumber] := Character;
+                  CharNumber := CharNumber + 1;  ReadACharacter
+                UNTIL Character = '''';
+                Symbol [CharNumber] := Character;
+                CharNumber := CharNumber + 1;  ReadACharacter
+              UNTIL Character <> '''';
+              Length := CharNumber - 1;  SymbolName := OtherSymbol;
+              IF Length > WriteRightCol - WriteLeftCol + 1
+                THEN BEGIN
+                  FlushUnwrittenBuffer;  WriteLn;
+                  Writeln (' *** STRING TOO LONG.');
+                  EXIT (Program)
+                END;
+            END (*string*)
+    END (*then case*)
+    ELSE BEGIN
+      Symbol [1] := Character;  SymbolName := NameOf [Character];
+      Length := 1;  ReadACharacter
+    END
+END (*ReadSymbol*);
+
+
+PROCEDURE ChangeMarginTo (NewLeftMargin: Margins);
+
+VAR  IndentedLeftMargin: Margins;
+
+BEGIN
+  ActualLeftMargin := NewLeftMargin;  LeftMargin := NewLeftMargin;
+  IF LeftMargin < 0
+    THEN LeftMargin := 0
+    ELSE BEGIN
+      IndentedLeftMargin := WriteRightCol - 9 - LongLineIndent;
+      IF LeftMargin > IndentedLeftMargin THEN LeftMargin := IndentedLeftMargin
+    END
+END (*ChangeMarginTo*);
+
+
+
+
+
+PROCEDURE DoDeclarationUntil (EndDeclaration: SymbolSet);
+
+
+
+
+  PROCEDURE DoParentheses;
+  
+  VAR  SavedLgLnId: OptionSize;
+  
+  BEGIN
+    SavedLgLnId := LongLineIndent;
+    IF DeclarAlignment > 0
+      THEN BEGIN
+        LongLineIndent := WriteColumn + SymbolGap + 1 - LeftMargin -
+            WriteLeftCol;
+        REPEAT WriteSymbol;  ReadSymbol
+        UNTIL SymbolName = RightParenth;
+        WriteSymbol;  ReadSymbol
+      END
+      ELSE BEGIN
+        LongLineIndent := 1;
+        ChangeMarginTo (ActualLeftMargin + IndentIndex);
+        StartNewLineAndIndent;
+        REPEAT WriteSymbol;  ReadSymbol
+        UNTIL SymbolName = RightParenth;
+        WriteSymbol; ReadSymbol;
+        ChangeMarginTo (ActualLeftMargin - IndentIndex);
+      END;
+    LongLineIndent := SavedLgLnId
+  END (*DoParentheses*);
+  
+  
+  PROCEDURE DoFieldListUntil (EndFieldList: SymbolSet);
+  
+  VAR  LastEOL: Margins;  AlignColumn: Width;
+  
+  
+    PROCEDURE DoRecord;
+    
+    VAR SavedLeftMargin: Width;
+    
+    BEGIN
+      SavedLeftMargin := ActualLeftMargin;  WriteSymbol;  ReadSymbol;
+      ChangeMarginTo (WriteColumn - 6 + IndentIndex - WriteLeftCol);
+      StartNewLineAndIndent;  DoFieldListUntil ([EndSymbol]);
+      ChangeMarginTo (ActualLeftMargin - IndentIndex);
+      StartNewLineAndIndent;  WriteSymbol;  ReadSymbol;
+      ChangeMarginTo (SavedLeftMargin);
+    END (*DoRecord*);
+    
+    
+    PROCEDURE DoVariantRecordPart;
+    
+    VAR SavedLeftMargin, OtherSavedMargin:  Margins;
+    
+    BEGIN
+      OtherSavedMargin := ActualLeftMargin;
+      IF DeclarAlignment > 0
+        THEN BEGIN
+          REPEAT WriteSymbol;  ReadSymbol
+          UNTIL SymbolName IN [ColonSymbol, OfSymbol];
+          IF SymbolName = ColonSymbol
+            THEN BEGIN
+              WriteSymbol;  ReadSymbol;
+              WITH UnWritten [LastEOL] DO
+                BEGIN
+                  IndentAfterEOL := IndentAfterEOL + AlignColumn -
+                      WriteColumn;
+                  IF IndentAfterEOL < 0 THEN IndentAfterEOL := 0
+                END;
+              WriteColumn := AlignColumn;
+              ChangeMarginTo (ActualLeftMargin + AlignColumn - WriteColumn)
+            END
+        END (*then*);
+      IF SymbolName <> OfSymbol THEN REPEAT WriteSymbol;  ReadSymbol
+        UNTIL SymbolName = OfSymbol;
+      ChangeMarginTo (ActualLeftMargin + IndentIndex);
+      REPEAT
+        WriteSymbol;  ReadSymbol;
+        IF SymbolName <> EndSymbol
+          THEN BEGIN
+            StartNewLineAndIndent;
+            REPEAT WriteSymbol;  ReadSymbol
+            UNTIL SymbolName IN [LeftParenth, SemiColon, EndSymbol];
+            IF SymbolName = LeftParenth
+              THEN BEGIN
+                WriteSymbol;  ReadSymbol;  SavedLeftMargin := ActualLeftMargin;
+                ChangeMarginTo (WriteColumn - WriteLeftCol);
+                DoFieldListUntil ([RightParenth]);  WriteSymbol;
+                ReadSymbol;  ChangeMarginTo (SavedLeftMargin)
+              END
+          END;
+      UNTIL SymbolName <> Semicolon;
+      ChangeMarginTo (OtherSavedMargin)
+    END (*DoVariantRecordPart*);
+    
+    
+  BEGIN (*DoFieldListUntil*)
+    LastEOL := Oldest;
+    IF LastSymbol = LeftParenth
+    THEN FOR I := 1 TO DeclarAlignment - Length DO WriteA (' ');
+    AlignColumn := LeftMargin + WriteLeftCol + DeclarAlignment + 1;
+    WHILE NOT (SymbolName IN EndFieldList) DO
+      BEGIN
+        IF LastSymbol IN [Semicolon, Comment] THEN IF SymbolName <> Semicolon
+          THEN BEGIN StartNewLineAndIndent;  LastEOL := Oldest END;
+        IF SymbolName IN [RecordSymbol, CaseSymbol, LeftParenth,
+            CommaSymbol, ColonSymbol, EqualSymbol]
+          THEN CASE SymbolName OF
+            RecordSymbol:  DoRecord;
+            CaseSymbol:    DoVariantRecordPart;
+            LeftParenth:   DoParentheses;
+            CommaSymbol, ColonSymbol, EqualSymbol:
+                           BEGIN
+                             WriteSymbol;
+                             IF DeclarAlignment > 0
+                               THEN IF NOT (EndLabel <= EndFieldList)
+                                 THEN BEGIN
+                                   WITH UnWritten [LastEOL] DO
+                                     BEGIN
+                                       IndentAfterEOL := IndentAfterEOL +
+                                         AlignColumn - WriteColumn;
+                                       IF IndentAfterEOL < 0
+                                         THEN IndentAfterEOL := 0;
+                                       WriteColumn := AlignColumn
+                                     END;
+                                   IF SymbolName = CommaSymbol
+                                     THEN BEGIN
+                                       StartNewLineAndIndent;  LastEOL := Oldest
+                                     END
+                                 END (*then*);
+                             ReadSymbol
+                           END (* , : = *)
+          END (*case*)
+          ELSE BEGIN WriteSymbol;  ReadSymbol END;
+      END (*while*)
+  END (*DoFieldListUntil*);
+  
+  
+  
+BEGIN (*DoDeclarationUntil*)
+  StartNewLineAndIndent;  WriteSymbol;
+  ChangeMarginTo (ActualLeftMargin + IndentIndex);
+  StartNewLineAndIndent;  ReadSymbol;
+  DoFieldListUntil (EndDeclaration);  StartNewLineAndIndent;
+  ChangeMarginTo (ActualLeftMargin - IndentIndex)
+END (*DoDeclarationUntil*);
+
+
+
+
+
+PROCEDURE DoBlock (BlockName: CommentText;  BlockNmLength: Width);
+
+VAR  I: Width;  IfThenBunchNeeded, AtProcBeginning: boolean;
+
+
+
+  PROCEDURE DoProcedures;
+  
+  VAR  I: 0..20;
+       ProcName: CommentText;
+       ProcNmLenght: Width;
+       
+  BEGIN
+    FOR I := 2 TO ProcSeparation DO StartNewLineAndIndent;
+    StartNewLineAndIndent;  WriteSymbol;  ReadSymbol;
+ (* FOR I := 0 TO (Length - 1) DIV AlfaLeng DO
+      Pack (Symbol, I * AlfaLeng + 1, ProcName [I + 1]; *)
+    (* Equivalent: *)
+    FOR I := 0 TO (Length - 1) DIV AlfaLeng DO FOR J := 1 TO AlfaLeng DO
+      ProcName [I + 1, J] := Symbol [J + I*AlfaLeng];
+    ProcNmLength := Length;  WriteSymbol;  ReadSymbol;
+    IF SymbolName = LeftParenth
+      THEN BEGIN
+        WriteSymbol;
+        REPEAT ReadSymbol;  WriteSymbol
+        UNTIL SymbolName = RightParenth;
+        ReadSymbol
+      END;
+    IF SymbolName = ColonSymbol THEN
+      REPEAT WriteSymbol;  ReadSymbol UNTIL SymbolName = Semicolon;
+    WriteSymbol;  ReadSymbol;
+    ChangeMarginTo (ActualLeftMargin + IndentIndex);
+    StartNewLineAndIndent;  LastProgPartWasBody := true;
+    ChangeMarginTo (ActualLeftMargin - IndentIndex);  WriteSymbol;
+    ReadSymbol;  StartNewLineAndIndent
+  END (*DoProcedures*);
+  
+  
+  PROCEDURE DoStatement (VAR AddedBlanks: Width; StatmtSymbol:
+    CommentText;  StmtSymLength: Width);
+    
+  VAR  I: Width;
+       StatmtBeginning, BlksOnCurrntLine, BlksAddedByThisStmt: integer;
+       StatmtPart:  ARRAY [1..4] OF integer;
+       Successful: boolean;
+       
+       
+       
+    PROCEDURE Bunch (Beginning, Breakpt, Ending: integer;
+      StatmtSeparation: OptionSize);
+      
+    BEGIN
+      IF BunchWanted OR IfThenBunchNeeded
+        THEN BEGIN
+          IF StatmtSeparation < 1 THEN StatmtSeparation := 1;
+          BlksOnCurrntLine := BlksOnCurrntLine + StatmtSeparation - 1;
+          Successful := ((Ending - Beginning + BlksOnCurrntLine +
+            UnWritten [Beginning MOD BufferSize].IndentAfterEOL) |
+            WriteRightCol) AND (CharCount - Beginning < BufferSize);
+          IF Successful
+            THEN BEGIN
+              BlksAddedByThisStmt := BlksAddedByThisStmt +
+                StatmtSeparation - 1;
+              UnWritten [Breakpt MOD BufferSize].IndentAfterEOL :=
+                - StatmtSeparation;
+            END
+        END
+    END (*bunch*);
+    
+    
+    PROCEDURE WriteComment;
+    
+    VAR  I, SavedLength: Width;
+         SavedSymbolName: Symbols;
+         SavedChars:  SymbolString;
+         
+    BEGIN
+      SavedSymbolName := SymbolName;
+      FOR I := 1 TO Length DO SavedChars [I] := Symbol [I];
+      SavedLength := Length;  SymbolName := OtherSymbol;
+      Symbol [1] := '(';  Symbol [2] := '*';  Length := 2;  WriteSymbol;
+   (* FOR I := 0 TO (StmtSymLength - 1) DIV AlfaLeng DO
+        Unpack (StatmtSymbol [I + 1], Symbol, (I * AlfaLeng + 1));*)
+      (* EQUIVALENT:  *)
+      FOR I := 0 TO (StmtSymLength - 1) DIV AlfaLeng DO FOR J := 1 TO AlfaLeng
+        DO Symbol [J + I * AlfaLeng] := StatmtSymbol [I + 1, J];
+      Length := StmtSymLength;  SymbolName := PeriodSymbol;
+      LastSymbol := PeriodSymbol;  WriteSymbol;  Symbol [1] := '*';
+      Symbol[2] := ')';  Length := 2;  WriteSymbol;
+      SymbolName := SavedSymbolName;  Length := SavedLength;
+      FOR I := 1 TO Length DO Symbol [I] := SavedChars [I]
+    END (*WriteComment*);
+    
+    
+    PROCEDURE DoStmtList (EndList: Symbols);
+    
+    VAR  BlksAfterPrt2: Width;
+         AtProcEnd: boolean;
+    
+    BEGIN
+      AtProcEnd := AtProcBeginning;  WriteSymbol;  ReadSymbol;
+      StatmtPart [1] := CharCount + 1;  StatmtPart [2] := StatmtPart [1];
+      IF SymbolName <> EndList
+        THEN BEGIN
+          IF ProcNamesWanted THEN IF AtProcBeginning THEN IF
+            LastProgPartWasBody THEN IF LastSymbol = BeginSymbol
+              THEN WriteComment;
+          AtProcBeginning := false;
+          DoStatement (AddedBlanks, StatmtSymbol, StmtSymLength);
+          BlksAfterPrt2 := AddedBlanks;
+          BlksAddedByThisStmt := BlksAddedByThisStmt + AddedBlanks;
+          WHILE SymbolName <> EndList DO
+            BEGIN
+              WriteSymbol;  ReadSymbol;
+              IF SymbolName <> EndList
+                THEN BEGIN
+                  StatmtPart [3] := CharCount + 1;
+                  DoStatement (AddedBlanks, StatmtSymbol, StmtSymLength);
+                  BlksOnCurrntLine := AddedBlanks + BlksAfterPrt2;
+                  BlksAddedByThisStmt := BlksAddedByThisStmt + AddedBlanks;
+                  Bunch (StatmtPart [2], StatmtPart [3], CharCount,
+                    StatmtSeparation);
+                  IF NOT Successful
+                    THEN BEGIN
+                      BlksAfterPrt2 := AddedBlanks;
+                      StatmtPart [2] := StatmtPart [3];
+                    END
+                    ELSE BlksAfterPrt2 := BlksOnCurrntLine;
+                END (*then*)
+            END (*while*)
+        END (*main then*);
+      BlksOnCurrntLine := BlksAddedByThisStmt;
+      Bunch (StatmtBeginning, StatmtPart [1], CharCount, SymbolGap);
+      StartNewLineAndIndent;  StatmtPart [1] := CharCount;
+      REPEAT WriteSymbol;  ReadSymbol
+      UNTIL SymbolName IN [Semicolon, UntilSymbol, EndSymbol, ElseSymbol,
+          PeriodSymbol];
+      IF Successful
+        THEN BEGIN
+          IF EndList = UntilSymbol
+            THEN StatmtPart [4] := StatmtSeparation
+            ELSE StatmtPart [4] := SymbolGap;
+          Bunch (StatmtBeginning, StatmtPart [1], CharCount, StatmtPart [4]);
+        END;
+      IF NOT (Successful AND BunchWanted)
+        THEN IF EndList = EndSymbol THEN IF LastSymbol = EndSymbol THEN
+          IF AtProcEnd AND ProcNamesWanted THEN WriteComment
+    END (*DoStmtList*);
+  

@@ -1,0 +1,129 @@
+{ FASTREAD - fast text file string read for UCSD pascal. }
+{            dhd - PCD Systems, Inc.                     }
+
+{ S+}
+
+{
+17 Aug 82 [acd] Fixed bug on consecutive null lines with no blank compression
+17 Aug 82 [acd] Intrinsic declarations for Apple iron made conditional
+14 Aug 82 [acd] Changed to intrinsic for Apple ][
+12 Aug 82 [acd] Fixed error on blank lines with indent count
+}
+
+UNIT FastRead ;
+  {%IFT Apple }
+  (*INTRINSIC CODE 16 ;*)
+    {%ENDC }
+    
+INTERFACE
+  CONST
+    BufSiz      =  1024 ;
+    LineMax     =   255 ;
+    
+  TYPE
+    LineIndex   = 0..LineMax ;
+    LongString  = String[LineMax] ;
+    FFile       = FILE ;
+    Fcb         = RECORD
+      InLFN     : STRING[30] ;  { input file name }
+      Line      : LongString ;  { current text line }
+      BPos      : INTEGER ;     { buffer position }
+      EndFile   : BOOLEAN ;     { true when end of file }
+      Buf       : PACKED ARRAY [0..BufSiz] OF CHAR ;
+      BlkNr     : INTEGER ;
+      END ; { Fcb }
+    
+  PROCEDURE GetString
+    ( VAR Phyle : Fcb ;
+      VAR InFile: FFile ;
+      VAR s     : LongString ) ;
+      
+  PROCEDURE OpenFile
+    ( VAR Phyle : Fcb ;
+      VAR InFile: FFile ;
+      VAR Lfn   : STRING ) ;
+      
+IMPLEMENTATION
+    
+  PROCEDURE OpenFile
+    { VAR Phyle : Fcb ;
+      VAR InFile: FFile ;
+      VAR Lfn   : STRING } ;
+      
+  BEGIN { OpenFile }
+    
+    WITH Phyle DO BEGIN
+      RESET( InFile, Lfn ) ;
+      InLFN   := Lfn ;
+      Line    := '' ;
+      BPos    := BufSiz + 1 ;
+      EndFile := FALSE ;
+      BlkNr   := 2 ;
+      END ;
+      
+    END ; { OpenFile }
+  
+  
+  PROCEDURE GetString
+    { VAR Phyle : Fcb ;
+      VAR InFile: FFile ;
+      VAR s     : LongString } ;
+      
+    CONST
+      Cr  = 13 ;
+      Dle = 16 ;
+      
+    VAR 
+      BCnt, 
+      Chg   : INTEGER ;
+      Found : BOOLEAN ;
+      
+  BEGIN { GetString } 
+  
+    {$R- disable string range checks }
+    
+    WITH Phyle DO
+      REPEAT
+        IF BPos >= BufSiz THEN { time for next buffer } BEGIN
+          BCnt  := BLOCKREAD( InFile, Buf[0], 2, BlkNr ) ;
+          BPos  := 0 ;
+          BlkNr := BlkNr + BCnt ;
+          IF BCnt < 2 THEN { eof } BEGIN
+            EndFile := TRUE ;
+            EXIT( GetString )
+            END ; { if }
+          END ; { if }
+        Chg := SCAN( BufSiz-BPos, =CHR(Cr), Buf[BPos] ) ;
+        IF (BPos + Chg) < BufSiz THEN { found a carriage return } BEGIN
+          MOVELEFT( Buf[BPos], s[1], Chg ) ;    { copy string except CR }
+          s[0]  := CHR( Chg ) ;
+          BPos  := SUCC( BPos + Chg ) ;
+          Found := TRUE 
+          END
+        ELSE BEGIN
+          Chg := SCAN( BufSiz-BPos, =CHR(0), Buf[BPos] ) ; { look for null }
+          IF (BPos + Chg) < BufSiz THEN BEGIN
+            MOVELEFT( Buf[BPos], s[1], Chg-1 ) ;
+            s[0]  := CHR( Chg ) ;
+            BPos  := BufSiz ;
+            END ;
+          Found := FALSE
+          END ;
+        UNTIL Found ;
+      
+    IF LENGTH( s ) >= 2 THEN                          { acd - 12 Aug 82 }
+      IF s[1] = CHR(dle) THEN { insert leading blanks } BEGIN
+        Chg := ORD( s[2] ) - ORD( ' ' ) ; 
+        IF Chg > 2 THEN
+          MOVERIGHT( s[3], s[Chg+1], LENGTH(s)-2 )
+        ELSE
+          MOVELEFT(  s[3], s[Chg+1], LENGTH(s)-2 ) ;
+        FILLCHAR( s[1], Chg, ' ' ) ;
+        s[0] := CHR( LENGTH(s)+Chg-2 ) ;
+        END ;
+    
+    {$R+}
+  
+    END ; { GetString }
+  
+END. { of unit }

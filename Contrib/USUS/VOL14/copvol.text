@@ -1,0 +1,243 @@
+program copver;
+  { copy verify utility program.
+    written by Jon Bondy 1981 }
+  const 
+    { number of retries for reading and writing }
+    readretries = 1;
+    writeretries = 3;
+    { unit numbers }
+    source = 4;
+    dest = 5;
+    buffsize = 32; { blocks }
+    bs = 8;
+  type
+    block = packed array [0..255] of integer;
+  var
+    buff1, buff2 : array[1..buffsize] of block;
+    totalblocks : integer;
+    retrycount : integer;
+    { to allow one to read the directory to find the volume id }
+    dir : record
+      trash1, trash2, trash3 : integer;
+      volid : string[7];
+      eovblk : integer;
+      end;
+    ch : char;
+      
+  function readsector(sect, track, disk : integer; var mem_addr : integer) : 
+      integer; external;
+  function writesector(sect, track, disk : integer; var mem_addr : integer) : 
+      integer; external;
+  
+  procedure docopy;
+    var
+      startblock : integer;
+      size : integer;
+      error : boolean;
+      i : integer;
+      
+    procedure copy_booter;
+      var
+        interleave : array[1..26] of integer;
+      
+      procedure read_booter;
+        var
+          track, sector, addr, buffer, i : integer;
+          error : boolean;
+        begin
+        write('Reading boot tracks.');
+        for i := 1 to 20 do write(chr(bs));
+        addr := 0; buffer := 1; error := false;
+        for track := 0 to 1 do
+          for sector := 1 to 26 do begin
+            error :=  error or 
+            (readsector(interleave[sector],track,0,buff1[buffer,addr]) <> 0);
+            addr := addr + 64;
+            if (addr = 256) then begin
+               addr := 0; buffer := buffer + 1; end
+            end;
+        if error then begin
+          writeln('Unable to read boot tracks.'); exit(docopy); end;
+        end; { read_booter }
+      
+      procedure write_booter;
+        var
+          track, sector, addr, buffer, i : integer;
+          error : boolean;
+        begin
+        write('Writing boot tracks.');
+        for i := 1 to 20 do write(chr(bs));
+        addr := 0; buffer := 1; error := false;
+        for track := 0 to 1 do
+          for sector := 1 to 26 do begin
+            error :=  error or 
+            (writesector(interleave[sector],track,1,buff1[buffer,addr]) <> 0);
+            addr := addr + 64;
+            if (addr = 256) then begin
+               addr := 0; buffer := buffer + 1; end
+            end;
+        if error then begin
+          writeln('Unable to write boot tracks.'); exit(docopy); end;
+        end; { write_booter }
+      
+      procedure compare_booter;
+        var
+          track, sector, addr, buffer, i : integer;
+          error : boolean;
+        begin
+        write('Comparing boot tracks.');
+        for i := 1 to 22 do write(chr(bs));
+        addr := 0; buffer := 1; error := false;
+        for track := 0 to 1 do
+          for sector := 1 to 26 do begin
+            error :=  error or 
+            (readsector(interleave[sector],track,1,buff2[buffer,addr]) <> 0);
+            addr := addr + 64;
+            if (addr = 256) then begin
+               addr := 0; buffer := buffer + 1; end
+            end;
+        if error then begin
+          writeln('Unable to re-read boot tracks.'); exit(docopy); end;
+        error := false;
+        for i := 1 to 13 do
+          error := error or (buff1[i] <> buff2[i]);
+        if error then begin 
+          writeln('Boot tracks compare error.'); exit(docopy); end
+        end; { compare_booter }
+      
+      begin { copy_booter }
+      interleave[1] := 1; interleave[2] := 3; interleave[3] := 5;
+      interleave[4] := 7; interleave[5] := 9; interleave[6] := 11;
+      interleave[7] := 13; interleave[8] := 15; interleave[9] := 17;
+      interleave[10] := 19; interleave[11] := 21; interleave[12] := 23;
+      interleave[13] := 25; interleave[14] := 2; interleave[15] := 4;
+      interleave[16] := 6; interleave[17] := 8; interleave[18] := 10;
+      interleave[19] := 12; interleave[20] := 14; interleave[21] := 16;
+      interleave[22] := 18; interleave[23] := 20; interleave[24] := 22;
+      interleave[25] := 24; interleave[26] := 26;
+      read_booter;
+      write_booter;
+      compare_booter;
+      end; { copy_booter }
+      
+    procedure doread(size, startblock : integer);
+      var
+        retrycount : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try read after block ',startblock,'.');
+        {$I-} unitread(source,buff1,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until (ioresult = 0) or (retrycount > readretries);
+      if (ioresult <> 0) then begin
+        writeln('Unrecoverable error reading Unit 4 after block ',startblock,'.');
+        exit(docopy);
+        end;
+      end; { doread }
+        
+    procedure dowrite(size, startblock : integer);
+      var
+        retrycount : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try write after block ',startblock,'.');
+        {$I-} unitwrite(dest,buff1,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until (ioresult = 0) or (retrycount > writeretries);
+      if (ioresult <> 0) then begin
+        writeln('Unrecoverable error writing Unit 5 after block ',startblock,'.');
+        exit(docopy);
+        end;
+      end; { dowrite }
+        
+    function docompare(size, startblock : integer) : boolean;
+      { return true if compare error }
+      var
+        retrycount : integer;
+        i : integer;
+        error : boolean;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try re-read after block ',startblock,'.');
+        {$I-} unitread(dest,buff2,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until (ioresult = 0) or (retrycount > readretries);
+      if (ioresult <> 0) then begin
+        writeln('Error re-reading Unit 5 after block ',startblock,'.');
+        docompare := true; { signal error }
+        exit(docompare);
+        end;
+      error := false;
+      for i := 1 to (size div 512) do
+        error := error or (buff1[i] <> buff2[i]);
+      if error then writeln('Compare error after block ',startblock,'.');
+      docompare := error;
+      end; { docompare }
+        
+    begin { docopy }
+    copy_booter;
+    startblock := 0;
+    repeat
+      size := totalblocks - startblock;
+      if (size > buffsize) then size := sizeof(buff1)
+      else size := size * 512;
+      retrycount := 0;
+      repeat
+        write('Copying block ',startblock:4,'    ');
+        for i := 1 to 22 do write(chr(bs));
+        doread(size,startblock);
+        dowrite(size,startblock);
+        error := docompare(size,startblock);
+        { true if error on compare }
+        if error then writeln('Retrying copy starting at block ',startblock);
+        retrycount := retrycount + 1;
+        until not error or (retrycount > readretries);
+      if error then begin
+        writeln; writeln('Unable to copy due to unrecoverable errors.');
+        exit(docopy);
+        end;
+      startblock := startblock + buffsize;
+      until (startblock > totalblocks);
+    writeln;
+    writeln('Copy completed successfully.');
+    end; { docopy }
+    
+  begin
+  repeat
+    writeln('Copy/Verify Utility.  Written by Jon Bondy, 1/81.');
+    writeln('Place disk to be copied in Unit 4; new copy disk in Unit 5.');
+    write('Press <CR> to start copying');
+    readln(ch);
+    unitread(source,dir,sizeof(dir),2); { read in directory }
+    if (length(dir.volid) <= 7) then writeln('Copying Volume ',dir.volid)
+    else writeln('Source diskette is not a UCSD Volume.');
+    totalblocks := dir.eovblk;
+    write('Copy ',totalblocks,' blocks? ');
+    read(ch); writeln;
+    if (ch <> 'y') and (ch <> 'Y') then begin
+      repeat
+        write('How many blocks do you want to copy? ');
+        {$I-} readln(totalblocks); {$I+}
+        until (ioresult = 0);
+      end;
+    unitread(dest,dir,sizeof(dir),2); { read directory }
+    if (length(dir.volid) <= 7) then begin
+      write('Is it OK to destroy volume ',dir.volid,': ? ');
+      read(ch); writeln;
+      if (ch = 'y') or (ch = 'Y') then docopy;
+      end
+    else { not valid UCSD Volume } docopy;
+    write('Do you wish to make another copy? ');
+    read(ch); writeln;
+    until (ch = 'n') or (ch = 'N');
+  write('Press <CR> when system disk is in Unit 4 again.');
+  readln(ch);
+  end.
+
+

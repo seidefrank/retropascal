@@ -1,0 +1,161 @@
+(* included from catalog *)
+
+procedure PRINT_DATE;  {prints date to console or printer} 
+begin
+  with REC do begin
+    write(P,DAY:3,'-');
+    case MONTH of
+      1:write(P,'Jan'); 
+      2:write(P,'Feb');
+      3:write(P,'Mar'); 
+      4:write(P,'Apr'); 
+      5:write(P,'May'); 
+      6:write(P,'Jun'); 
+      7:write(P,'Jul'); 
+      8:write(P,'Aug'); 
+      9:write(P,'Sep'); 
+      10:write(P,'Oct'); 
+      11:write(P,'Nov'); 
+      12:write(P,'Dec'); 
+    end;{case MONTH} 
+    write(P,'-',YEAR:2,' ':3);
+  end {with}
+end;{PRINT_DATE}
+
+procedure PRINT_KIND;{prints file to console or printer} 
+begin
+  case FILE_KIND of
+    XDISK:write(P,'Bad block'); 
+    CODE:write(P,'Code file');
+    TEXT:write(P,'Text file');
+    INFO:write(P,'Info file');
+    DATA:write(P,'Data file');
+    GRAF:write(P,'Graf file');
+    FOTO:write(P,'Foto file'); 
+  end {case FILE_KIND}
+end;{PRINT_KIND}
+
+procedure PRINT_RECORD;
+{prints record to console or printer} 
+begin
+  with CAT1 do begin
+    write(P,FILE_NAME,'  ':18-length(FILE_NAME)); 
+    write(P,VOL_NAME,'  ',8-length(VOL_NAME));
+    write(P,FILE_SIZE:4);
+    PRINT_DATE(FILE_DATE);
+    PRINT_KIND(FILE_KIND);
+    writeln(P)
+  end {with CAT1}
+end;{PRINT_RECORD}
+
+procedure READ_NEW_CAT;  {reads NREC or to "eof" from NCATFILE}
+var   I:RECNUM;
+begin
+  I:=1;
+  NREC:=0;
+  get(NCATFILE);
+  while (not eof(NCATFILE)) do begin 
+    NCAT[I]:=NCATFILE^;
+    if ((NCAT[I].VOL_NAME='       ')) then begin
+      NREC:=I-1;
+      NTOTREC:=NTOTREC+NREC;
+      NFILEEND:=true;
+      exit(READ_NEW_CAT);
+    end;{if NCAT[I].VOL_NAME=}
+    if I=NLREC then begin
+      NREC:=I;
+      NTOTREC:=NTOTREC+I;
+      exit(READ_NEW_CAT);
+    end;{if I=NLREC}
+    I:=I+1;
+    get(NCATFILE);
+  end;{while (not eof(NCATFILE))}
+  NREC:=I-1;
+  NTOTREC:=NTOTREC+NREC;
+  NFILEEND:=true
+end;{READ_NEW_CAT}
+
+procedure READ_OLD_CAT;  {reads OREC record or to eof from OCATFILE}
+var   I:RECNUM;
+begin
+  I:=1;
+  OREC:=0;
+  get(OCATFILE);
+  while (not eof (OCATFILE)) do begin 
+    OCAT[I]:=OCATFILE^; 
+    if ((OCAT[I].VOL_NAME='       ')) then begin
+      OREC:=I-1;
+      OTOTREC:=OTOTREC+OREC;
+      OFILEEND:=true;
+      exit(READ_OLD_CAT);
+    end;{if OCAT[I].VOL_NAME=}
+    if I=OLREC then begin
+      OREC:=I;
+      OTOTREC:=OTOTREC+I;
+      exit(READ_OLD_CAT);
+    end;{if I=OLREC}
+    I:=I+1;
+    get(OCATFILE);
+  end;{while (not eof(OCATFILE))}
+  OREC:=I-1;
+  OTOTREC:=OTOTREC+OREC;
+  OFILEEND:=true
+end;{READ_OLD_CAT}
+
+procedure WRITECAT;  {writes NREC records to NCATFILE} 
+var   I:RECNUM;
+begin
+  if NTOTREC=0 then with NCAT[0] do begin
+    VOL_NAME:='       ';
+    FILE_NAME:='               ';
+    FILE_KIND:=UNTYPED;
+    FILE_DATE.MONTH:=0;
+    FILE_DATE.DAY:=0;
+    FILE_DATE.YEAR:=0;
+    FILE_SIZE:=0; 
+    NCATFILE^:=NCAT[0];
+    PUT(NCATFILE);
+  end;{if NTOTREC=0}
+  writeln;
+  write('Writing CATALOG to disk');
+  for I:=1 to NREC do begin 
+    NCATFILE^:=NCAT[I];
+    PUT(NCATFILE);
+    write('.');
+  end;{for I}
+  writeln;
+  NTOTREC:=NTOTREC+NREC;
+  NREC:=0;
+if DONE then close(NCATFILE,LOCK)
+end;{WRITECAT}
+
+procedure TITLE;   
+var   S:string;
+      I,J:integer;
+begin 
+  S:='UCSD PASCAL CATALOG';  
+  PRINTAT(37-length(S) div 2,0,S); 
+  S:='written by';
+  PRINTAT(37-length(S) div 2,1,S); 
+  S:='E. J. Heyman';
+  PRINTAT(37-length(S) div 2,2,S); 
+  S:='Centerville, DL'; 
+  PRINTAT(37-length(S) div 2,3,S);   
+  S:='first published in';
+  PRINTAT(37-length(S) div 2,9,S);   
+  S:='BYTE Magazine May 1981'; 
+  PRINTAT(37-length(S) div 2,10,S); 
+  S:='and extensively modified by'; 
+  PRINTAT(37-length(S) div 2,11,S); 
+  S:='R. M. Wilson'; 
+  PRINTAT(37-length(S) div 2,12,S); 
+  S:='HI-COUNTRY DATA SYSTEMS';  
+  PRINTAT(37-length(S) div 2,13,S);  
+  S:='P.O. Box 4258';  
+  PRINTAT(37-length(S) div 2,14,S);    
+  S:='Woodland Park, CO 80863-4258'; 
+  PRINTAT(37-length(S) div 2,15,S);    
+  S:='May 7, 1981';  
+  PRINTAT(37-length(S) div 2,16,S);    
+end; {TITLE} 
+

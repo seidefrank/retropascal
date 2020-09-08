@@ -1,0 +1,123 @@
+program offstart;
+USES {$U *screenops.code} SCREENOPS,
+     {$U *commandio.code} COMMANDIO;
+
+{Off-Load Office Workstation startup program}
+{Copyright  Austin Tate  18-Aug-81}
+
+{User may provide a code file *STARTUP.CODE to be run after}
+{this program but before the main Off-Load command interpreter}
+
+const bel=7;
+var ch:char;
+    xstr:string;
+    SCInfo:sc_info_type;
+
+procedure line(Y:integer);
+var i:integer;
+begin
+  if Y>=0 then GOTOXY(0,Y); {else put line on end of present text}
+  for i:=1 to 4 do write('--------------------');
+end;
+
+function exists(fname,suffix:string):boolean;
+var g:file;
+begin
+  if (length(fname)=0) then exists:=false
+  else
+    begin
+      {$I-}
+      reset(g,concat(fname,suffix));
+      exists:=(IORESULT=0);
+      {$I+}
+    end;
+end;
+
+procedure help(fname:string);
+var f:text;
+    st:string[255];
+begin
+  if (length(fname)=0) then
+    writeln(fname,' is an illegal help text file name.')
+  else
+    begin
+      {$I-}
+      reset(f,concat(fname,'.TEXT'));
+      if (IORESULT<>0) then writeln(fname,' help text is not on disk.')
+      else
+        begin
+          while not eof(f) do begin
+            readln(f,st);
+            if IORESULT=0 then writeln(st);
+          end;
+        end;
+      {$I+}
+    end;
+end;
+
+procedure title;
+begin
+  line(0);
+  writeln('O  F  F - L  O  A  D  -  Office Workstation');
+  line(2);
+end;
+
+procedure getdate;
+var xstr:string;
+begin
+  {get date}
+  SC_Use_Info(SC_Get,SC_Info);
+  xstr:='   ';
+  with SC_Info.SC_Date do begin
+    case Month of
+        1: xstr:='Jan';
+        2: xstr:='Feb';
+        3: xstr:='Mar';
+        4: xstr:='Apr';
+        5: xstr:='May';
+        6: xstr:='Jun';
+        7: xstr:='Jul';
+        8: xstr:='Aug';
+        9: xstr:='Sep';
+       10: xstr:='Oct';
+       11: xstr:='Nov';
+       12: xstr:='Dec';
+      end;
+    gotoxy(56,21);
+    write('Date is set to ');
+    write(Day:2,'-',xstr,'-',Year:2);
+  end;
+end;
+
+begin
+  sc_clr_screen;
+  xstr:='';
+  title;
+  help('*Help.Off');
+  line(-1);
+  title;
+  SC_Eras_EOS(0,21);
+  gotoxy(0,21);
+  if Redirect('P=#5') then Write('The default volume is drive #5.')
+  else
+    begin
+      exception(TRUE);
+      write('The volume prefix could not be set.');
+    end;
+  
+  if exists('*STARTUP','.CODE') then chain('*STARTUP'); {user provided startup}
+  getdate;
+  SC_Clr_Line(22);
+  write('Type ''D'' to set date, <space> to continue');
+  SC_GetC_Ch(ch,['D',' ']);
+  if ch='D' then
+    begin
+      write(' ........ Date will be set within Filer');
+      chain('*FILER PI="D"');
+    end;
+  Chain('*OFFLOAD');
+end.
+
+
+
+

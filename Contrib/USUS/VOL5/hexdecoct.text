@@ -1,0 +1,386 @@
+
+{This program does number base conversion between hexidecimal,
+decimal, octal and binary numbers.  Author is unknown}
+
+PROGRAM CONVERSION;
+TYPE OREC =
+     PACKED RECORD
+         
+         E0:PACKED ARRAY[0..4] OF 0..7
+     END;
+     
+    HREC =
+    PACKED RECORD
+        
+        H0:PACKED ARRAY[0..3] OF 0..15
+     END;
+    
+    BREC =
+    PACKED RECORD
+      
+        B0:PACKED ARRAY[0..15] OF 0..1
+    END;
+    
+    LETSET = SET OF '0'..'F';
+     
+VAR 
+    R: RECORD
+         CASE INTEGER OF
+            1:(INT:INTEGER);
+            2:(OCTREC:OREC);
+            3:(HEXREC:HREC);
+            4:(BINREC:BREC)
+          END;
+    CH:CHAR;
+    OCTLET,BINLET,DECLET,HEXLET,TESTSET:LETSET;
+    K,I,J:INTEGER;
+    BOOLCHAR,VALID,BOOL:BOOLEAN;
+    
+PROCEDURE DECTO;
+VAR NUM:STRING[6];
+    MINUS:BOOLEAN;
+BEGIN
+  WITH R.HEXREC DO BEGIN
+  WITH R.OCTREC DO BEGIN
+  WITH R.BINREC DO BEGIN
+  WRITE(' TO ');
+  TESTSET:=['H','B','O'];
+  BOOL:=FALSE;
+  BOOLCHAR:=TRUE;
+  REPEAT
+    FOR I:=0 TO 3 DO
+     H0[I]:=0;
+    IF BOOL THEN  WRITE('CONVERT DECIMAL TO ');
+    IF BOOL THEN READLN(CH);
+    IF BOOLCHAR THEN READ(CH);
+    IF CH IN TESTSET THEN
+      BEGIN
+        BOOLCHAR:=TRUE;
+        WRITELN;
+        WRITE('DECIMAL NUMBER = ');
+        READ(NUM);
+        MINUS:=FALSE;
+        IF NUM[1] = '-' THEN 
+          BEGIN
+            MINUS:=TRUE;
+            I:=2;
+          END
+        ELSE
+          I:=1;
+        VALID:=TRUE;
+        R.INT:=0;
+        WHILE (I<=LENGTH(NUM)) AND VALID DO
+          BEGIN
+            IF NUM[I] IN DECLET THEN
+              R.INT:=(R.INT*10)+ORD(NUM[I])-ORD('0')
+            ELSE
+              VALID:=FALSE;
+            I:=I+1;
+          END;
+        IF MINUS THEN R.INT:=R.INT*(-1);
+        IF NOT VALID THEN WRITELN('INVALID DECIMAL NUMBER')
+        ELSE
+          BEGIN
+            IF CH = 'H' THEN
+              BEGIN
+                  WRITE('HEXADECIMAL NUMBER = ');
+                   FOR I:=3 DOWNTO 0 DO
+                   BEGIN
+                     IF H0[I] < 10 THEN WRITE(H0[I])
+                     ELSE WRITE(CHR(H0[I]-10+ORD('A')));
+                   END;
+              END
+            ELSE
+              IF CH = 'O' THEN
+                BEGIN
+                  WRITE('OCTAL INTEGER =');
+                  WRITE(B0[15],E0[4],E0[3],E0[2],E0[1],E0[0]);
+                END
+              ELSE
+                IF CH = 'B' THEN
+                  BEGIN
+                    WRITE('BINARY INTEGER =');
+                    FOR I:=15 DOWNTO 0 DO 
+                      WRITE(B0[I]);
+                  END;
+          END; (*VALID*)
+        END (*TESTSET*)
+      ELSE
+        IF CH <> 'S' THEN
+          BEGIN
+            WRITELN(' WRONG CHARACTER COMMAND.');
+            WRITELN('Press Return After Entering Correct Command.');
+            BOOLCHAR:=FALSE;
+          END;
+    WRITELN;
+    BOOL:=TRUE;
+  UNTIL CH = 'S';
+  END;  (*BEGIN'S*)
+  END;
+  END;
+END; (*DECTO*)
+     
+PROCEDURE HEXTO;
+VAR NUM:STRING[4];
+BEGIN
+  WITH R.HEXREC DO BEGIN
+  WITH R.OCTREC DO BEGIN
+  WITH R.BINREC DO BEGIN
+    WRITE(' TO ');
+    TESTSET:=['B','D','O'];
+    BOOL:=FALSE;
+    BOOLCHAR:=TRUE;
+    REPEAT
+      FOR I:=0 TO 3 DO
+       H0[I]:=0;
+      IF BOOL THEN WRITE('CONVERT HEXADECIMAL TO ');
+      IF BOOL THEN READLN(CH);
+      IF BOOLCHAR THEN READ (CH);
+      IF CH IN TESTSET THEN 
+      BEGIN
+        BOOLCHAR:=TRUE;
+        WRITELN;
+        WRITE('HEXADECIMAL INTEGER =');
+        READ (NUM);
+        I:=0;
+        VALID:=TRUE;
+        J:=LENGTH(NUM); 
+        WHILE (J>=1) AND VALID DO
+          BEGIN
+            IF NUM[J] IN HEXLET THEN
+              H0[I]:=ORD(NUM[J])-ORD('A')+10
+            ELSE
+              IF NUM[J] IN DECLET THEN 
+                H0[I]:=ORD(NUM[J])-ORD('0')
+              ELSE
+                VALID:=FALSE;
+            J:=J-1;
+            I:=I+1;
+          END;
+        IF NOT VALID THEN WRITELN('INVALID HEXADECIMAL NUMBER')
+        ELSE
+          BEGIN
+            IF CH = 'D' THEN
+              WRITE('DECIMAL INTEGER = ',R.INT)
+            ELSE 
+              IF CH = 'O' THEN
+                WRITE('OCTAL INTEGER = ',B0[15],E0[4],E0[3],E0[2],E0[1],E0[0])
+              ELSE
+                IF CH = 'B' THEN
+                  BEGIN
+                    WRITE('BINARY INTEGER =');
+                    FOR I:=15 DOWNTO 0 DO
+                      WRITE(B0[I]);
+                  END;
+          END; (*VALID*)
+        END (*TESTSET*)
+      ELSE
+        IF CH <> 'S' THEN
+          BEGIN
+            WRITELN(' WRONG CHARACTER COMMAND.');
+            WRITELN('Press Return After Entering Correct Command.');
+            BOOLCHAR:=FALSE;
+          END;
+      WRITELN;
+      BOOL:=TRUE
+    UNTIL CH = 'S';
+  END;  (*BEGIN'S*)
+  END;
+  END;
+END; (*HEXTO*)
+
+PROCEDURE OCTTO;
+VAR NUM:STRING[6];
+BEGIN
+  WITH R.HEXREC DO BEGIN
+  WITH R.OCTREC DO BEGIN
+  WITH R.BINREC DO BEGIN
+    WRITE(' TO ');
+    TESTSET:=['B','D','H'];
+    BOOL:=FALSE;
+    BOOLCHAR:=TRUE;
+    REPEAT
+      FOR I:=0 TO 3 DO
+        H0[I]:=0;
+      IF BOOL THEN WRITE('CONVERT OCTAL TO ');
+      IF BOOL THEN READLN(CH);
+      IF BOOLCHAR THEN READ(CH);
+      IF CH IN TESTSET THEN
+        BEGIN
+          BOOLCHAR:=TRUE;
+          WRITELN;
+          WRITE('OCTAL INTEGER = ');
+          READ(NUM);
+          I:=1;
+          VALID:=TRUE;
+          R.INT:=0;
+          WHILE (I<= LENGTH(NUM)) AND VALID DO
+            BEGIN
+              IF NUM[I] IN OCTLET THEN
+                R.INT:=(R.INT*8)+ORD(NUM[I])-ORD('0')
+              ELSE
+                VALID:=FALSE;
+              I:=I+1;
+            END;
+          IF NOT VALID THEN WRITELN('INVALID OCTAL NUMBER')
+          ELSE
+            BEGIN
+              IF CH = 'D' THEN
+                WRITE('DECIMAL INTEGER =',R.INT)
+              ELSE
+                IF CH = 'H' THEN
+                  BEGIN
+                    WRITE('HEXADECIMAL NUMBER = ');
+                    FOR I:=3 DOWNTO 0 DO
+                      BEGIN
+                        IF H0[I] < 10 THEN WRITE(H0[I])
+                        ELSE WRITE(CHR(H0[I]-10+ORD('A')));
+                      END;
+                  END
+                ELSE
+                  IF CH = 'B' THEN
+                    BEGIN
+                      WRITE('BINARY INTEGER =');
+                      FOR I:=15 DOWNTO 0 DO
+                        WRITE(B0[I]);
+                    END;
+            END;  (*VALID*)
+        END  (*TESTSET*)
+      ELSE
+        IF CH <> 'S' THEN
+          BEGIN
+            WRITELN(' WRONG CHARACTER COMMAND.');
+            WRITELN('Press Return After Entering Correct Command.');
+            BOOLCHAR:=FALSE;
+          END;
+    WRITELN;
+    BOOL:=TRUE;
+  UNTIL CH = 'S';
+  END;  (*BEGIN'S*)
+  END;
+  END;
+END; (*OCTTO*)
+  
+PROCEDURE BINTO;
+VAR NUM:STRING[16];
+BEGIN
+  WITH R.HEXREC DO BEGIN
+  WITH R.OCTREC DO BEGIN
+  WITH R.BINREC DO BEGIN
+    WRITE(' TO ');
+    TESTSET:=['D','H','O'];
+    BOOL:=FALSE;
+    BOOLCHAR:=TRUE;
+    REPEAT
+      FOR I:=0 TO 3 DO
+        H0[I]:=0;
+      IF BOOL THEN WRITE('CONVERT BINARY TO ');
+      IF BOOL THEN READLN(CH);
+      IF BOOLCHAR THEN READ(CH);
+      IF CH IN TESTSET THEN
+        BEGIN
+          BOOLCHAR:=TRUE;
+          WRITELN;
+          WRITE('BINARY NUMBER = ');
+          READ(NUM);
+          I:=LENGTH(NUM);
+          VALID:=TRUE; 
+          J:=0;
+          WHILE (I>=1) AND VALID DO
+            BEGIN
+              IF NUM[I] IN BINLET THEN
+                B0[J]:=ORD(NUM[I])-ORD('0')
+              ELSE 
+                VALID:=FALSE;
+              I:=I-1;
+              J:=J+1;
+            END;
+          IF NOT VALID THEN WRITELN('INVALID BINARY NUMBER')
+          ELSE
+            BEGIN
+              IF CH = 'D' THEN
+                WRITE('DECIMAL INTEGER =',R.INT)
+              ELSE
+                IF CH = 'H' THEN
+                  BEGIN
+                    WRITE('HEXADECIMAL INTEGER = ');
+                    FOR I:=3 DOWNTO 0 DO
+                      BEGIN
+                        IF H0[I] < 10 THEN WRITE(H0[I])
+                        ELSE WRITE(CHR(ORD(H0[I])-10+ORD('A')));
+                      END;
+                  END
+                ELSE
+                  IF  CH = 'O' THEN 
+                    BEGIN
+                      WRITE('OCTAL INTEGER = ');
+                      WRITE(B0[15],E0[4],E0[3],E0[2],E0[1],E0[0]);
+                    END;
+            END; (*VALID*)
+        END  (*TESTSET*)
+      ELSE
+        IF CH <> 'S' THEN
+          BEGIN
+            WRITELN(' WRONG CHARACTER COMMAND.');
+            WRITELN('Press Return After Entering Correct Command.');
+            BOOLCHAR:=FALSE;
+          END;
+    WRITELN;
+    BOOL:=TRUE;
+  UNTIL CH = 'S';
+  END;  (*BEGIN'S*)
+  END;
+  END;
+END; (*BINTO*)
+
+PROCEDURE COMMENTS;
+BEGIN 
+  WRITELN('THIS PROGRAM CONVERTS BETWEEN DECIMAL, OCTAL, AND ');
+  WRITELN('HEXADECIMAL INTEGERS.');
+  WRITELN('THE LARGEST INTEGERS THIS PROGRAM WILL USE IS:');
+  WRITELN('   HEXADECIMAL:  7FFF      FFFF');
+  WRITELN('   DECIMAL    :  65535     -65535 ');
+  WRITELN('   OCTAL      :  077777    177777');
+  WRITELN('   BINARY     :  16 BITS');
+  WRITELN;
+  WRITELN('HEXADECIMAL,BINARY AND OCTAL INTEGERS ARE IN 16 BIT TWO''S');
+  WRITELN('COMPLEMENT REPRESENTATION.  IF AN ENTERED DECIMAL INTEGER');
+  WRITELN('IS OUTSIDE THE RANGE 32767<= X <=-32768 THEN THE HEX, OCTAL'); 
+  WRITELN('AND BINARY NUMBERS WILL HAVE AN "UNDERSTOOD" SIGN BIT.  WHEN ');
+  WRITELN('HEX, OCTAL OR BINARY INTEGER IS ENTERED THE I6TH BIT (IF THERE ');
+  WRITELN('IS ONE) WILL BE TAKEN AS A SIGN BIT');
+  WRITELN;
+  WRITELN('FOR USE IN THIS PROGRAM TYPE:');
+  WRITELN('  ''H'' FOR HEXADECIMAL');
+  WRITELN('  ''D'' FOR DECIMAL');
+  WRITELN('  ''B'' FOR BINARY');
+  WRITELN('  ''O'' FOR OCTAL');
+  WRITELN('  ''C'' FOR GETTING THESE COMMENTS');
+  WRITELN('  ''S'' FOR STOPPING A PROCEDURE');
+  WRITE('  ''Q'' FOR QUITTING THE PROGRAM');
+END; (*COMMENTS*)
+    
+BEGIN (*MAIN PROGRAM*)
+  COMMENTS;
+  HEXLET:=['A'..'F'];
+  DECLET:=['0'..'9'];
+  OCTLET:=['0'..'7'];
+  BINLET:=['0'..'1'];
+  CH:='E';
+  REPEAT
+    CASE CH OF 
+      'H': HEXTO;
+      'O': OCTTO;
+      'B': BINTO;
+      'C': COMMENTS;
+      'D': DECTO
+    END;
+    WRITELN;
+    WRITE('I WOULD LIKE TO CONVERT INTEGERS IN ');
+    REPEAT
+      READ (CH);
+    UNTIL CH  IN ['C','B','H','O','D','Q'];
+  UNTIL CH = 'Q';
+  WRITELN('GOODBYE');
+END.
+

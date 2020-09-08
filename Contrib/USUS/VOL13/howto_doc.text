@@ -1,0 +1,152 @@
+
+ 
+.comment            !---------------------------------!
+.comment            !                                 !
+.comment            !      RUNON documentation        !
+.comment            !           Front end             !
+.comment            !                                 !
+.comment            !         August 3, 1980          !
+.comment            !   (Revised February 6, 1981)    !
+.comment            !                                 !
+.comment            !---------------------------------!
+
+
+.skip 2 .center " ^^^&running the program\^\& "
+
+  At the system monitor level, type X (execute), followed by the
+volume name (if needed) and <^runon. <^runon replies:
+.nofill
+
+<^runon Text Processor [V2]
+
+Input file:
+
+.justify
+  Let's assume that we have a file named <^foo.text that we want to format.
+If we type
+.skip 1
+
+Input file: <&FOO####
+
+.leftmargin 30
+
+will cause <^runon to append <^.text to the name FOO and open the file
+with that name. If the file is not found, an error message results. Do 
+<&not supply the <^.text yourself!
+
+.leftmargin 10 .nofill
+
+If RUNON accepts your file, it replies:
+
+.justify
+
+Output file:#######
+
+.leftmargin 30
+
+if you enter a carriage return at this point, the program appends
+'/' to the beginning of the input file name, <^.text to the end,
+and uses the resulting name for the output file. Typing another name
+at this point, <^fred for example, causes <^runon to use that name
+for the output file, with a <^.text appended, of course.
+
+.leftmargin 10
+
+  <^runon will also allow the use of non-.TEXT files for input and output.
+This feature allows you to completely specify the exact file name(s),
+overriding any characters that might be appended to it. We may do this
+by placing a period ('.') at the end of the file name. For example,
+.nofill
+
+Input file: <&<^foo.baz.
+Output file: <&<^fred.
+
+.justify
+opens <^foo.baz for input and <^fred for output. The period option may be
+used on the input file name, output file name, or both.
+
+.testpage 6
+
+  <^runon also allows you to enter both names on a single line. When the
+program prompts you for an input file, you can enter two file names,
+seperated by a comma. This suppresses the output file prompt. Typing one
+filename, followed by a comma and nothing else is the same as typing a
+carriage return to the output file prompt, as in the first example.
+
+.skip 1 .center " <&Examples " .nofill
+
+Input file: <&HARRY
+Output file: _<cr>
+
+opens HARRY.TEXT for input, and /HARRY.TEXT for output.
+
+Input file: <&HARRY,
+
+same effect as above.
+
+Input file: <&SAM
+Output file: <&MARY
+
+opens SAM.TEXT for input, MARY.TEXT for output.
+
+Input file: <&<^alfred.
+Output file: _<cr>
+
+opens <^alfred for input, <^/alfred for output.
+
+Input file: <&<^alfred.,
+
+same as above
+
+Input file: <&<^donna
+Output file: <^<&alfonzo.memo.
+
+opens <^donna.text for input and <^alfonzo.memo for output.
+.justify
+  And finally, what happens if the file name is too long to add a '/' to
+it? The answer is
+that <^runon will add the '/' and then truncate the name to the proper
+length. For example,
+.nofill
+
+Input file: <&<^toolongname,
+
+opens <^toolongnam.text for input and <^/toolongna.text for output.
+
+.justify
+  Under no circumstances will <^runon create a filename with more than
+15 characters, excluding the volume name, which may be a maximum of
+seven characters long. If we type
+.nofill
+
+Input file: <^<&toolongname.,anothername.
+
+.justify
+RUNON opens <^toolongname and <^anothername as input and output
+files, respectively.
+
+  Note that an entire file name must be specified for input, but
+only a volume name need be specified on output if the output file
+is not a block-structured device (e.g. PRINTER:, REMOUT:, etc.). There is
+no need to suffix it with a period to inhibit the <^.text. For example:
+
+.nofill
+
+Input file: <&<^zap
+Output file: <&<^printer:
+
+opens ZAP.TEXT for input and PRINTER: (system printer) for output.
+
+.justify
+
+  After <^runon has accepted the files for processing, it will
+print the names of the input and output files, i.e.
+
+.nofill
+
+mydisk:letter.text  -->  mydisk:/letter.text
+
+.justify
+  <^runon will also output the names of any .^^include\^d files to
+the <^console: as it encounters them.
+

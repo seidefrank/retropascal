@@ -1,0 +1,663 @@
+PROGRAM MODEM;
+  
+     {Written by J. M. Wierda
+
+     This program is basically a re-write in PASCAL of Ward Christensen's
+Modem Program which was distributed in CP/M User's Group Volume 25. Identical
+and compatible options are provided to allow this program to work directly
+with Ward's program running under CP/M. One difference is that when sending
+files the PASCAL or CP/M transfer mode must be selected. The PASCAL mode
+transfers files between two systems running PASCAL, while the CP/M mode is
+used when the receiving system is running CP/M. Basically the CP/M mode
+provides the linefeeds required to make a PASCAL file compatible with CP/M.
+When CP/M files are received they contain linefeeds, these can be deleted
+using the editor to make the file compatible with PASCAL. CP/M files may also
+contain tabs which the PASCAL editor does not expand.
+
+     External assembly language routines are used to read the status, and read
+or wrkte the keyboard and modem ports. These routines are available as
+separate files for the 8080 and Z80 processors. The port and flag definitions,
+and the timing constant for the one second delay should be changed as required
+for your particular hardware.
+
+     The program has been tested with text files only, and may not work
+correctly for code or other types of files.
+
+     The PDP-10 mode transfers PASCAL files to a DEC SYSTEM-10 computer.}
+
+CONST
+
+NUL=0;
+SOH=1;
+CTRLC=3;
+EOT=4;
+ERRORMAX=5;
+RETRYMAX=5;
+CTRLE=5;
+ACK=6;
+TAB=9;
+LF=10;
+CR=13;
+CTRLQ=17;
+CTRLS=19;
+NAK=21;
+CTRLZ=26;
+SPACE=32;
+DELETE=127;
+LASTBYTE=127;
+TIMEOUT=256;
+LOOPSPERSEC=1800;       {1800 LOOPS PER SECOND AT 4MHZ}
+
+KBSP=0;           {KEYBOARD STATUS PORT}
+KBDRF=128;        {KEYBOARD DATA READY FLAG}
+
+KBDP=1;           {KEYBOARD DATA PORT}
+KBMASK=127;       {KEYBOARD DATA MASK}
+  
+DCHDP=128;        {D. C. HAYES DATA PORT}
+DCHMASK=255;      {D. C. HAYES DATA MASK}
+
+DCHSP=129;        {D. C. HAYES STATUS PORT}
+                  {STATUS PORT BIT ASSIGNMENTS}
+RRF     =    1;   {RECEIVE REGISTER FULL}
+TRE     =    2;   {TRANSMIT REGISTER EMPTY}
+PERR    =    4;   {PARITY ERROR}
+FERR    =    8;   {FRAMING ERROR}
+OERR    =    16;  {OVERFLOW ERROR}
+CD      =    64;  {CARRIER DETECT}
+NRI     =    128; {NO RINGING INDICATOR}
+
+DCHCP1=129;       {D. C. HAYES CONTROL PORT 1}
+                  {CONTROL PORT 1 BIT ASSIGNMENTS}
+EPE     =    1;   {EVEN PARITY ENABLE}
+LS1     =    2;   {LENGTH SELECT 1}
+LS2     =    4;   {LENGTH SELECT 2}
+SBS     =    8;   {STOP BIT SELECT}
+PI      =    16;  {PARITY INHIBIT}
+
+DCHCP2=130;       {D. C. HAYES CONTROL PORT 2}
+                  {CONTROL PORT 2 BIT ASSIGNMENTS}
+BRS     =    1;   {BIT RATE SELECT}
+TXE     =    2;   {TRANSMIT ENABLE}
+MS      =    4;   {MODE SELECT}
+ES      =    8;   {ECHO SUPPRESS}
+ST      =    16;  {SELF TEST}
+RID     =    32;  {RING INDICATOR DISABLE}
+OH      =    128; {OFF HOOK}
+
+VAR FILE1 : TEXT;
+    OPTION, HANGUP, RETURN, MODE, BAUDRATE, DISPLAY, FILEMODE : CHAR;
+    SECTOR : ARRAY[0..LASTBYTE] OF INTEGER;
+    DCHCW2 : INTEGER;
+    OVRN1, OVRN2, SHOWRECV, SHOWTRANS : BOOLEAN;
+    
+FUNCTION STAT(PORT,EXR,MASK:INTEGER):BOOLEAN; EXTERNAL;
+
+FUNCTION INPUT(PORT,MASK:INTEGER):INTEGER; EXTERNAL;
+
+PROCEDURE OUTPUT(PORT,DATA:INTEGER); EXTERNAL;
+
+
+PROCEDURE SENDLINE(SLDATA:INTEGER);
+  
+BEGIN
+  REPEAT
+  UNTIL
+    STAT(DCHSP,TRE,TRE);
+  OUTPUT(DCHDP,SLDATA);
+  IF SHOWTRANS
+    THEN
+      IF (SLDATA = CR) OR ((SLDATA >= SPACE) AND (SLDATA <= DELETE))
+        THEN
+          WRITE(CHR(SLDATA))
+END;
+
+
+FUNCTION READLINE(SECONDS:INTEGER):INTEGER;
+
+VAR J : INTEGER;
+  
+BEGIN
+  J := LOOPSPERSEC * SECONDS;
+  REPEAT
+    J := J-1
+  UNTIL
+    (STAT(DCHSP,RRF,RRF)) OR (J = 0);
+  IF J = 0
+    THEN
+      READLINE := TIMEOUT
+    ELSE
+      BEGIN
+        J := INPUT(DCHDP,DCHMASK);
+        IF SHOWRECV
+          THEN
+            IF (J = CR) OR ((J >= SPACE) AND (J <= DELETE))
+              THEN
+                WRITE(CHR(J));
+          READLINE := J
+      END
+END;
+
+
+PROCEDURE SENDSTR(STR:STRING);
+
+VAR J:INTEGER;
+  
+BEGIN
+  FOR J := 1 TO LENGTH(STR) DO
+    SENDLINE(ORD(STR[J]))
+END;
+
+
+FUNCTION UPPERCASE(CH : CHAR) : CHAR;
+
+BEGIN
+  IF CH IN ['a'..'z']
+    THEN
+      UPPERCASE := CHR(ORD(CH)-SPACE)
+    ELSE
+      UPPERCASE := CH
+END;
+
+
+PROCEDURE PURGELINE;
+
+VAR J : INTEGER;
+  
+BEGIN
+  REPEAT
+    J := INPUT(DCHDP,DCHMASK);      {PURGE THE RECEIVE REGISTER}
+  UNTIL
+    NOT STAT(DCHSP,RRF,RRF)
+END;
+
+
+PROCEDURE DCHINITIALIZE;
+  BEGIN
+    WRITELN('Waiting for carrier');
+    REPEAT
+      BEGIN
+        IF OPTION IN ['R','S']
+          THEN
+            BEGIN
+              OUTPUT(DCHCP1,PI+LS2+LS1);
+              OUTPUT(DCHCP2,OH+RID+TXE+DCHCW2)
+            END;
+        IF OPTION IN ['C','P','T']
+          THEN
+            BEGIN
+              OUTPUT(DCHCP1,LS2+EPE);
+              OUTPUT(DCHCP2,OH+RID+TXE+DCHCW2)
+            END
+      END
+    UNTIL
+      (STAT(DCHSP,CD,CD)) OR (INPUT(KBDP,KBMASK) = CTRLE);
+    PURGELINE;
+    WRITELN('Carrier detected')
+  END;
+  
+
+PROCEDURE MAKESECTOR;
+
+VAR J : INTEGER;
+  CH : CHAR;
+  
+BEGIN
+  J := 0;
+  IF OVRN1
+    THEN
+      BEGIN
+        SECTOR[J] := CR;
+        J := J+1
+      END;
+  IF OVRN2
+    THEN
+      BEGIN
+        SECTOR[J] := LF;
+        J := J+1
+      END;
+  OVRN1 := FALSE;
+  OVRN2 := FALSE;
+  WHILE (NOT EOF(FILE1)) AND (J <= LASTBYTE) DO
+    BEGIN
+      WHILE (NOT EOLN(FILE1)) AND (J <= LASTBYTE) DO
+        BEGIN
+          READ(FILE1,CH);
+          IF ORD(CH) <> LF
+            THEN
+              BEGIN
+                SECTOR[J] := ORD(CH);
+                J := J+1
+              END
+        END;
+      IF EOLN(FILE1)
+        THEN
+          BEGIN
+            READLN(FILE1);
+            IF FILEMODE IN ['P']
+              THEN
+                IF J <= LASTBYTE
+                  THEN
+                    BEGIN
+                      SECTOR[J] := CR;
+                      J := J+1
+                    END
+                  ELSE
+                    OVRN1 := TRUE
+              ELSE
+                BEGIN
+                  IF J <= (LASTBYTE-1)
+                    THEN
+                      BEGIN
+                        SECTOR[J] := CR;
+                        SECTOR[J+1] := LF;
+                        J := J+2
+                      END
+                    ELSE
+                      IF J = LASTBYTE
+                        THEN
+                          BEGIN
+                            SECTOR[J] := CR;
+                            J := J+1;
+                            OVRN1 := TRUE
+                          END
+                        ELSE
+                          IF J > LASTBYTE
+                            THEN
+                              BEGIN
+                                OVRN1 := TRUE;
+                                OVRN2 := TRUE
+                              END
+                END
+          END
+    END;
+  CASE FILEMODE OF
+    'P' : IF J <= LASTBYTE
+          THEN
+            FOR J := J TO LASTBYTE DO
+              SECTOR[J] := SPACE;
+    'C' : IF J <= LASTBYTE
+          THEN
+            FOR J := J TO LASTBYTE DO
+              SECTOR[J] := CTRLZ
+  END
+END;
+
+
+PROCEDURE TERMCOMP;
+  
+VAR KBDATA, DCHDATA : INTEGER;
+    CRFLAG : BOOLEAN;
+
+BEGIN
+  CRFLAG := FALSE;
+  DCHINITIALIZE;
+  WHILE STAT(DCHSP,CD,CD) AND (KBDATA <> CTRLE) DO
+    BEGIN
+      IF STAT(KBSP,KBDRF,KBDRF)
+        THEN
+          BEGIN
+            KBDATA := INPUT(KBDP,KBMASK);
+            IF OPTION IN ['C']
+              THEN
+                WRITE(CHR(KBDATA));
+              OUTPUT(DCHDP,KBDATA)
+            END;
+      IF STAT(DCHSP,RRF,RRF)
+        THEN
+          BEGIN
+            DCHDATA := INPUT(DCHDP,DCHMASK);
+            IF OPTION IN ['C']
+              THEN
+                OUTPUT(DCHDP,DCHDATA);
+            IF DCHDATA = CR
+              THEN
+                CRFLAG := TRUE;
+            IF (DCHDATA = LF) AND CRFLAG
+              THEN
+                CRFLAG := FALSE
+              ELSE
+                WRITE(CHR(DCHDATA))
+          END
+    END
+END;
+
+
+PROCEDURE PDP10;
+
+VAR WAIT10 : BOOLEAN;
+    DCHDATA : INTEGER;
+    CH : CHAR;
+    FILENAME, PDP10FILE : STRING;
+    
+BEGIN
+  SHOWRECV := FALSE;
+  SHOWTRANS := TRUE;
+  WAIT10 := FALSE;
+  WRITE('Filename.Ext ? ');
+  READLN(FILENAME);
+  RESET(FILE1,FILENAME);
+  WRITE('PDP-10 Filename.Ext ? ');
+  READLN(PDP10FILE);
+  DCHINITIALIZE;
+  SENDLINE(CR);
+  SENDSTR('R PIP');
+  SENDLINE(CR);
+  REPEAT
+  UNTIL
+    READLINE(5) IN [ORD('*'),TIMEOUT];
+  SENDSTR(PDP10FILE);
+  SENDSTR('=TTY:');
+  SENDLINE(CR);
+  WHILE (NOT EOF(FILE1)) AND (STAT(DCHSP,CD,CD)) DO
+    BEGIN
+      WHILE NOT EOLN(FILE1) DO
+        BEGIN
+          IF NOT WAIT10
+            THEN
+              BEGIN
+                READ(FILE1,CH);
+                SENDLINE(ORD(CH))
+              END;
+          IF STAT(DCHSP,RRF,RRF)
+            THEN
+              BEGIN
+                DCHDATA := INPUT(DCHDP,DCHMASK);
+                IF DCHDATA = CTRLS
+                  THEN
+                    WAIT10 := TRUE;
+                IF DCjDATA = CTRLQ
+                  THEN
+                    WAIT10 := FALSE
+              END
+        END;
+      READLN(FILE1);
+      SENDLINE(CR)
+    END;
+  CLOSE(FILE1);
+  REPEAT
+  UNTIL
+    READLINE(1)=TIMEOUT;
+  SENDLINE(CTRLZ);
+  SENDLINE(CTRLC);
+  TERMCOMP
+END;
+
+
+PROCEDURE SENDFILE;
+
+VAR J, K, SECTORNUM, COUNTER, CHECKSUM : INTEGER;
+    FILENAME : STRING;
+
+BEGIN
+  WRITE('Filename.Ext ? ');
+  READLN(FILENAME);
+  RESET(FILE1,FILENAME);
+  SECTORNUM := 1;
+  DCHINITIALIZE;
+  OVRN1 := FALSE;
+  OVRN2 := FALSE;
+  REPEAT
+    COUNTER := 0;
+    MAKESECTOR;
+    REPEAT
+      WRITELN;
+      WRITELN('Sending sector ', SECTORNUM);
+      SENDLINE(SOH);
+      SENDLINE(SECTORNUM);
+      SENDLINE(-SECTORNUM-1);
+      CHECKSUM := 0;
+      FOR J := 0 TO LASTBYTE DO
+        BEGIN
+          SENDLINE(SECTOR[J]);
+          CHECKSUM := (CHECKSUM + SECTOR[J]) MOD 256
+        END;
+      SENDLINE(CHECKSUM);
+      PURGELINE;
+      COUNTER := COUNTER + 1;
+    UNTIL
+      (READLINE(10) = ACK) OR (COUNTER = RETRYMAX);
+    SECTORNUM := SECTORNUM + 1
+  UNTIL
+    (EOF(FILE1)) OR (COUNTER = RETRYMAX);
+  IF COUNTER = RETRYMAX
+    THEN
+      BEGIN
+        WRITELN;
+        WRITELN('No ACK on sector')
+      END
+    ELSE
+      BEGIN
+        COUNTER := 0;
+        REPEAT
+          SENDLINE(EOT);
+          COUNTER := COUNTER + 1
+        UNTIL
+          (READLINE(10) = ACK) OR (COUNTER = RETRYMAX);
+        IF COUNTER = RETRYMAX
+          THEN
+            BEGIN
+              WRITELN;
+              WRITELN('No ACK on EOT')
+            END
+          ELSE
+            BEGIN
+              WRITELN;
+              WRITELN('Transfer complete')
+            END
+      END;
+  CLOSE(FILE1)
+END;
+
+  
+PROCEDURE READFILE;
+
+VAR J, FIRSTCHAR, SECTORNUM,SECTORCURRENT, SECTORCOMP, ERRORS,
+    CHECKSUM : INTEGER;
+    ERRORFLAG : BOOLEAN;
+    FILENAME : STRING;
+    
+BEGIN
+  WRITE('Filename.Ext ? ');
+  READLN(FILENAME);
+  REWRITE(FILE1,FILENAME);
+  SECTORNUM := 0;
+  ERRORS := 0;
+  DCHINITIALIZE;
+  REPEAT
+    ERRORFLAG := FALSE;
+    REPEAT
+      FIRSTCHAR :=READLINE(15)
+    UNTIL FIRSTCHAR IN [SOH,EOT,TIMEOUT];
+    IF FIRSTCHAR = TIMEOUT
+      THEN
+        BEGIN
+          WRITELN;
+          WRITELN('SOH error');
+        END;
+    IF FIRSTCHAR = SOH
+      THEN
+        BEGIN
+          SECTORCURRENT := READLINE(1);
+          SECTORCOMP := READLINE(1);
+          IF (SECTORCURRENT+SECTORCOMP)=255
+            THEN
+              BEGIN
+                IF (SECTORCURRENT=SECTORNUM+1)
+                  THEN
+                    BEGIN
+                      CHECKSUM := 0;
+                      FOR J := 0 TO LASTBYTE DO
+                        BEGIN
+                          SECTOR[J] := READLINE(1);
+                          CHECKSUM := (CHECKSUM+SECTOR[J]) MOD 256
+                        END;
+                      IF CHECKSUM=READLINE(1)
+                        THEN
+                          BEGIN
+                            FOR J := 0 TO LASTBYTE DO
+                              WRITE(FILE1,CHR(SECTOR[J]));
+                            ERRORS:=0;
+                            SECTORNUM := SECTORCURRENT;
+                            WRITELN;
+                            WRITELN('Received sector ',SECTORCURRENT);
+                            SENDLINE(ACK)
+                          END
+                        ELSE
+                          BEGIN
+                            WRITELN;
+                            WRITELN('Checksum error');
+                            ERRORFLAG := TRUE
+                          END
+                    END
+                  ELSE
+              IF (SECTORCURRENT=SECTORNUM)
+                THEN
+                  BEGIN
+                    REPEAT
+                    UNTIL
+                      READLINE(1)=TIMEOUT;
+                    WRITELN;
+                    WRITELN('Received duplicate sector ', SECTORCURRENT);
+                    SENDLINE(ACK)
+                  END
+                ELSE
+                  BEGIN
+                    WRITELN;
+                    WRITELN('Synchronization error');
+                    ERRORFLAG := TRUE
+                  END
+              END
+            ELSE
+              BEGIN
+                WRITELN;
+                WRITELN('Sector number error');
+                ERRORFLAG := TRUE
+              END
+        END;
+    IF (ERRORFLAG=TRUE)
+      THEN
+        BEGIN
+          ERRORS := ERRORS+1;
+          REPEAT
+          UNTIL
+            READLINE(1)=TIMEOUT;
+            SENDLINE(NAK)
+        END;
+  UNTIL
+    (FIRSTCHAR IN [EOT,TIMEOUT]) OR (ERRORS = ERRORMAX);
+  IF (FIRSTCHAR = EOT) AND (ERRORS < ERRORMAX)
+    THEN
+      BEGIN
+        SENDLINE(ACK);
+        CLOSE(FILE1,LOCK);
+        WRITELN;
+        WRITELN('Transfer complete')
+      END
+    ELSE
+      BEGIN
+        CLOSE(FILE1);
+        WRITELN;
+        WRITELN('Aborting')
+      END
+END;
+
+
+BEGIN {MAINLINE}
+  WRITELN('Modem, 1-May-79');
+  REPEAT
+    REPEAT
+      WRITE('Option : C(omputer), P(DP-10), R(eceive), S(end), T(erminal) ? ');
+      READ(OPTION);
+      OPTION := UPPERCASE(OPTION);
+      WRITELN
+    UNTIL
+      OPTION IN ['C','P','R','S','T'];
+    REPEAT
+      WRITE('Mode : A(nswer), O(riginate) ? ');
+      READ(MODE);
+      MODE := UPPERCASE(MODE);
+      WRITELN
+    UNTIL
+      MODE IN ['A','O'];
+    IF MODE IN ['O']
+      THEN
+        DCHCW2 := MS
+      ELSE
+        DCHCW2 := 0;
+    REPEAT
+      WRITE('Baud rate : 1(00), 3(00) ? ');
+      READ(BAUDRATE);
+      WRITELN
+    UNTIL
+      BAUDRATE IN ['1','3'];
+    IF BAUDRATE='3'
+      THEN
+        DCHCW2 := DCHCW2+BRS;
+    IF OPTION IN ['R','S']
+      THEN
+        BEGIN
+          REPEAT
+            WRITE('Display : N(o), R(eceived), T(ransmitted) data ? ');
+            READ(DISPLAY);
+            DISPLAY := UPPERCASE(DISPLAY);
+            WRITELN
+          UNTIL
+            DISPLAY IN ['N','R','T'];
+          IF OPTION = 'S'
+            THEN
+              BEGIN
+                REPEAT
+                  WRITE('File mode : C(pm), P(ascal) ? ');
+                  READ(FILEMODE);
+                  FILEMODE := UPPERCASE(FILEMODE);
+                  WRITELN
+                UNTIL
+                  FILEMODE IN ['C','P']
+              END;
+          CASE DISPLAY OF
+            'N':BEGIN
+                  SHOWRECV := FALSE;
+                  SHOWTRANS := FALSE
+                END;
+            'R':BEGIN
+                  SHOWRECV := TRUE;
+                  SHOWTRANS := FALSE
+                END;
+             'T':BEGIN
+                   SHOWRECV := FALSE;
+                   SHOWTRANS := TRUE
+                 END
+          END {CASE}
+        END;
+  
+     CASE OPTION OF
+       'C': TERMCOMP;
+       'P': PDP10;
+       'R': READFILE;
+       'S': SENDFILE;
+       'T': TERMCOMP
+     END;       {CASE}
+       
+     REPEAT
+       WRITELN;
+       WRITE('Hangup : Y(es), N(o) ? ');
+       READ(HANGUP);
+       HANGUP := UPPERCASE(HANGUP);
+       WRITELN
+     UNTIL HANGUP IN ['Y','N'];
+     IF HANGUP IN ['Y']
+       THEN
+         OUTPUT(DCHCP2,0);
+     REPEAT
+       WRITELN;
+       WRITE('Return to system : Y(es), N(o) ? ');
+       READ(RETURN);
+       RETURN := UPPERCASE(RETURN);
+       WRITELN
+     UNTIL
+       RETURN IN ['Y','N'];
+   UNTIL RETURN IN ['Y']
+END.
+
+                                                                                                                             

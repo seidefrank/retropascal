@@ -1,0 +1,828 @@
+(*$S+*)
+PROGRAM DESCRIPTORBUILDER;  (*version 0.0 - 2 Feb 1980*)
+  (*Copyright 1980 Kenneth L. Bowles. All rights reserved. Permission is
+    hereby granted to use this material for any non-commerical purpose*)
+USES DBUNIT;
+
+CONST
+  WA0 = 0;
+  FDNAMEOFFSET = 12;
+  LASTFIELDDESCRIPTOR = 255;
+  
+TYPE
+  CHSET=SET OF CHAR;
+  REFLIST=ARRAY[0..0] OF INTEGER; (*index range checking off*)
+
+  (*fixed layout parts of descriptors*)
+  GRPDESCRIPTOR=
+    PACKED RECORD
+      OVERLINK:BYTE; (*descriptor longer than 240 bytes not allowed*)
+      SWITCHES:BYTE; (*packed array gets allocated in whole words*)
+                     (*bit 0 = tagged; bit 1 = linked *)
+      RECLINK:BYTE;
+      FILLER:BYTE;
+      RECNUM:REFLIST;
+      (*expand here with additional recnum's*)
+    END;
+  GRPDESPTR=^GRPDESCRIPTOR;
+  
+  RECDESCRIPTOR=
+    PACKED RECORD
+      OVERLINK:BYTE;
+      SWITCHES:BYTE; (*bit 0 = tagged; bit 1 = fixed width; bit 2 = sparse *)
+      SIZE:INTEGER;
+      FIRSTLITEMNUM:BYTE;
+      USECOUNT:BYTE;
+      LAYOUT:BYTE; (*on a large system this could be declared TAG*)
+      LASTFLDLINK:BYTE;  (*points to name field*)
+      FLDREF:ARRAY [0..0] OF
+               PACKED RECORD
+                 FDNUM: 0..LASTFIELDDESCRIPTOR;
+                 FLDOFFSET:BYTE; (*for fixed size fields; =0 for linked*)
+               END;
+      (*expand here with additional fldref's*)
+    END;
+  RECDESPTR=^RECDESCRIPTOR;
+
+  FDTYPE=
+    PACKED RECORD
+      CASE BOOLEAN OF
+        TRUE: (S:STRING);
+        FALSE: (R:FLDDESCRIPTOR)
+      END;
+      
+  RDTYPE=
+    PACKED RECORD
+      CASE BOOLEAN OF
+        TRUE: (S:STRING);
+        FALSE: (R:RECDESCRIPTOR)
+      END;
+      
+  GDTYPE=
+    PACKED RECORD
+      CASE BOOLEAN OF
+        TRUE: (S:STRING);
+        FALSE: (R:GRPDESCRIPTOR)
+      END;
+      
+  STRINGPTR = ^STRING;
+      
+  TRIXPTR=
+    RECORD CASE DBLEVELTYPE OF
+      FIELDT: (F:FLDDESPTR);
+      RECORDT:(R:RECDESPTR);
+      GROUPT: (G:GRPDESPTR);
+      NONET:  (S:STRINGPTR)
+    END (*TRIXPTR*);
+      
+      
+  
+VAR
+  DONE:BOOLEAN;
+  ITEMLEVEL:DBLEVELTYPE;
+  REMFILE:BOOLEAN;
+  FOUT:INTERACTIVE;
+  
+FUNCTION GETCOMMAND(S:STRING; OKSET:CHSET):CHAR;
+VAR CH:CHAR;
+BEGIN
+  REPEAT
+    WRITELN;
+    WRITE(S);
+    READ(CH);
+    IF CH IN ['a'..'z'] THEN
+      CH:=CHR(ORD(CH)-32);
+    IF NOT (CH IN OKSET) THEN
+      WRITE(' ORD(CH)=',ORD(CH));
+  UNTIL CH IN OKSET;
+  WRITELN;
+  GETCOMMAND:=CH;
+END (*GETCOMMAND*);
+
+PROCEDURE LOCATOR(GROUPNUM,RECNUM:INTEGER);
+VAR I:INTEGER;
+BEGIN
+  DBSHOWERR('LOC#1', DBHOME(WA0));
+  DBSHOWERR('LOC#2', DBSEEK(WA0, GROUPNUM));
+  DBSHOWERR('LOC#3', DBDESCEND(WA0));
+  DBSHOWERR('LOC#4', DBSEEK(WA0, RECNUM));
+END (*LOCATOR*);
+
+FUNCTION READI(S:STRING; X:INTEGER): INTEGER;
+VAR I:INTEGER;
+BEGIN
+  WRITE(S,X, '  >');
+  READLN(I);
+  IF EOF THEN
+    BEGIN
+      RESET(INPUT);
+      READI:=X;
+      WRITELN;
+    END
+  ELSE
+    READI:=I;
+END (*READI*);
+
+PROCEDURE SHOWFLDTYPE(FLDTYPE:DBFIELDTYPES);
+BEGIN
+  WRITE('FLD TYPE:');
+  IF NOT (FLDTYPE IN [BYTEF, GROUPF, INTEGERF, LONGINTF, STRINGF,
+                     SETF, PICF]) THEN
+    WRITELN('***** ILLEGAL ****')
+  ELSE
+    CASE FLDTYPE OF
+      BYTEF: WRITELN('BYTEF');
+      GROUPF: WRITELN('GROUPF');
+      INTEGERF: WRITELN('INTEGERF');
+      LONGINTF: WRITELN('LONGINTF');
+      SETF: WRITELN('SETF');
+      PICF: WRITELN('PICF');
+      TEXTF: WRITELN('TEXTF');
+      STRINGF: WRITELN('STRINGF')
+    END (*CASE*);
+END (*SHOWFLDTYPE*);
+
+PROCEDURE SHOWFD(PS:STRING);
+VAR 
+  FD:FDTYPE;
+BEGIN
+  FD.S:=PS;
+  WITH FD.R DO
+    BEGIN
+      (*note: link value is one more than correct string length*)
+      WRITELN('FIELD DESCRIPTOR:',NAME:(LENGTH(NAME)-1));
+      WRITELN('SWITCHES:', SWITCHES);
+      WRITELN('MAX WIDTH:', MAXWIDTH);
+      WRITELN('USECOUNT:', USECOUNT);
+      SHOWFLDTYPE(FLDTYPE);
+      WRITELN('FLDREF:', FLDREF);
+      IF FLDREF = 0 THEN
+        BEGIN
+          WRITELN('ROW:', ROW);
+          WRITELN('DATACOL:', DATACOL);
+          WRITELN('LABELCOL:', LABELCOL);
+          WRITELN('CONTROLBITS:', CONTROLBITS);
+        END;
+    END (*WITH*);
+END (*SHOWFD*);
+
+PROCEDURE BUILDFD;
+VAR NS:STRING;
+  I,FLDNUM:INTEGER;
+  CH:CHAR;
+  FD:FDTYPE;
+BEGIN
+  DBTYPECHECK:=FALSE;
+  WRITELN;
+  WRITE('FIELD NUMBER:');
+  READLN(FLDNUM);
+  LOCATOR(3(*FD'S*), FLDNUM);
+  CASE GETCOMMAND('BUILDFD: C(hange old field or N(ew field?',
+                        ['C','c','N','n']) OF
+    'C','c': BEGIN
+               DBSHOWERR('BUILDFD-GET', DBGET(WA0));
+               FD.S:=DBMAIL.STRG;
+             END;
+    'N','n': FILLCHAR(FD.S, 82, CHR(0))
+  END (*CASE*);
+  WITH FD.R DO
+    BEGIN
+  
+      WRITE('FIELD NAME:', NAME:LENGTH(NAME)-1, '  >');
+      READLN(NS);
+      IF LENGTH(NS) > 0 THEN
+(*$R-*)
+        BEGIN
+          MOVELEFT(NS,NAME,LENGTH(NS)+1);
+          NAME[0]:=CHR(LENGTH(NS)+1);
+          OVERLINK:=LENGTH(NS)+SIZEOF(FLDDESCRIPTOR)-1;
+        END
+      ELSE
+        WRITELN;
+(*$R+*)
+      SWITCHES:=READI('SWITCH BYTE:',SWITCHES);
+      MAXWIDTH:=READI('MAXIMUM WIDTH:', MAXWIDTH);
+      USECOUNT:=0;
+      SHOWFLDTYPE(FLDTYPE);
+      WRITE('  G(ROUP R(EC S(TRING B(YTE I(NTEGER  >');
+      REPEAT
+        READ(CH);
+      UNTIL (CH IN ['G', 'S', 'B', 'I']) OR EOF;
+      WRITELN;
+      IF EOF THEN
+        RESET(INPUT)
+      ELSE
+        CASE CH OF
+          'B': FLDTYPE:=BYTEF;
+          'G': FLDTYPE:=GROUPF;
+          'I': FLDTYPE:=INTEGERF;
+          'S': FLDTYPE:=STRINGF
+        END (*CASE*);
+      IF FLDTYPE = GROUPF THEN
+        FLDREF:=READI('DESCRIPTOR NUMBER:',FLDREF)
+      ELSE
+        FLDREF:=READI('Displayable (=0) or not (=1):', FLDREF);
+      IF FLDTYPE <> GROUPF THEN
+        BEGIN
+          WRITE('Set Display Params? (Y/N)');
+          READ(CH);
+          WRITELN;
+          IF CH IN ['Y', 'y'] THEN
+            BEGIN
+              ROW:=READI('ROW:',ROW);
+              DATACOL:=READI('DATACOL:', DATACOL);
+              LABELCOL:=READI('LABELCOL:',LABELCOL);
+              CONTROLBITS:=READI('CONTROLBITS:',CONTROLBITS);
+            END;
+        END;
+    END (*WITH FD.R*);
+  WRITELN;
+  WRITE('<ETX> ACCEPTS; <RET> TRY AGAIN');
+  READ(KEYBOARD,CH);
+  IF CH = CHR(3(*ETX*)) THEN
+    WITH DBMAIL DO
+      BEGIN
+        STRG:=FD.S;
+        DBMAILTYPE:=STRINGF;
+        DBSHOWERR('BUILDFD', DBPUT(WA0));
+      END;
+END (*BUILDFD*);
+
+PROCEDURE SHOWRD(PS:STRING);
+VAR I,J,N:INTEGER;
+  NS:STRING;
+  RD:RDTYPE;
+BEGIN
+  RD.S:=PS;
+  NS:=RD.S;
+  DELETE(NS,1,(RD.R.LASTFLDLINK+SIZEOF(RECDESCRIPTOR)-3));
+  WRITELN('RECORD DESCRIPTOR:',NS);
+  WITH RD.R DO
+    BEGIN
+      WRITELN('SWITCHES:', SWITCHES);
+      WRITELN('SIZE:', SIZE);
+      WRITELN('FIRSTLINK - ITEM# ', FIRSTLITEMNUM);
+      WRITELN('USECOUNT:', USECOUNT);
+      WRITELN('LAYOUT:', LAYOUT);
+      WRITELN('LASTFLDLINK:', LASTFLDLINK);
+    END (*WITH*);
+  I:=0;
+  N:=0;
+  J:=RD.R.LASTFLDLINK - 2;
+  WHILE I < J DO
+    BEGIN
+(*$R-*)
+      WITH RD.R.FLDREF[N] DO
+        WRITELN(' FLDREF(', N, ') - FDNUM:', FDNUM,
+                                    '   OFFSET:', FLDOFFSET);
+      I:=I+2;
+      N:=N+1;
+(*$R+*)
+    END;
+END (*SHOWRD*);
+
+PROCEDURE BUILDRD;
+VAR I,J,N,X,RECNUM:INTEGER;
+  NAME:STRING;
+  CH:CHAR;
+  RD:RDTYPE;
+BEGIN
+  REPEAT
+    FILLCHAR(RD.S, 82, CHR(0));
+    WRITELN;
+    WRITE('RECORD DEF NUMBER:');
+    READLN(RECNUM);
+    LOCATOR(2(*RD'S*), RECNUM);
+    WRITE('RECDEF NAME:');
+    READLN(NAME);
+    WRITE('SWITCH BYTES:');
+    WITH RD.R DO
+      BEGIN
+        READLN(I);
+        SWITCHES:=I;
+        WRITE('SIZE:');
+        READLN(SIZE);
+        WRITE('FIRSTLITEMNUM:'); READLN(I); FIRSTLITEMNUM:=I;
+        USECOUNT:=0;
+        WRITE('LAYOUT#:');
+        READLN(I);
+        LAYOUT:=I;
+      END (*WITH*);
+    I:=8;
+    J:=3;
+    REPEAT
+      N:=(I-8) DIV 2;
+      WRITE('FLDREF #', N, ':');
+      READ(X);
+      IF X >= 0 THEN
+(*$R-*)
+        WITH RD.R.FLDREF[N] DO
+          BEGIN
+            FDNUM:=X;
+            WRITE('  OFFSET #', N, ':'); 
+            READLN(X);
+            FLDOFFSET:=X;
+(*$R+*)
+            J:=J+2;
+            I:=I+2;
+          END;
+    UNTIL X < 0;
+    RD.R.OVERLINK:=2+I;
+    RD.R.LASTFLDLINK:=J; (*leave 2 empty bytes*)
+    RD.S:=CONCAT(RD.S,NAME);
+    RD.S[2+I]:=CHR(LENGTH(NAME)+1);
+    WRITELN;
+    SHOWRD(RD.S);
+    WRITE('<ETX> ACCEPTS; <RET> TRY AGAIN');
+    READ(KEYBOARD,CH);
+  UNTIL CH = CHR(3(*ETX*));
+  WITH DBMAIL DO
+    BEGIN
+      STRG:=RD.S;
+      DBMAILTYPE:=STRINGF;
+    END;
+  READ(CH); (*flush buffered char left by READ(X) of '-1<RET>'*)
+  WRITELN;
+END (*BUILDRD*);
+
+PROCEDURE SHOWGD(PS:STRING);
+VAR I,J,N:INTEGER;
+  A: ARRAY[0..0] OF INTEGER;
+  NS:STRING;
+  GD:GDTYPE;
+BEGIN
+  GD.S:=PS;
+  NS:=GD.S;
+  DELETE(NS,1,(GD.R.RECLINK+SIZEOF(GRPDESCRIPTOR)-4));
+  WRITELN('GROUP DESCRIPTOR:',NS);
+  WITH GD.R DO
+    BEGIN
+      WRITELN('SWITCHES:', SWITCHES);
+      WRITELN('RECLINK:', RECLINK);
+    END (*WITH*);
+  I:=0;
+  N:=0;
+  J:=GD.R.RECLINK-2;
+  WHILE I < J DO
+    BEGIN
+(*$R-*)
+      WRITELN(' RECNUM(', N, '):', GD.R.RECNUM[N]);
+(*$R+*)
+      N:=N+1;
+      I:=I+2;
+    END;
+END (*SHOWGD*);
+
+PROCEDURE BUILDGD;
+VAR I,J,N,X,GRPNUM:INTEGER;
+  NAME:STRING;
+  CH:CHAR;
+  GD:GDTYPE;
+BEGIN
+  FILLCHAR(GD.S, 82, CHR(0));
+  REPEAT
+    WRITELN;
+    WRITE('GROUP DEF NUMBER:');
+    READLN(GRPNUM);
+    LOCATOR(1(*GD'S*), GRPNUM);
+    WRITE('GRPDEF NAME:');
+    READLN(NAME);
+    WRITE('SWITCH BYTES:');
+    READLN(I);
+    GD.R.SWITCHES:=I;
+    I:=4;
+    REPEAT
+      N:=(I-4) DIV 2;
+      WRITE('RECNUM #', N, ':');
+      READLN(X);
+      IF X >= 0 THEN
+        BEGIN
+(*$R-*)
+          GD.R.RECNUM[N]:=X;
+(*$R+*)
+          I:=I+2;
+        END;
+    UNTIL X < 0;
+    GD.R.OVERLINK:=2+I;
+    GD.R.RECLINK:=I;
+    GD.S:=CONCAT(GD.S,NAME);
+    GD.S[2+I]:=CHR(LENGTH(NAME)+1);
+    WRITELN;
+    SHOWGD(GD.S);
+    WRITE('<ETX> ACCEPTS; <RET> TRY AGAIN');
+    READ(KEYBOARD,CH);
+  UNTIL CH = CHR(3(*ETX*));
+  WITH DBMAIL DO
+    BEGIN
+      STRG:=GD.S;
+      DBMAILTYPE:=STRINGF;
+    END;
+END (*BUILDGD*);
+
+PROCEDURE BUILDLITERAL;
+VAR I:INTEGER;
+  S:STRING;
+BEGIN
+  CASE GETCOMMAND('LITERAL: I(NTEGER S(TRING ', ['I','S']) OF
+    'I': BEGIN
+           WRITE('I>');
+           READLN(I);
+           WITH DBMAIL DO
+             BEGIN
+               INT:=I;
+               DBMAILTYPE:=INTEGERF;
+             END;
+         END;
+    'S': BEGIN
+           WRITE('S>');
+           READLN(S);
+           WITH DBMAIL DO
+             BEGIN
+               STRG:=S;
+               DBMAILTYPE:=STRINGF;
+             END;
+         END
+  END (*CASES*);
+END (*BUILDLITERAL*);
+
+PROCEDURE SHOWLITERAL;
+BEGIN
+  WRITELN;
+  CASE DBMAIL.DBMAILTYPE OF
+    STRINGF: WRITELN('STRG: ', DBMAIL.STRG);
+    INTEGERF: WRITELN('INT: ', DBMAIL.INT)
+    (*LONGINTF: WRITELN('LINT: ', DBMAIL.LINT) *)
+  END (*CASES*);
+END (*SHOWLITERAL*);
+
+PROCEDURE SHOWDATASTRUCTURE;
+VAR TP:TRIXPTR;
+  GN:INTEGER;
+  
+  PROCEDURE GDOUT(TP:TRIXPTR; LEVEL,GN:INTEGER); FORWARD;
+  
+  PROCEDURE FDOUT(TP:TRIXPTR; LEVEL,FN:INTEGER);
+  VAR NS:STRING;
+    GP:TRIXPTR;
+  BEGIN
+    WITH TP.F^ DO
+      BEGIN
+        NS:=NAME;
+        DELETE(NS,LENGTH(NS),1);
+        (*note: link value is one more than correct string length*)
+        WRITE(FOUT,'FLD(':(4+LEVEL), FN, '):',NS, ' ':17-LENGTH(NS));
+        WRITE(FOUT,'   SW:', SWITCHES);
+        WRITE(FOUT,'  W:', MAXWIDTH);
+        WRITE(FOUT,'  T:');
+        IF NOT (FLDTYPE IN [BYTEF, GROUPF, INTEGERF, LONGINTF, STRINGF,
+                           SETF, PICF]) THEN
+          WRITE(FOUT,'***** ILLEGAL ****')
+        ELSE
+          BEGIN
+            CASE FLDTYPE OF
+              BYTEF: WRITE(FOUT,'BYT');
+              GROUPF: WRITE(FOUT,'GRP');
+              INTEGERF: WRITE(FOUT,'INT');
+              LONGINTF: WRITE(FOUT,'LNI');
+              SETF: WRITE(FOUT,'SET');
+              PICF: WRITE(FOUT,'PIC');
+              TEXTF: WRITE(FOUT,'TXT');
+              STRINGF: WRITE(FOUT,'STR')
+            END (*CASE*);
+            IF FLDTYPE = GROUPF THEN
+              BEGIN
+                WRITELN(FOUT);
+                DBGETDESCRIPTORNUM(GROUPT, FLDREF, GP.F);
+                IF GP.F <> NIL THEN
+                  GDOUT(GP, LEVEL+2, FLDREF);
+              END
+            ELSE
+              BEGIN
+                IF FLDREF = 0 THEN
+                  WRITE(FOUT, '  ROW=', ROW,
+                              '  LCOL=', LABELCOL,
+                              '  DCOL=', DATACOL);
+                WRITELN(FOUT);
+              END;
+          END (*FLDTYPE OK*);
+      END (*WITH TP.F^*);
+  END (*FDOUT*);
+  
+  PROCEDURE RDOUT(TP:TRIXPTR; LEVEL,RN:INTEGER);
+  VAR I,J,N:INTEGER;
+    NS:STRING;
+    FP:TRIXPTR;
+  BEGIN
+    NS:=TP.S^;
+    DELETE(NS,1,(TP.R^.LASTFLDLINK+SIZEOF(RECDESCRIPTOR)-3));
+    (*correct for link to string length*)
+    DELETE(NS, LENGTH(NS),1);
+    WRITE(FOUT,'REC(':(4+LEVEL), RN, '):',NS, ' ':18-LENGTH(NS));
+    WITH TP.R^ DO
+      BEGIN
+        WRITE(FOUT,'   SW:', SWITCHES);
+        WRITELN(FOUT,'  SIZE:', SIZE);
+      END (*WITH*);
+    I:=0;
+    N:=0;
+    J:=TP.R^.LASTFLDLINK - 4;
+    WHILE I < J DO
+      BEGIN
+(*$R-*)
+        WITH TP.R^.FLDREF[N] DO
+          BEGIN
+            DBGETDESCRIPTOR(FIELDT, FDNUM, FP.F);
+(*$R+*)
+            IF FP.F <> NIL THEN
+              FDOUT(FP, LEVEL+2, FDNUM);
+          END;
+        I:=I+2;
+        N:=N+1;
+      END;
+  END (*RDOUT*);
+  
+  PROCEDURE GDOUT(*TP:TRIXPTR; LEVEL,GN:INTEGER*);
+  VAR I,J,N:INTEGER;
+    NS:STRING;
+    RP:TRIXPTR;
+  BEGIN
+    NS:=TP.S^;
+    DELETE(NS,1,(TP.G^.RECLINK+SIZEOF(GRPDESCRIPTOR)-4));
+    (*correct for link to string length*)
+    DELETE(NS, LENGTH(NS),1);
+    WRITE(FOUT,'GRP(':(4+LEVEL), GN, '):',NS, ' ':18-LENGTH(NS));
+    WITH TP.G^ DO
+      BEGIN
+        WRITELN(FOUT,'   SW:', SWITCHES);
+        I:=0;
+        N:=0;
+        J:=RECLINK-4;
+        WHILE I < J DO
+          BEGIN
+(*$R-*)
+            DBGETDESCRIPTOR(RECORDT, RECNUM[N], RP.F);
+(*$R+*)
+            IF RP.F <> NIL THEN
+              RDOUT(RP,LEVEL+2, RECNUM[N]);
+            N:=N+1;
+            I:=I+2;
+          END;
+      END (*WITH TP.G^*);
+END (*GDOUT*);
+  
+BEGIN (*SHOWDATASTRUCTURE*)
+  WRITELN(FOUT);
+  GN:=0;
+  DBGETDESCRIPTOR(GROUPT, GN, TP.F);
+  WHILE TP.F <> NIL DO
+    BEGIN
+      GDOUT(TP,0, GN);
+      WRITELN(FOUT);
+      GN:=GN+1;
+      DBGETDESCRIPTOR(GROUPT, GN, TP.F);
+    END;
+END (*SHOWDATASTRUCTURE*);
+  
+PROCEDURE SHOWITEMINFO;
+VAR ITEMNUM,OFFSET,DESCRIPTORNUM:INTEGER;
+  NAME:STRING;
+BEGIN
+  WRITELN;
+  DBITEMINFO(WA0,ITEMLEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NAME);
+  WRITE('LEVEL=');
+  CASE ITEMLEVEL OF
+    GROUPT: WRITE('GROUPT');
+    RECORDT:WRITE('RECORDT');
+    FIELDT: WRITE('FIELDT');
+    NONET:  WRITE('NONET')
+  END (*CASES*);
+  WRITELN('  ITEM#', ITEMNUM, '  OFFSET=', OFFSET,
+          '  DESCRIP#', DESCRIPTORNUM, '  NAME=', NAME);
+END (*SHOWITEMINFO*);
+
+PROCEDURE NEWEMPTY;
+VAR CH:CHAR;
+  TAG:INTEGER;
+BEGIN
+  SHOWITEMINFO;
+  WRITE('Make new item? (Y/N)');
+  READ(CH);
+  WRITELN;
+  IF CH IN ['Y','y'] THEN
+    BEGIN
+      CASE ITEMLEVEL OF
+        GROUPT: 
+          CASE GETCOMMAND('new embedded R(ecord or new G(roup?',
+                                          ['G','R']) OF
+            'G': BEGIN
+                   WRITE('TAG VALUE:');
+                   READLN(TAG);
+                   DBSHOWERR('NEWEMPTY-GROUPT',
+                          DBEMPTYITEM(WA0,GROUPT,TAG));
+                 END;
+            'R': DBSHOWERR('NEWEMPTY-REC', DBEMPTYITEM(WA0,RECORDT,TAG))
+          END (*CASE GROUPT*);
+        RECORDT,FIELDT: 
+          DBSHOWERR('NEWEMPTY', DBEMPTYITEM(WA0,ITEMLEVEL,TAG));
+        NONET: BEGIN (*do nothing*) END
+      END (*CASE ITEMLEVEL*);
+    END (*IF CH*);
+END (*NEWEMPTY*);
+
+PROCEDURE TRANSFERPRIMITIVES;
+BEGIN
+  CASE GETCOMMAND('XFER: E(MPTY G(ET P(UT R(EMOUT T(YPECHECK Q(UIT ',
+                        ['E', 'G', 'P', 'R', 'T', 'Q']) OF
+    'E': NEWEMPTY;
+    'P': DBSHOWERR('XFER-PUT', DBPUT(WA0));
+    'G': DBSHOWERR('XFER-GET', DBGET(WA0));
+    'R': BEGIN
+           REMFILE:=NOT REMFILE;
+           CLOSE(FOUT);
+           IF REMFILE THEN
+             BEGIN
+               RESET(FOUT, 'CONSOLE:');
+               WRITELN('Output now to CONSOLE:');
+             END
+           ELSE
+             BEGIN
+               RESET(FOUT, 'REMOUT:');
+               WRITELN('Output now to REMOUT:');
+             END;
+         END;
+    'T': BEGIN
+           DBTYPECHECK:=NOT DBTYPECHECK;
+           WRITE('DBTYPECHECK NOW ');
+           IF DBTYPECHECK THEN
+             WRITELN('TRUE')
+           ELSE
+             WRITELN('FALSE');
+         END;
+    'Q': BEGIN (*do nothing*) END
+  END (*CASES*);
+END (*TRANSFERPRIMITIVES*);
+
+PROCEDURE FILEHANDLER;
+CONST
+  FNUM=0;
+  PGZERO=0;
+  EMPTYSTRING='';
+VAR
+  TITLE:STRING;
+  CH:CHAR;
+  DUMMY:INTEGER;
+  
+  PROCEDURE GETTITLE;
+  BEGIN
+    WRITE('FILE TITLE:');
+    READLN(TITLE);
+  END (*GETTITLE*);
+  
+BEGIN (*FILEHANDLER*)
+  CASE GETCOMMAND(
+        'FILE: N(EWFILE O(PEN I(NIT-GROUPS C(LOSE R(EMOVE G(ET P(UT Q(UIT',
+                        ['C','G','I','N','O','P','R','Q']) OF
+    'C': DBSHOWERR('FILE(C)', DBFCLOSE(FNUM));
+    'G': DBSHOWERR('FILE(G)', DBGETPAGE(FNUM,WA0,PGZERO));
+    'I': DBSHOWERR('FILE(I)', DBGROUPINIT(FNUM,DUMMY,'ALL'));
+    'N': BEGIN
+           WRITE('NEW ');
+           GETTITLE;
+           DBSHOWERR('FILE(N)', DBFCREATE(FNUM,WA0,EMPTYSTRING,TITLE));
+         END;
+    'O': BEGIN
+           WRITE('OLD ');
+           GETTITLE;
+           DBSHOWERR('FILE(O)', DBFOPEN(FNUM, TITLE));
+         END;
+    'P': DBSHOWERR('FILE(P)', DBPUTPAGE(FNUM, WA0, PGZERO));
+    'R': BEGIN
+           WRITE('REMOVE OLD FILE (Y/N)?');
+           READ(CH);
+           IF CH = 'Y' THEN
+             DBSHOWERR('FILE(R)', DBFREMOVE(FNUM));
+         END;
+    'Q': BEGIN
+           (*DO NOTHING*);
+         END
+  END (*CASE*);
+END (*FILEHANDLER*);
+
+PROCEDURE TESTFINDREC;
+VAR FN,RN:INTEGER;
+  FOUND:BOOLEAN;
+  KEY:STRING;
+BEGIN
+  WRITELN('TEST DBFINDREC PROCEDURE');
+  WRITE('FIELDNUM:');
+  READLN(FN);
+  WRITE('KEY(STRING):');
+  READLN(KEY);
+  DBSHOWERR('TESTFINDREC', DBFINDREC(WA0, ASCENDING, FN, KEY, RN, FOUND));
+  IF FOUND THEN WRITE('  FOUND RECORD')
+           ELSE WRITE('  COULDN''T FIND KEY');
+  WRITELN('  RECNUM=', RN);
+  WRITELN;
+END (*TESTFINDREC*);
+
+PROCEDURE MOVER;
+VAR N,G,R:INTEGER;
+BEGIN
+  CASE GETCOMMAND(
+    'MOVE: B(EGIN-LEVEL F(IND H(OME N(EXT T(AIL S(EEK D(ESCEND L(OCATE Q(UIT',
+                                ['B','F','H','N','S','T','D','L','Q']) OF
+    'B': DBSHOWERR('MOVE-HEAD', DBHEAD(WA0));
+    'F': TESTFINDREC;
+    'H': DBSHOWERR('MOVE-HOME', DBHOME(WA0));
+    'N': DBSHOWERR('MOVE-NEXT', DBNEXT(WA0));
+    'T': DBSHOWERR('MOVE-TAIL', DBTAIL(WA0));
+    'S': BEGIN
+           WRITELN;
+           WRITE('ITEM NUMBER:');
+           READLN(N);
+           DBSHOWERR('MOVE-SEEK', DBSEEK(WA0, N));
+         END;
+    'D': DBSHOWERR('MOVE-DESCEND', DBDESCEND(WA0));
+    'L': BEGIN
+           WRITELN;
+           WRITE('GROUP:');
+           READLN(G);
+           WRITE('  RECORD:');
+           READLN(R);
+           LOCATOR(G,R);
+         END;
+    'Q': BEGIN
+           (*DO NOTHING*)
+         END
+  END (*CASES*);
+END (*MOVER*);
+
+PROCEDURE SETTRACESITES;
+VAR I:INTEGER;
+BEGIN
+  WRITELN('ENTER TRACE SITE NUMBERS (<ETX> Terminates input list)');
+  REPEAT
+    WRITE('>');
+    READLN(I);
+    IF NOT EOF THEN
+      IF (I>=0) AND (I <= 100) THEN
+        DBTRACESET := DBTRACESET + [I];
+  UNTIL EOF;
+  RESET(INPUT);
+END (*SETTRACESITES*);
+
+PROCEDURE INIT;
+VAR I:INTEGER;
+BEGIN
+  DBINITIALIZE;
+  WRITELN('DESCRIPTOR BUILDER INITIALIZING');
+  DBTYPECHECK:=FALSE;
+  SETTRACESITES;
+  
+  (*put 5 empty groups in wa0*)
+  FOR I:=0 TO 4 DO DBSHOWERR('INIT#2', DBEMPTYITEM(WA0,GROUPT,0));
+  
+  (*put one empty linked record in each group, thus permitting traversal
+    operations to function*)
+  FOR I:=1 TO 4 DO
+    BEGIN
+      DBSHOWERR('INIT-HOME',DBHOME(WA0));
+      DBSHOWERR('INIT-SEEK',DBSEEK(WA0,I));
+      DBSHOWERR('INIT#4', DBEMPTYITEM(WA0, RECORDT,0));
+    END;
+  DONE:=FALSE;
+  REMFILE:=FALSE;
+  RESET(FOUT, 'CONSOLE:');
+END (*INIT*);
+
+BEGIN (*MAIN PROGRAM*)
+  INIT;
+  REPEAT
+    CASE GETCOMMAND(
+      'B(UILD X(FER D(ISPLAY F(ILE M(OVE S(TRUCT W(RITE Q(UIT',
+                                ['B','X','D','F','M','S','T','W','Q']) OF
+      'B': CASE GETCOMMAND('BUILD: G(ROUP R(ECORD F(IELD L(ITERAL', 
+                                ['G','R','F','L']) OF
+             'F': BUILDFD;
+             'G': BUILDGD;
+             'L': BUILDLITERAL;
+             'R': BUILDRD
+           END (*CASE*);
+      'X': TRANSFERPRIMITIVES;
+      'D': CASE GETCOMMAND('DISPLAY: G(ROUP R(ECORD F(IELD L(ITERAL', 
+                                                   ['G','R','F','L']) OF
+             'F': SHOWFD(DBMAIL.STRG);
+             'G': SHOWGD(DBMAIL.STRG);
+             'L': SHOWLITERAL;
+             'R': SHOWRD(DBMAIL.STRG)
+           END (*CASE*);
+      'F': FILEHANDLER;
+      'M': MOVER;
+      'S': SHOWDATASTRUCTURE;
+      'T': SETTRACESITES;
+      'W': DBSHOWERR('WRITEFIELD', DBWRITEFIELD(OUTPUT,WA0));
+      'Q': DONE:=TRUE
+    END (*CASE*);
+  UNTIL DONE;
+END.
+

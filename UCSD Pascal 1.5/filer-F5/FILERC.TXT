@@ -1,0 +1,716 @@
+{     Copyright (C) 1978 Regents of the University of California.     }
+{     Permission to copy or distribute this software or documen-      }
+{     tation in hard or soft copy granted only by written license     }
+{     obtained from the Institute for Information Systems.	      }
+
+PROCEDURE GETWORK;
+  
+  PROCEDURE LOADFILE;
+  
+  BEGIN { LOADFILE }
+    DONE := TRUE;
+    WITH USERINFO DO
+      BEGIN
+	IF GOTSYM THEN { Load text file }
+	  BEGIN
+	    SYMTID := CONCAT(WORKTID,'.TEXT');
+	    SYMVID := WORKVID;
+	    WRITE(OUTPUT,'Text ')
+	  END;
+	IF GOTCODE THEN { Load code file }
+	  BEGIN
+	    IF GOTSYM THEN
+	      WRITE(OUTPUT,'and ');
+	    WRITE(OUTPUT,'Code ');
+	    CODETID := CONCAT(WORKTID,'.CODE');
+	    CODEVID := WORKVID
+	  END;
+	MESSAGES(50);
+	CLEARLINE
+      END
+    END { LOADFILE };
+  
+  
+  BEGIN { GETWORK }
+    NEWWORK(FALSE); { Clear existing workfile }
+    WITH USERINFO DO
+      IF CH = 'Y' THEN { Existing workfile has been cleared }
+	IF CHECKFILE('Get','',1,FALSE,TRUE,[BADFILE,OKFILE],82,0) THEN
+	  BEGIN
+	    CLEARWORK; { Clear workfile names }
+	    WORKVID := GVID;
+	    WORKTID := GTID;
+	    X := LENGTH(WORKTID);
+	    OK := X <= TIDLENG-5; { Can a '.TEXT' or '.CODE' suffix be added }
+	    REPEAT
+	      DONE := NOT OK;
+	      IF DONE AND (X > 5) THEN { Suffix may already exist }
+		IF (COPY(WORKTID,X - 4,5) = '.TEXT') OR
+		      (COPY(WORKTID,X - 4,5) = '.CODE') THEN
+		  DELETE(WORKTID,X - 4,5) { Remove '.TEXT' or '.CODE' suffix }
+		ELSE
+		  BEGIN
+		    MESSAGES(51);  { File wasn't found }
+		    CLEARWORK;
+		  END;
+	      IF (LENGTH(WORKTID) <= TIDLENG-5) AND (WORKTID <> '') THEN
+		BEGIN
+		  GOTSYM := SCANINPUT(CONCAT(WORKVID,':',WORKTID,'.TEXT'),
+		    [OKFILE],0,0); { Check for text file }
+		  GOTCODE := SCANINPUT(CONCAT(WORKVID,':',WORKTID,'.CODE'),
+		     [OKFILE],0,0); { Check for code file }
+		  IF GOTSYM OR GOTCODE THEN { Code or text file found }
+		    LOADFILE
+		  ELSE
+		    IF NOT OK THEN
+		      BEGIN
+			CLEARWORK;
+			MESSAGES(51)  { No file found }
+		      END
+		END;
+	      OK := FALSE
+	    UNTIL DONE
+	  END
+  END {GETWORK} ;
+
+
+  PROCEDURE FINDSAME(DOO : BOOLEAN);
+  
+  VAR
+    LFIB: FIB;
+  
+  { Checks for existing files that are endangered by changes, transfers, }
+  { makes and sometimes the save command. If a file is endangered then }
+  { the user will be asked if he/she wishes to remove the endangered file.}
+  BEGIN
+    CH := CHR(0);
+    IF SCANINPUT(TOWHERE,[OKFILE],0,0) THEN { The file already exists }
+      IF DOO OR (FILENAM1 <> GTID) OR (VOLNAME1 <> VOLNAME2) THEN
+	BEGIN { A file is endangered }
+	  WRITE(OUTPUT,GVID,':',GTID,' exists...remove it ? ');
+	  CH := NGETCHAR(TRUE);
+	  IF CH = 'Y' THEN { Remove the endangered file }
+	    BEGIN
+	      FINIT(LFIB,NIL,-1);
+	      FOPEN(LFIB,TOWHERE,TRUE,NIL);
+	      FCLOSE(LFIB,CPURGE)
+	    END
+	END
+  END;
+  
+  
+  PROCEDURE CHANGER;
+    
+  VAR
+    LERROR: BOOLEAN;
+  
+  BEGIN { CHANGER }
+    REPEAT
+      I := 0;
+      OK := FALSE;
+      DONE := TRUE;
+      IF CHECKFILE('Change','Change to what ? ',0,TRUE,TRUE,[OKFILE,OKDIR],
+				  84,80) THEN
+	IF WILDCARD THEN
+	  BEGIN
+	    OK := TRUE;
+	    DONE := FALSE
+	  END
+	ELSE
+	  IF (FILENAM1 = '') AND (FILENAM2 <> '') THEN
+	    MESSAGES(60) { Illegal change, volume name to file name }
+	  ELSE
+	    IF (FILENAM1 <> '') AND (FILENAM2 = '') THEN
+	      MESSAGES(61) { Illegal change, file name to volume name }
+	    ELSE
+	      OK := TRUE; { Everythings o.k. }
+      IF OK THEN
+	REPEAT
+	  IF WILDCARD THEN
+	    BEGIN
+	      LERROR := FALSE;
+	      OK := SEARCHDIR('Change ',I,FALSE,TRUE); { Get source file }
+	      DONE := NOT OK
+	    END;
+	  IF FILENAM2 <> '' THEN { Change, volume names must be the same }
+	    BEGIN
+	      VOLNAME2 := VOLNAME1;
+	      TOWHERE := CONCAT(VOLNAME1,':',FILENAM2)
+	    END;
+	  IF OK THEN
+	    BEGIN
+	      LERROR := TRUE;
+	      FOPEN(GFIB,FROMWHERE,TRUE,NIL); { Open source file }
+	      IF CHECKRSLT(IORESULT) THEN { I/O result is o.k. }
+		IF SCANINPUT(TOWHERE,[NOVOL, BADFILE, OKFILE],0,0) THEN
+		  BEGIN { Destination formatting is o.k. }
+		    FINDSAME(FALSE); { Check for endangered files }
+		    WITH GFIB DO
+		    IF CH <> SYSCOM^.CRTINFO.ALTMODE THEN { Keep going }
+		      IF (CH = CHR(0)) OR (CH = 'Y') THEN
+			{ Go ahead with operation }
+			IF FILENAM2 = '' THEN { Changing volume name }
+			  BEGIN
+			    NEW(GDIR);
+			    UNITREAD(FUNIT,GDIR^,SIZEOF(DIRECTORY),DIRBLK);
+			    GDIR^[0].DVID := GVID;
+			    UNITWRITE(FUNIT,GDIR^,(GDIR^[0].DNUMFILES
+				  +1)*SIZEOF(DIRENTRY),DIRBLK);
+			    LERROR := NOT CHECKRSLT(IORESULT);
+			    RELEASE(GDIR);
+			    IF NOT LERROR THEN
+			      BEGIN
+			       CLWRITELN(CONCAT(FVID,': changed to ',GVID,':'));
+				UNITABLE[FUNIT].UVID := GVID;
+				IF (SYVID = FVID) AND 
+					   (SYSCOM^.SYSUNIT = FUNIT)  THEN
+				  SYVID := GVID;
+				FVID := GVID
+			      END
+			  END
+			ELSE
+			  BEGIN { Changing file name }
+			    LERROR := FALSE;
+			    IF NOT (SYSCOM^.MISCINFO.SLOWTERM AND WILDCARD) THEN
+			      BEGIN
+				WRITE(OUTPUT,FVID,':',FHEADER.DTID);
+				IF WILDCARD THEN
+				  WRITE(OUTPUT,' ':19 - LENGTH(FHEADER.DTID));
+				CLWRITELN(CONCAT(' changed to ',GTID))
+			      END;
+			    FHEADER.DTID := GTID;
+			    FHEADER.DACCESS.YEAR := 100
+			  END
+		      ELSE
+			LERROR := FALSE
+		  END
+		ELSE
+		  { Foramatting of destination string was incorrect }
+		  IF SCANINPUT(TOWHERE,[OKDIR],84,1) THEN { Bad state }
+		    BEGIN
+		      HOMECURSOR;
+		      WRITELN(OUTPUT);
+		      MESSAGES(72)	    { Volume on-line }
+		    END;
+	      FCLOSE(GFIB,CNORMAL);
+	      LERROR := NOT CHECKRSLT(IORESULT)
+	    END
+	UNTIL DONE OR LERROR;
+	IF LERROR THEN INSTRING := ''
+    UNTIL INSTRING = ''
+  END {CHANGER} ;
+
+
+  PROCEDURE REMOVER;
+  
+  LABEL 1;
+  
+  VAR
+    CHUNIT : VID;
+    TEMP : PACKED ARRAY [1..MAXDIR] OF BOOLEAN;
+    DUMMY : ^INTEGER;
+  
+  BEGIN { REMOVER }
+    REPEAT
+      IF CHECKFILE('Remove','',1,TRUE,TRUE,[OKFILE],82,80) THEN
+	IF WILDCARD THEN
+	  BEGIN
+	    FILLCHAR(TEMP,SIZEOF(TEMP),CHR(0));
+	    X := 0;
+	    I := 0;
+	    WHILE SEARCHDIR('Remove ',I,TRUE,TRUE) DO { Get filename }
+	      BEGIN
+		IF NOT QUESTION THEN
+		  BEGIN
+		    WRITE(OUTPUT,GVID,':',GDIR^[I].DTID);
+		    IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+		      WRITE(OUTPUT,' ':24 -LENGTH(GDIR^[I].DTID));
+		    CLWRITELN(' removed');
+		    X := X + 1;
+		    IF (X MOD (SYSCOM^.CRTINFO.HEIGHT - 1)) = 0 THEN
+		      IF SPACEWAIT(FALSE) THEN
+			GOTO 1
+		      ELSE
+			CLEARSCREEN
+		  END;
+		TEMP [I] := TRUE { Mark file in TEMP array }
+	      END;
+	    IF FOUND THEN { Confirm removal of files }
+	      BEGIN
+		WRITE(OUTPUT,'Update directory ? ');
+		IF NGETCHAR(TRUE) = 'Y' THEN { Write out new directory }
+		  BEGIN
+		    I := 1;
+		    X := 0;
+		    MARK(DUMMY); { Force the reading in of a new directory }
+		    IF INSERTVOLUME(SAVEUNIT,SAVEVID,TRUE) THEN
+		      BEGIN
+			WHILE I - X <= GDIR^ [0].DNUMFILES DO
+			  BEGIN
+			    IF TEMP [I] THEN { Remove file from dir. in memory }
+			      BEGIN
+				DELENTRY(I - X,GDIR);
+				X := X + 1
+			      END;
+			    I := I + 1
+			  END;
+			WRITEDIR(SAVEUNIT,GDIR)
+		      END
+		  END
+	      END
+	  END
+	ELSE
+	  BEGIN
+	    FOPEN(GFIB,FROMWHERE,TRUE,NIL);
+	    IF CHECKRSLT(IORESULT) THEN
+	      BEGIN
+		FCLOSE(GFIB,CPURGE);
+		IF CHECKRSLT(IORESULT) THEN
+		  CLWRITELN(CONCAT(GVID,':',GTID,' removed'))
+		ELSE
+		  INSTRING := ''
+	      END
+	  END;
+  1:
+    UNTIL INSTRING = ''
+  END {REMOVER} ;
+  
+  
+  PROCEDURE TRANSFER;
+  LABEL 1;
+
+  VAR
+    NBLOCKS, SAVEUNIT : INTEGER;
+    FIRSTCALL, LERROR : BOOLEAN;
+    LFIB: FIB;
+    TEMP : VID;
+  
+    PROCEDURE WHERETO;
+    
+    VAR
+      X : INTEGER;
+    
+      PROCEDURE CHANGEDISK;
+      
+      BEGIN { CHANGEDISK }
+	CLEARSCREEN;
+	IF X = 0 THEN { Specific destination volume needed }
+	  WRITE(OUTPUT,'Put in ',TEMP,':')
+	ELSE
+	  { Unspecific destination volume expected }
+	  WRITE(OUTPUT,'Put destination disk in unit #',GUNIT);
+	WRITELN(OUTPUT);
+	IF SPACEWAIT(TRUE) THEN	  { Wait for destination disk to be inserted }
+	  CH := SYSCOM^.CRTINFO.ALTMODE
+	ELSE
+	  CH := CHR(0)
+      END { CHANGEDISK };
+    
+    BEGIN { WHERETO }
+      IF SCANTITLE(TOWHERE,TEMP,GTID,X,GKIND) THEN
+	BEGIN { General formatting of destination string is o.k. }
+	  CH := TEMP [1];
+	  X := VOLSEARCH(TEMP,TRUE,GDIR); { Is the dest. volume on-line }
+	  IF CH = '#' THEN { Unspecific destination }
+	    IF (X = SAVEUNIT) AND UNITABLE [X].UISBLKD	THEN
+	      CHANGEDISK { Must wait for destination disk to be inserted }
+	    ELSE
+	      CH := CHR(0) { Everything is o.k.. No need to wait }
+	  ELSE
+	    BEGIN
+	      CH := CHR(0);
+	      IF X = 0 THEN { Volume is not on-line }
+		CHANGEDISK
+	      ELSE
+		IF (X = SAVEUNIT) AND UNITABLE [X].UISBLKD AND WILDCARD 
+			       AND (NOT QUESTION) THEN
+		  IF FIRSTCALL THEN
+		    BEGIN
+		      MESSAGES(100);   { Warn of possible complications }
+		      
+		      { Check to see if user wants to abort }
+		      WRITE(OUTPUT,'Do you still wish to continue ? ');
+		      IF NGETCHAR(TRUE) <> 'Y' THEN
+			CH := SYSCOM^.CRTINFO.ALTMODE
+		    END
+	    END
+	END
+      ELSE
+	IF NOT SCANINPUT(TOWHERE,[],85,1) THEN
+	  CH := SYSCOM^.CRTINFO.ALTMODE;
+      IF CH = CHR(0) THEN
+	BEGIN
+	  CH := SYSCOM^.CRTINFO.ALTMODE;
+	  IF SCANINPUT(TOWHERE,[BADDIR],0,1) THEN { No directory on dest. disk }
+	    IF GVID <> '' THEN
+	      IF GVID [1] = '#' THEN { Binary transfer, don't need directory }
+		CH := CHR(0);
+	  IF CH = SYSCOM^.CRTINFO.ALTMODE THEN
+	    BEGIN
+	      FINDSAME(FALSE); { Check for endangered files }
+	      IF CH = CHR(0) THEN { Go ahead with transfer }
+		IF SCANINPUT(TOWHERE,[BADFILE,OKDIR,UNBLKDVOL,OKFILE],85,1) THEN
+		  IF (X = 1) OR (X = 2) THEN
+		    CLEARSCREEN
+		  ELSE
+		ELSE
+		  CH := SYSCOM^.CRTINFO.ALTMODE { Abort transfer }
+	    END
+	END
+    END { WHERETO };
+  
+  
+  BEGIN { TRANSFER }
+    REPEAT
+      FIRSTCALL := TRUE;
+      I := 0;
+      OK := FALSE;
+      DONE := TRUE;
+      IF (FROMWHERE <> '') THEN { Case entering from SAVEWORK }
+	OK := SCANINPUT(FROMWHERE,[OKFILE],82,-1)
+      ELSE
+	IF CHECKFILE('Transfer','To where ? ',0,TRUE,TRUE,
+	    [BADDIR,OKFILE,OKDIR,UNBLKDVOL],85,86) THEN
+	  OK := TRUE;
+      SAVEUNIT := GUNIT; { Unit source volume is from }
+      IF OK THEN
+	REPEAT
+	  IF WILDCARD THEN
+	    BEGIN
+	      LERROR := FALSE;
+	      OK := SEARCHDIR('Transfer ',I,FALSE,TRUE); { Get source filename }
+	      DONE := NOT OK;
+	    END;
+	  IF OK THEN
+	    BEGIN
+	      LERROR := TRUE;
+	      FOPEN(GFIB,FROMWHERE,TRUE,NIL); { Open source file }
+	      IF CHECKRSLT(IORESULT) THEN { I/O result is o.k. }
+		BEGIN
+		  NBLOCKS := FBLOCKIO(GFIB,GBUF^,GBUFBLKS,-1,TRUE);
+		  WHERETO;
+		  FIRSTCALL := FALSE;
+		  IF (CH = CHR(0)) OR (CH = 'Y') THEN { Everything is o.k. }
+		    BEGIN
+		      FINIT(LFIB,NIL,-1);
+		      FOPEN(LFIB,TOWHERE,FALSE,NIL); { Open dest. file }
+		      IF NOT CHECKRSLT(IORESULT) THEN { I/O result is no good }
+			BEGIN
+			  FCLOSE(GFIB,CNORMAL);
+			  EXIT(TRANSFER)
+			END;
+		      IF LFIB.FISBLKD THEN { Destination file is blocked }
+			BEGIN
+			  IF (LFIB.FHEADER.DTID = '') AND
+				(UNITABLE[LFIB.FUNIT].UVID <> '') THEN
+			    BEGIN { Bianry transfer }
+			      WRITE(CONCAT('Possibly destroy directory of ',
+						      LFIB.FVID,': ? '));
+			      IF NGETCHAR(TRUE) <> 'Y' THEN
+				BEGIN
+				  FCLOSE(LFIB,CNORMAL);
+				  NBLOCKS := 0
+				END
+			    END
+			END
+		      ELSE
+			IF GFIB.FISBLKD AND
+			    (GFIB.FHEADER.DFKIND = TEXTFILE) THEN
+			  BEGIN { Disk to char. device don't transfer heading }
+			    NBLOCKS := NBLOCKS-2;
+			    MOVELEFT(GBUF^[FBLKSIZE+FBLKSIZE],
+				     GBUF^,NBLOCKS*FBLKSIZE)
+			  END;
+		      OK := (LFIB.FVID <> GFIB.FVID) AND { If OK then single }
+			    (LFIB.FUNIT = GFIB.FUNIT);	 { disk transfer }
+		      WHILE NBLOCKS > 0 DO { Still more to transfer }
+			BEGIN
+			  X := FBLOCKIO(LFIB,GBUF^,NBLOCKS,-1,FALSE);
+			  IF (IORESULT = 0) AND (X = NBLOCKS) THEN
+			    IF GFIB.FEOF THEN
+			      NBLOCKS := 0 { Last transfer }
+			    ELSE
+			      BEGIN
+				IF OK THEN { Single disk transfer }
+				  IF NOT INSERTVOLUME(0,GFIB.FVID,FALSE) THEN
+				    GOTO 1;
+				NBLOCKS := FBLOCKIO(GFIB,GBUF^,GBUFBLKS,
+						      -1,TRUE);
+				IF NOT CHECKRSLT(IORESULT) THEN { Bad I/O rslt }
+  1:				    BEGIN  NBLOCKS := 0;
+				    FCLOSE(LFIB,CPURGE)
+				  END
+			      END
+			  ELSE { Bad I/O operation }
+			    BEGIN
+			      NBLOCKS := 0;
+			      IF CHECKRSLT(IORESULT) THEN { No room on volume }
+				MESSAGES(73);
+			      FCLOSE(LFIB,CPURGE)
+			    END;
+			  IF OK AND (NBLOCKS > 0) THEN { Single disk transfer }
+			    IF NOT INSERTVOLUME(0,LFIB.FVID,FALSE) THEN
+			      GOTO 1
+			END;
+		      IF LFIB.FISOPEN THEN { Transfer was succesful }
+			BEGIN
+			  { Initialize FHEADER }
+			  WITH LFIB,GFIB.FHEADER DO
+			    BEGIN
+			      FHEADER.DLASTBYTE := DLASTBYTE;
+			      FHEADER.DFKIND := DFKIND;
+			      FHEADER.DACCESS := DACCESS;
+			      IF (DACCESS.MONTH = 0) AND
+				 (THEDATE.MONTH > 0) THEN
+				FHEADER.DACCESS := THEDATE
+			    END;
+			    FCLOSE(LFIB,CLOCK);
+			    IF CHECKRSLT(IORESULT) THEN { You've done it }
+			      BEGIN
+				LERROR := FALSE;
+				WRITE(OUTPUT,GFIB.FVID,':',GFIB.FHEADER.DTID);
+				IF WILDCARD THEN     WRITE(OUTPUT,
+				     ' ':19 - LENGTH(GFIB.FHEADER.DTID));
+				CLWRITELN(CONCAT(' transferred to ',LFIB.FVID,
+				     ':',LFIB.FHEADER.DTID))
+			      END
+			END
+		    END
+		  ELSE
+		    IF CH <> SYSCOM^.CRTINFO.ALTMODE THEN
+		      LERROR := FALSE { Abort transfer }
+		END;
+	      FCLOSE(GFIB,CNORMAL)
+	    END
+	UNTIL DONE OR LERROR;
+      CLEAR;
+      IF LERROR THEN INSTRING := ''
+    UNTIL INSTRING = ''
+  END { TRANSFER };
+  
+  
+  FUNCTION SAVEWORK(VAR SECONDCALL : BOOLEAN) : BOOLEAN;
+  
+  VAR
+    GETNEWTID: BOOLEAN;
+	
+    PROCEDURE FETCHTITLE(MSG : SHORTSTRING);
+    
+    BEGIN { FETCHTITLE }
+      IF NOT CHECKFILE(CONCAT('Save ',MSG,'as'),'',1,FALSE,TRUE,
+		 [NOVOL,BADDIR,BADFILE,OKDIR,UNBLKDVOL,OKFILE],85,0) THEN
+	EXIT(SAVEWORK)
+    END { FETCHTITLE };
+  
+    
+    PROCEDURE SPECIALSAVE;
+    
+    
+      FUNCTION MAKECALL(TYPEFILE : SHORTSTRING) : BOOLEAN;
+      
+      VAR
+	STR : STRING[4];
+      
+      BEGIN { MAKECALL }
+	MAKECALL := FALSE;
+	STR := TYPEFILE;
+	TOUPPER(TYPEFILE,1,4); { Change to upper-case }
+	IF SAVEGTID = '' THEN { Don't have a title yet }
+	  GTID := CONCAT('the ',STR,' file')
+	ELSE
+	  GTID := CONCAT(SAVEGTID,'.',TYPEFILE);
+	WRITE(OUTPUT,'Would you like ',GTID,' written to ',SAVEGVID,': ? ');
+	CH := NGETCHAR(FALSE);
+	IF CH = SYSCOM^.CRTINFO.ALTMODE THEN { Abort SAVEWORK }
+	  EXIT(SAVEWORK)
+	ELSE
+	  IF CH = 'Y' THEN { User wants to save file }
+	    BEGIN
+	      MAKECALL := TRUE;
+	      IF SAVEGTID = '' THEN { Still don't have a title }
+		BEGIN
+		  GS := CONCAT(STR,' file ');
+		  FETCHTITLE(GS);   { Get a title for destination }
+		  FILENAM2 := FILENAM1 { Set destination filename }
+		END
+	      ELSE
+		FILENAM2 := CONCAT(SAVEGTID,'.',TYPEFILE); { Set dest. file }
+	      TOWHERE := CONCAT(SAVEGVID,':',FILENAM2); { Set dest. string }
+	      FILENAM1 := CONCAT('SYSTEM.WRK.',TYPEFILE); { Set source file }
+	      FROMWHERE := CONCAT('*',FILENAM1) { Set source string }
+	    END
+      END { MAKECALL };
+    BEGIN { SPECIALSAVE }
+      IF SECONDCALL THEN
+	CLWRITELN('')
+      ELSE
+	CLEARSCREEN;
+      INSTRING := '';
+      OK := FALSE;
+      IF NOT (SYMSAVED OR SECONDCALL) THEN { Firstime and textfile exists }
+	OK := MAKECALL('text');
+      IF NOT (OK OR CODESAVED) THEN { Try code file, it exists }
+	BEGIN
+	  OK := MAKECALL('code');
+	  SECONDCALL := TRUE
+	END;
+      SAVEWORK := OK;
+      EXIT(SAVEWORK)
+    END { SPECIALSAVE };
+	      
+  
+    PROCEDURE SAVEIT(WHATFILE : STRNG);
+    
+    BEGIN { SAVEIT }
+      WITH USERINFO DO
+	BEGIN
+	  FROMWHERE := CONCAT('*SYSTEM.WRK.',WHATFILE); { Set source string }
+	  FOPEN(GFIB,FROMWHERE,TRUE,NIL); { Open source file }
+	  IF GFIB.FISOPEN THEN
+	  WITH GFIB.FHEADER DO
+	    BEGIN
+	      DACCESS.YEAR := 100;
+	      IF WHATFILE = 'TEXT' THEN { Change text file to its new name }
+		BEGIN
+		  SYMTID := CONCAT(WORKTID,'.TEXT');
+		  DTID := SYMTID;
+		  SYMSAVED := TRUE
+		END
+	      ELSE
+		BEGIN { Change code file to its new name }
+		  CODETID := CONCAT(WORKTID,'.CODE');
+		  DTID := CODETID;
+		  CODESAVED := TRUE
+		END;
+	      FCLOSE(GFIB,CNORMAL)
+	    END
+	  ELSE
+	    BEGIN { I/O error }
+	      IF WHATFILE = 'TEXT' THEN
+		BEGIN
+		  GOTSYM := FALSE;
+		  MESSAGES(90)
+		END
+	      ELSE
+		BEGIN
+		  GOTCODE := FALSE;
+		  MESSAGES(91)
+		END
+	    END
+	END
+    END { SAVEIT };
+    
+    
+  BEGIN { SAVEWORK }
+    SAVEWORK := FALSE;
+    GVID2 := SYVID;
+    IF SECONDCALL THEN { Returning from transfer }
+      SPECIALSAVE;
+    WITH USERINFO DO
+      BEGIN
+	IF SYMSAVED AND CODESAVED THEN { Error nothing to save }
+	  BEGIN
+	    CLWRITELN('');
+	    IF GOTSYM OR GOTCODE THEN
+	      MESSAGES(75)    { Workfile already saved }
+	    ELSE
+	      MESSAGES(76);   { No workfile to save }
+	    EXIT(SAVEWORK)
+	  END;
+	OK := FALSE;
+	IF WORKVID <> SYVID THEN WORKTID := '';
+	GETNEWTID := WORKTID = '';
+	IF NOT GETNEWTID THEN { Already have a filename }
+	  BEGIN
+	    WRITE(OUTPUT,'Save as ',WORKTID,' ? ');
+	    GETNEWTID := NGETCHAR(FALSE) <> 'Y'
+	  END;
+	IF GETNEWTID THEN { Need a new filename }
+	  BEGIN
+	    FETCHTITLE('');
+	    IF LENGTH(GTID) > TIDLENG-5 THEN { Filename is too long }
+	      BEGIN
+		MESSAGES(52);
+		EXIT(SAVEWORK)
+	      END;
+	    OK := TRUE;
+	    IF (GVID2 = SYVID) THEN
+	      IF (GTID <> '') THEN { Standard save to system disk }
+		BEGIN
+		  OK := FALSE;
+		  WORKVID := GVID;
+		  WORKTID := GTID
+		END
+	  END;
+	IF OK THEN
+	  BEGIN
+	    SAVEGVID := GVID2;
+	    SAVEGTID := GTID;
+	    SPECIALSAVE
+	  END
+	ELSE
+	  BEGIN { Standard save routine }
+	    IF NOT SYMSAVED THEN { Text file needs to be saved }
+	      BEGIN
+		SAVEIT('TEXT');
+		IF SYMSAVED AND CODESAVED THEN
+		  BEGIN	    { No code file to be saved, Remove old one }
+		    GS := CONCAT('*',WORKTID,'.CODE');
+		    FOPEN(GFIB,GS,TRUE,NIL);
+		    IF GFIB.FISOPEN THEN
+		      WRITE(OUTPUT,'Old code removed, ');
+		    FCLOSE(GFIB,CPURGE)
+		  END;
+		IF SYMSAVED THEN
+		  WRITE(OUTPUT,'Text file saved ')  { Everything went o.k. }
+		ELSE
+		  SYMSAVED := TRUE;	 { Lost text file }
+		IF NOT CODESAVED THEN
+		  WRITE(OUTPUT,'& ')
+	      END;
+	    IF NOT CODESAVED THEN { Code file needs to be saved }
+	      BEGIN
+		SAVEIT('CODE');
+		IF CODESAVED THEN
+		  WRITE(OUTPUT,'Code file saved') { Everything went o.k. }
+		ELSE
+		  CODESAVED := TRUE	  { Lost code file }
+	      END;
+	    CLEARLINE
+	  END
+      END
+  END {SAVEWORK} ;
+
+  
+  PROCEDURE MAKEFILE;
+  
+  BEGIN { MAKEFILE }
+    REPEAT
+      DONE := TRUE;
+      IF CHECKFILE('Make','',1,FALSE,TRUE,[BADFILE,OKFILE],82,0) THEN
+	BEGIN
+	  TOWHERE := FROMWHERE;
+	  FINDSAME(TRUE); { Check for endangered files }
+	  IF (CH <> CHR(0)) AND	 (CH <> 'Y') THEN { Somethimgs wrong }
+	    IF CH = SYSCOM^.CRTINFO.ALTMODE THEN { Abort make }
+	    ELSE
+	      DONE := FALSE { Don't make this file }
+	  ELSE
+	    BEGIN { Everything is o.k. }
+	      FOPEN(GFIB,FROMWHERE,FALSE,NIL); { Open file }
+	      IF CHECKRSLT(IORESULT) THEN { I/O result is good }
+		BEGIN
+		  WITH GFIB DO
+		    FMAXBLK := FHEADER.DLASTBLK-FHEADER.DFIRSTBLK;
+		  FCLOSE(GFIB,CLOCK);
+		  IF CHECKRSLT(IORESULT) THEN { I/O result is o.k. }
+		    BEGIN
+		      CLWRITELN(CONCAT(GVID,':',GTID,' made'));
+		      DONE := FALSE
+		    END
+		END
+	    END
+	END
+    UNTIL DONE OR (INSTRING = '')
+  END {MAKEFILE} ;
+                            

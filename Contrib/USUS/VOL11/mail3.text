@@ -1,0 +1,248 @@
+{Mail3 - Mlabels}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+SEGMENT PROCEDURE MLabels;       
+ VAR finame,fconame : ARRAY[1..4] OF STRING[33]; 
+     at,numreps : INTEGER; 
+     ch,ch2:char;
+ 
+ PROCEDURE Gfnaco;   
+  VAR tfname : STRING[10];
+  BEGIN 
+   FOR temp := 1 TO columat DO WITH Mailarry[temp] DO 
+    BEGIN
+     IF LENGTH(lname)+LENGTH(fname)+LENGTH(minit) = 0 THEN
+      finame[temp] := '                                 '
+     ELSE
+      BEGIN
+       finame[temp] := ''; fconame[temp] := ''; 
+       temp1 := LENGTH(lname); 
+       IF LENGTH(prefx)<>0 THEN temp1 := temp1 + LENGTH(prefx) + 1;    
+       IF LENGTH(suffx)<>0 THEN temp1 := temp1 + LENGTH(suffx) + 1; 
+       IF LENGTH(minit)<>0 THEN temp1 := temp1 + LENGTH(minit) + 1;
+       IF 33<temp1+1+LENGTH(fname)          
+        THEN tfname := CONCAT(COPY(fname,1,1),'.')   
+        ELSE tfname := fname;
+       finame[temp] := lname;  
+       IF LENGTH(minit)<>0 THEN 
+        finame[temp] := CONCAT(minit,' ',finame[temp]);  
+       IF LENGTH(tfname)<>0 THEN
+        finame[temp] := CONCAT(tfname,' ',finame[temp]);       
+       IF LENGTH(prefx)<>0 THEN
+        finame[temp] := CONCAT(prefx,' ',finame[temp]);  
+       IF (LENGTH(suffx)<>0) AND 
+        ((LENGTH(finame[temp])+2+LENGTH(suffx))<=33) THEN              
+        finame[temp] := CONCAT(finame[temp],', ',suffx);  
+      END;
+     fconame[temp] := coname;
+     IF LENGTH(coname)+LENGTH(title)<=31 THEN {room to put on title} 
+      begin
+        if length(title)<>0 then
+          begin
+            if length(coname)<>0 then fconame[temp]:= CONCAT(title,', ',coname)
+            else fconame[temp] := title;
+          end;
+      end;
+    END;   
+  END;
+ 
+ PROCEDURE Plabel;     
+  var filler:string[7];
+  BEGIN 
+   IF format^.ofilename = '#2:' THEN SC_Clr_Screen;
+   Gfnaco;   
+   WITH format^ DO   
+    BEGIN    
+     FOR temp := 1 TO mvtab DO WRITELN(odisk);                       
+     IF rolodex THEN FOR temp := 1 TO columat DO WITH mailarry[temp] DO   
+      BEGIN 
+        WRITE(odisk,phone,' ':(33-LENGTH(phone)),' ':mmgin);                 
+      END;
+     IF rolodex THEN WRITELN(odisk);
+     FOR temp := 1 TO columat DO  
+      IF LENGTH(fconame[temp]) <> 0 
+       THEN
+        BEGIN
+         WRITE(odisk,finame[temp],' ':mmgin);   
+         IF LENGTH(finame[temp])<33    
+          THEN WRITE(odisk,' ':(33-LENGTH(finame[temp])));  
+        END
+       ELSE  
+         WRITE(odisk,' ':33,' ':mmgin);      
+     WRITELN(odisk);
+     FOR temp := 1 TO columat DO 
+      BEGIN 
+       IF LENGTH(fconame[temp])<>0 THEN 
+        BEGIN
+         WRITE(odisk,fconame[temp],' ':mmgin);        
+         IF LENGTH(fconame[temp])<33 THEN  
+          WRITE(odisk,' ':(33-LENGTH(fconame[temp])));
+        END
+       ELSE
+        BEGIN
+         WRITE(odisk,finame[temp],' ':mmgin);      
+         IF LENGTH(finame[temp])<33   
+          THEN WRITE(odisk,' ':(33-LENGTH(finame[temp])));   
+        END;
+      END; 
+     WRITELN(odisk);
+     FOR temp := 1 TO columat DO                
+      BEGIN
+       WRITE(odisk,mailarry[temp].address,' ':mmgin);
+       WRITE(odisk,' ':(33-LENGTH(mailarry[temp].address)));
+      END;
+     WRITELN(odisk); 
+     FOR temp := 1 TO columat DO WITH mailarry[temp] DO
+      begin
+        WRITE(odisk,city);
+        filler:='';
+        if (length(city)<>0) and (length(state)<>0) then write(odisk,', ')
+        else {needs 2 spaces on end of line to align}
+             filler:='  ';
+        write(odisk,state,
+              ' ':(31-LENGTH(city)-LENGTH(state)),' ':mmgin,filler);    
+      end;
+     WRITELN(odisk);
+     FOR temp := 1 TO columat DO WITH mailarry[temp] DO  
+      BEGIN
+       WRITE(odisk,country); 
+       IF (LENGTH(country) = 0) THEN
+         WRITE(odisk,zip:29,'    ',' ':mmgin)    
+       ELSE 
+          begin
+            if length(zip)=0 then filler:='  ' else filler:=', ';
+            WRITE(odisk,filler,zip:(28-LENGTH(country)),'   ',' ':mmgin);  
+          end;
+      END;
+     WRITELN(odisk);
+    END;
+  END;   
+  
+PROCEDURE Printone;  
+ BEGIN  
+  WITH format^ DO
+   BEGIN  
+    IF NOT eflg THEN     
+     BEGIN
+      columat := columat + 1;            
+      mailarry[columat] := disk^;               
+     END;        
+    GOTOXY(0,22);  
+    IF (NOT eflg) AND (columat < mwide) THEN EXIT(Printone);          
+    Plabel;
+    columat := 0;     
+   END;
+ END;      
+ 
+ {$I-}
+ BEGIN          
+  repeat
+    SC_Clr_Line(1);
+    SC_Clr_Line(0);
+    WRITE('MLabels: A)ll matching flag criteria, S)ingle, R)epeat, W)ildcard, Q)uit:');
+    READ(KEYBOARD,ch);
+  until ch in ['A','a','S','s','W','w','R','r','Q','q'];
+  write(ch);
+  if (ch='Q') or (ch='q') then exit(MLabels);
+  REWRITE(odisk,format^.ofilename);  
+  if IORESULT<>0 then
+    Reporterr('Cannot open output file ',format^.ofilename,IORESULT)
+  else
+    begin
+      eflg := FALSE;  
+      CASE ch OF
+       'W','w' : BEGIN 
+                  repeat
+                    SC_Clr_Line(0);
+                    WRITELN('Wildcard: P)refix, F)name, mi(N)it, ',
+                            'L)name, s(U)ffix, T)itle, C)mpny,');
+                    WRITE('          #)ph, A)dd, c(I)ty, S)tate, cntr(Y), ',
+                          'Z)ip, M)isc, Q)uit:');
+                    READ(KEYBOARD,ch2);
+                  until ch2 in
+                     ['P','p','F','f','N','n','L','l','U','u','T','t','M','m',
+                      'C','c','#'    ,'A','a','I','i','S','s','Y','y','Z','z',
+                      'Q','q']; 
+                  write(ch2);
+                  if ch2 in ['Q','q'] THEN 
+                     BEGIN
+                      CLOSE(odisk);
+                      EXIT(MLabels);   
+                     END;
+                  SC_Clr_Line(1);
+                  SC_Clr_Line(0);
+                  Wild1(ch2);  
+                  FOR recnumber := 1 TO numrecs DO  
+                   BEGIN
+                    SEEK(disk,recnumber); 
+                    GET(disk);
+                    IF (disk^.code='Perm  ') OR (disk^.code='Add   ') OR
+                     (disk^.code='Change') THEN 
+                     BEGIN
+                      Wild2;
+                      IF Wildok THEN Printone;          
+                     END;
+                   END; 
+                  IF columat <> 0 THEN    
+                   BEGIN 
+                    eflg := TRUE;
+                    Printone;
+                   END;      
+                 END;
+       'A','a' : BEGIN  
+                  FOR recnumber := 1 TO numrecs DO
+                   BEGIN
+                    SEEK(disk,recnumber);
+                    GET(disk);
+                    IF (disk^.code='Perm  ') OR (disk^.code='Add   ') OR
+                     (disk^.code='Change') THEN
+                      IF Chkflgs THEN Printone;     
+                   END;
+                   IF columat <> 0 THEN   
+                    BEGIN 
+                     eflg := TRUE;
+                     Printone;
+                    END;      
+                 END;
+       'R','r' : BEGIN
+                  SEEK(disk,recnumber);
+                  GET(disk);
+                  repeat
+                    SC_Clr_Line(0);
+                    WRITE('Enter number of repetitions (max 100):');
+                    numreps:=0; {value returned if integer is illegal}
+                    Getint(0,0,numreps);
+                  until (numreps<=100) and (numreps>=0);
+                  if numreps>0 then FOR at := 1 TO numreps DO Printone;  
+                  IF columat<>0 THEN 
+                   BEGIN
+                    eflg := TRUE; 
+                    Printone;
+                   END;
+                 END;
+       'S','s' : BEGIN     
+                  SEEK(disk,recnumber);    
+                  GET(disk); 
+                  Printone;  
+                 END;
+      END; 
+     CLOSE(odisk,lock);  
+     if IORESULT<>0 then
+       ReportErr('Cannot close output file ',format^.ofilename,IORESULT);
+   end;
+END;
+{$I+}
+  
+ 

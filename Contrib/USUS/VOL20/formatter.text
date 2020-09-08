@@ -1,0 +1,85 @@
+PROGRAM formattr;
+
+{**********************************************************************
+*    (C) 1982 K. G. Balke, Associates.                                *
+*    All rights reserved.                                             *
+**********************************************************************}
+
+{$C (C) 1982 K. G. Balke, Associates}
+
+                                  {This program formats a Sony micro-floppy
+                                  diskette in [2:7] format for use with the
+                                  Courier portable computer.  The
+                                  formatting algorithms are included in the
+                                  SBIOS.}
+  
+  VAR
+    f_rslt_str:              STRING;
+                                  {String for accumulating formatting error
+                                  diagnostic message.}
+                                  
+    fmt_rslt:                INTEGER;
+                                  {IO_RESULT equivalent returned by the
+                                  formatting service of the SBIOS.}
+    
+    in_ary:                  PACKED ARRAY [0 .. 1] OF CHAR;
+    
+  PROCEDURE fmt_lnk
+                                  {Format a diskette with interleave 2,
+                                  skew 4.}
+                                  
+   (VAR
+      rslt:                  INTEGER);
+                                  {Result of the format process.  Values
+                                  correspond to IO_RESULT.}
+    
+    EXTERNAL;
+    
+  BEGIN {formattr}
+    WRITE (CHR (27), '*');
+
+    GO_TO_X_Y (52, 0);
+    WRITE (CHR (27), 'k');
+    GO_TO_X_Y (26, 0);
+    WRITE (CHR (27), 'j PASCAL DISK FORMATTER ');
+
+    GO_TO_X_Y (53, 1);
+    WRITE (CHR (27), 'm');
+    GO_TO_X_Y (25, 1);
+    WRITE (CHR (27), 'l(C) 1983 Balke Associates');
+    
+    GO_TO_X_Y (5, 10);
+    WRITE ('Place disk to be formatted in Unit #5.');
+    GO_TO_X_Y (5, 11);
+    WRITE ('Enter <CR> to format, other key to stop.');
+    
+    UNIT_READ (2, in_ary, 1,, 12);
+    
+    IF in_ary [0] = CHR (13) THEN
+      BEGIN
+        fmt_lnk (fmt_rslt);
+        
+        GO_TO_X_Y (5, 13);
+        IF fmt_rslt IN [0, 9] THEN
+          BEGIN
+            CASE fmt_rslt OF
+              0:
+                f_rslt_str := 'Disk formatted successfully.';
+                
+              9:
+                f_rslt_str := 'No disk in Unit #5.'
+            END;
+            WRITE (f_rslt_str)
+          END
+        
+        ELSE
+          WRITE ('Format result = ', fmt_rslt, '.')
+      END
+    
+    ELSE
+      BEGIN
+        GO_TO_X_Y (5, 13);
+        WRITE ('Format not done.')
+      END
+  END {formattr}.
+

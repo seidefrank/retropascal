@@ -1,0 +1,171 @@
+(*$D-*)
+segment procedure aplinit;
+
+procedure initparser;
+begin
+opertabptr := nil;
+subrtabptr := nil;
+lparmptr := nil;
+rparmptr := nil;
+vfuncptr := nil;
+hold := nil;
+xcolonsym := 1;
+xrightarrow := 2;
+xleftarrow := 3;
+xlittlecircle := 4;
+xperiod := 5;
+xleftpar := 6;
+xrightpar := 7;
+xleftbracket := 8;
+xrightbracket := 9;
+xsemicolsym := 10;
+xquadsym := 11;
+getoper(opertabptr);
+opertabptr^.lastoper := nil;
+ptrlastoper := opertabptr
+end; {initparser}
+
+procedure readcherfile; (* read character set and error msgs from file *)
+var
+  aplchar: char;
+  symbolindex: aplcharset;
+  msgrow: integer;
+begin
+reset(cherfile, 'aplchers.text');
+for symbolindex := asymbol to backwardslash do
+  begin
+    read(cherfile, aplchar);
+    if symbolindex = zerosymbol
+    then readln(cherfile);
+    character[symbolindex] := aplchar
+  end;
+readln(cherfile);
+for msgrow := 1 to numberofmessages do
+  readln(cherfile, errormsgs[msgrow]);
+close(cherfile)
+end; {readcherfile}
+
+procedure fillupoptables;
+begin
+(* monadic operators *)
+moptab[1].opsymbol := character[plus];  moptab[1].opindex := 2;
+moptab[2].opsymbol := character[minus];  moptab[2].opindex := 3;
+moptab[3].opsymbol := character[times];  moptab[3].opindex := 4;
+moptab[4].opsymbol := character[divide];  moptab[4].opindex := 5;
+moptab[5].opsymbol := character[asterisk];  moptab[5].opindex := 6;
+moptab[6].opsymbol := character[iota];  moptab[6].opindex := 21;
+moptab[7].opsymbol := character[rho];  moptab[7].opindex := 22;
+moptab[8].opsymbol := character[comma];  moptab[8].opindex := 23;
+moptab[9].opsymbol := character[tilde];  moptab[9].opindex := 1;
+moptab[10].opsymbol := character[ceiling];  moptab[10].opindex := 9;
+moptab[11].opsymbol := character[floor];  moptab[11].opindex := 10;
+moptab[12].opsymbol := character[questionmark];  moptab[12].opindex := 7;
+(* dyadic operators *)
+doptab[1].opsymbol := character[plus];  doptab[1].opindex := 52;
+doptab[2].opsymbol := character[minus];  doptab[2].opindex := 53;
+doptab[3].opsymbol := character[times];  doptab[3].opindex := 54;
+doptab[4].opsymbol := character[divide];  doptab[4].opindex := 55;
+doptab[5].opsymbol := character[asterisk];  doptab[5].opindex := 56;
+doptab[6].opsymbol := character[iota];  doptab[6].opindex := 87;
+doptab[7].opsymbol := character[rho];  doptab[7].opindex := 88;
+doptab[8].opsymbol := character[comma];  doptab[8].opindex := 89;
+doptab[9].opsymbol := character[equals];  doptab[9].opindex := 71;
+doptab[10].opsymbol := character[notequal];  doptab[10].opindex := 72;
+doptab[11].opsymbol := character[lessthan];  doptab[11].opindex := 73;
+doptab[12].opsymbol := character[lessorequal];  doptab[12].opindex := 74;
+doptab[13].opsymbol := character[greaterorequal];  doptab[13].opindex := 75;
+doptab[14].opsymbol := character[greaterthan];  doptab[14].opindex := 76;
+doptab[15].opsymbol := character[andsymbol];  doptab[15].opindex := 77;
+doptab[16].opsymbol := character[orsymbol];  doptab[16].opindex := 78
+end; {fillupoptables}
+
+procedure fillupspectables;
+begin
+(* special characters *)
+chartab[1].opsymbol := character[colon];
+chartab[2].opsymbol := character[rightarrow];
+chartab[3].opsymbol := character[leftarrow];
+chartab[4].opsymbol := character[smallcircle];
+chartab[5].opsymbol := character[period];
+chartab[6].opsymbol := character[leftparen];
+chartab[7].opsymbol := character[rightparen];
+chartab[8].opsymbol := character[leftbracket];
+chartab[9].opsymbol := character[rightbracket];
+chartab[10].opsymbol := character[semicolon];
+chartab[11].opsymbol := character[quadrangle];
+chartab[12].opsymbol := character[space];
+spectab[1].opsymbol := character[colon];
+spectab[2].opsymbol := character[rightarrow];
+spectab[3].opsymbol := character[leftarrow];
+spectab[4].opsymbol := character[leftparen];
+spectab[5].opsymbol := character[semicolon];
+spectab[6].opsymbol := character[leftbracket]
+end; {fillupspectables}
+
+procedure fillupredtables;
+begin
+(* reduction operators *)
+redtab[1].opsymbol := character[plus];  redtab[1].opindex := 2;
+redtab[2].opsymbol := character[minus];  redtab[2].opindex := 3;
+redtab[3].opsymbol := character[times];  redtab[3].opindex := 4;
+redtab[4].opsymbol := character[divide];  redtab[4].opindex := 5;
+redtab[5].opsymbol := character[asterisk];  redtab[5].opindex := 6;
+redtab[6].opsymbol := character[equals];  redtab[6].opindex := 21;
+redtab[7].opsymbol := character[notequal];  redtab[7].opindex := 22;
+redtab[8].opsymbol := character[lessthan];  redtab[8].opindex := 23;
+redtab[9].opsymbol := character[lessorequal];  redtab[9].opindex := 24;
+redtab[10].opsymbol := character[greaterorequal];  redtab[10].opindex := 25;
+redtab[11].opsymbol := character[greaterthan];  redtab[11].opindex := 26;
+redtab[12].opsymbol := character[andsymbol];  redtab[12].opindex := 27;
+redtab[13].opsymbol := character[orsymbol];  redtab[13].opindex := 28;
+redtab[14].opsymbol := character[ceiling];  redtab[14].opindex := 29;
+redtab[15].opsymbol := character[floor];  redtab[15].opindex := 30;
+redtab[16].opsymbol := character[largecircle];  redtab[16].opindex := 31
+end; {fillupredtables}
+
+procedure fillupdigittables;
+begin
+(* digit characters *)
+digits[onesymbol] := 1;
+digits[twosymbol] := 2;
+digits[threesymbol] := 3;
+digits[foursymbol] := 4;
+digits[fivesymbol] := 5;
+digits[sixsymbol] := 6;
+digits[sevensymbol] := 7;
+digits[eightsymbol] := 8;
+digits[ninesymbol] := 9;
+digits[zerosymbol] := 0
+end; {fillupdigittables}
+
+begin {aplinit}
+setupheap;                                                      (* heap *)
+readcherfile;
+initparser; (* initialize tables etc. *)
+fillupoptables;
+fillupspectables;
+fillupredtables;
+fillupdigittables;
+funcmode := false;
+firstfunction := true;
+oldvaltablink := nil;
+oldfunctabptr := nil;
+oldvartabptr := nil;
+oldtokenptr := nil;
+newtokenptr := nil;
+newfunctabptr := nil;
+newvfuncptr := nil;
+holdtokenptr := nil;
+tokenerror := false;
+newvaltablink := nil;
+newvartabptr := nil;
+totaldigs := 12;
+afterdigs := 2;
+rollnum := 5006;
+rewrite(outfile, normoutfile);
+reset(infile, norminfile);
+realsperline := (maxoutputline-6{sizeof(indent)}) div (totaldigs+1)
+end; {aplinit}
+
+(*$D+*)
+

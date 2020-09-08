@@ -1,0 +1,82 @@
+begin (* parser *)
+assign := false;
+assign1 := false;
+doneparse := false;
+repeat
+  expression(validexp); (* check for valid expression *)
+  if not validexp
+  then error(10) (* invalid expression *)
+  else
+    if specsymbol(xrightarrow)
+    then
+      if not ((opertabptr^.operptr^.firstvalue = nil) and
+              (opertabptr^.operptr^.dimensions > 0))
+      then (* branch *)
+        (* result of expression is at opertabptr *)
+        if opertabptr^.operptr^.firstvalue^.realval <>
+           trunc(opertabptr^.operptr^.firstvalue^.realval)
+        then error(12) (* stmt.num.to branch to not an integer *)
+        else
+          if subrtabptr = nil
+          then
+            begin (* interpretive *)
+              tokentabptr := hold;
+              doneparse := true
+            end
+          else (* function mode *)
+            if trunc(opertabptr^.operptr^.firstvalue^.realval)
+               in [1..(subrtabptr^.calledsubr^.numofstatements)]
+            then
+              begin
+                vfunchold := subrtabptr^.calledsubr^.firstatement;
+                for cnt := 1 to trunc(opertabptr^.operptr^.firstvalue^.realval)
+                do
+                  begin
+                    vfuncptr := vfunchold;
+                    tokentabptr := vfuncptr^.nextstmnt;
+                    vfunchold := vfuncptr^.nextvfuncptr
+                  end;
+                auxopertabptr := opertabptr;
+                opertabptr := opertabptr^.lastoper;
+                ridoper(auxopertabptr);
+                ptrlastoper := opertabptr;
+                tokentabptr := vfuncptr^.nextstmnt
+              end
+            else (* successor *)
+      else (* successor *)
+    else (* successor *)
+      begin
+        if not assign1
+        then outputval;
+        assign1 := false;
+        if subrtabptr = nil
+        then
+          begin (* interpretive *)
+            hold := tokentabptr;
+            tokentabptr := tokentabptr^.nextoken;
+            doneparse := true
+          end
+        else (* function *)
+          begin
+            vfuncptr := vfuncptr^.nextvfuncptr;
+            donesuccessor := false;
+            repeat
+              if vfuncptr <> nil
+              then
+                begin
+                  tokentabptr := vfuncptr^.nextstmnt;
+                  donesuccessor := true
+                end
+              else
+                begin
+                  returntocallingsubr;
+                  if tokentabptr^.noun = statend
+                  then donesuccessor := true
+                end
+            until donesuccessor
+          end
+      end
+until doneparse;
+release (* release memory *)
+end; {parser}
+

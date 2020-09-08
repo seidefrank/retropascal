@@ -1,0 +1,93 @@
+
+(*
+ * APPLESTUFF for Retro Pascal ][ -- Frank Seide, 2013
+ *
+ * Actual implementation of these routines is done through various devices:
+ * GRAPHIC: (PADDLE etc.), SYSTEM: (random), AUDIO: (NOTE), and SYSTERM: (KEYPRESS).
+ * We send commands by UNITWRITE and get return values through UNITREAD.
+ *)
+
+{$C APPLESTUFF II.764}
+
+UNIT APPLESTUFF;
+
+  INTERFACE
+
+    FUNCTION PADDLE(WHICH: INTEGER): INTEGER;
+    FUNCTION BUTTON(WHICH: INTEGER): BOOLEAN;
+    PROCEDURE TTLOUT(WHICH: INTEGER; DATA: BOOLEAN);
+    FUNCTION KEYPRESS: BOOLEAN;
+    FUNCTION RANDOM: INTEGER;
+    PROCEDURE RANDOMIZE;
+    { I do not know the physical units of the parameters to NOTE in the original   }
+    { Apple Pascal. Their documentation specifies the notes as semitones, and      }
+    { duration it as "arbitrary,". I assume:                                       }
+    {  - duration is in milliseconds                                               }
+    {  - pitch is a MIDI value; e.g. 69 is A4 = 440 Hz                             }
+    PROCEDURE NOTE(PITCH,DURATION: INTEGER);
+
+IMPLEMENTATION
+
+  { UNITWRITE/UNITREAD mode values  (arbitrarily chosen as Apple (unit#,proc#)     }
+  CONST ASIMPLPADDLE = 2202;    { GRAPHIC: }
+        ASIMPLBUTTON = 2203;
+        ASIMPLRANDOMIZE = 2206; { SYSTEM: }
+        ASIMPLRND = 2207;
+        ASIMPLKEYPRESS = 2205;{ SYSTERM: }
+        ASIMPLNOTE = 2208;      { AUDIO: }
+        SYSIMPLYIELDCPU = 25502;{ TODO: for NOTE, which currently can only wait   }
+
+  PROCEDURE UNITINITIALIZATION; { reserve proc #1 in case we ever implement Apple-}
+  BEGIN                         { likeUNIT initialization, which goes in proc #1  }
+  END;
+
+  {$I+} { enable I/O checking }
+
+  FUNCTION PADDLE{(WHICH: INTEGER): INTEGER};
+    VAR RESULT: INTEGER;
+  BEGIN
+    UNITREAD(3,RESULT,2,WHICH,ASIMPLPADDLE);    { send WHICH as BLOCK }
+    PADDLE := RESULT;
+  END;
+
+  FUNCTION BUTTON{(WHICH: INTEGER): BOOLEAN};
+    VAR RESULT: INTEGER;
+  BEGIN
+    UNITREAD(3,RESULT,2,WHICH,ASIMPLBUTTON);    { send WHICH as BLOCK }
+    BUTTON := RESULT <> 0;
+  END;
+
+  PROCEDURE RANDOMIZE;
+    VAR NOARG: INTEGER;
+  BEGIN
+    UNITWRITE(0,NOARG,0,0,ASIMPLRANDOMIZE);    { SYSTEM: }
+  END;
+
+  FUNCTION RANDOM{: INTEGER};
+    VAR RESULT: INTEGER;
+  BEGIN
+    UNITREAD(0,RESULT,2,0,ASIMPLRND);
+    RANDOM := RESULT;
+  END;
+
+  PROCEDURE TTLOUT{(SELECT: INTEGER; DATA: BOOLEAN)};
+  BEGIN
+    { ignore; not much we can do here }
+  END;
+
+  FUNCTION KEYPRESS{: BOOLEAN};
+    VAR RESULT: INTEGER;
+  BEGIN
+    UNITREAD(2,RESULT,2,0,ASIMPLKEYPRESS);
+    KEYPRESS := RESULT <> 0;
+  END;
+
+  PROCEDURE NOTE{(PITCH,DURATION: INTEGER)};
+  BEGIN
+    IF PITCH <> 0 THEN
+        UNITWRITE(8{AUDIO:},DURATION,4{two args},0,ASIMPLNOTE);  { start the note }
+    IF DURATION > 0 THEN    { negative: play async }
+        UNITWRITE(0,DURATION,2,0,SYSIMPLYIELDCPU)                      { and wait }
+  END;
+
+END.

@@ -1,0 +1,42 @@
+PROGRAM COPYBLOCKS;
+USES (*$U screenunit.code*)SCREENUNIT,
+     (*$U fileunit.code*)FILEUNIT;
+
+{by George Schreyer}
+
+VAR I,J,K,L,M,N : INTEGER;
+    DISKA,DISKB : FILE;
+    VOLNAME,FILENAME : STRING;
+    DATA : PACKED ARRAY [0..511] OF CHAR;
+
+BEGIN
+   GETCRTINFO;
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   WRITELN('     copyblocks version 1.0    13-Jun-81');
+   VER_SCREENUNIT;
+   VER_FILEUNIT;
+   
+   WRITELN;
+   WRITELN('Copyblocks transfers a group of blocks, probably a whole file');
+   writeln('which has for some reason dissappeared from the directory,');
+   WRITELN('from a file or volume to a text file.  You must supply the');
+   WRITELN('absolute starting block from the beginning of the file or volume');
+   writeln('and the number of blocks which are to be transferred.  ');
+   OPNDSKREAD(DISKA,'name of source volume ?',VOLNAME,0,11);
+   IF VOLNAME='' THEN EXIT(PROGRAM);
+   OPNDSKWRT(DISKB,'Filename of output file ? ',FILENAME,0,13);
+   IF FILENAME='' THEN EXIT(PROGRAM);
+   WRITELN;
+   WRITE('Blocknumber to start from ? ');
+   READLN(I);
+   WRITE('Number of blocks to copy ? ');
+   READLN(J);
+   FOR L:= I TO I+J-1 DO
+      BEGIN
+         K:=BLOCKREAD(DISKA,DATA,1,L);
+         K:=BLOCKWRITE(DISKB,DATA,1);
+      END;
+   CLOSE(DISKB,LOCK);
+END.
+   

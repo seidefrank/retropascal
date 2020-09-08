@@ -1,0 +1,153 @@
+                             USUS Library Volume 14
+                     Assorted programs from almost everyone
+
+COPVOL.TEXT       18  Jon Bondy's disk copier (will copy Z-80 type boot blocks)
+COPVER.ASM.TEXT    8    an external procedure for COPVAL
+COPFILE.TEXT      12  Jon Bondy's file copier
+COMPFILE.TEXT     10  A binary file comparison program
+GAME.TEXT         26  A game with a maze and demons by Jon Bondy
+GAME1.TEXT        18    an include file of GAME
+DEFAULT.GPAT       4    a data file for GAME
+CROSSES.GPAT       4      ditto
+SPARSE.GPAT        4      ditto
+GAME.ASSEM.TEXT    4    an external procedure for GAME ( keypress )
+SCANNER.TEXT      14  A nifty program which looks through a disk for a string
+KBSTAT.TEXT        4    my keypress routine (for an H-89)
+BONDYSTUFF.TEXT   14  Jon's documemtation
+HOME_LOAN.TEXT    10  A simple program to calculate simple loans
+BANNER.TEXT       22  Prints banners in BIG letters
+STOCK.TEXT        22  A Stock Market game
+STOCK.DATA.TEXT    6    a data file for STOCK
+STOCK.DOC.TEXT     6    documentation for STOCK
+SRCCOM.TEXT       18  A nice source comparison program
+FASTREAD.TEXT      8    a unit for SRCCOM
+REFERENCE.TEXT    24  A simple but effective procedural cross referencer
+REFER.INC.TEXT    22    an include file of REFERENCE
+8080CONV.TEXT     26  Converts 8080 instructions to Z-80 instructions
+LOOK.UP.TABLE     15    A data file for 8080CONV
+TABLE.TEXT        18    The text of the data in case you have to recreate it
+REFORM.TEXT        8  A utility for 8080CONV
+CALENDAR.TEXT     12  A perpetual calendar ( requires an H-19 )
+DAYOFWK.TEXT       8  Calculates the day of the week for any date
+LISTINFO.TEXT     36  Generates a report of your *SYSTEM.MISCINFO
+SORTS1.TEXT        6  These four programs are demos of four different sorts
+SORTS2.TEXT        6 
+SORTS3.TEXT        6 
+SORTS4.TEXT        6 
+HEXDUMP.TEXT      12  Dumps blocks in hex
+ROMAN.TEXT        10  Converts decimal dates to Roman numerals
+VOL14.DOC.TEXT    14  You're reading it
+-------------------------------------------------------------------------------
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 14 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+                                     COPVOL
+
+     This is a general disk copier with verification.  It will also copy the 
+boot block of Z-80/8080 type systems.  You may have to modify the external
+procedure.
+
+                                    COPFILE
+
+     A general file copier.
+
+                                    COMPFILE
+                                        
+     A binary file comparison program.  It will compare any type of file but
+does not provide as nice a difference report as SRCCOM will for textfiles.
+
+                                      GAME
+
+     A game with demons and a maze with some added features.  Refer to
+BONDYSTUFF.TEXT for more detailed info.  You will need a keypress function to 
+make it work.
+
+                                    SCANNER
+
+     This program will very quickly look through a disk for a target string.
+It had some problems as Jon submitted it, but I fixed them (you may note my
+kludging here and there).  This program is REALLY useful if you have deleted
+a file and you want to know in which <unused> areas it may still exist.
+
+                                   HOME_LOAN
+
+     This is a simple loan calculator.  It could use some work on the display 
+format, but it appears to work.
+
+                                     BANNER
+
+     This little ditty was supposed to be on Volume 8 ( it is in the catalog
+file, but the file is not on the copy that I have).  It prints a banner in BIG 
+letters ( up to about 10" high ) or multiple lines of smaller letters.  The 
+character font is passable but could use improvement.  I have modified it here 
+and there, changing the overstrike characters and adding the font data for 
+digits.
+
+                                     STOCK
+                                        
+     Stock is a stock market game, simple but interesting.
+
+                              SRCCOM and FASTREAD
+
+     SRCCOM is a textfile comparison similar in function to the comparison 
+routine on Volume 4.  Fastread is a unit which allow MUCH faster reading of 
+textfiles than the standard READ procedure.
+
+                                   REFERENCE
+
+     REFERENCE is a simple procedural cross-referencer.  It tells you the
+scope of procedures and functions and reports which routine call which
+routine.
+ 
+                              8080CONV and REFORM
+
+     This utility converts 8080 assembly language source into Z-80 source.
+It assumes that the 8080 source conforms to a certain set of conventions, 
+which can be arranged by processing the 8080 source with REFORM.  
+
+                                    LISTINFO
+
+     This program generates a report of the data in *SYSTEM.MISCINFO.  It
+was written for version I.5 but I tested it under II.0 and it works.  It 
+probably won't work right for IV.0.
+
+                              CALENDAR and DAYOFWK
+
+     These programs do date conversions for the Gregorian calendar.  CALENDAR
+requires an H-19 as some simple graphics work is done.
+
+                                SORTS1 .. SORTS4
+
+     These demo programs are four different types of sorts.  They include 
+internal timers to time themselves, so if you don't have TIME supported on 
+your machine, you will have to use a stopwatch.  TIME is also used to 
+initialize a random number generator which is used to generate a random list 
+on integers to sort, so you may have to include a routine to prompt for a seed 
+also.
+
+                                    HEXDUMP
+
+     This is a simple program which dumps blocks in hex.  I think that PATCH 
+is much more useful in this regard, but this program works.
+
+                                     ROMAN
+
+     This is a simple program which converts decimal numbers to Roman
+numerals.
+
+
+

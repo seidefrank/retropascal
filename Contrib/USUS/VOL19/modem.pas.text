@@ -1,0 +1,41 @@
+program modem;
+{ Give control of the system to the MODEM }
+var i : integer;
+procedure gomodem ; external;
+begin
+        gomodem
+end.
+
+
+        .title  "GOMODEM - Modem redirector"
+        .proc   gomodem
+;       This function will:
+;               1) Find the console register map
+;               2) Change it to relfect the -odem
+;               3) Point the modem vectors to the console driver
+;               4) Point the console vectors to nil
+;        This procedure will effectivly redirect control of the
+;       P-system to the modem device.
+        clr     r0              ; Point to bottom of memory
+search:
+        mov     (r0)+,r1        ; Get the word to test
+        bic     #7,r1           ; Mask off the register select field
+        cmp     #177560,r1      ; Test : is this a console pointer ?
+        bne     search          ; Keep looking...
+        sub     #40,-(r0)       ; Fix the register address
+        tst     (r0)+           ; Point to the next cell to continue
+        inc     count           ; Found one... only 4 exsist
+        cmp     #4,count        ; Was this the last ?
+        bne     search          ; No...keep looking
+        mov     @#60,r0         ; Swap vectors
+        mov     @#120,@#60
+        mov     r0,@#120
+        mov     @#64,r0
+        mov     @#124,@#64
+        mov     r0,@#124
+        rts     pc
+count   .word   0
+        .end
+
+
+

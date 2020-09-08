@@ -1,0 +1,15 @@
+{$I link0 }
+{$I link1 }
+{$I link2 }
+{$I link3a }
+{$I link3b }
+
+begin { linker }
+  phase1;
+  phase2;
+  phase3;
+  unitclear(3)
+end { linker } ;
+
+begin end.
+

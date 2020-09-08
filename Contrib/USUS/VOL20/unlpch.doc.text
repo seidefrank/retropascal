@@ -1,0 +1,60 @@
+
+                           UNLPATCH
+
+Submitted by:  Henry E. Baumgarten
+               Department of Chemistry
+               University of Nebraska, Lincoln
+               Lincoln, Nebraska 68588-0304
+               (402) 472-3301
+
+     UNLPATCH is a patch-dump program intended to facilitate the examination,
+revision (patching), and printing (dumping) of UCSD files, disks, and memory.
+In its present form operations on memory are limited largely to the examin-
+ation of the UNLPATCH program itself and those portions of the operating
+system which are resident in memory.  This program may also be used for the
+examination, patching, and dumping of RT-11 disk blocks; however, the
+present version is not designed to read RT-11 directories; therefore, it
+cannot be used with RT-11 files.  The program is neither as elegant nor as
+bug-ridden as the UCSD PATCH program the author received with Version 2.0. It
+is intended to be fairly easy to use and fairly forgiving of user blunders;
+however, as with most patching operations, it is wise to back-up disks and
+files before using this program.
+
+Preparing the code file:
+     
+     On the author`s Heath H11A system (DEC LSI-11/2, UNL mongrel version)
+using Version 2.0 of UCSD Pascal, compilation of UNLPATCH.1.TEXT gives a
+runnable version of UNLPATCH.CODE (without linking)---i.e., the "software
+tools" the author often uses are built into the program rather than taken from
+a library.  Those persons having an editor capable of handling large files may
+wish to combine UNLPATCH.1.TEXT WITH UNLPATCH.2.TEXT.  The program appears to
+compile and work properly with Version 4.0 also; however, for many purposes 
+the author prefers Version 2.0 over 4.0 and has not used this program 
+extensively with 4.0.  Furthermore, the author has found that that Version
+2.0 is sometimes more forgiving than Version 4.0; therefore, it is possible
+that "bugs" not known to the author may still be lurking within. Since the
+author has not had the opportunity to test this program with non-DEC
+microprocessors, users should test this program carefully to determine if
+their microprocessors have system-dependent idiosyncracies that will require
+editing of the source. This will be especially important for those persons
+having machines whose byte sex is different from that of the LSI-11 (least
+significant byte goes into byte 0 of a word, most significant byte into byte
+1). Making changes to accommodate different byte sexes should not be 
+difficult. Making the the changes necessary to address extended memory may
+be more difficult.
+
+UNLPATCH conventions:
+
+     Data formats allowed are bytes, words, and characters.  Data, whether 
+from a file, a disk, or memory, is handled in blocks of 512 bytes.
+
+     Radices (number bases) in this version are limited to the following.
+
+       Disk, file, or memory blocks:   8 or 10  (starting block = 0)
+       Words (16 bits):                8 or 16  (10 defaults to 8)
+       Bytes (8 bits):                 8, 10, or 16
+       Addresses:                      8 or 16  (10 defaults to 8)
+
+     Characters are assumed to be ASCII-coded with non-printable char (0 to 
+31, 128 to 255 (base 10)) given in byte-form in the current radix.  
+

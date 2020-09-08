@@ -1,0 +1,133 @@
+
+(* Mandelbrot graphics demo for Retro Pascal ][ -- by Frank Seide, 2013 *)
+
+program mandelbrot;
+  uses turtlegraphics,applestuff,transcend;
+  const maxrow = 1999;  (* max. x coordinate we handle *)
+        maxiter = 100;  (* max. # iterations *)
+  var width,height: integer;    (* screen dimensions *)
+      x,y,w,h: real;            (* Mandelbrot region *)
+      colormap: array [0..maxiter] of screencolor;  (* precomputer color table *)
+      pixelrow: array [0..maxrow] of screencolor;   (* draw buffer *)
+      done: boolean;
+
+  (* function to create an extended (5 bit RGB) color for use with PENCOLOR *)
+
+  function xcolor(xc: integer):screencolor; var col: screencolor;
+  begin moveleft(xc,col,2); xcolor:=col end; (* cast xcolor to SCREENCOLOR *)
+
+  { same as Retro Pascal's TURTLEGRAPHICS RGBCOLOR, but work with Apple disk }
+  function rgbxcolor(r:real; g:real; b:real):screencolor;
+    type xcolorrange=0..31;
+    var xc: integer;
+    function scale(r:real):xcolorrange;
+    begin if r<1.0 then scale:=trunc(r*32) else scale:=31 end;
+  begin
+    xc:=1; xc:=xc*32+scale(r); xc:=xc*32+scale(g); xc:=xc*32+scale(b);
+    rgbxcolor:=xcolor(xc);
+  end;
+
+  (* Mandelbrot set rendering *)
+
+  procedure precomputecolortable;
+    const pi=3.14159268;
+    var niter: integer;
+        hue: real;
+  begin
+    for niter:=0 to maxiter do
+      if(niter=maxiter) then
+        colormap[niter]:=rgbxcolor(0,0,0)
+      else begin
+        hue:=1.0-niter*1.0/maxiter;
+        colormap[niter]:=rgbxcolor(cos(2*pi*(hue))*0.5+0.5,
+                                   cos(2*pi*(hue+1/3))*0.5+0.5,
+                                   cos(2*pi*(hue+2/3))*0.5+0.5)
+      end
+  end;
+
+  procedure mandel(x1: real; y1: real; x2: real; y2: real);
+
+    var i,j,j1,step,niter: integer;
+        ci,cr: real;
+
+    (* this is the Mandelbrot set test function *)
+    function test(cr: real; ci: real; maxiter: integer):integer;
+      const maxradius=4; (* assume divergence outside this *)
+      var zr,zi,zr2,zi2: real;
+          n: integer;
+    begin
+      zr:=cr; zi:=ci;
+      n:=0;
+      repeat
+        zr2:=zr*zr;
+        zi2:=zi*zi;
+        zi:=2.0*zr*zi+ci;
+        zr:=zr2-zi2+cr;
+        n:=n+1;
+      until (zr2+zi2>4) or (n>=maxiter);
+      test:=n;
+    end;    (* test *)
+
+  begin     (* mandel *)
+    step:=16;  (* sub-sampling: 8, 4, 2, 1 for faster rendering *)
+    while(step>1) do begin
+      step:=step div 2;
+      for j1:=0 to height div step-1 do begin       (* row loop *)
+        if (odd(j1)) then                           (* draw inside out *)
+          j:=height div step div 2-(j1+1) div 2
+        else
+          j:=height div step div 2+j1 div 2;
+        if keypress or button(0) then exit(mandel); (* don't test too often *)
+        ci:=j*step*(y2-y1)/height+y1;
+        (* render one row to pixel buffer *)
+        for i:=0 to width div step-1 do begin       (* col loop *)
+          cr:=i*step*(x2-x1)/width+x1;
+          niter:=test(cr,ci,maxiter);
+          pixelrow[i]:=colormap[niter];
+        end;
+        (* put pixel buffer to screen *)
+        if step>1 then
+          drawblock(pixelrow,width div step*2,0,0,width div step,1,0,
+                    j*step,32+256*(8+step-2))   (* scaled *)
+        else
+          drawblock(pixelrow,width*2,0,0,width,1,0,j,32);
+      end;
+    end
+  end;      (* mandel *)
+
+(* main program *)
+
+begin
+  writeln('Welcome to Mandelbrot.');
+  writeln;
+  writeln('Select region with mouse or touch.');
+  writeln('Hit any key to exit.');
+  writeln;
+  writeln('Press ENTER to begin.');
+  readln;
+
+  viewport(0,MAXINT,0,MAXINT);                      (* unlock native resolution *)
+  initturtle;
+  fillscreen(xcolor(16384));
+  width:=turtlex*2; height:=turtley*2;
+
+  precomputecolortable;
+
+  x:=0; y:=0; h:=2; w:=h/height*width;              (* initial region *)
+  done:=false;
+  while not done do begin
+    (*textmode; writeln('x,y,s=',x,',',y,',',s); readln; initturtle;*)
+    mandel(x-w/2,y-h/2,x+w/2,y+h/2);
+    repeat until keypress or button(0);
+    if (button(0)) then begin
+      repeat until not button(0);       (* wait until release *)
+      x:=paddle(0)/256.0*w+(x-w/2);     (* click position center of new region *)
+      y:=paddle(1)/256.0*h+(y-h/2);
+      w:=w/3;                           (* shrink threefold *)
+      h:=h/3;
+    end else done:=true
+  end;
+  textmode;
+  writeln('That''s all folks!');
+  readln;
+end.

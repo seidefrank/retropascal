@@ -1,0 +1,75 @@
+ (*------------------------------------------------------------------*)
+ PROCEDURE errtrap (*errmsg:STRING*);
+ (*         Print an error message and halt execution until 
+                                        a <cr> is recieved.*)
+ 
+ BEGIN
+ 
+ WRITELN(' ***ERROR*** ',errmsg,' Hit <cr> to continue.');
+ READLN;
+ 
+ END; (*PROCEDURE errtrap*)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE bdump (*VAR r: brecord*);
+ (*      Dump contents of r to terminal*)
+ 
+ VAR      j:INTEGER; 
+ 
+ BEGIN
+         WITH r DO BEGIN
+         CASE use OF
+ 
+         0:BEGIN
+           WRITELN('next free record available is  ',nextfree);
+           END;(*case use=0*)
+ 
+         1:BEGIN
+           WRITELN('number of records in use  ', desc.nrec);
+           WRITELN;
+           WRITELN('number of records in btree  ', desc.maxrec);
+           WRITELN;
+           WRITELN('record number of btree root  ', desc.root);
+         WRITELN;
+         WRITELN('first free record in file     ', desc.freehead);
+           END;(*case use=1*)
+ 
+         2:BEGIN WITH r.pg DO BEGIN
+           WRITELN('number of keys in this page  ', count);
+           WRITELN;
+           WRITELN('parent page is  ',prntpage);
+           WRITELN;
+           WRITELN('parent entry is  ',prntentry);
+           WRITELN;
+           WRITELN('first pointer in this page  ', bpointer[0]);
+           WRITELN;
+           WRITELN('            KEY','      DATA','   POINTER');
+           
+           FOR j:=1 TO count DO
+              WRITELN(bentry[j].key:15,bentry[j].data:10,bpointer[j]:10);
+           END; (* WITH *) END;(*case use=2*)
+ 
+         END; (*CASE*)
+         END;(*WITH*)
+ 
+ END; (* PROCEDURE bdump *)
+ (*------------------------------------------------------------------*)
+ PROCEDURE showit(*VAR f:btree; pagenbr : btpointer; entrynbr : bpagesize*);
+ (*      Display contents of tree f, at pagenbr,entrynbr , formatted *)
+ 
+ VAR entry : btentry;
+ 
+ BEGIN
+ 
+ bread (f,pagenbr);
+ entry := f^.pg.bentry[entrynbr];
+ 
+ WRITE('Current: ');
+ WRITELN('PAGE':11,'ENTRY':15,'KEY':15,'DATA':15);
+ WRITELN(pagenbr:20,entrynbr:15,entry.key:15,entry.data:15);
+ WRITELN;
+ 
+ END; (*PROCEDURE showit*)
+ 
+
+

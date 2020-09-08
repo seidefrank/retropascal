@@ -1,0 +1,119 @@
+
+(*
+ * RETROSTUFF UNIT for Retro Pascal ][ -- Frank Seide, 2013
+ *
+ * UNIT for some functions specific to the ReTro implementation of UCSD Pascal.
+ *)
+
+{$C RETROSTUFF II.764}
+
+{$S+}
+{$U-}
+{$I GLOBALS.TEXT}   { for SYSCOM }
+{ We need $U- to allow to declare VARs without type. }
+{ I had to change the compiler to consider VAR X as VAR X: INTEGER when }
+{ compiling as System, so that we can compile this unit. Otherwise we couldn't. }
+{ This is outside what gets copied into the lib as the INTERFACE text. Thus, the }
+{ comsuming code compiles this as $U+ while the UNIT itself compiles as $U-. }
+{ Apple's compiler must have a similar tweak to be able to compile their interface. }
+
+UNIT RETROSTUFF;
+
+INTERFACE
+
+  { yield (sleep) the CPU for a certain number of ms }
+  PROCEDURE YIELDCPU(MS: INTEGER);
+
+  { allocate memory for an array }
+  PROCEDURE NEWARRAY(VAR X{: ^ARRAY [] OF ... }; COUNT, BYTESIZE: INTEGER);
+
+  { get the current terminal dimensions }
+  PROCEDURE GETTERMSIZE(VAR WIDTH, HEIGHT: INTEGER);
+
+  { get actual available data RAM, in bytes (MEMAVAIL is limited to 32k }
+  FUNCTION RAMAVAIL: REAL;
+
+  { append an extension to a file name if it is not there }
+  PROCEDURE APPENDEXTENSION(VAR FILENAME: STRING; EXT: STRING);
+
+  { read a pathname from the user, with filename completion }
+  { SUFFIXES: Comma-separated list of suffixes that filename must be one of. }
+  {           E.g. '.TEXT,.LIST' or, to select a volume, ':' }
+  { EXTENSION: extension to append if not present, e.g. '.TEXT' }
+  PROCEDURE READLNPATHNAME(VAR PATHNAME: STRING; SUFFIXES, EXTENSION: STRING);
+
+IMPLEMENTATION
+
+  CONST SYSIMPLYIELDCPU = 25502;
+        SYSIMPLNEWARRAY = 25503;
+        SYSIMPLRAMAVAIL = 25504;
+
+  { get the current terminal dimensions }
+  PROCEDURE GETTERMSIZE(*VAR WIDTH, HEIGHT: INTEGER*);
+  BEGIN
+    WIDTH := SYSCOM^.CRTINFO.WIDTH;
+    HEIGHT := SYSCOM^.CRTINFO.HEIGHT;
+  END;
+
+  { yield (sleep) the CPU for a certain number of ms }
+  PROCEDURE YIELDCPU{(MS: INTEGER)};
+  BEGIN
+    UNITWRITE(0,MS,2,0,SYSIMPLYIELDCPU);
+  END;
+
+  { allocate memory for an array }
+  { like NEW but programmer can specify how many elements }
+  { this is really like calloc(), without protections, so use it wisely }
+  PROCEDURE NEWARRAY(*VAR X{: ^ARRAY [] OF ... }; COUNT, BYTESIZE: INTEGER*);
+  BEGIN
+    UNITREAD(0,BYTESIZE,6{IN/OUT},0,SYSIMPLNEWARRAY);
+  END;
+
+  { get actual available data RAM, in bytes (MEMAVAIL is limited to 32k }
+  FUNCTION RAMAVAIL{: REAL};
+    VAR NBYTES: REAL;
+  BEGIN
+    UNITREAD(0,NBYTES,4,0,SYSIMPLRAMAVAIL);
+    RAMAVAIL := NBYTES
+  END;
+
+  { append an extension to a file name if it is not there }
+  { based on EDITOR source }
+  PROCEDURE APPENDEXTENSION(*VAR FILENAME: STRING; EXT: STRING*);
+    VAR I, XLEN: INTEGER;
+    FUNCTION UCLC(CH:CHAR):CHAR; (* Map Lower Case to Upper Case *)
+    BEGIN { from EDITOR source }
+      IF CH IN ['a'..'z'] THEN UCLC:=CHR(ORD(CH)-32) ELSE UCLC:=CH
+    END;
+    FUNCTION ENDSWITH(S, SUFFIX: STRING): BOOLEAN;
+      VAR I: INTEGER;
+    BEGIN
+      I:=POS(SUFFIX,S)-1;
+      ENDSWITH:=(I>0) AND (I=LENGTH(S)-LENGTH(SUFFIX));
+    END;
+  BEGIN
+    IF FILENAME='' THEN EXIT(APPENDEXTENSION);
+    FOR I:=1 TO LENGTH(FILENAME) DO FILENAME[I]:=UCLC(FILENAME[I]); { up-case }
+    IF (ENDSWITH(FILENAME,'.LIBRARY')) AND (EXT='.CODE') THEN
+      EXIT(APPENDEXTENSION);    { .LIBRARY files are also code }
+    XLEN:=LENGTH(EXT)-1;
+    IF (NOT ENDSWITH(FILENAME,EXT)) AND                 { tail is not ext }
+       (FILENAME[LENGTH(FILENAME)]<>'.') AND            { final . inhibits }
+       (FILENAME[LENGTH(FILENAME)]<>':') THEN           { volume name }
+      FILENAME:=CONCAT(FILENAME,EXT);
+    IF FILENAME[LENGTH(FILENAME)]='.' THEN              { remove inhibitor }
+      DELETE(FILENAME,LENGTH(FILENAME),1);
+  END;
+
+  { read a pathname from the user, with filename completion }
+  PROCEDURE READLNPATHNAME(*VAR PATHNAME: STRING; SUFFIXES, EXTENSION: STRING*);
+  BEGIN
+    PATHNAME:=SUFFIXES;                           { pass suffixes in string buf }
+    INSERT('.',PATHNAME,1); PATHNAME[1]:=CHR(3);    { "secret signal" to engine }
+    READLN(PATHNAME);
+    APPENDEXTENSION(PATHNAME, EXTENSION);
+  END;
+
+END;
+
+BEGIN END.

@@ -1,0 +1,131 @@
+{$S+}
+unit SCREENOPS;         {A restricted implementation of version IV's SCREENOPS.}
+  
+  {Al Hayden Aug 1981.  Last changed Austin Tate 28-Sep-81}
+  
+  {Terak, SuperBrain, normal Apple monitor output, or any screen
+   which accepots form feed as the clear and home character}
+  
+  { This is defined for version IV on pages 127..131 of the UCSD architecture
+    guide. If you have a version IV system, it should be used. This unit is
+    intended for use by version II users who will upgrade later, to allow them
+    to write compatable software.
+    If you want to play with this lot or modify it, the source (it's very 
+    simple) is available from ERCC Micro Support Unit.                         }
+    
+    
+  interface
+    
+    type
+      SC_Long_String = string[255];           {used to pass prompt-lines around}
+      SC_ChSet       = set of char;        {holds a list of chars to match with}
+    
+    procedure SC_Clr_Line (Y :integer);
+                        {Clears line number Y within the current text port.}
+    
+    procedure SC_Clr_Screen;
+                        {Clears the screen.}
+    
+    procedure SC_Erase_to_EOL (X, Line :integer);
+                        {Starting at position (X, Line) within the current text
+                         port, everything to the end of the line is erased.}
+    
+   function  Space_Wait (Flush :boolean) :boolean;
+                        {This repeatedly reads from the keyboard until a
+                         <space> or the ESC character is recieved.
+                         Before doing this it does a UNITCLEAR to 1 and 2
+                         if Flush is true, and writes 'Type <space> to
+                         continue'. It returns true if a <space> was not
+                         read. Note: ESC replaces the ALTMODE character.    }
+    
+    function  SC_Prompt (Line :SC_Long_String;
+                         X_Cursor, Y_Cursor, X_Pos, Where :integer;
+                         Return_on_Match :SC_ChSet;
+                         No_Char_Back :boolean;
+                         Break_Char :char) :char;
+                        {This function displays the prompt-line, Line, in the
+                         current text-port at (X_pos, Where). The cursor is
+                         placed at (X_Cursor, Y_Cursor) after the prompt is
+                         printed. If X_Cursor is less than 0, the cursor is
+                         placed at the end of the prompt. If a character is
+                         being prompted for, No_Char_Back should be sent as
+                         false. The keyboard is repeatedly read until the
+                         character matches one within Return_on_Match.}
+                                  
+  implementation
+  
+  { procedure SC_Clr_Screen requires modification to suit terminal used        }
+
+                         
+    procedure SC_Clr_Line {Y :integer};
+    begin
+      gotoXY (0, Y);
+      write (' ':79);
+      gotoXY (0, Y);
+    end; {of SC_Clr_Line}
+    
+    procedure SC_Clr_Screen;  { "Comment out" the bit of code you don't want  }
+    var COUNT :integer;
+    begin
+      {-----------------------------------------------------------------------}
+                                           { This bit's for "normal" terminals}
+        write (chr (12)); gotoXY (0,0);    { accepting the form-feed character}
+                                           { (Ascii 12).                      }
+      {-----------------------------------------------------------------------}
+      { gotoXY (0, 23);                  } { Slow but safe bit for screens    }
+      { for COUNT := 1 to 24 do writeln; } { which don't recognise form-feeds }
+      { gotoXY (0, 0);                   }
+      {-----------------------------------------------------------------------}
+    end; {of SC_Clr_Screen}
+    
+    procedure SC_Erase_to_EOL {X, Line :integer};
+    begin
+      gotoXY (X, Line);
+      write (' ':(80 - X));
+      gotoXY (X, Line);
+    end; {of SC_Erase_to_EOL}
+    
+    function  Space_Wait {Flush :boolean} {:boolean};
+    const ESC = 27;
+    var   CH :char;
+    begin
+      if Flush then
+        begin
+          unitclear (1);
+          unitclear (2);
+        end;
+      write ('Type <space> to continue');
+      repeat read (KEYBOARD, CH) until (CH = ' ') or (CH = chr (ESC));
+      if CH = ' ' then
+        Space_Wait := false
+      else
+        Space_Wait := true;
+    end;
+    
+    function  SC_Prompt {Line :SC_long_String;.....; Break_Char :char}{ :char};
+    const BS  = 8;                                                  {back-space}
+          BEL = 7;                                                        {bell}
+    var   CH  :char;                                         {command character}
+    begin
+      if No_Char_Back then                               {no command to be read}
+        CH := chr (0)                                          {so nothing sent}
+      else
+        begin
+          SC_Clr_Line (Where); write (LINE);                {put up prompt line}
+          if X_Cursor >= 0 then gotoXY (X_Cursor, Y_Cursor);      {place cursor}
+          repeat
+            read (KEYBOARD, CH);                     {read character, invisibly}
+            if CH in ['a'..'z'] then CH := chr (ord (CH) - 32);     {upper case}
+            if CH >= ' ' then                    {if it's a printable character}
+              begin
+                write (CH); write (chr (BS));   {echo character, then sit on it}
+              end
+            else
+              write (chr (BEL));                   {illegal character, so bleep}
+          until CH in Return_on_Match;
+        end;
+        SC_Prompt := CH;                          {valid character now returned}
+     end; {of SC_Prompt}
+     
+end. {of unit SCREENOPS}
+

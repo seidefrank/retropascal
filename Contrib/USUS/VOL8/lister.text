@@ -1,0 +1,114 @@
+  {Copyright 1980 by
+  Stuart Lynne
+  1350 Clifton Ave.
+  Coquitlam, British Columbia,
+  Canada
+  V3J 5K6
+  
+  Permission granted to use for noncommercial purposes.  All
+  other rights reserved}
+  
+  
+
+{$I globals}
+
+
+segment procedure userprogram;
+  var
+    lineno, pageno: integer;
+    dy, yr: integer;
+    mth: string[10];
+    line: string[255];
+    comment: string[40];
+    finame, foname: string[20];
+    Fi, Fo: text;
+  
+  procedure set_month;
+    begin
+      with thedate do
+        begin
+          dy := day;
+          yr := year;
+          case month of
+             1: mth := 'January';
+             2: mth := 'Febuary';
+             3: mth := 'March';
+             4: mth := 'April';
+             5: mth := 'May';
+             6: mth := 'June';
+             7: mth := 'July';
+             8: mth := 'August';
+             9: mth := 'September';
+            10: mth := 'October';
+            11: mth := 'November';
+            12: mth := 'December'
+          end
+        end
+    end;
+  
+  procedure pageject;
+    begin
+      pageno := pageno + 1;
+      lineno := 0;
+      page (Fo);
+      writeln (Fo,
+               'File: ''',
+               finame,
+               '''',
+               '':17-length(finame),
+               comment,
+               '':46-length(comment),
+               mth,
+               ' ',
+               dy:2,
+               ', 19',
+               yr:2,
+               '':11-length(mth),
+               'pg.',
+               pageno:3);
+      writeln (Fo)
+    end;
+  
+  function check: boolean;
+    const
+      FF = 12;
+    var
+      S: string[1];
+    begin
+      S := ' ';
+      S[1] := chr (FF);
+      check := (pos ('$P', line) <> 0) or 
+               (pos ('.pag', line) = 1) or
+               (pos (S, line) <> 0)
+    end;
+    
+  begin
+    setmonth;
+    writeln;
+    writeln ('File Lister');
+    write ('What file? ');
+    readln (finame);
+    finame := concat (finame, '.text');
+    write ('To where? ');
+    readln (foname);
+    write ('Comment? ');
+    readln (comment);
+    reset (Fi, finame);
+    rewrite (Fo, foname);
+    pageno := 0;
+    lineno := 0;
+    while not eof (Fi) do
+      begin
+        
+        readln (Fi, line);
+        if ((lineno mod 60) = 0) or check  then
+          pageject;
+        writeln (Fo, line);
+        lineno := lineno + 1
+        
+      end;
+    page (Fo)
+  end;
+  
+begin
+end.

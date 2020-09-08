@@ -1,0 +1,396 @@
+(* NTIS LISP interpreter by L. A. Cox, Jr. and W. P.
+Taylor of the Lawrence Livermore Laboratory, modified for
+UCSD Pascal by David Mundie.  NTIS #UCRL-52417. *)
+                                 
+{$G+}
+program lisp;
+label 1,2;
+const maxnodes = 100;
+type alfa = string[10];
+     inputsymbol = (atom,period,lparen,rparen); 
+     rsrvdwrds = (replhsym,repltsym,headsym,
+      tailsym,eqsym,quotesym,atomsym,condsym,labelsym,
+      lambdasym,copysym,appendsym,concsym,conssym);
+     statustype = (unmarked,left,right,marked);
+     symbexpptr = ^symbolicExpression;
+     symbolicExpression = record 
+      status: statustype; 
+      next: symbexpptr;
+      case anatom:boolean of 
+       true: (name: alfa; case isareservedword: boolean of 
+              true: (ressym: rsrvdwrds));
+       false: (head,tail: symbexpptr)
+     end;
+ var lookaheadsym,sym: inputsymbol;
+     errorflag: boolean;
+     id: alfa; alreadypeeked: boolean; ch:char;  
+     ptr: symbexpptr;
+     freelist,nodelist,alist: symbexpptr; 
+     nilnode,tnode: symbolicExpression;
+     resword: rsrvdwrds;
+     reserved: boolean;
+     reswords: array [rsrvdwrds] of alfa;
+     freenodes,numberofgcs: integer;
+procedure error(number: integer); forward;
+ procedure garbageman; 
+  procedure mark(list:symbexpptr);
+  var father,son,current: symbexpptr;      
+  begin father := nil; current := list; son := current;                  
+   while current <> nil do with current^ do 
+   case status of 
+    unmarked: if anatom then status := marked 
+     else if (head^.status <> unmarked) or (head=current) then
+      if (tail^.status <>unmarked) or (tail = current) then
+       status := marked 
+      else begin status := right; son := tail; 
+       tail := father; father := current; current := son
+      end else begin 
+       status := left; son := head; head := father; 
+       father := current; current := son 
+      end;
+    left: if tail^.status <> unmarked then 
+     begin status := marked; father := head; head := son; 
+      son := current 
+     end else begin 
+      status := right; current := tail; tail := head; 
+      head := son; son := current 
+     end;
+    right: begin status := marked; father := tail; 
+     tail := son; son := current end;
+    marked: current := father
+   end
+  end; {mark}
+  procedure collectfreenodes; 
+  var temp: symbexpptr;
+  begin writeln('number of free nodes before collection = ',             
+   freenodes:1,'.');  
+   freelist := nil; freenodes := 0; temp := nodelist;     
+   while temp <> nil do 
+    begin if temp^.status <> unmarked then 
+     temp^.status := unmarked  
+     else begin freenodes := freenodes + 1;
+     temp^.head := freelist; freelist := temp end;
+     temp := temp^.next
+    end;
+   writeln('Nodes free after collection = ',freenodes:1,'.')
+  end;
+ begin {garbageman}
+  numberofgcs := numberofgcs + 1; writeln;
+  writeln('Garbage collection.'); writeln; 
+  mark(alist); if ptr <> nil then mark(ptr); 
+  collectfreenodes
+ end;
+procedure pop(var sptr:symbexpptr);
+begin if freelist = nil then 
+ begin writeln('Not enough space to evaluate.');  
+  exit(lisp)
+ end; freenodes := freenodes - 1; 
+ sptr := freelist; freelist := freelist^.head   
+end;
+procedure backupinput; 
+ begin alreadypeeked := true; lookaheadsym := sym; 
+  sym := lparen
+ end;
+procedure nextsym;   
+var i: integer;
+begin if alreadypeeked then     
+ begin sym := lookaheadsym; alreadypeeked := false       
+ end else 
+ begin while ch = ' ' do begin 
+  if eoln then writeln; read(ch); 
+  end; if ch in ['(','.',')'] then  
+   begin case ch of 
+    '(': sym := lparen; 
+    '.': sym := period;
+    ')': sym := rparen
+   end;
+   if eoln then writeln; read(ch);
+  end else 
+  begin sym := atom; id := '         '; i := 0;
+   repeat i := i + 1; 
+    if i < 11 then id[i] := ch; 
+    if eoln then writeln;
+    read(ch); 
+   until ch in [' ','(','.',')'];  
+   resword := replhsym; 
+   while (id<>reswords[resword]) and (resword<>conssym) do 
+    resword := succ(resword); 
+   reserved := id = reswords[resword]
+  end
+ end
+end;
+procedure readexpr( var sptr: symbexpptr);
+var nxt: symbexpptr;
+begin pop(sptr); nxt := sptr^.next;
+ case sym of  
+  rparen,period: error(1);
+  atom: with sptr^ do begin 
+        anatom := true; name := id; 
+        isareservedword := reserved;       
+        if reserved then ressym := resword  
+        end;
+  lparen: with sptr^ do begin nextsym;              
+        if sym = period then error(2)
+        else if sym = rparen then sptr^ := nilnode
+        else begin 
+         anatom := false; readexpr(head); nextsym; 
+         if sym = period then begin 
+          nextsym; readexpr(tail); nextsym; 
+          if sym<>rparen then error(4)
+         end else begin
+          backupinput; readexpr(tail) end 
+         end
+        end {with}
+       end; {case}
+      sptr^.next := nxt
+ end;
+ procedure printname(name: alfa);
+ begin write(name,' ') end;
+ procedure printexpr(sptr: symbexpptr);
+ label 1;
+ begin if sptr^.anatom then printname(sptr^.name)
+  else begin 
+   write('(');
+  1: with sptr^ do 
+   begin printexpr(head); 
+    if tail^.anatom and (tail^.name = 'nil       ') then
+     write(') ')
+    else if tail^.anatom then 
+     begin write(' . '); printexpr( tail ); write(') ')
+     end else 
+     begin sptr := tail; goto 1
+     end
+    end
+   end
+  end; {printexpr}
+  function eval(e,alist:symbexpptr):symbexpptr; 
+ var temp,carofe,caarofe: symbexpptr;    
+function replaceh(sptr1,sptr2:symbexpptr):symbexpptr;  
+begin if sptr1^.anatom then error(5) 
+ else sptr1^.head := sptr2; replaceh := sptr1 
+end;
+function replacet(sptr1,sptr2: symbexpptr):symbexpptr;
+begin if sptr1^.anatom then error(6) 
+ else sptr1^.tail := sptr2; replacet := sptr1
+end;
+function head(sptr: symbexpptr):symbexpptr;
+begin if sptr^.anatom then error(7)
+ else head := sptr^.head
+end;
+function tail(sptr:symbexpptr):symbexpptr;
+begin if sptr^.anatom then error(8) 
+ else tail := sptr^.tail
+end;
+function cons(sptr1,sptr2:symbexpptr):symbexpptr;
+var temp:symbexpptr;
+begin pop(temp); temp^.anatom := false;
+ temp^.head := sptr1; temp^.tail := sptr2;
+ cons := temp; writeln('cons')
+end; 
+function copy(sptr:symbexpptr):symbexpptr;
+var temp,nxt: symbexpptr;
+begin if sptr^.anatom then 
+ begin pop(temp); nxt := temp^.next;
+  temp^ := sptr^; temp^.next := nxt;
+  copy := temp; writeln('copy')
+ end else copy := cons(copy(sptr^.head),copy(sptr^.tail)) 
+end;
+function append(sptr1,sptr2: symbexpptr): symbexpptr;    
+begin if sptr1^.anatom then     
+ if sptr1^.name <> 'nil       ' then error(9)
+ else append := sptr2 
+else
+ append := cons(copy(sptr1^.head),append(sptr1^.tail,sptr2))
+end;
+function conc(sptr1:symbexpptr):symbexpptr;
+var sptr2,nilptr: symbexpptr;
+begin 
+if sym <> rparen then 
+ begin nextsym; readexpr(sptr2); nextsym; 
+  conc := cons(sptr1,conc(sptr2))
+ end else if sym = rparen then 
+ begin new(nilptr); with nilptr^ do 
+  begin anatom := true; name := 'nil       '
+  end; conc := cons(sptr1,nilptr)
+ end else error(10)
+end;
+function eqq(sptr1,sptr2: symbexpptr):symbexpptr;
+var temp,nxt: symbexpptr; 
+begin pop(temp); nxt := temp^.next;
+ if sptr1^.anatom and sptr2^.anatom then 
+  if sptr1^.name = sptr2^.name then temp^ := tnode
+  else temp^ := nilnode
+ else if sptr1 = sptr2 then 
+  temp^ := tnode
+ else temp^ := nilnode; 
+ eqq := temp
+end;
+function atom(sptr: symbexpptr):symbexpptr;    
+var temp,nxt: symbexpptr;
+begin pop(temp); writeln('atom');      
+ nxt := temp^.next;
+ if sptr^.anatom then temp^:=tnode
+ else temp^ := nilnode;
+ temp^.next := nxt; atom := temp        
+end;
+function lookup(key,alist: symbexpptr):symbexpptr;
+var temp: symbexpptr;
+begin temp := eqq(head(head(alist)),key); 
+ if temp^.name = 't         ' then 
+  lookup := tail(head(alist))
+ else lookup := lookup(key,tail(alist))
+end;
+function bindargs(names,values:symbexpptr):symbexpptr;
+var temp,temp2: symbexpptr;
+begin if names^.anatom and (names^.name = 'nil       ') then 
+ bindargs := alist
+ else begin 
+  temp := cons(head(names),eval(head(values),alist));
+  temp2 := bindargs(tail(names),tail(values));
+  bindargs := cons(temp,temp2)
+ end
+end;
+function evcon(condpairs: symbexpptr):symbexpptr;
+var temp: symbexpptr;
+begin temp := eval(head(head(condpairs)),alist);
+ if temp^.anatom and (temp^.name = 'nil       ') then 
+  evcon := evcon(tail(condpairs))
+ else evcon := eval(head(tail(head(condpairs))),alist)
+end;
+begin {eval} writeln('EVAL');  
+if e^.anatom then eval := lookup(e,alist)            
+else 
+ begin carofe := head(e);
+  if carofe^.anatom then 
+   if not carofe^.isareservedword then         
+    eval := eval(cons(lookup(carofe,alist),tail(e)),alist)
+   else case carofe^.ressym of 
+    labelsym,lambdasym: error(3);
+    quotesym: eval := head(tail(e));
+    atomsym: eval := atom(eval(head(tail(e)),alist));
+    eqsym: eval := eqq(eval(head(tail(e)),alist),
+                       eval(head(tail(tail(e))),alist));
+    headsym: eval := head(eval(head(tail(e)),alist));
+    tailsym: eval := tail(eval(head(tail(e)),alist));
+    conssym: eval := cons(eval(head(tail(e)),alist),
+                          eval(head(tail(tail(e))),alist));
+    condsym: eval := evcon(tail(e));
+    concsym:;
+    appendsym: eval := append(eval(head(tail(e)),alist),
+                              eval(head(tail(tail(e))),alist));
+    replhsym: eval := replaceh(eval(head(tail(e)),alist),
+                            eval(head(tail(tail(e))),alist));
+    repltsym: eval := replacet(eval(head(tail(e)),alist),
+                           eval(head(tail(tail(e))),alist));
+     end {case}
+  else begin 
+   caarofe := head(carofe);   
+    if caarofe^.anatom and caarofe^.isareservedword then   
+     if not(caarofe^.ressym in [labelsym,lambdasym]) then 
+      error(12) 
+     else case caarofe^.ressym of 
+      labelsym: begin temp := cons(cons(head(tail(carofe)),
+                  head(tail(tail(carofe)))),alist);
+                  eval := eval(cons(head(tail(tail(carofe))),
+                      tail(e)),temp)
+                end;
+      lambdasym: begin 
+                  temp := bindargs(head(tail(carofe)),tail(e));
+                  eval := eval(head(tail(tail(carofe))),temp)
+                 end
+      end {case}
+    else eval := eval(cons(eval(carofe,alist),tail(e)),alist)
+   end
+  end
+ end; {eval}
+ procedure initialize;
+ var i: integer; temp,nxt: symbexpptr;
+ begin alreadypeeked := false; read(ch);
+ numberofgcs := 0; freenodes := maxnodes; 
+  with nilnode do begin 
+   anatom := true; next := nil; name := 'nil       ';
+   status := unmarked; isareservedword := false
+  end;
+  with tnode do begin 
+   anatom := true; next := nil; name := 't         ';    
+   status := unmarked; isareservedword := false
+  end;
+  freelist := nil; for i := 1 to maxnodes do 
+   begin new(nodelist); 
+    nodelist^.next := freelist;
+    nodelist^.head := freelist;
+    nodelist^.status := unmarked; freelist := nodelist
+   end;
+  reswords[replhsym] := 'replaceh  ';
+  reswords[repltsym] := 'replacet  ';
+  reswords[headsym ] := 'car       ';
+  reswords[tailsym ] := 'cdr       ';
+  reswords[copysym ] := 'copy      ';
+  reswords[appendsym]:= 'append    ';
+  reswords[concsym ] := 'conc      ';
+  reswords[conssym ] := 'cons      ';
+  reswords[eqsym]    := 'eq        ';
+  reswords[quotesym] := 'quote     ';
+  reswords[atomsym]  := 'atom      ';
+  reswords[condsym]  := 'cond      ';
+  reswords[labelsym] := 'label     ';
+  reswords[lambdasym]:= 'lambda    ';
+  pop(alist);
+  alist^.anatom := false;
+  alist^.status := unmarked;
+  pop(alist^.tail); 
+  nxt := alist^.tail^.next;
+  alist^.tail^ := nilnode;
+  alist^.tail^.next := nxt;
+  pop(alist^.head);  
+  with alist^.head^ do    
+   begin anatom := false; status := unmarked;
+   pop(head); nxt := head^.next;
+   head^ := nilnode;   
+   head^.next := nxt;            
+   pop(tail); nxt := tail^.next;
+   tail^ := nilnode; 
+   tail^.next := nxt
+  end; 
+  pop(temp); 
+  temp^.anatom := false;  
+  temp^.status := unmarked;
+  temp^.tail := alist;
+  alist := temp;
+  pop(alist^.head); 
+  with alist^.head^ do 
+   begin anatom := false; status := unmarked;
+   pop(head); nxt := head^.next;
+   head^ := tnode;
+   head^.next := nxt;
+   pop(tail);
+   nxt := tail^.next;
+   tail^ := tnode; tail^.next := nxt
+  end
+ end;
+procedure showexpr;
+begin printexpr(eval(ptr,alist)) 
+end;  
+procedure error;  
+begin writeln; writeln('Error number ',number);
+ errorflag := true; if number = 11 then exit(lisp)
+ else if number in [1,2,4] then exit(readexpr)
+ else if number in [3,12,5,6,7,8,9,10] then exit(showexpr) 
+end;
+ begin {lisp}  
+  writeln('***eval '); initialize;
+  nextsym; readexpr(ptr); readln; writeln;
+  while not ptr^.anatom or (ptr^.name <>'fin         ') do 
+   begin writeln; writeln(' *value* ');
+   showexpr;                  
+   1: errorflag := false; writeln; writeln;
+   if eof(input) then error(11);
+   ptr := nil;
+   garbageman; 
+   writeln; writeln; writeln('  *eval*  '); 
+   nextsym; readexpr(ptr); if errorflag then goto 1;
+   readln; writeln
+  end;
+  writeln('Total number of garbage collections',numberofgcs);
+  writeln('Free nodes left on exit ',freenodes)
+ end.

@@ -1,0 +1,144 @@
+.TITLE    "K. G. Balke, Associates, Z80 Pascal SBIOS"
+
+; Author:   Karl G. Balke
+; Version:  6 July 1982
+
+
+.INCLUDE  bios.const
+
+
+.PROC     COUR_BIOS
+
+CRJMP00:
+; This vector connects the UCSD PASCAL interpreter to the SBIOS routines.
+
+; #00 SYSINIT Entry.
+          JP    INIT
+
+; #03 SYSHALT Entry.
+          JP    $
+
+; #06 CONINIT Entry.
+          JP    CONINI
+
+; #09 CONSTAT Entry.
+          JP    DR_CRS
+
+; #12 CONREAD Entry.
+          JP    DR_CRI
+
+; #15 CONWRIT Entry.
+          JP    DR_CRO
+
+; #18 SETDISK Entry.
+          JP    DSKDKN
+
+; #21 SETTRAK Entry.
+          JP    DSKDKT
+
+; #24 SETSECT Entry.
+          JP    DSKDKS
+
+; #27 SETBUFR Entry.
+          JP    DSKDKB
+
+; #30 DSKREAD Entry.
+          JP    DSKDKR
+
+; #33 DSKWRIT Entry.
+          JP    DSKDKW
+
+; #36 DSKINIT Entry.
+          JP    DSKDKI
+
+; #39 DSKSTRT Entry.
+          JP    NULL
+
+; #42 DSKSTOP Entry.
+          JP    NULL
+          
+; #45 PRNINIT Entry.
+          JP    DR_DIB
+          
+; #48 PRNSTAT Entry.
+          JP    DR_DIS
+          
+; #51 PRNREAD Entry.
+          JP    DR_DII
+
+; #54 PRNWRIT Entry.
+          JP    DR_DIO
+          
+; #57 REMINIT Entry.
+          JP    PHN_STT
+          
+; #60 REMSTAT Entry.
+          JP    PHN_STT
+          
+; #63 REMREAD Entry.
+          JP    PH_CIN
+          
+; #66 REMWRIT Entry.
+          JP    PHCOUT
+          
+; #69 USRINIT Entry.
+          JP    OFFLIN
+          
+; #72 USRSTAT Entry.
+          JP    OFFLIN
+          
+; #75 USRREAD Entry.
+          JP    OFFLIN
+          
+; #78 USRWRIT Entry.
+          JP    OFFLIN
+          
+; #81 CLKREAD Entry.
+          JP    CLK_RD
+
+; #84 QUIET Entry.  (IV.02 and later only)
+          DI
+          RET
+          NOP
+
+; #87 ENABLE Entry.  (IV.02 and later only)
+          EI
+          RET
+          NOP
+
+; #90 FORMAT Entry.  (Courier BIOS only)
+          JP    FMT_DISK
+
+.INCLUDE  BIOS.SERPT
+
+.INCLUDE  BIOS.DISKS
+
+.INCLUDE  BIOS.PHONE
+
+CLK_RD:
+;  This service provides dummy results for the BIOS clock procedures.
+;  Actual clock management is provided by Pascal procedures.
+
+
+          LD    A, 0
+          LD    DE, 0
+          LD    HL, 0
+          RET
+
+
+.INCLUDE  BIOS.DATA
+
+
+; Padding for pascal Blue - courier system transfer routine.
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          .WORD 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+.END
+

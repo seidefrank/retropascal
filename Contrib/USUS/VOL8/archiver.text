@@ -1,0 +1,177 @@
+{Copyright 1980 by
+Stuart Lynne
+1350 Clifton Ave.
+Coquitlam, British Columbia,
+Canada
+V3J 5K6
+
+Permission granted to use for noncommercial purposes.  All
+other rights reserved}
+
+
+
+{
+*   Archiver
+*
+*   Author: Stuart Lynne
+*
+*   Date:   August 22, 1980
+*
+}
+
+{$I globals }
+
+  segment procedure userprogram;
+    
+    const
+      bufsize = 60;
+    
+    type
+      blocktype = array [0..255] of integer;
+      
+    var
+      
+      lastblock, archlast, archsize: integer;
+      
+      command: char;
+      
+      initial: boolean;
+      
+      archname, volname: vid;
+      
+      Fi: file;
+      
+      
+    function min (A, B: integer): integer;
+      begin
+        if A < B then
+          min := A
+        else
+          min := B
+      end;
+      
+    procedure archinitialize;
+      var
+        volinfo: directory;
+      
+      begin
+        initial := false;
+        unitread (4, volinfo, sizeof (volinfo), 2);
+        archlast := volinfo[volinfo[0].dnumfiles].dlastblk;
+        archsize := volinfo[0].deovblk;
+        archname := volinfo[0].dvid;
+        writeln;
+        writeln ('The archive disk is  ', archname, '.');
+        writeln ('It is ', archsize, ' blocks long and has ', 
+                 archsize - archlast, ' blocks left for use.')
+      end;
+      
+    procedure srceinitialize;
+      var
+        volinfo: directory;
+      
+      begin
+        unitread (5, volinfo, sizeof (volinfo), 2);
+        lastblock := volinfo[volinfo[0].dnumfiles].dlastblk;
+        volname := volinfo[0].dvid;
+        writeln;
+        writeln ('Now archiving ',volname, 
+                 ' which is ',lastblock, ' blocks long.')
+      end;
+      
+    function tryagain: char;
+      var
+        C: char;
+      begin
+        writeln;
+        write ('A(rchive, N(ew, Q(uit, D(irectory');
+        read (C);
+        tryagain := C;
+        writeln
+      end;
+      
+    procedure transfer;
+      var
+        I, Count: integer;
+        buf: array [1..bufsize] of blocktype;
+        Fo: file;
+      
+      begin
+        rewrite (Fo, concat ('#4:', volname, '.dsk'));
+        Count := 0;
+        while Count < lastblock do
+          begin
+            I := blockread (Fi, buf, min (lastblock - Count, bufsize));
+            if blockwrite (Fo, buf, I) <> I then
+              begin
+                close (Fo, purge);
+                writeln ('No room on volume');
+                exit (transfer)
+              end;
+            Count := Count + i
+          end;
+          
+        archlast := archlast + Count;
+        close (Fo, lock);
+        
+        writeln (volname, ' has been archived.');
+        writeln ('There are ', archsize - archlast, 
+                 ' blocks left on ', archname);
+            
+      end;
+      
+    procedure directory;
+      var
+        fname: string;
+      begin
+        write ('Directory of what disk');
+        readln (fname);
+        if fname = 
+      end;
+      
+    begin
+    
+      writeln;
+      writeln ('Archiver version 1.0');
+      
+      writeln;
+      writeln ('Archive disk on unit # 4.');
+      writeln ('Source  disk on unit # 5.');
+      
+      initial := true;
+      
+      repeat
+        command := tryagain;
+        if command in ['n', 'N'] then
+          archinitialize
+        else
+          if initial then
+            writeln ('N(ew archive disk please!')
+          else
+            if command in ['A', 'a'] then
+              begin
+                reset (Fi, '#5:');
+                srceinitialize;
+                if (lastblock + archlast) < archsize then
+                  transfer
+                else
+                  begin
+                    writeln (volname, ' will not fit on ', archname)
+                  end;
+                close (Fi, normal)
+              end
+            else
+              if command in ['D', 'd'] then
+                directory
+      until command in ['q', 'Q'];
+      
+      writeln;
+      writeln ('Replace System Disk!');
+      readln
+    
+    end;
+    
+  begin
+  end.
+
+

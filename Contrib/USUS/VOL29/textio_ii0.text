@@ -1,0 +1,371 @@
+{$S+}
+{$U-}
+{               SEPARATE COMPILATION UNIT   -   TEXTIO
+{
+{                       Version for p-system II.0
+{
+{  This unit provides line-oriented text I/O to and from disk file.  The 
+{  procedures in this file execute much faster than the corresponding
+{  procedures built into the p-system.                                  }
+
+{  Some of the following type declarations describe segment 0 of the 
+{  p-system.  They are copyrighted by the University of California and
+{  Softech Microsystems.                                                }
+
+{  A note on error processing:  All callers of these procedures should
+{  check IORESULT after the call.  A close look at the following code will
+{  reveal that nothing much is done if an I/O error occurs.  This is due
+{  to some peculiarities in the way that p-system version II.0 handles
+{  (or rather, does not handle) EXIT's within separate procedures.          }
+
+{$C (C) Copyright 1981, 1982, 1983, 1984 by John Dykstra.  All rights reserved}
+
+
+PROGRAM pascalsystem;
+
+TYPE
+  window = PACKED ARRAY [ 1..1024 ] OF CHAR;
+  windowp = ^ window;
+  fib = ARRAY [ 1..290 ] OF INTEGER;
+  fibp = ^ fib;
+  closetype = ( cnormal, clock, cpurge, ccrunch );
+  
+PROCEDURE EXECERROR;
+  FORWARD;
+PROCEDURE FINIT(VAR F: FIB; WINDOW: WINDOWP; RECWORDS: INTEGER);
+  FORWARD;
+PROCEDURE FRESET(VAR F: FIB);
+  FORWARD;
+PROCEDURE FOPEN(VAR F: FIB; VAR FTITLE: STRING;
+                FOPENOLD: BOOLEAN; JUNK: FIBP);
+  FORWARD;
+PROCEDURE FCLOSE(VAR F: FIB; FTYPE: CLOSETYPE);
+  FORWARD;
+PROCEDURE FGET(VAR F: FIB);
+  FORWARD;
+PROCEDURE FPUT(VAR F: FIB);
+  FORWARD;
+PROCEDURE XSEEK;
+  FORWARD;
+FUNCTION FEOF(VAR F: FIB): BOOLEAN;
+  FORWARD;
+FUNCTION FEOLN(VAR F: FIB): BOOLEAN;
+  FORWARD;
+PROCEDURE FREADINT(VAR F: FIB; VAR I: INTEGER);
+  FORWARD;
+PROCEDURE FWRITEINT(VAR F: FIB; I,RLENG: INTEGER);
+  FORWARD;
+PROCEDURE XREADREAL;
+  FORWARD;
+PROCEDURE XWRITEREAL;
+  FORWARD;
+PROCEDURE FREADCHAR(VAR F: FIB; VAR CH: CHAR);
+  FORWARD;
+PROCEDURE FWRITECHAR(VAR F: FIB; CH: CHAR; RLENG: INTEGER);
+  FORWARD;
+PROCEDURE FREADSTRING(VAR F: FIB; VAR S: STRING; SLENG: INTEGER);
+  FORWARD;
+PROCEDURE FWRITESTRING(VAR F: FIB; VAR S: STRING; RLENG: INTEGER);
+  FORWARD;
+PROCEDURE FWRITEBYTES(VAR F: FIB; VAR A: WINDOW; RLENG,ALENG: INTEGER);
+  FORWARD;
+PROCEDURE FREADLN(VAR F: FIB);
+  FORWARD;
+PROCEDURE FWRITELN(VAR F: FIB);
+  FORWARD;
+PROCEDURE SCONCAT(VAR DEST,SRC: STRING; DESTLENG: INTEGER);
+  FORWARD;
+PROCEDURE SINSERT(VAR SRC,DEST: STRING; DESTLENG,INSINX: INTEGER);
+  FORWARD;
+PROCEDURE SCOPY(VAR SRC,DEST: STRING; SRCINX,COPYLENG: INTEGER);
+  FORWARD;
+PROCEDURE SDELETE(VAR DEST: STRING; DELINX,DELLENG: INTEGER);
+  FORWARD;
+FUNCTION SPOS(VAR TARGET,SRC: STRING): INTEGER;
+  FORWARD;
+FUNCTION FBLOCKIO(VAR F: FIB; VAR A: WINDOW; I: INTEGER;
+                  NBLOCKS,RBLOCK: INTEGER; DOREAD: BOOLEAN): INTEGER;
+  FORWARD;
+PROCEDURE FGOTOXY(X,Y: INTEGER);
+  FORWARD;
+
+SEPARATE UNIT textio;      
+  
+INTERFACE
+
+TYPE
+  io_fib = ARRAY [ 1..290 ] OF INTEGER;
+  
+  io_direction = ( io_input, io_output );
+  
+  io_file = RECORD
+    osfib:  io_fib;
+    direction:  io_direction;
+    eof_flag:  BOOLEAN;
+    buffer:  PACKED ARRAY [ 1..1024 ] OF CHAR;
+    next_free:  1..1024;
+    END;        {  RECEND  }
+    
+  io_string = STRING [ 255 ];
+    
+
+PROCEDURE io_open_file ( VAR file_blk:  io_file;
+                         file_title:  STRING;
+                         direction:  io_direction;
+                         VAR successful:  BOOLEAN  )  ;
+
+PROCEDURE io_close_file ( VAR file_blk:  io_file );
+
+PROCEDURE io_write_line ( VAR file_blk:  io_file;  
+                          data_string:  io_string );
+
+PROCEDURE io_read_line ( VAR file_blk:  io_file;
+                         VAR data_string:  io_string );
+
+PROCEDURE io_seek_line ( VAR file_blk:  io_file;
+                         desired_line:  INTEGER );
+
+FUNCTION io_end_of_file ( VAR file_blk:  io_file ):  BOOLEAN;
+
+
+
+IMPLEMENTATION
+  
+{$R+  Re-enable run-time checking (turned off by U- above)  }
+
+PROCEDURE io_open_file {  ( VAR file_blk:  io_file;
+                         file_title:  STRING;
+                         direction:  io_direction;
+                         successful:  BOOLEAN   )  };
+
+CONST
+    blk_size = 512;
+    ch_nul = 0;
+    
+VAR
+  complete_title:  STRING;
+  
+BEGIN           {  PROCEDURE io_open_file  }
+finit ( file_blk.osfib, NIL, -1 );
+complete_title := CONCAT ( file_title, '.TEXT' );
+IF direction = io_output THEN
+  BEGIN
+  file_blk.direction := io_output;
+  file_blk.eof_flag := TRUE;
+  fopen ( file_blk.osfib, complete_title, FALSE, NIL  );
+  successful := TRUE;
+  FILLCHAR ( file_blk.buffer [ 1  ], 1025 , CHR ( ch_nul ) );
+  IF fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, -1, FALSE ) <> 2 THEN
+    BEGIN
+    successful := FALSE;
+    END;
+  file_blk.next_free := 1;
+  END
+ELSE
+  BEGIN
+  file_blk.direction := io_input;
+  fopen ( file_blk.osfib, complete_title, TRUE, NIL  );
+  
+  IF IORESULT <> 0 THEN
+    successful := FALSE
+  ELSE
+    BEGIN
+    successful := TRUE;
+  
+    {  Insert code here to handle case of open of an empty file.  }
+    
+    file_blk.eof_flag := FALSE;
+    IF ( fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, 2, TRUE ) <> 2 )
+     THEN
+      BEGIN
+      successful := FALSE;
+      END;      {  IFEND  }
+    file_blk.next_free := 1;
+    END;        {  ELSEND  }
+  END;
+END;            {  PROCEDURE io_open_file  }
+
+
+PROCEDURE io_close_file {  ( VAR file_blk:  io_file )  };
+
+CONST
+    blk_size = 512;
+    ch_nul = 0;
+    
+  BEGIN         {  PROCEDURE io_close_file  }
+  IF file_blk.direction = io_output THEN
+    BEGIN
+    FILLCHAR ( file_blk.buffer [ file_blk.next_free ], 1025 -
+      file_blk.next_free, CHR ( ch_nul ) );
+    IF fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, -1, FALSE ) <> 2 THEN
+      BEGIN
+      END;
+    fclose ( file_blk.osfib, clock );
+    END
+  ELSE
+    BEGIN
+    fclose ( file_blk.osfib, cnormal );
+    END;
+  END;          {  PROCEDURE io_close_file  }
+
+PROCEDURE io_write_line { ( VAR file_blk:  io_file;  
+                       data_string:  io_string )  };
+  CONST
+    blk_size = 512;
+    ch_nul = 0;
+    ch_cr = 13;
+    
+  VAR
+    new_index:  1..1161;        {  1..blksize*2+max_line_length+1  }
+
+  BEGIN
+  new_index := file_blk.next_free + LENGTH ( data_string ) + 1;
+  
+  {  If the string would overflow the buffer, fill the remainder of
+     the buffer with <NUL> characters and write it out.              }
+     
+  IF new_index >= 1025 THEN
+    BEGIN
+    FILLCHAR ( file_blk.buffer [ file_blk.next_free ], 1025 -
+      file_blk.next_free, CHR ( ch_nul ) );
+    IF fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, -1, FALSE ) =  2 THEN
+      BEGIN
+      file_blk.next_free := 1;
+      new_index := LENGTH ( data_string ) + 2;
+      END;
+    END;                {  IFEND  }
+  
+  {  Put the string into the output buffer, followed by a <CR>  }
+  
+  IF LENGTH ( data_string ) > 0 THEN
+    MOVERIGHT ( data_string [ 1 ], file_blk.buffer [ file_blk.next_free ],
+      LENGTH ( data_string ) );
+  file_blk.buffer [ new_index - 1 ] := CHR ( ch_cr );
+  file_blk.next_free := new_index
+  END;          {  PROCEDURE io_write_line  }
+
+
+PROCEDURE io_read_line {  ( VAR file_blk:  io_file;
+                        VAR data_string:  io_string )  };
+
+  CONST
+    blk_size = 512;
+    ch_nul = 0;
+    ch_dle = 16;
+    ch_cr = 13;
+    
+  VAR
+    search_length:  1..1024;
+    count:  0..255;
+    index:  1..255;
+    
+  BEGIN         {  PROCEDURE read_line  }
+  IF NOT file_blk.eof_flag THEN
+    BEGIN
+    IF file_blk.buffer [ file_blk.next_free ] = CHR ( ch_dle ) THEN
+      BEGIN       {  get compressed blank count }
+      count := ORD ( file_blk.buffer [ file_blk.next_free + 1 ] ) - 32;
+      file_blk.next_free := file_blk.next_free + 2;
+      END
+    ELSE
+      count := 0;
+    search_length := 1025 - file_blk.next_free;
+    {$R-}
+    data_string [ 0 ] := CHR ( SCAN ( search_length, = CHR ( ch_cr ),
+      file_blk.buffer [ file_blk.next_free ] )  + count );
+    
+    {  Check to see if we searched without finding a carriage return.  This
+    {  can happen on the last page of a file created by the editor if no
+    {  carriage return was typed after the last line.                   }
+    
+    IF ( ORD ( data_string [ 0 ] ) - count ) = search_length THEN
+      BEGIN
+      data_string [ 0 ] := CHR ( SCAN ( search_length, = CHR ( ch_nul ), 
+        file_blk.buffer [ file_blk.next_free ] )  + count );
+      END;      {  IFEND  }
+      
+    {$R+}
+    
+    IF ( LENGTH ( data_string ) - count ) > 0 THEN
+      MOVERIGHT ( file_blk.buffer [ file_blk.next_free ], 
+        data_string [ 1 + count ], LENGTH ( data_string ) - count );
+    IF count > 0 THEN
+      FILLCHAR ( data_string [ 1 ], count, ' ' );
+    file_blk.next_free := file_blk.next_free + LENGTH ( data_string ) - count +
+      1;
+    IF file_blk.buffer [ file_blk.next_free ] = CHR ( ch_nul ) THEN
+      BEGIN
+      IF feof ( file_blk.osfib ) THEN
+        file_blk.eof_flag := TRUE
+      ELSE
+        BEGIN
+        IF ( fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, -1, TRUE ) <>
+         2 ) THEN
+          BEGIN
+          END;
+        file_blk.next_free := 1;
+        END;      {  ELSEND  }
+      END;        {  IFEND  }
+      
+    END;        {  IFEND - at end of file  }
+  END;          {  PROCEDURE io_read_line  }
+
+{$P}
+
+PROCEDURE io_seek_line {  ( VAR file_blk:  io_file;
+                         desired_line:  INTEGER )  };
+
+  CONST
+    ch_cr = 13;
+    ch_nul = 0;
+    x_2_blk_size = 1024;
+    
+  VAR
+    line_count:  INTEGER;
+    
+  BEGIN         {  PROCEDURE io_seek_line  }
+  IF file_blk.direction <> io_input THEN
+    BEGIN
+    END;        {  IFEND  }
+  IF fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, 2, TRUE ) <> 2 THEN
+    BEGIN                                   
+    END;
+  file_blk.eof_flag := FALSE;
+  file_blk.next_free := 1;
+  
+  line_count := 1;
+  WHILE line_count < desired_line DO
+    BEGIN
+    file_blk.next_free := file_blk.next_free + SCAN ( x_2_blk_size, 
+      = CHR ( ch_cr ), file_blk.buffer [ file_blk.next_free ] ) + 1;
+    IF file_blk.buffer [ file_blk.next_free ] = CHR ( ch_nul ) THEN
+      BEGIN
+      IF NOT feof ( file_blk.osfib ) THEN
+        BEGIN
+        IF fblockio ( file_blk.osfib, file_blk.buffer, 0, 2, -1, TRUE ) <> 
+         2 THEN
+          BEGIN
+          END;    {  IFEND  }
+        file_blk.next_free := 1;
+        END;      {  IFEND  }
+      END;      {  IFEND  }
+    line_count := line_count + 1;
+    END;        {  WHILEND  }
+  END;          {  PROCEDURE io_seek_line  }
+
+
+FUNCTION io_end_of_file {  ( VAR file_blk:  io_file ):  BOOLEAN  };
+
+  BEGIN           {  FUNCTION io_end_of_file  }
+  io_end_of_file := file_blk.eof_flag;
+  END;            {  FUNCTION io_end_of_file  }
+
+
+
+END;
+  
+  
+BEGIN
+END.
+  
+  

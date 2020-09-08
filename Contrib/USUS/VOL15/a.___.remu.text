@@ -1,0 +1,1092 @@
+{ USUS Remote Communication Unit for Apple /// & Hayes SmartModem - 820510 }
+{ Note: this version is an EXPERIMENTAL version... Arley Dealey            }
+
+{$setc debug    := false }
+{$setc test     := false }
+
+unit RemUnit ;
+
+{ This is a separate compilation unit intended to stand between application
+  code and a communication line.  Implementation of this unit follows the
+  specifications set out in the USUS (UCSD p-System Users Society) Remote
+  Unit Standard of August, 1981.
+  
+  
+*******************************************************************************
+*** NOTE: This Apple /// implementation is less well tested than the author ***
+***  would like, but it is being submitted to the library in its current    ***
+***  state in the interest of expediency.                             - acd ***
+*******************************************************************************
+
+  
+  This implementation is designed to interface to the following models:
+     computer                   serial port                     modem
+     --------                   -----------                     -----
+     Apple ///                  internal                        Hayes Smartmodem
+     
+
+  The following routines are not functional:
+    CR_DialTone
+    CR_SetAddress
+    CR_SetDTR
+    CR_SetRTS
+    
+  The following routines contain calls to UnitClear:
+    CR_Answer
+    CR_CommInit
+    
+  The following routines are implemented but untested:
+    CR_Answer
+    CR_Ringing
+    CR_ClearToSend
+    
+
+The authors may be contacted as follows:
+  
+                Robert W. Peterson              Arley C. Dealey
+                ------------------              ---------------
+US Mail         P.O. Box 1686                   Volition Systems
+                Plano, TX 75074                 1000 Texas National Bank Bldg.
+                                                Dallas, TX 75225
+                                                (214) 692-6518
+
+GTE Telemail    *BVL1707                        *NPN6141
+
+Compuserve      70235,326                       70130,177
+                      ( usually via EMAIL or the MUSUS SIG )
+
+Source                                          TCA928 {checked infrequently}
+
+
+        Change Log
+        ====== ===
+  Date     What change was made & who made the change
+---------  ---------------------------------------------------------------------
+04 Jul 82  Changed RS232_StList declaration so correct allocation is made. [acd]
+10 May 82  Cleaned up.  UnitControl does return status in ioresult.        [acd]
+26 Dec 81  SOS request vars changed to constants where possible - Arley Dealey
+21 Dec 81  Implemented CR_ClearToSend - Arley Dealey
+20 Dec 81  Implemented CR_Break - Arley Dealey
+09 Dec 81  Convert from 990 ver. IV.0 to Apple /// ver. II.x - Arley Dealey
+19 Nov 81  Add compile conditional for debugging and segments - Bob Peterson
+26 Oct 81  Convert from Polymorphic to 990
+25 Aug 81  Bring up to adopted standard - Bob Peterson
+03 Aug 81  Convert to IV.0 - Bob Peterson
+28 Mar 81  Original code - Bob Peterson
+
+
+==============================================================================}
+
+{$P}
+interface
+{============== Copyright Notice =============================================}
+{$C Copyright 1980, 1981 by Robert W. Peterson.  All rights reserved.         }
+{============== Copyright Notice =============================================}
+
+const
+  CR_Version    = '82 Jul 04 [1.1a]' ;                  {*** NON-STANDARD ***}
+  CR_Host       = 'Apple ///' ;                         {*** NON-STANDARD ***}
+  CR_Modem      = 'Smartmodem' ;                        {*** NON-STANDARD ***}
+  
+type
+  CR_Baud_Result        = ( CR_Bad_Parameter,
+                            CR_Bad_Rate,
+                            CR_Set_OK,
+                            CR_Select_Not_Supported ) ;
+  CR_DialResult         = ( CR_Off_Hook,
+                            CR_DialError,
+                            CR_NoAutoDial ) ;
+  CR_Rem_Port           = packed record
+                            Part1       : integer ;
+                            Part2       : integer ;
+                           end { CR_Rem_Port } ;
+  CR_State              = ( CR_On,
+                            CR_Off,
+                            CR_Auto ) ;
+  CR_WhoAmI             = ( CR_Orig,
+                            CR_Ans ) ;
+                            
+var
+  CR_AttenChar          : char ;
+  CR_Current_Port       : CR_Rem_Port ;
+  {$ifc debug}
+    Remote                : interactive ;                 {*** NON-STANDARD ***}
+    DebugLog              : interactive ;                 {*** NON-STANDARD ***}
+  {$endc}
+  
+{       Initialization and termination routines.        }
+procedure CR_CommInit (     Dir                 : CR_WhoAmI ;
+                            Attention_Char      : char ;
+                        var Remote_Exists       : boolean ;
+                        var Dialer_Exists       : boolean ) ;
+                        
+procedure CR_CommQuit ;
+
+
+{       Input status.                                   }
+function  CR_KbStat                             : boolean ;
+function  CR_RemStat                            : boolean ;
+
+
+{       Input/Output operations.                        }
+function  CR_GetKb                              : char ;
+function  CR_GetRem                             : char ;
+procedure CR_PutRem   (     C                   : char ) ;
+
+
+{       Control procedures.                             }
+procedure CR_Answer ;
+procedure CR_Break ;
+function  CR_Carrier                            : boolean ;
+function  CR_ClearToSend                        : boolean ;
+procedure CR_Delay    (     Tenths              : integer ) ;
+procedure CR_Dial     (     Number              : string ;
+                            WaitChar            : char ;
+                        var Result              : CR_DialResult ) ;
+function  CR_DialTone                           : boolean ;
+procedure CR_Hook     (     OnHook              : boolean ) ;
+function  CR_Ringing                            : boolean ;
+procedure CR_SetAddress(    HighAddr            : integer ;
+                            LowAddr             : integer ;
+                            Vector              : integer ) ;
+procedure CR_SetCommunications 
+                      (     Parity              : boolean ;
+                            Even                : boolean ;
+                            Rate                : integer ;
+                            CharBits            : integer ;
+                            StopBits            : integer ;
+                            Dir                 : CR_WhoAmI ;
+                            Model               : string ;
+                        var Result              : CR_Baud_Result ) ;
+procedure CR_Set_DTR  (     New_State           : CR_State ) ;
+procedure CR_Set_RTS  (     New_State           : CR_State ) ;
+
+
+implementation
+{$P} { Page here so the option is not in the interface text }
+const
+  Answer_After          =   '3' ;       { Answer after this many rings.       }
+  CR                    =    13 ;       { Carriage Return                     }
+  Esc                   =    27 ;
+  Default_Rate          =   300 ;
+  Default_Mode          =  true ;       { Default to parity enabled           }
+  Default_Parity        =  true ;       { Default to even parity              }
+  Default_CharBits      =     7 ;       { Default to seven data bits          }
+  Default_StopBits      =     1 ;       { Default to one stop bit             }
+  Default_Kind          = 'Apple ///' ;
+  Hung_Up               =  true ;
+  Crt_Unit              =     1 ;
+  Kb_Unit               =     2 ;
+  RemIn_Unit            =     7 ;
+  RemOut_Unit           =     8 ;
+  Timer                 =   600 ;
+  UnknownRate           =    -1 ;
+  
+{ SmartModem return codes: }
+  SM_OK                 = '0' ;
+  SM_Connect            = '1' ;
+  SM_Ring               = '2' ;
+  SM_No_Carrier         = '3' ;
+  SM_Error              = '4' ;
+                                    {                                   Default
+                                      S6 =wait for dial tone in seconds     2
+                                      S7 =wait for carrier in seconds      30
+                                      S8 =pause time for comma in seconds   2
+                                      S9 =carrier detector response time
+                                          in tenths of a second             6
+                                      S10=delay between loss of carrier
+                                          and hangup, in seconds            7
+                                      S11=TouchTone duration and spacing
+                                          in milliseconds                  70
+                                      S12=escape code guard time in
+                                          50ths of a second                50
+                                    }
+  SM_Defaults           = 'EV S10=4 S12=10' ;
+  SM_Dial_Prologue      = 'DT' ;  { D=dial command; T=use tone dialing }
+  SM_Long_Wait          = 32000 ;
+  SM_Short_Wait         =   500 ;
+  
+  
+type
+  IO_Direction  = ( IO_Out, IO_In ) ;
+  ReqType       = ( StatReq, CntlReq ) ;
+  Byte          = 0..255 ;
+  Bits2         = 0..3 ;
+  Bits3         = 0..7 ;
+  Bits4         = 0..15 ;
+  Bits5         = 0..31 ;
+  Bits6         = 0..63 ;
+  Bits7         = 0..127 ;
+  
+  SOS_ReqCode   = packed record
+    Channel     : IO_Direction ;
+    StatOrCntl  : ReqType ;
+    RequestNum  : Byte ;
+    Reserved    : Bits6 ;
+    end ;
+    
+    
+  { NOTE: We had to kludge up a declaration for the status word.        }    
+  { Logically it should look like this:                                 }
+  
+  {$ifc false }
+  RS232_Status  = packed record
+    Current   : packed record
+      ParityErr   : boolean ;
+      FramingErr  : boolean ;
+      OverRun     : boolean ;
+      RecRegFull  : boolean ;
+      XmitRegEmpty: boolean ;
+      DCD_False   : boolean ;
+      DSR_False   : boolean ;
+      IRQ_Pending : boolean ;
+      end ;
+    Latched   : packed record
+      ParityErr   : boolean ;
+      FramingErr  : boolean ;
+      OverRun     : boolean ;
+      RecRegFull  : boolean ;
+      XmitRegEmpty: boolean ;
+      DCD_False   : boolean ;
+      DSR_False   : boolean ;
+      IRQ_Pending : boolean ;
+      end ;
+    end ;
+  {$endc }
+  
+  { but the compiler allocates two words for that, so we use the clumsy }
+  { declaration which follows.                                          }
+  
+  RS232_Status  = packed record
+    { Status at last interrupt }
+      ParityErr   : boolean ;
+      FramingErr  : boolean ;
+      OverRun     : boolean ;
+      RecRegFull  : boolean ;
+      XmitRegEmpty: boolean ;
+      DCD_False   : boolean ;
+      DSR_False   : boolean ;
+      IRQ_Pending : boolean ;
+    { Latched status }       
+      L_ParityErr   : boolean ;
+      L_FramingErr  : boolean ;
+      L_OverRun     : boolean ;
+      L_RecRegFull  : boolean ;
+      L_XmitRegEmpty: boolean ;
+      L_DCD_False   : boolean ;
+      L_DSR_False   : boolean ;
+      L_IRQ_Pending : boolean ;
+    end ;
+  
+  RS232_StList  = packed record
+    BufferSize  :   Byte ;
+    BaudRate    : Byte ;
+    DataFormat  : Byte ;
+    CR_Delay    : Byte ;
+    LF_Delay    : Byte ;
+    FF_Delay    : Byte ;
+    Protocol    : Byte ;
+    CtlChar1    : Byte ;
+    CtlChar2    : Byte ;
+    MaxBufLevel : Byte ;
+    MinBufLevel : Byte ;
+    BlockLength : Byte ;
+    HdwrHandShake : Byte ;
+    filler    :   Bits7 ;
+    ImRead    :   BOOLEAN ;
+    Status      : RS232_Status 
+    end ;
+  
+  RS232_BufList = record
+    OutBufSize  :   integer ;     { Size of output buffer         }
+    CharsOut    :   integer ;     { Number of chars buffered out  }
+    InBufSize   :   integer ;     { Size of input buffer          }
+    CharsIn     :   integer ;     { Number of chars buffered in   }
+    end ;
+  
+  
+var
+  Baud_Settable         : boolean ;
+  Control               : integer ;
+  CurrentBaud           : integer ;
+  DTR_State             : CR_State ;
+  RTS_State             : CR_State ;
+  Off_Hook              : boolean ;
+  Unit_Carrier          : boolean ;
+  Model_ID              : string ;
+  StatusList            : RS232_StList ;
+  {$ifc debug}
+  xxx                   : integer ;                     {*** NON-STANDARD ***}
+  {$endc}
+  
+
+function  SM_Execute_Command    (     Cmd       : string ;
+                                      Wait_Count: integer )     : char ;
+  forward ;
+function  Check_SmartModem_There                        : boolean ;
+  forward ;
+function  SM_Attention                                  : boolean ;
+  forward ;
+procedure RS232Control          (     Request    : ReqType ;
+                                  VAR StatusList : RS232_StList ) ;
+  forward ;
+
+
+{$P}
+{  -----------------------------------------------------------  }
+{               Initialization/Termination Procedures           }
+{  -----------------------------------------------------------  }
+
+procedure CR_SetAddress {     HighAddr  : integer ;
+                              LowAddr   : integer ;
+                              Vector    : integer } ;
+  begin { CR_SetAddress }
+    with CR_Current_Port do
+      begin
+      Part1 := HighAddr ;
+      Part2 := LowAddr ;
+      end ;
+  end ; { CR_SetAddress }
+
+
+
+procedure CR_SetCommunications {     Parity     : boolean ;
+                                     Even       : boolean ;
+                                     Rate       : integer ;
+                                     CharBits   : integer ;
+                                     StopBits   : integer ;
+                                     Dir        : CR_WhoAmI ;
+                                     Model      : string ;
+                                 var Result     : CR_Baud_Result } ;
+
+  var
+    ReqCode             : SOS_ReqCode ;
+    StatusList          : RS232_StList ;
+    ReqRate             : integer ;
+    
+  begin { CR_SetCommunications }
+    Model_ID            := 'Apple ///' ;
+    Control             := 12 ;
+    Baud_Settable       := true  ;
+    
+    { Use a nested if-then-else structure here instead of a case statement
+      because of the wide range of selector values involved.          - acd }
+    if Rate = 50 
+      then ReqRate :=  1
+    else if Rate = 75 
+      then ReqRate :=  2
+    else if Rate = 110
+      then ReqRate :=  3
+    else if Rate = 135
+      then ReqRate :=  4
+    else if Rate = 150
+      then ReqRate :=  5
+    else if Rate = 300
+      then ReqRate :=  6
+    else if Rate = 600
+      then ReqRate :=  7
+    else if Rate = 1200
+      then ReqRate :=  8 
+    else if Rate = 1800
+      then ReqRate :=  9 
+    else if Rate = 2400
+      then ReqRate := 10
+    else if Rate = 3600
+      then ReqRate := 11
+    else if Rate = 4800
+      then ReqRate := 12
+    else if Rate = 7200
+      then ReqRate := 13
+    else if Rate = 9600
+      then ReqRate := 14
+    else if Rate = 19200
+      then ReqRate := 15
+    else ReqRate := UnknownRate ;
+    
+    if ReqRate = UnknownRate then
+      Result := CR_BadRate
+    else if Rate = CurrentBaud then 
+      Result := CR_SetOK 
+    else begin
+      RS232Control( StatReq, StatusList ) ;
+      if ioresult = 0 then begin
+        StatusList.BaudRate := ReqRate ;
+        RS232Control( CntlReq, StatusList ) ;
+        end ; { ioresult = 0 }
+      if ioresult = 0 then begin
+        CurrentBaud := Rate ;
+        Result      := CR_SetOK
+        end
+      else begin
+        Result := CR_BadRate ;
+        end ;
+      end { rate <> currentbaud }
+          
+  end ; { CR_SetCommunications }
+
+
+
+procedure CR_CommInit   {     Dir               : CR_WhoAmI ;
+                              Attention_Char    : Char ;
+                          var Remote_Exists     : boolean ;
+                          var Dialer_Exists     : boolean } ;
+
+  var
+    C           : char ;
+    Result      : CR_Baud_Result ;
+    
+  
+  procedure Not_There   (     Which             : integer ) ;
+    begin { Not_There }
+      GoToXY( 0, 10 ) ;
+      writeln( ' ':20, 'Required unit #', Which, ' failed UnitClear!' ) ;
+      Remote_Exists := false ;
+    end ; { Not_There }
+    
+    
+  begin { CR_CommInit }
+    
+    { Save RS232 control parameters }
+    RS232Control( StatReq, StatusList ) ;
+    
+    { Check that required units exist.          }
+    Remote_Exists       := true ;
+    
+    UnitClear( RemIn_Unit ) ;
+    if IOResult <> 0
+      then Not_There ( RemIn_Unit ) ;
+      
+    UnitClear( RemOut_Unit ) ;
+    if IOResult <> 0
+      then Not_There ( RemOut_Unit ) ;
+      
+    { The following call to CR_SetCommunications had to be moved here so that }
+    { the proper baud was set BEFORE the call to SM_Attention tries to talk   }
+    { to the SmartModem.  - acd  3 Jul 82                                     }
+    CR_SetCommunications
+      ( Default_Mode,
+        Default_Parity,
+        Default_Rate,
+        Default_CharBits,
+        Default_StopBits,
+        CR_Orig,
+        Default_Kind,
+        Result ) ;
+    if Result = CR_SelectNotSupported
+      then BaudSettable := false
+      else BaudSettable := true ;
+    
+    if not SM_Attention
+      then
+        if not SM_Attention
+          then CR_Hook( Hung_Up ) ;
+    
+    Dialer_exists       := Check_SmartModem_There ;
+    
+    Model_ID            := '' ;
+    DTR_State           := CR_Auto ;
+    RTS_State           := CR_Auto ;
+    CR_Hook( Hung_Up ) ;
+    CR_AttenChar        := Attention_Char ;
+    
+  end ; { CR_CommInit }
+
+
+
+procedure CR_CommQuit ;
+  var
+    C           : char ;
+    Result      : CR_Baud_Result ;
+    
+  begin { CR_CommQuit }
+    
+    {$ifc debug}
+    xxx := succ(xxx) ;
+    writeln( DebugLog, '':xxx, 'entering CR_CommQuit' ) ;
+    {$endc}
+    
+    if Unit_Carrier     { If we think we are communicating,     }
+      then
+        if not SM_Attention { ...get the SmartModem's attention }
+          then
+            if not SM_Attention
+              then
+                { do nothing } ;
+    
+    if SM_Attention
+      then
+        CR_Hook( Hung_Up ) ;  { Now hang up the phone.          }
+    
+    if Baud_Settable          { If we were able to change the baud rate, }
+      then
+        CR_SetCommunications  { ...reset to the default         }
+          ( Default_Mode,
+            Default_Parity,
+            Default_Rate,
+            Default_CharBits,
+            Default_StopBits,
+            CR_Orig,
+            Default_Kind,
+            Result ) ;
+    
+    if SM_Attention
+      then
+        { 'Z' is software reset of the SmartModem.      }
+        C := SM_Execute_Command( 'Z', SM_Short_Wait ) ;
+    
+    {$ifc debug}
+    writeln( DebugLog, '':xxx, 'exiting CR_CommQuit' ) ;
+    xxx := pred(xxx) ;
+    {$endc}
+    
+    { Restore RS232 control parameters }
+    RS232Control( CntlReq, StatusList ) ;
+    
+  end ; { CR_CommQuit }
+
+
+
+{$P}
+{  -------------------------------------------------------------------  }
+{               Internal Subroutines                                    }
+{  -------------------------------------------------------------------  }
+
+procedure RS232Control      {         Request    : ReqType ;
+                                  VAR StatusList : RS232_StList } ;
+
+  var
+    ReqCode             : SOS_ReqCode ;
+    
+  begin { RS232Control }
+    with ReqCode do begin
+      Channel    := IO_Out ;
+      StatOrCntl := Request ;
+      RequestNum := 1 ;         { Set/Retrieve control parameters }
+      Reserved   := 0 ;
+      end ;
+    if Request = StatReq then
+      StatusList.BufferSize := sizeof( StatusList )-1 ;
+    unitstatus( RemOut_Unit, StatusList, ReqCode ) ;
+  end ; { RS232Control }
+
+
+function  SM_Execute_Command    {     Cmd       : string ;
+                                      Wait_Count: integer )     : char } ;
+  var
+    Ch          : char ;
+    I           : integer ;
+
+  begin { SM_Execute_Command }
+    
+    {$ifc debug}
+    xxx := succ(xxx) ;
+    writeln( DebugLog, '':xxx, 'entering SM_Execute_Command               ' ) ;
+    {$endc}
+    
+    CR_Delay( 2 ) ;
+    while CR_RemStat do         { Flush trash   }
+      begin
+      Ch := CR_GetRem ;
+      end ;
+    
+    { "AT" is what the SmartModem requires at the start of each command line }
+    CR_PutRem( 'A' ) ;
+    CR_PutRem( 'T' ) ;
+    CR_PutRem( ' ' ) ;
+    for I := 1 to length( Cmd ) do      { Output each command character }
+      CR_PutRem( Cmd[I] ) ;
+    CR_PutRem( chr(13) ) ;              { Terminate command with <CR>   }
+    
+    I := Wait_Count ;
+    repeat
+      if CR_KbStat              { This allows a manual exit, using      }
+        then                    { <attention char> from the keyboard    }
+          begin
+          if CR_GetKb = CR_AttenChar
+            then I := 0 ;
+          end
+        else I := pred( I )
+    until (I <= 0) or CR_RemStat ;      { Loop until the counter goes   }
+                                        { to zero or something comes in }
+                                        { on the Remote line.           }
+    if CR_RemStat               { If something came from Remote line,   }
+      then
+        begin
+        Ch := CR_GetRem ;       { fetch character from remote           }
+        Ch := chr( ord( Ch ) mod 128 ) ; { mask bit7 (shame, shame Hayes) }
+        CR_Delay( 2 ) ;
+        {$ifc debug}
+        writeln( DebugLog, '':xxx, 'CR_GetRem = ', Ch ) ;
+        {$endc}
+        end
+      else
+        begin
+        Ch := SM_Error ;        { If we timed out, return an error.     }
+        CR_Delay( 2 ) ;
+        {$ifc debug}
+        writeln( DebugLog, '':xxx, 'CR_GetRem FAILED' ) ;
+        {$endc}
+        end ;
+    SM_Execute_Command := Ch ;
+    
+    while CR_RemStat do
+      begin
+      Ch := CR_GetRem ;         { Flush trash   }
+      end ;
+    
+    {$ifc debug}
+    writeln( DebugLog, '':xxx, 'exiting  SM_Execute_Command             ' ) ;
+    xxx := pred(xxx) ;
+    {$endc}
+    
+  end ; { SM_Execute_Command }
+  
+  
+  
+function  Check_SmartModem_There { : boolean } ;
+{ This function returns TRUE if the SmartModem responds to a simple command.
+  It returns FALSE if the SmartModem does not understand the command or if no
+  response is generated (such as when the SmartModem is not connected or the
+  unit is being used with some other type of modem).  }
+  
+  var
+    B   : boolean ;
+    C   : char ;
+  
+  begin { Check_SmartModem_There }
+    
+    {$ifc debug}
+    xxx := succ(xxx) ;
+    writeln( DebugLog, '':xxx, 'entering Check_Smartmodem_There         ' ) ;
+    {$endc}
+    
+    { The command sent has the following effects:
+      "E" causes the SmartModem to suppress echoing command characters
+      "V" causes the SmartModem to use abbreviated command responses    }
+    
+    if SM_Execute_Command( SM_Defaults, SM_Short_Wait ) = SM_OK
+      then Check_SmartModem_There := true
+      else Check_SmartModem_There := false ;
+    CR_Delay( 2 ) ;
+    
+    {$ifc debug}
+    writeln( DebugLog, '':xxx, 'exiting  Check_Smartmodem_There       ' ) ;
+    xxx := pred(xxx) ;
+    {$endc}
+    
+  end ; { Check_SmartModem_There }
+  
+  
+  
+function  SM_Attention { : boolean } ;
+{ This function will get the SmartModem's attention, regardless of the
+  modems state. }
+  
+  var
+    B   : boolean ;
+    
+  begin { SM_Attention }
+    
+    {$ifc debug}
+    xxx := succ(xxx) ;
+    writeln( DebugLog, '':xxx, 'entering SM_Attention               ' ) ;
+    {$endc}
+    
+    if Check_SmartModem_There
+      then 
+        SM_Attention := true
+      else
+        begin
+        CR_Delay( 2 ) ;
+        CR_Delay( 12 ) ;        { Delay just over 1 second }
+        CR_PutRem( '+' ) ;      { "+++" is default attention getter.    }
+        CR_PutRem( '+' ) ;
+        CR_PutRem( '+' ) ;
+        CR_Delay( 12 ) ;        { Delay just over 1 second }
+        CR_PutRem( chr( CR ) ) ;
+        SM_Attention := Check_SmartModem_There ;
+        end ;
+    CR_Delay( 2 ) ;
+    
+    {$ifc debug}
+    writeln( DebugLog, '':xxx, 'exiting SM_Attention              ' ) ;
+    xxx := pred(xxx) ;
+    {$endc}
+    
+  end ; { SM_Attention }
+    
+{$P}
+{  -------------------------------------------------------------------  }
+{               Control Procedures                                      }
+{  -------------------------------------------------------------------  }
+
+procedure CR_Answer ;   { *** UNTESTED *** }
+  var
+    C           : char ;
+    Connected   : boolean ;
+    Count       : integer ;
+    Ring        : boolean ;
+    Waiting     : boolean ;
+    
+  begin { CR_Answer }
+    if not SM_Attention
+      then { null } ;
+    C := SM_Execute_Command( concat('S0=', Answer_After), SM_Short_Wait ) ;
+    Waiting := true ;
+    while Waiting do
+      begin
+      Ring      := CR_Ringing ;
+      Waiting   := not Ring ;
+      if Waiting 
+        then
+          if CR_KbStat
+            then 
+              begin
+              Waiting := (CR_GetKB <> CR_AttenChar) ;
+              end ;
+      end ;
+    if Ring 
+      then
+        begin
+        UnitClear( RemIn_Unit ) ;
+        UnitClear( RemOut_Unit ) ;
+        Waiting         := true ;
+        Connected       := false ;
+        Count           := 32000 ;
+        repeat
+          Count := succ( Count ) ;
+          if CR_KbStat
+            then 
+              Waiting := not (CR_GetKb = CR_AttenChar)
+            else
+              if CR_RemStat
+                then
+                  begin
+                  Waiting   := not (CR_GetRem = SM_Connect) ;
+                  Connected := not Waiting ;
+                  end
+                 else Waiting := (Count > 0) ;
+        until not Waiting ;
+        if not Connected
+          then CR_Hook( Hung_Up ) ;
+        end ;
+  end ; { CR_Answer }
+
+
+
+procedure CR_Break ;
+  const
+    ReqCode     =  14 ;
+    { 0000000000001110 = $0E = 14
+      \____/\______/^^
+        |      |    |+-> I/O channel : 0 = Output           
+        |      |    +--> Request Type: 1 = Control
+        |      +-------> Request code: 3 = Transmit break signal
+        +--------------> Reserved    : (must be zero)                   }
+  
+  var
+    BreakLength : PACKED ARRAY[ 0..0 ] OF Byte ;
+    
+  begin { CR_Break }
+    BreakLength[0]  := 1 ;
+    UnitStatus( RemOut_Unit, BreakLength, ReqCode ) ;
+  end ; { CR_Break }
+
+
+
+function  CR_Carrier { : boolean } ;
+  
+  const
+    ReqCode     =   5 ;
+    { 0000000000000101 = $05 = 5 
+      \____/\______/^^
+        |      |    |+-> I/O channel : 1 = Input
+        |      |    +--> Request Type: 0 = Status
+        |      +-------> Request code: 1 = Retrieve control parameters
+        +--------------> Reserved    : (must be zero)                   }
+  
+  var
+    StatusList  : RS232_StList ;
+    
+  begin { CR_Carrier }
+    
+    {$ifc false }
+    
+      StatusList.BufferSize := sizeof( RS232_StList )-1 ;
+      UnitStatus( RemIn_Unit, StatusList, ReqCode ) ;
+      CR_Carrier  := not StatusList.Status.DCD_False ;
+      Off_Hook    := not StatusList.Status.DCD_False ;
+    
+    {$elsec     }
+    
+      { Simulate carrier detect by following the hook status }
+      CR_Carrier := UnitCarrier ;
+      Off_Hook   := UnitCarrier ;
+  
+    {$endc      }
+    
+  end ; { CR_Carrier } 
+
+
+
+function  CR_ClearToSend { : boolean } ;        { *** UNTESTED *** }
+  
+  const
+    ReqCode     =  12 ;
+    { 0000000000001100 = $0C = 12
+      \____/\______/^^
+        |      |    |+-> I/O channel : 0 = Output
+        |      |    +--> Request Type: 0 = Status
+        |      +-------> Request code: 3 = Retrieve driver buffer info
+        +--------------> Reserved    : (must be zero)                   }
+  
+  var
+    ControlBlock  : RS232_BufList ;
+  
+  begin { CR_ClearToSend }
+    unitstatus( RemIn_Unit, ControlBlock, ReqCode ) ;
+    with ControlBlock do
+      if (CharsOut < OutBufSize)
+        then CR_ClearToSend := true 
+        else CR_ClearToSend := false ;
+  end ; { CR_ClearToSend }
+  
+  
+  
+
+procedure CR_Delay { Tenths : integer } ;
+{ Purpose: Delay 0.1 seconds for each tenth requested }
+{ This implementation uses the non-obvious technique of issuing a SOS
+  Console 'synchronize' request.  This requests a delay until the next
+  vertical retrace cycle of the video generator.  Since these occur
+  sixty times per second the iterated call will produce the requested
+  delay +/- slightly less than 1/60 second.                     - acd  }
+  
+  const
+    SC_Synchronize      =    22 ;       { Apple /// screen control function # }
+    
+  var
+    Count       : integer ;
+    Index       : integer ;
+    FnCode      : integer ;
+  
+  begin { CR_Delay }
+    FnCode := SC_Synchronize ;
+    for Index := 1 to Tenths do
+      for Count := 1 to 6 do
+        UnitWrite( Crt_Unit, FnCode, 2,, 12 ) ;
+  end ; { CR_Delay }
+
+
+
+procedure CR_Dial {     Number    : string ;
+                        WaitChar  : char ;
+                    var Result    : CR_Dial_Result } ;
+{ This routine will cause the SmartModem to dial the number passed }
+
+  var
+    I           : integer ;
+    Cmd         : string ;
+    Valid_Set   : set of char ;
+    
+  begin { CR_Dial }
+    { Initialize valid character set }
+    Valid_Set := [ 'p','P','t','T','*','#',';',WaitChar,'0'..'9' ] ;
+    
+    Result := CR_DialError ;  { Assume an error }
+    
+    { Get SmartModem's attention }
+    if not SM_Attention
+      then exit( CR_Dial ) ;
+      
+    CR_Hook( Hung_Up ) ;  { Be sure we know where we are }
+    
+    { Start the dial command with the dial prologue.  (See the implementation
+      constant list) }
+    Cmd := SM_Dial_Prologue ;
+    for I := 1 to length( Number ) do
+      if Number[I] in Valid_Set   { Include only valid characters }
+        then                      {  in the passed number         }
+          Cmd := concat( Cmd, copy( Number, I, 1 ) ) ;
+    { Execute the dial command and be patient about the response  }
+    if SM_Execute_Command( Cmd, SM_Long_Wait ) = SM_Connect
+      then
+        begin                           { We got an answer & carrier }
+        Result      := CR_Off_Hook ;
+        Unit_Carrier:= true ;
+        end                             { No carrier.  We may have   }
+      else Unit_Carrier := false ;      { answer.  We'll never know. }
+  end ; { CR_Dial }
+
+
+
+function  CR_DialTone ;
+  begin { CR_DialTone }
+    CR_DialTone := true ;
+  end ; { CR_DialTone }
+
+
+
+procedure CR_Hook { On_Hook  : boolean } ;
+  begin { CR_Hook }
+    if On_Hook                    { If we want to go on hook...   }
+      then
+        begin
+        if not SM_Attention       { ...get the modem's attention  }
+          then
+            if not SM_Attention
+              then { null } ;
+        { Send the "hang up" command }
+        Off_Hook := not (SM_Execute_Command( 'H0', SM_Short_Wait) = SM_OK) ;
+        end
+      else Off_Hook := true ;
+    Unit_Carrier := Off_Hook ;    { The simulated carrier follows the     }
+                                  { status of the receiver.               }
+  end ; { CR_Hook }
+
+
+
+function  CR_Ringing { : boolean } ;  { *** UNTESTED *** }
+  begin { CR_Ringing }
+    if CR_RemStat
+      then CR_Ringing := (SM_Ring = CR_GetRem)
+      else CR_Ringing := false ;
+  end ; { CR_Ringing }
+
+
+procedure CR_SetDTR ;
+  begin { CR_SetDTR }
+  { This should be 'do-able' with SOS calls (I think).  - acd }
+  end ; { CR_SetDTR }
+  
+  
+procedure CR_SetRTS ;
+  begin { CR_SetRTS }
+  { This should be 'do-able' with SOS calls (I think).  - acd }
+  end ; { CR_SetRTS }
+  
+  
+{$P}
+{  -------------------------------------------------------------------  }
+{               Status Procedures                                       }
+{  -------------------------------------------------------------------  }
+
+function  CR_KbStat { : boolean } ;
+  
+  const
+    ReqCode     =  21 ;
+    { 0000000000010101 = $15 = 21
+      \____/\______/^^
+        |      |    |+-> I/O channel : 1 = Input
+        |      |    +--> Request Type: 0 = Status
+        |      +-------> Request code: 5 = Buffered keystroke count   
+        +--------------> Reserved    : (must be zero)                   }
+  
+  var
+    ReqList     : packed record
+      Enqueued  : byte ;
+      Unused    : byte ;
+      end ;
+  
+  begin { CR_KbStat }
+    UnitStatus( Kb_Unit, ReqList, ReqCode ) ;
+    if ReqList.Enqueued > 0
+      then CR_KbStat := true 
+      else CR_KbStat := false ;
+  end ; { CR_KbStat }
+
+
+
+function  CR_RemStat { : boolean } ;
+  
+  const
+    ReqCode     =  13 ;
+    { 0000000000001101 = $0D = 13
+      \____/\______/^^
+        |      |    |+-> I/O channel : 1 = Input
+        |      |    +--> Request Type: 0 = Status
+        |      +-------> Request code: 3 = Retrieve driver buffer info
+        +--------------> Reserved    : (must be zero)                   }
+  
+  var
+    RemBufStat  : RS232_BufList ;
+            
+  begin { CR_RemStat }
+    UnitStatus( RemIn_Unit, RemBufStat, ReqCode ) ;
+    if RemBufStat.CharsIn > 0
+      then CR_RemStat := true 
+      else CR_RemStat := false ;
+  end ; { CR_RemStat }
+  
+
+{$P}
+{  -------------------------------------------------------------------  }
+{               Input/Output Procedures                                 }
+{  -------------------------------------------------------------------  }
+
+function  CR_GetKb { : char } ;
+  var
+    Ch          : packed array [0..0] of char ;
+    
+  begin { CR_GetKb }
+    UnitRead( KB_Unit, Ch[0], 1, 0, Control ) ;
+    CR_GetKb := Ch[0] ;
+  end ; { CR_GetKb }
+
+
+
+function  CR_GetRem { : char } ;
+  var
+    Ch          : packed array [0..0] of char ;
+    
+  begin { CR_GetRem }
+    UnitRead( RemIn_Unit, Ch[0], 1, 0, Control ) ;
+    
+    {$ifc debug}
+    { if ch in [' '..'~'] then write( DebugLog, ch ) ; }
+    {$endc}
+    
+    CR_GetRem := Ch[0] ;
+  end ; { CR_GetRem }
+
+
+
+procedure CR_PutRem { C : char } ;
+  begin { CR_PutRem }
+    
+    {$ifc debug}
+    write( DebugLog, c ) ;
+    {$endc}
+    
+    UnitWrite( RemOut_Unit, C, 1, 0, Control ) ;
+  end ; { CR_PutRem }
+
+
+{$P}
+begin { SmartUnit initialization }
+  
+  CR_AttenChar          := chr(Esc) ;
+  CR_Current_Port.Part1 :=        0 ;
+  CR_Current_Port.Part2 :=        0 ;
+  
+  BaudSettable          :=    false ;
+  Control               :=       12 ;
+  CurrentBaud           :=        0 ;   { force initialization of baud }
+  DTR_State             :=  CR_Auto ;
+  RTS_State             :=  CR_Auto ;
+  Off_Hook              :=    false ;
+  Unit_Carrier          := Off_Hook ;
+  Model_ID              := Default_Kind ;
+  
+  unitclear( KB_Unit     ) ;
+  unitclear( RemIn_Unit  ) ;
+  unitclear( RemOut_Unit ) ;
+  
+  {$ifc debug}
+    xxx := 0 ;
+    reset( remote, '.RS232' ) ;
+    reset( DebugLog, 'console:' ) ;
+  {$endc}
+  
+end   { SmartUnit initialization }.
+

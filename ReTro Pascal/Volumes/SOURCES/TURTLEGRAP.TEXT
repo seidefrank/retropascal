@@ -1,0 +1,260 @@
+
+(*
+ * TURTLEGRAPHICS for Retro Pascal ][ -- Frank Seide, 2013
+ *
+ * This is compiled from the UCSD manual samples and modified to match the Apple UNIT.
+ *
+ * Actual implementation of these routines is in the GRAPHIC: device, to which
+ * we send commands by UNITWRITE and get return values through UNITREAD.
+ *)
+
+{$C TURTLEGRAPHICS II.764}
+
+{$U-}
+{ We need $U- to allow DRAWBLOCK to declare VAR SOURCE without type. }
+{ See RETROSTUFF.TEXT for explanation. }
+
+UNIT TURTLEGRAPHICS;
+
+  INTERFACE
+
+    CONST
+      { SCREENCOLOR values: }
+      NONE = 0; WHITE = 1; BLACK = 2; REVERSE = 3;
+      { Apple compatibility: }
+      RADAR = 4;
+      BLACK1 = 5; GREEN = 6; VIOLET = 7; WHITE1 = 8;
+      BLACK2 = 9; ORANGE = 10; BLUE = 11; WHITE2 = 12;
+      { In addition, Retro Pascal supports 15-bit RGB colors. These are encoded   }
+      { as INTEGERs of the format 1rrrrrgggggbbbbb. To form this value, use the   }
+      { function RGBCOLOR(r,g,b) where r,b,g are REALs in range 0..1.             }
+
+    TYPE
+      SCREENCOLOR = INTEGER;    { Apple uses this type name (theirs is an enum) }
+
+  { --- standard TURTLEGRAPHICS functions --- }
+  { Standard in the sense that these are listed in UCSD's manuals. }
+  PROCEDURE INITTURTLE;
+  PROCEDURE TURN(RELANGLE: INTEGER);
+  PROCEDURE MOVE(RELDISTANCE: INTEGER);
+  PROCEDURE MOVETO(X, Y: INTEGER);
+  PROCEDURE TURNTO(ANGLE: INTEGER);
+  { PENCOLOR accepts the Apple colors as well as 15-bit RGB colors from RGBCOLOR. }
+  PROCEDURE PENCOLOR(PCOLOR: SCREENCOLOR);
+
+  { --- Apple-compatible functions --- }
+  PROCEDURE TEXTMODE;
+  PROCEDURE GRAFMODE;
+  PROCEDURE FILLSCREEN(FILLCOLOR: SCREENCOLOR);
+  PROCEDURE VIEWPORT(LEFT, RIGHT, BOTTOM, TOP: INTEGER);
+  FUNCTION TURTLEX: INTEGER;
+  FUNCTION TURTLEY: INTEGER;
+  FUNCTION TURTLEANG: INTEGER;
+  FUNCTION SCREENBIT(X, Y: INTEGER): BOOLEAN;     { NOT supported in Retro Pascal }
+  { MODE parameter of DRAWBLOCK and CHARTYPE:                                     }
+  {  - 10: copy the source pixels (bits set to 0 are drawn in BLACK, 1 in WHITE)  }
+  {  -  6: XOR the source pixels (invert the target's color for bits set to 1)    }
+  {  - 14: OR the source pixels onto the screen                                   }
+  {  -  5: inverted copy                                                          }
+  {  - 13: OR the complement of the source onto the screen                        }
+  { Besides, the following MODEs are allowed in Retro Pascal:                     }
+  {  -  0: set to black   == copy (black, black)                                  }
+  {  -  3: invert screen  == XOR with (white, white)                              }
+  {  - 12: NOP                                                                    }
+  {  - 15: set to white  == copy (white, white)                                   }
+  { Apple MODEs 1, 2, 4, 7-9, and 11 are not supported.                           }
+  { Retro Pascal Color MODEs: additional modes to support 15-bit color:           }
+  {  - add 16: Source bits set to 1 are drawn in PENCOLOR instead of WHITE.       }
+  {  - add 32: Source is not a bit map but a pixel map of INTEGERs in             }
+  {            RGBCOLOR format: 1rrrrrgggggbbbbb, or 0 for transparent.           }
+  { Retro Pascal Scale MODE:                                                      }
+  {  - add SCALEMODE(X), X=1..9, to scale the source's size up by X times.        }
+  PROCEDURE DRAWBLOCK(VAR SOURCE; ROWSIZE, XSKIP, YSKIP, WIDTH, HEIGHT,
+                      XSCREEN, YSCREEN, MODE: INTEGER);
+  PROCEDURE WCHAR(CH: CHAR);
+  PROCEDURE WSTRING(S: STRING);
+  PROCEDURE CHARTYPE(MODE: INTEGER);
+
+  { --- Retro Pascal additions --- }
+  { RGBCOLOR(r,g,b) encodes a 15-bit color value that can be used for PENCOLOR    }
+  { and as pixel values in DRAWBLOCK in 15-bit color mode.                        }
+  FUNCTION RGBCOLOR(R, G, B: REAL): SCREENCOLOR;
+
+  { HOLDFRAME allows double-buffering:                                            }
+  {  - pass TRUE to hide screen updates                                           }
+  {  - pass FALSE to pass all updates to the screen                               }
+  PROCEDURE HOLDFRAME(HOLDORNOT: BOOLEAN);
+
+  { SYNCFRAME waits for the next screen refresh. It returns the number of         }
+  { milliseconds since it last returned. Use this for game loops. :)              }
+  FUNCTION SYNCFRAME: INTEGER;
+
+  { SCALEMODE encodes a scale factor of 1 to 9 for DRAWBLOCK and CHARMODE. Add    }
+  { the value from this function to the mode code.                                }
+  FUNCTION SCALEMODE(SCALEFACTOR: INTEGER): INTEGER;
+
+IMPLEMENTATION
+
+  CONST TGIMPLMODE = 2000;      { GRAPHIC: UNITWRITE mode for graphics commands }
+
+  PROCEDURE UNITINITIALIZATION; { reserve proc #1 in case we ever implement Apple-}
+  BEGIN                         { likeUNIT initialization, which goes in proc #1 }
+  END;
+
+  { --- standard TURTLEGRAPHICS functions --- }
+
+  {$I+} { enable I/O checking }
+
+  PROCEDURE INITTURTLE;
+    VAR NOARG: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,      { we send commands by writing to GRAPHIC: }
+              2+TGIMPLMODE);    { with args as data, 'mode' = TGIMPLMODE, }
+  END;                          { and 'block' = proc # (same # as Apple)  }
+
+  PROCEDURE TURN(*RELANGLE: INTEGER*);
+  BEGIN
+    UNITWRITE(3,RELANGLE,2,0,
+              3+TGIMPLMODE);
+  END;
+
+  PROCEDURE TURNTO(*ANGLE: INTEGER*);
+  BEGIN
+    UNITWRITE(3,ANGLE,2,0,
+              4+TGIMPLMODE);
+  END;
+
+  PROCEDURE MOVE(*RELDISTANCE: INTEGER*);
+  BEGIN
+    UNITWRITE(3,RELDISTANCE,2,0,
+              5+TGIMPLMODE);
+  END;
+
+  PROCEDURE MOVETO(*X, Y: INTEGER*);
+  BEGIN
+    UNITWRITE(3,Y,4,0,          { for multiple args, pass address of last one }
+              6+TGIMPLMODE);
+  END;
+
+  PROCEDURE PENCOLOR(*PCOLOR: TGCOLOR*);
+  BEGIN
+    UNITWRITE(3,PCOLOR,2,0,
+              7+TGIMPLMODE);
+  END;
+
+  { --- Apple-compatible functions --- }
+
+  PROCEDURE TEXTMODE;
+    VAR NOARG: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              8+TGIMPLMODE);
+  END;
+
+  PROCEDURE GRAFMODE;
+    VAR NOARG: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              9+TGIMPLMODE);
+  END;
+
+  PROCEDURE FILLSCREEN(*FILLCOLOR: TGCOLOR*);
+  BEGIN
+    UNITWRITE(3,FILLCOLOR,2,0,
+              10+TGIMPLMODE);
+  END;
+
+  PROCEDURE VIEWPORT(*LEFT, RIGHT, BOTTOM, TOP: INTEGER*);
+  BEGIN
+    UNITWRITE(3,TOP,8,0,
+              11+TGIMPLMODE);
+  END;
+
+  FUNCTION TURTLEX(*: INTEGER*);
+    VAR NOARG, RESULT: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              12+TGIMPLMODE);
+    UNITREAD(3,RESULT,2,0,12+TGIMPLMODE);    { read return value through UNITREAD }
+    TURTLEX := RESULT;
+  END;
+
+  FUNCTION TURTLEY(*: INTEGER*);
+    VAR NOARG, RESULT: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              13+TGIMPLMODE);
+    UNITREAD(3,RESULT,2,0,13+TGIMPLMODE);
+    TURTLEY := RESULT;
+  END;
+
+  FUNCTION TURTLEANG(*: INTEGER*);
+    VAR NOARG, RESULT: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              14+TGIMPLMODE);
+    UNITREAD(3,RESULT,2,0,14+TGIMPLMODE);
+    TURTLEANG := RESULT;
+  END;
+
+  FUNCTION SCREENBIT(*X, Y: INTEGER: BOOLEAN*);
+  BEGIN
+    SCREENBIT := FALSE;     { not supported in our D2D-based graphics pipeline :( }
+  END;
+
+  PROCEDURE DRAWBLOCK(*VAR SOURCE; ROWSIZE, XSKIP, YSKIP, WIDTH, HEIGHT,
+                      XSCREEN, YSCREEN, MODE: INTEGER*);
+  BEGIN
+    UNITWRITE(3,MODE,18,0,
+              16+TGIMPLMODE);
+  END;
+
+  PROCEDURE WCHAR(*CH: CHAR*);
+  BEGIN
+    UNITWRITE(3,CH,2,0,
+              17+TGIMPLMODE);
+  END;
+
+  PROCEDURE WSTRING(*S: STRING*);
+  BEGIN
+    UNITWRITE(3,S,2,0,
+              18+TGIMPLMODE);
+  END;
+
+  PROCEDURE CHARTYPE(*MODE: INTEGER*);
+  BEGIN
+    UNITWRITE(3,MODE,2,0,
+              19+TGIMPLMODE);
+  END;
+
+  { --- Retro Pascal additions --- }
+
+  FUNCTION RGBCOLOR{(R, G, B: REAL): SCREENCOLOR};
+    TYPE XCOLORRANGE=0..31;
+    VAR XC: INTEGER;
+    FUNCTION SCALE(R:REAL):XCOLORRANGE;
+    BEGIN IF R<1.0 THEN SCALE:=TRUNC(R*32) ELSE SCALE:=31 END;
+  BEGIN
+    RGBCOLOR := ((32+SCALE(R))*32+SCALE(G))*32+SCALE(B);
+  END;
+
+  PROCEDURE HOLDFRAME(*HOLDORNOT: BOOLEAN*);
+  BEGIN
+    FILLSCREEN(4096 + ORD(HOLDORNOT));      { send as special color of FILLSCREEN }
+  END;
+
+  FUNCTION SYNCFRAME{: INTEGER};
+    VAR NOARG, RESULT: INTEGER;
+  BEGIN
+    UNITWRITE(3,NOARG,0,0,
+              20+TGIMPLMODE);
+    UNITREAD(3,RESULT,2,0,20+TGIMPLMODE);
+    SYNCFRAME := RESULT;
+  END;
+
+  FUNCTION SCALEMODE{(SCALEFACTOR: INTEGER): INTEGER};
+  BEGIN
+    IF (SCALEFACTOR<2) THEN SCALEMODE:=0 ELSE SCALEMODE:=256*(8+(SCALEFACTOR-2))
+  END;
+
+END.

@@ -1,0 +1,313 @@
+ (*------------------------------------------------------------------*)
+ FUNCTION bsearch (*VAR f : btree; VAR pgnbr : btpointer; 
+                   VAR entrynbr : bpagesize;key : bkey) : BOOLEAN*);
+ 
+ (*      Given a btree (f), searches for key. Returns pgnbr (page) and entrynbr 
+         (place in page) where found or where insertion would take place. Calls
+         bpgscan to check each page as necessary. Boolean function result is 
+         T if found, F if not found*)
+ 
+ VAR
+         p:btpointer;
+         found:BOOLEAN;
+         i: INTEGER;
+ BEGIN
+         p:=broot(f);
+ 
+         pgnbr := p;
+         found:=FALSE;
+         WHILE(NOT found) AND (P<>0) DO BEGIN
+                 bread(f,p);
+                 found:=bpgscan(f^.pg,key,i);
+ 
+                 entrynbr := i;
+                 IF NOT found THEN BEGIN
+                         p:=f^.pg.bpointer[i-1];
+                         IF p <> 0 THEN pgnbr := p;
+                 END; (*If not found*)
+         END; (* WHILE *)
+         bsearch:=found;
+ END; (* FUNCTION bsearch *)
+ 
+ 
+ (*------------------------------------------------------------------*)
+ (*PROCEDURE binsert (VAR f : btree; insentry : btentry; inspointer : btpointer;
+                         pgnbr : btpointer; entrynbr : bpagesize);
+ FORWARD;*)
+ (*------------------------------------------------------------------*)
+ FUNCTION bsplit (VAR f : btree; oldpgnbr : btpointer) : btpointer;
+ (*      Split the page at oldpgnbr and pop the central entry up one
+         level in the tree, by calling binsert (or newroot if the
+         page split was the root). Call to binsert may cause the
+         parent page to overflow, resulting in another call to
+         bsplit by binsert. If the root is split. a new root is
+         created, containing only the central entry.
+         The function returns the page number of the new page it created.*)
+ 
+ VAR
+         i,j : bpagesize;
+         newrec, oldrec : brecord;
+         midentry : btentry;
+         midpointer : btpointer;
+         prntpage : btpointer;
+ 
+ BEGIN
+ newrec.use := 2;        (* set up new page as btree page *)
+ bread (f,oldpgnbr);
+ oldrec := f^;
+ oldrec.pg.count := btreek;
+ newrec.pg.count := btreek;      (* half of the old pg *)
+ i := btreek + 1;        (*starting index*)
+ midentry := oldrec.pg.bentry[i];
+ midpointer := getpage(f);
+ newrec.pg.bpointer[0] := oldrec.pg.bpointer[i];
+ fixpointer(f,newrec.pg.bpointer[0],midpointer,0);
+ 
+ FOR j := 1 TO btreek DO BEGIN
+         newrec.pg.bentry[j] := oldrec.pg.bentry[i+j];
+         newrec.pg.bpointer[j] := oldrec.pg.bpointer[i+j];
+         fixpointer(f, newrec.pg.bpointer[j],midpointer, j); END;
+ 
+ IF oldrec.pg.prntpage = 0 THEN BEGIN
+ 
+         newroot (f, midentry, oldpgnbr, midpointer);
+         prntpage := broot(f);
+         newrec.pg.prntpage := prntpage;
+         newrec.pg.prntentry := 1;
+         oldrec.pg.prntpage := prntpage;
+         oldrec.pg.prntentry := 0; 
+         f^ := newrec;
+         bwrite(f, midpointer);
+         f^ := oldrec;
+         bwrite(f,oldpgnbr); END
+ 
+ ELSE BEGIN
+ 
+         IF oldrec.pg.prntentry < btree2k THEN BEGIN
+                 newrec.pg.prntentry := oldrec.pg.prntentry + 1;
+                 newrec.pg.prntpage := oldrec.pg.prntpage; END;
+         f^ := newrec;
+         bwrite(f,midpointer);
+         f^ := oldrec;
+         bwrite(f, oldpgnbr);
+         binsert (f, midentry, midpointer, oldrec.pg.prntpage, 
+                             (oldrec.pg.prntentry + 1 ));
+         END; (*Else*)
+ 
+ bsplit := midpointer;
+ 
+ END; (* FUNCTION bsplit *)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE binsert (*VAR f : btree; insentry : btentry; inspointer : btpointer;
+                         pgnbr : btpointer; entrynbr : bpagesize*);
+ (*      Insert the insentry, inspointer at the place pointed to by pgnbr,
+         entrynbr. If necessary, balance among siblings or split to make room.
+         Split may invoke mutually recursive call of insert.*)
+ 
+ VAR dummy : btpointer;
+     buffrec : brecord;
+ 
+ BEGIN
+ 
+ bread (f, pgnbr);
+ IF f^.pg.count = btree2k THEN BEGIN
+    bbalance (f, f^.pg.prntpage,f^.pg.prntentry,pgnbr,entrynbr);
+    bread (f, pgnbr);  END;
+ 
+ IF f^.pg.count = btree2k THEN BEGIN
+ 
+    IF entrynbr > (btreek + 1) THEN BEGIN
+         pgnbr := bsplit (f, pgnbr);
+         entrynbr := entrynbr - (btreek + 1); END
+    ELSE dummy := bsplit (f, pgnbr);
+    bread (f, pgnbr); END;
+ 
+ 
+ buffrec := f^;
+ IF entrynbr = btree2kp THEN entrynbr := entrynbr - 1;
+ (*Above will happen only when search put location beyond end of full
+ page and balance was called, opening rightmost slot in page*)
+ bshiftr (f, buffrec.pg, pgnbr, entrynbr);
+ f^ := buffrec;
+ f^.pg.bentry[entrynbr] := insentry;
+ f^.pg.bpointer[entrynbr] := inspointer;
+ bwrite (f, pgnbr);
+ fixpointer(f, inspointer, pgnbr, entrynbr);
+ 
+ END; (* PROCEDURE binsert *)
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION nextentry (*VAR f : btree;  thispg : btpointer;  thisent : bpagesize;
+                 VAR nxtpg : btpointer;  VAR nxtent : bpagesize) : BOOLEAN*);
+ 
+ (* Searches for first entry lexically greater than that pointed to
+   by thispg, thisent.  Returns TRUE if there is a next entry, and
+   returns its position as nxtpg, nxtent. If there is no greater
+   entry, returns FALSE. Nxtpag, nxtent are set to thispg,thisent in this 
+   case.*)
+ 
+ VAR temp : brecord;
+ 
+ BEGIN
+ 
+ bread (f,thispg);
+ temp := f^;
+ 
+ IF temp.pg.bpointer[thisent] = 0 THEN           (*At a leaf*)
+         IF thisent <> temp.pg.count THEN BEGIN  (*Not at end-of-page*)
+                 nxtpg := thispg;
+                 IF thisent > temp.pg.count THEN BEGIN
+                    nxtpg := thispg;
+                    nextentry := FALSE; END
+                 ELSE BEGIN
+                    nxtent := thisent + 1;
+                    nextentry := TRUE; END; END
+         ELSE BEGIN                              (*At end-of-page*)
+                 nxtent := thisent+1;
+                 WHILE (temp.pg.count < nxtent) AND (temp.pg.prntpage <> 0) DO 
+                    BEGIN                (*Ascend until not at end-of-page*)
+                    nxtent:= temp.pg.prntentry+1;
+                    nxtpg := temp.pg.prntpage;
+                    bread(f,nxtpg);
+                    temp := f^; END;
+                 IF (temp.pg.prntpage=0) AND (temp.pg.count < nxtent) THEN BEGIN
+                    nextentry := FALSE;
+                    nxtent := thisent;
+                    nxtpg := thispg; END
+                 ELSE nextentry := TRUE; END
+ ELSE BEGIN                                      (*Not at a leaf*)
+         nxtpg := temp.pg.bpointer[thisent];
+         bread(f,temp.pg.bpointer[thisent]);
+         WHILE f^.pg.bpointer[0] <> 0 DO BEGIN   (*descend until leaf*)
+            nxtpg := f^.pg.bpointer[0];
+            bread (f, nxtpg);  END; (*While*)
+         nxtent := 1;
+         nextentry := TRUE; END; (*Else*)
+ 
+ END;  (*FUNCTION nextentry;
+ 
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION preventry (*VAR f : btree;  thispg : btpointer;  thisent : bpagesize;
+                 VAR prvpg : btpointer;  VAR prvent : bpagesize) : BOOLEAN*);
+ 
+ (* Searches for first entry lexically less than that pointed to
+   by thispg, thisent.  Returns TRUE if there is a prev entry, and
+   returns its position as prvpg, prvent. If there is no lesser
+   entry, returns FALSE. Prvpag, prvent are set to thispg,thisent in this 
+   case.*)
+ 
+ VAR temp : brecord;
+ 
+ BEGIN
+ 
+ bread (f,thispg);
+ temp := f^;
+ 
+ IF temp.pg.bpointer[thisent - 1] = 0 THEN       (*At a leaf*)
+         IF thisent <> 1 THEN BEGIN              (*Not at begin-of-page*)
+                 prvpg := thispg;
+                 prvent := thisent - 1;
+                 preventry := TRUE; END
+         ELSE BEGIN                              (*At begin-of-page*)
+                 prvent := thisent -1;
+                 WHILE (prvent = 0) and (temp.pg.prntpage <> 0) DO 
+                    BEGIN                        (*Ascend until not begin-page*)
+                    prvent := temp.pg.prntentry;
+                    prvpg := temp.pg.prntpage;
+                    bread(f,prvpg);
+                    temp := f^; END;
+                 IF (temp.pg.prntpage = 0) AND (prvent = 0) THEN BEGIN
+                    preventry := FALSE;
+                    prvent := thisent;
+                    prvpg := thispg; END
+                 ELSE preventry := TRUE; END
+ ELSE BEGIN                                      (*Not at a Leaf*)
+         prvpg := temp.pg.bpointer[thisent-1];
+         bread(f,temp.pg.bpointer[thisent - 1]);
+         WHILE f^.pg.bpointer[f^.pg.count] <> 0 DO 
+            BEGIN                                (*Descend until leaf*)
+            prvpg := f^.pg.bpointer[f^.pg.count];
+            bread (f, prvpg);  END; (*While*)
+         prvent := f^.pg.count;
+         preventry := TRUE; END; (*Else*)
+ 
+ END;  (*FUNCTION preventry;
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE bdelete (*VAR f : btree; pgnbr : btpointer; entnbr : bpagesize*);
+ 
+ (* Deletes entry (and associated pointer) pointed to by entnbr,pgnbr.
+    If necessary, calls bbalance to balance or shrink tree.*)
+ 
+ VAR this, next : brecord;
+     nxtpg : btpointer;
+     nxtent : bpagesize;
+ 
+ BEGIN
+ 
+ bread(f,pgnbr);
+ this := f^;
+ 
+ IF (this.pg.bpointer[entnbr] <> 0) AND          (*Not at a leaf, next is TRUE*)
+    (nextentry (f,pgnbr,entnbr,nxtpg,nxtent)) THEN BEGIN
+         bread(f,nxtpg);
+         next := f^;
+         this.pg.bentry[entnbr] := next.pg.bentry[nxtent];
+         bshiftl(f, next.pg, nxtpg, nxtent);
+         f^ := next;
+         bwrite (f, nxtpg);
+         f^ := this;
+         bwrite(f, pgnbr);
+         IF next.pg.count <= btreek THEN 
+                 bbalance(f,next.pg.prntpage,next.pg.prntentry,pgnbr,entnbr);END
+ ELSE BEGIN                                      (*At a leaf*)
+         bshiftl (f, this.pg, pgnbr, entnbr);
+         f^ := this;
+         bwrite(f, pgnbr);
+         IF this.pg.count <= btreek THEN
+                 bbalance(f,this.pg.prntpage,this.pg.prntentry,pgnbr,entnbr);END
+ END; (*PROCEDURE bdelete*)
+ 
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE  firstentry (*VAR f : btree; VAR page : btpointer; 
+                         VAR entry : bpagesize*);
+ 
+ (*Returns position of least (first) lexical entry as page, entry*)
+ 
+ BEGIN
+ 
+ page := broot(f);
+ bread(f,page);
+ 
+ WHILE f^.pg.bpointer[0] <> 0 DO BEGIN
+         page := f^.pg.bpointer[0];
+         bread(f,page); END;
+ 
+ entry := 1;
+ 
+ END; (*PROCEDURE firstentry*)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE  lastentry (*VAR f : btree; VAR page : btpointer; 
+                         VAR entry : bpagesize*);
+ 
+ (*Returns position of greatest (last) lexical entry as page, entry*)
+ 
+ BEGIN
+ 
+ page := broot(f);
+ bread(f,page);
+ 
+ WHILE f^.pg.bpointer[f^.pg.count] <> 0 DO BEGIN
+         page := f^.pg.bpointer[f^.pg.count];
+         bread(f,page); END;
+ 
+ entry := f^.pg.count;
+ 
+ END; (*PROCEDURE lastentry*)
+ 
+
+

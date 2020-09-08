@@ -1,0 +1,528 @@
+                
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+                                 Documentation                        
+                                for the program                       
+                                      INV                             
+          
+                                  Property of                         
+                        Associated Computer Industries                
+                                with all rights                       
+                              pertaining thereto                      
+          
+          
+                        17751 Sky Park East, Suite g-h                
+                               Irvine, Ca. 92714                      
+                                (714)-557-0560                        
+          
+                          Patrick Horton, Programmer                  
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  1)
+
+          
+          
+                Welcome to the ACI  Inventory  Program  Users  Manual.
+          This  program  and  manual  assume  some  prior  use  of the
+          operating system,  especially the system editor. For further
+          information  on the use of the UCSD Pascal  Screen  Oriented
+          Editor  see the  WD-90  Pascal  Microengine  (tm)  Reference
+          Manual.
+          
+          TABLE OF CONTENTS                                     page 
+          ----------------------------------------------------------  
+          cover .................................................  1
+          intro & table of contents .............................  2
+          files in the system ...................................  3
+          GFILE.TEXT ............................................  4
+          Getting Started .......................................  5
+          A)dd ..................................................  5
+          I)ssue ................................................  6
+          D)elete ...............................................  6
+          C)hange ...............................................  6
+          Closing ...............................................  7
+          R)eports ..............................................  8
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  2)
+
+          
+          
+                              Files in the system                      
+                              -------------------                    
+          
+                There are four  files  associated  with the  Inventory
+          program. They are: the program  itself, the inventory  file,
+          the  transaction  archive file, and the assembly group file.
+          In  addition  to  these  files  you may  specify  a file for
+          output of any name  (usually  output is directed to a device
+          however).
+          
+                The  inventory  file  is  made  up  of  records  which
+          contain  the part  number,  a  description  of the part, the
+          quantity on hand, and the last date of access.
+          
+                The transaction  file (archive)  contains an entry for
+          every  transaction made to the inventory,  including initial
+          quantities.  This  allows  for a  complete  balance  of  all
+          transactions.  A  transaction  record  is  made up of a part
+          number,   quantity,  date,  a  transaction   number,  and  a
+          transaction code.
+          
+                The assembly  group file contains  information to link
+          a single  part number or  designator  to multiple  inventory
+          parts.  With it you may  specify a single  part number (as a
+          major  assembly   number)  and  individual   items  will  be
+          subtracted  from the  inventory as nessecary. In other words
+          you might  specify  major part  number A, and this  assembly
+          might  use two  part  X's, one part Y, and six part  Z's. In
+          this way you can inventory out total assemblies  rather than
+          having to make an entry for each screw, washer, etc....
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  3)
+
+          
+          
+          
+                                  GFILE.TEXT                          
+                                  ----------                         
+          
+                The file for the groups is a  sequential  (text)  file
+          which you must  build  with the  editor.  It must  reside on
+          unit #4 and be called 'GFILE.TEXT'.  Without such a file the
+          program  will  not run, so even if you are not  going to use
+          this  feature  you must at least  create a dummy  file  that
+          meets these specifications.
+          
+                The  format  of this  file is a line for each  type of
+          part  in each  major  assembly.  A line  consists  of  three
+          numbers  seperated  by  spaces.  Although  they  are  called
+          partnumbers  they may be any  combination of  alpha-numerics
+          that your  system will  recognize.  The first  number is the
+          major  assembly  part  number, the second is the part number
+          that is part of this  assembly,  and the third number is the
+          quantity of these parts used in this  assembly. For example,
+          given the line:
+          
+          A-102  f-100  3
+          
+          we are told that  major  assembly  number  A-102  uses three
+          f-100's.  There  may be any  number  of these  lines in this
+          file.
+          
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  4)
+
+          
+          
+                                Getting Started                        
+                                ---------------                      
+          
+                In order to get started you should  first create (with
+          the  editor)  a  file  called  'GFILE.TEXT'  on  unit  #4 as
+          described  above. You should also have a new  formatted  and
+          zeroed diskette in unit #5, and the program  'INV.CODE' on a
+          diskette in unit #4.
+          
+                Type 'X' for  execute,  followed by the word 'INV' and
+          a return  <cr>. The  program  will  search unit five for the
+          two  files:  'INV.DATA'  and  'ARC.DATA'.  If not  found the
+          program  will  allow you to create  them by merely  entering
+          another carriage return.
+          
+                Once you have done this you may build  your  inventory
+          using the A)dd command.
+          
+          
+                                     A)dd                            
+                                     ----                            
+          
+                In  order  to add an item to  inventory  type  'A' for
+          A)dd and then enter the part  number of the item you wish to
+          add. If the part  number is not  already  in  inventory  you
+          will  be  allowed  to add it.  Adding  an item to  inventory
+          consists  essentially  of entering a description,  the units
+          of  distribution,  the  initial  quantity,  the  date, and a
+          transaction  code. This  transaction  code may be any (up to
+          ten)  characters  you wish but you should be  consistent.  A
+          good idea is to use the word  'initial'  as the  transaction
+          codes for  beginning  entries.  The  reason for this is that
+          later you may wish to produce  reports by  transaction  code
+          so it is of utmost  importance that the codes be spelled the
+          same (down to the  capitilization of individual  characters)
+          in order to utilize this facility most effficiently.
+          
+                A)dd is also used when you  receive  goods to be added
+          to  inventory  after the number is already in the system. In
+          this case you may specify another  transaction  code such as
+          'reciept' or some such string.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  5)
+
+          
+          
+          
+                                    I)ssue                             
+                                    ------                           
+          
+                Once you have built an  inventory  you may  distribute
+          it using  the  I)ssue  command.  There are two ways to issue
+          items:  S)ingle,  and G)roup.  Issuing a single item amounts
+          to  entering  a date,  transaction  code (such as 'sales' or
+          'returns'), a part number, and a quantity.
+          
+                Issuing a group is done by entering the group  number.
+          Then  for each  line in the  GFILE  for that  group a screen
+          display is made, showing the  description and quantity to be
+          used, the quantity in inventory  before the  transaction and
+          the quantity in inventory after the transaction.
+          
+                When this  happens  you have  three  choices.  You can
+          enter  a  carriage  return  and  the  transaction   will  be
+          completed.  Or  you  can  enter  an  escape  <esc>  and  the
+          transaction will be aborted  (including all subsequent lines
+          in the  group).  Or  lastly,  you may enter an 'S' for S)kip
+          and skip that line and go on to the next item in the group.
+          
+                For each return entered above, an individual  entry in
+          the  transaction  file  will  be  made.  In  this  case  the
+          transaction   code  is  given  the  group  number.  This  is
+          automatic and may not be changed by the user.
+          
+          
+                                   Deleting                          
+                                   --------                          
+          
+                Sooner  or  later  you  are  either  going  to  make a
+          mistake  in using the  system,  or are going to stop using a
+          specific  item,  and you are going to want to delete an item
+          from the  inventory.  In order to do this you will  type 'D'
+          for  delete. The program  will ask you if you wish to delete
+          from the inventory file, the transaction  file, or both. You
+          will enter the proper  command  followed  by the part number
+          you wish to delete and it will be removed from the system.
+          
+          
+                                   Changing                          
+                                   --------                          
+          
+                In order to change a part  number  you must  enter the
+          command  C)hange. Then you may specify if you wish to change
+          the number in the  inventory,  the  archive,  or both. After
+          entering  the old  number and the new  number,  the  program
+          will change the part number in the specified files.
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  6)
+
+          
+          
+          
+                                    Closing                           
+                                    -------                          
+          
+                Every so often  the  archive  file is going to  become
+          over-crowded.  The procedure for taking care of this will be
+          to copy the  archive  file onto  another  diskette  and then
+          R)emoving  it using the  filer. The  program,  when run will
+          make a new  version of this file and you may start  entering
+          new  transactions.  This process should be done on a monthly
+          basis depending on individual requirements.
+          
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  7)
+
+          
+          
+                                    Reports                           
+                                    -------                          
+          
+                There  are  basically  three  reports  which  you  may
+          create. They are (once again)  inventory,  archive, or both.
+          To create a report,  type 'R' for report, and then  'I','A',
+          or 'B' as the  case may be. The  program  will  then ask you
+          for the output  device to which the report  will go. You may
+          specify '#6:' for a parallel  printer, '#2:' for the screen,
+          and '#8:' for the serial port  printer. In addition to these
+          you may enter a  filename,  if for some  reason  you wish to
+          save the report.
+          
+                After  designating  the above  parameters, you will be
+          allowed to enter what are called  wildcards.  In the case of
+          the  I)nventory  report  you will  enter only a part  number
+          wildcard.  With  the  other  reports  you  will  enter  part
+          number,  date,  transaction  number,  and  transaction  code
+          wildcards.
+          
+                The  wildcards  serve as  selection  criteria by which
+          certain  parts of the data are  included  in the  report. If
+          you enter blank carriage  returns for all the wildcards then
+          all the  information  in the file  will be  included  in the
+          report.
+          
+                The format for a wildcard  is to specify the items you
+          wish filled with question marks where you don't care.
+          
+                i.e. given the  wildcard  'A-???'  for part number the
+          report  would  include all parts that  started with 'A-' and
+          that were five or less  characters  in length. The  wildcard
+          '?' for  transaction  code  will  pull out all  transactions
+          with a single  character  code. The wildcard  '07??80'  will
+          pull out all of the  transactions  for  July,  1980. In this
+          way  you  can  look at  selected  parts  of the  information
+          without dumping the whole file.
+          
+                (note: It would  probably be a good idea to do a B)oth
+          report with no  wildcards  before  closing the archive  file
+          out.  This  way you have a record  of all  transactions  and
+          quantities 'for the books').
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   (Page  8)
+

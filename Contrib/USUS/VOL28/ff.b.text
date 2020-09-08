@@ -1,0 +1,169 @@
+Form Definition Procedures 
+
+
+1.2 FORM DEFINITION PROCEDURES 
+ 
+1.2.1 How to Define a Form 
+ 
+     Defining a Form involves specifying to FREEFORM the dimensions and the
+data to be represented.  As pointed out in section 1.1, the dimensions of the
+Forms are Page, Row, and Column.  FREEFORM creates a computerized
+representation of the sheets of paper on which numerical problems are solved. 
+ 
+     A Form definition consists of: (1) giving the Form a unique name, 
+(2) specifying the dimensions and parameters of the Form pages, rows, and 
+columns, and (3) describing the calculations, if any, to be performed.  These 
+steps are only necessary the first time a Form is to be used.  All parameters 
+which describe a Form and its contents are stored in disk files. 
+ 
+     The Form definition program does the following: (1) creates an entry the 
+directory file describing the dimensions and other attributes of the Form,
+(2) creates and loads the control file per its specifications, detailing the
+row and column parameters and calculations to be performed, (3) creates and
+initializes a file to hold any constants that may be defined in the Form, (4)
+creates and initializes a file to hold all the page titles, and (5) initializes
+a data file of the proper size to hold the prescribed information. 
+ 
+*<Note>  To avoid confusion, review the Standard Keyboard Procedures (1.1.3). 
+ 
+   To envoke the new Form definition procedure select menu option number 1. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+     ********************************************************************* 
+ 
+          F R E E F O R M   The Electronic Worksheet  [F.4] 
+          ========================================== 
+                                        June 24, 1981
+ 
+ 
+          0. 
+          1.  Define new FORM controls <===== Form definition 
+          2. 
+          3. 
+          4. 
+          5. 
+          6. 
+          7. 
+          8. 
+          9. 
+ 
+ 
+ 
+          Enter desired option # _      Press ESC to leave  
+ 
+     ********************************************************************* 
+ 
+     When the program has been loaded, the screen will clear, and a new title 
+will be displayed. 
+ 
+               F R E E F O R M   F O R M S   C O N T R O L S 
+               New Forms Definition 
+ 
+     If FREEFORM does not find a 'directory' file it will display an error
+message stating there is no directory.  If this happens, FREEFORM will ask if
+another disk should be looked at.  If so, press <return> otherwise type <N>.  
+If <return> was pressed the program will prompt for the disk drive number to 
+search in for a directory file.  After receiving a valid disk drive number, the
+program will instruct the user to insert a disk into that drive and press 
+<return>. 
+ 
+     If no FREEFORM directory exists then one needs to be created.  FREEFORM 
+should be instructed to look on the disk that is to have a directory for a 
+FREEFORM form.  An error message should appear stating that a directory was not
+found and then FREEFORM will ask if another disk should be checked.  One should
+respond by typing <N>.  FREEFORM will ask if a new directory should be created.
+Press <return> or <Y>.  FREEFORM will create a directory on the last disk 
+searched which is the reason for searching for a directory on one that does not
+have one.  FREEFORM will display: 
+ 
+*** Creating FREEFORM directory ... one moment, please 
+ 
+Simply wait until this message disappears (several seconds). 
+ 
+*<Note> The term 'directory' should not be confused with the system directory. 
+ 
+     The program then checks to verify there is available space on the diskette
+to add a new Form.  If there is not enough space, the message 
+ 
+*** FREEFORM directory is full ... press RETURN 
+ 
+will appear and FREEFORM automatically returns to the main menu. The options of
+initializing a new diskette or deleting one or more Forms from the current
+diskette are then available.  (For instructions on deleting Forms, see 1.5 Form
+Controls Modification Procedures.) 
+ 
+*** Form name (8 alpha max.)__________    Press ESC to leave 
+ 
+*<Note> This prompt will only accept letters of the alphabet and the numbers
+zero through nine. 
+ 
+Respond by typing the name to be assigned to the new Form and pressing 
+<return>.  If <esc> alone is pressed, control returns to the main menu.  If a 
+valid Form name request is entered, the program then checks the directory to 
+ensure against duplication of Form names.  If an existing Form is found with 
+the input name, the option to replace the existing definition and data is 
+given.  Replace the form by responding with a <Y> to the prompt 
+ 
+*** Replace existing FORM? (Y/N)  N 
+ 
+To avoid replacing a Form, simply press <return>.  The program will then prompt
+for a new name. 
+ 
+*<Note> Use with care as the replaced Form can not be recovered! 
+ 
+     The program will then ask if checkpoint prompts are desired.  These 
+prompts give the user a chance to review progress at various intervals during
+Form definition.  Until experienced with the sequence of events and comfortable
+with the various prompts, users should respond <Y> to this option. 
+ 
+*<Note> Input will be displayed on the screen for visual verification. If 
+errors are produced during definition, they can be corrected. 
+ 
+     The Form definition program next prompts for descriptive information about
+the Form being defined.  Optional identifiers such as user initials, 
+descriptive comment, and definition date are provided to help the user keep
+track of the location of Forms.  FREEFORM will function satisfactorily without
+this information. 
+ 
+     If space is available, the program then asks for the number of pages
+desired, displaying the maximum number allowed.  The program will not allow the
+user to exceed the maximum. 
+ 
+*** How many Pages? __ (max. available is 100) 
+ 
+     Next, the format of the Form is selected.  There are two choices: 
+Row or Column formatting.  Formatting indicates whether data is homogenous
+by row or column and the order in which calculations are performed.  Calculated
+rows are done before calculated columns in row-formatted forms and vice versa 
+in column formatted forms. 
+ 
+*** Format Rows or Columns? (R/C)  R 
+ 
+ 
+Examples: 
+                   Row Formatted        |           Column Formatted   
+            Col 1  Col 2  Col 3  Total  |           Col 1 Col 2  Col 3 
+                                        |  
+    Row 1    10.0  215.2   65.8  291.0  |   Row 1    10.0    20  0.500 
+                                        |
+    Row 2      20    460    135    615  |   Row 2   215.2   460  0.468
+                                        |
+    Row 3   0.500  0.468  0.489  1.457  |   Row 3    65.8   135  0.489
+                                        |
+                                        |   Total   291.0   615  1.457  
+ 
+ 
+
+

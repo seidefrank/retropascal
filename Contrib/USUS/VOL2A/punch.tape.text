@@ -1,0 +1,101 @@
+
+(* Program Author:   Walter Hess
+                     1460 Seven Pines Rd.
+                     Schaumberg, IL 60193
+                     
+                                                        *)
+                                                        
+(*              RTAPE and PUNCH
+               
+                    If you have the HEATH Paper Tape System, 
+               these two programs will transfer files between 
+               the paper tape system and disc files.  I have not 
+               used them much but I believe they work OK.*)
+               
+(*$L SCRVOL:LPUNCH.TEXT*)
+PROGRAM PUNCH;
+(* VERSION "O"  06/11/79  WIH *)
+TYPE
+  LSTR = STRING[132];
+  POINTER = ^CHAR;
+
+VAR
+  PCH,PCHS : POINTER;
+  INSTR,FLSTR : LSTR;
+  INFIL : TEXT;
+  J : INTEGER;
+
+PROCEDURE INITPT (VAR PNT,PNTS : POINTER);
+CONST
+  PUNCHADD = -146;
+
+TYPE
+  REP = (POINTREP,INTREP);
+  ALIAST = RECORD
+    CASE REP OF
+      POINTREP:
+        (POINTVAL : POINTER);
+      INTREP:
+        (INTVAL : INTEGER);
+    END; (* CASE *)
+
+VAR
+  ALIAS : ALIAST;
+
+BEGIN
+  ALIAS.INTVAL := PUNCHADD;
+  PNT := ALIAS.POINTVAL;
+  ALIAS.INTVAL := PUNCHADD - 2;
+  PNTS := ALIAS.POINTVAL;
+END;
+
+PROCEDURE WASTE;
+VAR
+  K : INTEGER;
+
+BEGIN
+  REPEAT
+    K := ORD(PCHS^);
+  UNTIL K = 128;
+END;
+
+PROCEDURE PUNCHST (PUSTR : LSTR);
+VAR
+  J : INTEGER;
+
+BEGIN
+  FOR J := 1 TO LENGTH(PUSTR) DO
+  BEGIN
+    PCH^ := PUSTR[J];
+    WRITE(PUSTR[J]);
+    WASTE;
+  END;
+  PCH^ := CHR(13);
+  WRITE(CHR(13));
+  WASTE;
+END;
+
+
+BEGIN (* MAIN PROGRAM *)
+  INITPT(PCH,PCHS);
+  WRITELN(' ENTER NAME OF FILE TO BE PUNCHED');
+  READLN(FLSTR);
+  RESET(INFIL,FLSTR);
+  FOR J := 1 TO 100 DO
+  BEGIN
+    PCH^ := CHR(0);
+    WASTE;
+  END;
+  REPEAT
+    READLN(INFIL,INSTR);
+    PUNCHST(INSTR);
+  UNTIL EOF(INFIL);
+  PCH^ := CHR(4);
+  WASTE;
+  FOR J := 1 TO 100 DO
+  BEGIN
+    PCH^ := CHR(0);
+    WASTE;
+  END;
+  CLOSE(INFIL)
+END.

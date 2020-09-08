@@ -1,0 +1,67 @@
+(*$S++*)
+UNIT SORTSPEC;
+
+(* File type and key specicification template for SORT/MERGE Package *)
+
+INTERFACE
+
+   CONST RUNLENGTH=256;       (* Set to 20480 DIV SIZEOF(SORTTYPE) or less *)
+         
+   TYPE INPUTTYPE=STRING;     (* Replace by RECORD TYPE of unsorted file *)
+        SORTTYPE=INPUTTYPE;   (* Replace by RECORD TYPE for key comparisons *)
+        OUTPUTTYPE=INPUTTYPE; (* Replace by RECORD TYPE for sorted file *)
+        
+   PROCEDURE INITIALISE;
+   PROCEDURE USERIN(INPUTREC: INPUTTYPE; VAR SORTREC: SORTTYPE);
+   FUNCTION  COMPARE(SORTREC1, SORTREC2: SORTTYPE): BOOLEAN;
+   PROCEDURE USEROUT(SORTREC: SORTTYPE; VAR OUTPUTREC: OUTPUTTYPE);
+   PROCEDURE TERMINATE;
+   
+IMPLEMENTATION
+   
+   (* Insert declaration of any local variables, etc. required by PROCEDURES
+      INITIALISE, USERIN, COMPARE, USEROUT and TERMINATE - these are optional *)
+      
+   PROCEDURE INITIALISE;
+      BEGIN
+         (* Insert any code required to initialise local variables required
+            by the PROCEDURES USERIN, COMPARE, USEROUT and TERMINATE or to
+            manipulate the file to be sorted, etc. - this is optional *)
+      END;
+   
+   PROCEDURE USERIN;
+      BEGIN
+         SORTREC:=INPUTREC
+         (* Replace by any code required to convert an INPUTTYPE RECORD into a
+            SORTTYPE RECORD *)
+      END;
+
+   FUNCTION COMPARE;
+      BEGIN
+         COMPARE:=SORTREC1<=SORTREC2
+         (* Replace by code required to compare the key fields of two SORTTYPE
+            RECORDS and return the result TRUE if they are correctly ordered
+            relatively, FALSE if not *)
+      END;
+      
+   PROCEDURE USEROUT;
+      BEGIN
+         OUTPUTREC:=SORTREC
+         (* Replace by any code required to convert a SORTYPE RECORD into an
+            OUTPUTTYPE RECORD *)
+      END;
+      
+   PROCEDURE TERMINATE;
+      BEGIN
+         (* Insert any code required to manipulate the sorted file or
+            otherwise conclude the SORT/MERGE Procedures - this is optional *)
+      END;
+      
+(* Remove the following BEGIN statement for use under UCSD Version II.0 *)
+
+BEGIN
+   (* Version IV.0 only - Insert any code required to pre-intialise any variables
+      defined in the INTERFACE or IMPLEMENTATION sections above. *)
+END.
+
+:

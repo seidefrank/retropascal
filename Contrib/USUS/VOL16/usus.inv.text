@@ -1,0 +1,666 @@
+{$S+}
+PROGRAM PRINTINVOICES;
+USES (*$U crtinput.code *) CRTInput, 
+     (*$U getnumber.code *) GetNumber;
+
+LABEL  1;
+
+CONST
+       MaxX = 79;
+       MaxY = 23;
+       MaxData = 50;
+       MaxArray = 20;
+       PromptLine = 0;
+
+TYPE
+       YLimits = 0..MaxY;
+       XLimits = 0..MaxX;
+       DataLimits = 1..MaxData;
+       CRTLineArray = PACKED ARRAY [XLimits] OF char;
+       DataRec = PACKED RECORD
+                   X: XLimits;
+                   Y: YLimits;
+                   Lngth, Decimal: XLimits;
+                 END;
+       MaskRec = RECORD
+                   Line: ARRAY [YLimits] OF CRTLineArray;
+                   Data: ARRAY [DataLimits] OF DataRec;
+                 END;
+      ArrayIndex = 1..MaxArray;
+      SystemType = String [20];
+      FormatType = (None, Stndrd, UCSD, CPM, NorthStar, Apple);
+      Volumes = (i, iia, iib, iii, iv, v, vi, vii, viii, ix, x);
+      OrderedSet = SET OF Volumes;
+      Money =
+        RECORD
+          Dollars: integer;
+          Cents: -100..200
+        END;
+      CustRecord =
+        RECORD
+          Name: String [40];
+          Addr1: String [40];
+          Addr2: String [40];
+          Addr3: String [40];
+          Addr4: String [40];
+          SalesTax, CanadaMex, Foreign: boolean;
+          System: SystemType;
+          Format: FormatType;
+          Ordered: OrderedSet;
+          PrevBal, ThisOrder, PaidNow, BalDue: Money;
+          SpecialInstructns: string;
+        END;
+
+
+VAR  j, k, n: integer;
+     running, quit: boolean;
+     CustCount: ArrayIndex;
+     Date: String[20];
+     ExtraFee, CreditNow: ARRAY [ArrayIndex] OF Money;
+     Frmt: ARRAY [ArrayIndex] OF String [9];
+     Mask: MaskRec;
+     Customer: ARRAY [ArrayIndex] OF CustRecord;
+     List: text;
+ 
+
+PROCEDURE WritePrompt (prompt: string);
+BEGIN GoAndClearLine (PromptLine);  Write (prompt) END;
+
+
+FUNCTION WaitForSp (p: string): boolean;
+VAR ch: char;
+BEGIN
+  Write(CHR (7), p);
+  Write ('.  Type a space to continue, <ESCAPE> to abort...');
+  REPEAT Read (keyboard, ch) UNTIL (ch = ' ') OR (ch = CHR (27));
+  Writeln;  WaitForSp := ch = ' '
+END;
+
+
+PROCEDURE WriteError(prompt: string);
+VAR ch: char;
+BEGIN
+  Gotoxy (0, 2);  Write (CHR(7), prompt, '  Type <space> to continue..');
+  REPEAT Read (keyboard, ch) UNTIL ch = ' ';  GoAndClearLine (2);
+END;
+
+
+PROCEDURE GotoDataField (n: integer);
+BEGIN WITH Mask.Data[n] DO Gotoxy (x,y) END;
+
+
+PROCEDURE ClearField (n: integer);
+BEGIN
+  WITH Mask.Data[n] DO BEGIN Gotoxy (X,Y);  Write (' ':Lngth) END
+END;
+
+
+PROCEDURE ReadMaskData;
+VAR
+     i: integer;
+     DFileName: string[30];
+     DataFile: FILE OF MaskRec;
+     
+BEGIN
+  REPEAT
+    DFileName := 'INVCS.MASK.DATA';
+    {$I-}
+    Reset (DataFile, DFileName);
+    IF IORESULT > 0 THEN Reset (Datafile, CONCAT ('#4:', DFileName));
+    IF IORESULT > 0 THEN Reset (Datafile, CONCAT ('#5:', DFileName));
+    {$I+}
+    i := IORESULT;
+    IF i > 0
+      THEN BEGIN
+        Write ('Can''t find "INVCS.MASK.DATA", needed to work this program.');
+        IF NOT Yes ('Do you wish me to try to find it again?')
+          THEN EXIT (Program)
+      END;
+  UNTIL i = 0;
+  Mask := Datafile^;
+  ClearScreen;
+  Close (Datafile, lock);
+END;
+
+
+PROCEDURE GetDisk (n: integer);
+VAR  ch: char;
+BEGIN
+  WITH Customer[n] DO IF Format IN [Stndrd..NorthStar]
+    THEN BEGIN
+      CASE Format OF
+        Stndrd:    GotoDataField (9);
+        UCSD:      GotoDataField (11);
+        CPM:       GotoDataField (14);
+        Apple:     GotoDataField (16);
+        NorthStar: GotoDataField (19)
+      END;
+      Write (' ');
+    END;
+  Gotoxy (13,10);
+  ch := GetLetter (PromptLine, 
+    'Please describe the disk format with the appropriate letter.',
+    ['S', 'U', 'C', 'A', 'N']);
+  WITH Customer[n] DO CASE ch OF
+    'S':  BEGIN
+            Format := Stndrd;  GotoDataField (9);  Frmt[n] := 'standard';
+          END;
+    'U':  BEGIN
+            Format := UCSD;  GotoDataField (11);  Frmt[n] := 'UCSD';
+          END;
+    'C':  BEGIN
+            Format := CPM;  GotoDataField (14);  Frmt[n] := 'CP/M';
+          END;
+    'A':  BEGIN
+            Format := Apple;  GotoDataField (16);  Frmt[n] := 'Apple';
+          END;
+    'N':  BEGIN
+            Format := NorthStar;  GotoDataField (19);  Frmt[n] := 'NorthStar';
+          END
+  END (*case*);  Write ('x');  GoAndClearLine (PromptLine);
+END (*GetDisk*);
+
+
+PROCEDURE DsplyOrders (n: integer);
+VAR m: Volumes;
+    mark: ARRAY[Volumes] OF char;
+BEGIN
+  WITH Customer[n] DO FOR m := i TO x DO 
+    BEGIN
+      IF m IN Ordered THEN mark[m] := 'x' ELSE mark[m] := ' ';
+      CASE m OF
+        i:   GotoDataField(10);
+        iia: GotoDataField(12);   iib: GotoDataField(13);   
+        iii: GotoDataField(15);
+        iv:  GotoDataField(17);   v:   GotoDataField(18);
+        vi:  GotoDataField(20);   vii: GotoDataField(21);
+        viii:GotoDataField(22);   ix:  GotoDataField(23);
+        x:   GotoDataField(24)
+      END;
+      Write (mark[m])
+    END
+END;
+
+
+PROCEDURE GetOrders (n: integer);
+VAR ch: char;
+    Selected: Volumes;
+BEGIN
+  WritePrompt (
+'Type the volume numbers ordered, 1 to 9 or "S".  Type a <return> when done.');
+  REPEAT
+    REPEAT Read (keyboard, ch) 
+    UNTIL ch IN ['0'..'9','s','S',' '];  IF ch = 's' THEN ch := 'S';
+    IF ch IN ['1'..'9','S'] THEN WITH Customer[n] DO 
+      BEGIN
+        CASE ch OF
+          '1':  Selected := i;
+          '2':  BEGIN
+                  GotoDataField (30);  Write ('Volume 2 A or B?');
+                  REPEAT READ (keyboard, ch) UNTIL (ch IN ['A', 'a', 'B', 'b']);
+                  IF (ch IN ['A', 'a'])
+                    THEN Selected := iia ELSE Selected := iib;
+                  ClearField (30);
+                END;
+          '3':  BEGIN
+                  WriteError('Are you sure this isn''t discontinued?');
+                  Selected := iii;
+                END;
+          '4':  Selected := iv;
+          '5':  Selected := v;
+          '6':  Selected := vi;
+          '7':  Selected := vii;
+          '8':  Selected := viii;
+          '9':  Selected := ix;
+          'S':  Selected := x
+          END (*case*);
+        IF Selected IN Ordered 
+          THEN Ordered := Ordered - [Selected]
+          ELSE Ordered := Ordered + [Selected];
+        DsplyOrders (n);
+      END
+  UNTIL (ch = '0') OR eoln (keyboard);  GoAndClearLine (PromptLine);
+END (*GetOrders*);
+
+     
+PROCEDURE GetMoney (DN: datalimits; Prompt: string; VAR Amount: Money);
+BEGIN
+  WritePrompt (Prompt);
+  GetDecimal (Mask.Data[DN].x, Mask.Data[DN].Y, -100, 1000, 2, Amount.Dollars, 
+    Amount.Cents);
+  GoAndClearLine (PromptLine);
+END (*GetMoney*);
+
+
+PROCEDURE WriteMoney (DN: datalimits; amount: money);
+VAR m: integer;
+BEGIN
+  WITH Mask.Data[DN] DO
+    BEGIN
+      Gotoxy (X, Y); Write (ABS (Amount.dollars):(Lngth-3), '.');
+      m := ABS (Amount.Cents); IF m DIV 10 = 0 THEN Write ('0');
+      Write (m MOD 100);
+      IF Amount.Dollars < 0
+        THEN Write (' *CREDIT*') ELSE Write ('         ');
+    END;
+END;
+
+
+PROCEDURE AddMoney (Add1, Add2: Money; VAR Sum: Money);
+BEGIN
+  Sum.Dollars := Add1.Dollars + Add2.Dollars;
+  Sum.Cents := Add1.Cents + Add2.Cents;
+  IF Sum.Cents > 99
+    THEN BEGIN
+      Sum.Cents := Sum.Cents -100;  Sum.Dollars := Sum.Dollars + 1;
+    END;
+END;
+      
+      
+PROCEDURE SubMoney (minuend, subtrahend: money; VAR result: money);
+BEGIN
+  Result.Dollars := Minuend.Dollars - Subtrahend.Dollars;
+  Result.Cents := Minuend.Cents - Subtrahend.Cents;
+  WITH Result DO IF (Dollars > 0) AND (Cents < 0) 
+    THEN BEGIN
+      Cents := Cents + 100;
+      Dollars := Dollars - 1
+    END
+    ELSE IF (Dollars < 0) AND (Cents > 0)
+      THEN BEGIN
+        Cents := Cents - 100;
+        Dollars := Dollars + 1
+      END;
+END;
+
+
+PROCEDURE FigureInvoice (n: integer);
+VAR AmountPerVolume: 10..15;
+    p, TaxCents, OrderPrice: integer;
+    TotlCredit: money;
+    Count: Volumes;
+BEGIN
+  WITH Customer [n] DO
+    BEGIN
+      IF (Format = Apple) OR (Format = NorthStar)
+        THEN AmountPerVolume := 15 ELSE AmountPerVolume := 10;
+      OrderPrice := 0;
+      FOR Count := i TO x DO 
+        IF Count IN Ordered THEN OrderPrice := OrderPrice + AmountPerVolume;
+      IF SalesTax
+        THEN BEGIN
+          TaxCents := OrderPrice * 6;
+          ExtraFee[n].Dollars := TaxCents DIV 100;
+          ExtraFee[n].Cents := TaxCents MOD 100
+        END
+      ELSE IF Foreign
+        THEN BEGIN
+          p := 0;
+          FOR Count := i TO ix DO IF Count IN Ordered
+            THEN p := p + 1;
+          ExtraFee[n].Dollars := 3 + TRUNC ((p-1) * 1.5);
+          IF ODD (p)
+            THEN ExtraFee[n].Cents := 0
+            ELSE ExtraFee[n].Cents := 50;
+        END
+      ELSE BEGIN
+        ExtraFee[n].Dollars := 0;
+        ExtraFee[n].Cents := 0
+      END;
+      ThisOrder.Dollars := OrderPrice + PrevBal.Dollars;
+      ThisOrder.Cents := PrevBal.Cents;
+      AddMoney (ThisOrder, ExtraFee[n], ThisOrder);
+      AddMoney (PaidNow, CreditNow[n], TotlCredit);
+      SubMoney (ThisOrder, TotlCredit, BalDue);
+      WriteMoney (29, BalDue);
+    END (*with*)
+END (*FigureInvoice*);
+
+
+PROCEDURE GetName (n: integer);
+VAR  Ordinate: String[5];
+BEGIN
+  IF n > 3
+    THEN Ordinate := 'th'
+    ELSE CASE n OF
+      1: Ordinate := 'st';
+      2: Ordinate := 'nd';
+      3: Ordinate := 'rd'
+    END;
+  GoAndClearLine (PromptLine);
+  Writeln('What is the name/title?');
+  Write('(This is the ', n, Ordinate, ' customer.)');
+  GotoDataField (1);  GetString (40, Customer[n].Name)
+END;
+
+
+PROCEDURE GetAddress (n: integer);
+BEGIN
+  WITH Customer[n] DO
+    BEGIN
+      WritePrompt ('First line of address?  ');
+      GotoDataField (2);  GetString (40, Addr1);
+      WritePrompt ('Second line of address?  ');
+      GotoDataField (3);  GetString (40, Addr2);
+      IF (Addr2 = ' ') OR (Addr2 = '') THEN Addr3 := ''
+        ELSE BEGIN
+          WritePrompt ('Third line of address?  ');
+          GotoDataField (4);  GetString (40, Addr3)
+        END;
+      IF (Addr3 = ' ') OR (Addr3 = '') THEN Addr4 := ''
+        ELSE BEGIN
+          WritePrompt ('Fourth line of address?  ');
+          GotoDataField (5);  GetString (40, Addr4);
+        END;
+      GoAndClearLine (PromptLine);
+    END
+END;
+
+
+FUNCTION MaskBoolean (DN: integer; prompt: string): boolean;
+VAR quick: boolean;
+BEGIN
+  WritePrompt (prompt);
+  WITH Mask.Data[DN] DO GetBoolean (X, Y, quick);
+  MaskBoolean := quick;
+  GoAndClearLine (PromptLine);
+END;
+
+
+PROCEDURE InitCustomer (n: integer);
+BEGIN
+  WITH Customer[n] DO
+    BEGIN
+      Name := '';
+      Addr1 := '';
+      Addr2 := '';
+      Addr3 := '';
+      Addr4 := '';
+      System := '';
+      Format := None;
+      Ordered := [];
+      PrevBal.Dollars := 0; PrevBal.Cents := 0;
+      PaidNow.Dollars := 0; PaidNow.Cents := 0;
+    END;
+  CreditNow[n].Dollars := 0; CreditNow[n].Cents := 0;
+END;
+
+
+PROCEDURE CheckInvoice (n: integer);
+CONST Always = false;
+VAR ch: char;
+BEGIN
+  REPEAT WITH Customer[n] DO
+    BEGIN
+      ch := GetLetter (PromptLine, 
+'Now check customer data.  Type letter of the field to correct; "Q" when done.',
+['N', 'A', 'B', 'D', 'P', 'R', 'M', 'S', 'C', 'O', 'V', 'Q']);
+      Case ch OF
+             'A':  GetAddress (n);
+             'B':  BEGIN
+                     GotoDataField (8);
+                     GetString (20, System);
+                   END;
+             'D':  GetDisk (n);
+             'N':  GetName (n);
+             'P':  GetMoney (26, 
+    'Now correct past due/credits; preceed credits by a "-" sign', PrevBal);
+             'R':  GetMoney (27, 'Correct amount paid by customer.', PaidNow);
+             'M':  GetMoney (28, 'Correct credits being applied TODAY',
+                     CreditNow[n]);
+             'S':  BEGIN
+                     GotoDataField (25);
+                     GetString (56, SpecialInstructns)
+                   END;
+             'C':  IF NOT Foreign
+                     THEN SalesTax := MaskBoolean (6, 'California sale?')
+                     ELSE BEGIN
+                       SalesTax := false;
+                       GoToDataField (6);
+                       Write (' no')
+                     END;
+             'O':  IF NOT SalesTax
+                     THEN Foreign := MaskBoolean (7, 'Overseas sale?')
+                     ELSE BEGIN
+                       Foreign := false;
+                       GoToDataField (7);
+                       Write (' no')
+                     END;
+             'V':  GetOrders (n);
+             'Q':  Exit (CheckInvoice);
+        END;
+      FigureInvoice (n);
+    END;
+  UNTIL Always;
+END;
+
+
+PROCEDURE GetCustData;
+
+VAR  m, n: integer;
+     MoreToDo: boolean;
+     ch: char;
+     s: string;
+          
+BEGIN (*GetCustData*)
+  ClearScreen;
+  FOR m := 0 TO MaxY-1 DO Writeln (Mask.Line[m]);
+  n := 1;
+  REPEAT
+    WITH Customer[n] DO
+      BEGIN
+        InitCustomer(n);
+        GetName (n);
+        GetAddress (n);
+        SalesTax := MaskBoolean (6, 'Charge sales tax?');
+        CanadaMex := false;
+        IF SalesTax
+          THEN Foreign := false
+          ELSE Foreign := MaskBoolean (7, 'Foreign country?');
+        WritePrompt ('Describe system briefly (if known).');
+        GotoDataField (8);  GetString (20, System);
+        GetDisk (n);
+        GetOrders (n);
+        GetMoney (26,
+'Any previous balance (or credit: make negative)?', PrevBal);
+        GetMoney (27, 'Amount paid today?', PaidNow);
+        GetMoney (28, 'Any special credits today?', CreditNow[n]);
+        WritePrompt ('Type any special instructions now.');
+        SpecialInstructions := '';
+        GotoDataField (25);  GetString (56, SpecialInstructions);
+      END (*with*);
+    FigureInvoice (n);
+    CheckInvoice (n);
+    GoAndClearLine (PromptLine);
+    MoreToDo := Yes ('More orders to process');
+    CustCount := n;
+    IF MoreToDo THEN BEGIN n := n+1;  FOR m := 1 TO 25 DO ClearField (m) END;
+  UNTIL (n >= MaxArray) OR NOT MoreToDo;
+END (*Procedure*);
+
+
+PROCEDURE DoPrintInvoice (n: integer);
+VAR IntAmount, LineCount, j, p: integer;
+    FirstLine: boolean;
+    ch: char;
+    SubTotal, TaxAmount, Shipping: Money;
+    Count: Volumes;
+
+
+PROCEDURE PrintVolLine;
+
+BEGIN
+  WITH Customer[n] DO FOR Count := i TO x DO IF Count IN Ordered
+    THEN BEGIN
+      Write (List, '  1   USUS/UCSD Users'' Library, Vol  ');
+      CASE Count OF
+        i:     Write (List, '1 ');
+        iia:   Write (List, '2A');
+        iib:   Write (List, '2B');
+        iii:   Write (List, '3 ');
+        iv:    Write (List, '4 ');
+        v:     Write (List, '5 ');
+        vi:    Write (List, '6 ');
+        vii:   Write (List, '7 ');
+        viii:  Write (List, '8 ');
+        ix:    Write (List, '9 ');
+        x:     Write(List,'WD')
+      END (*case*);
+      IF (Format IN [Apple, NorthStar])
+        THEN Write (List, '  15     ') ELSE Write (List, '  10     ');
+      IF FirstLine
+        THEN BEGIN FirstLine := false; Write (List, '$') END
+        ELSE Write (List, ' ');
+      IF (Format IN [Apple, NorthStar])
+        THEN Writeln (List, '15   00') ELSE Writeln (List, '10   00');
+      LineCount := LineCount + 1
+    END (*with*);
+END (*PrintVolLine*);
+
+
+PROCEDURE PrntHeadLine (s: String; amt: money);
+VAR x: integer;
+BEGIN
+  Write (List, s:49, abs (amt.dollars):2);  x := abs (amt.cents);
+  IF x < 10 
+    THEN Writeln (List, '   0', x) ELSE Writeln (List, x:5)
+END;
+
+
+BEGIN (*DoPrintInvoices*)
+  WITH Customer[n] DO
+    BEGIN
+      Writeln (List, ' ':41, Date);
+      Writeln (List);
+      Writeln (List, Name);
+      Writeln (List, Addr1);
+      Writeln (List, Addr2);
+      Writeln (List, Addr3);
+      Writeln (List, Addr4);
+      FOR j := 1 to 4 DO Writeln (List);
+      IF PrevBal.Dollars + PrevBal.Cents <> 0
+        THEN BEGIN
+          IF PrevBal.Dollars * 100 + PrevBal.Cents > 0
+            THEN PrntHeadLine ('PREVIOUS BALANCE:   $', PrevBal)
+            ELSE PrntHeadLine ('PREVIOUS CREDIT DUE:$', PrevBal);
+          LineCount := 2;
+          Writeln (List);
+          FirstLine := false
+        END ELSE BEGIN  LineCount := 0;  FirstLine := true  END;
+      IF POS ('USUS', System) > 0
+        THEN BEGIN
+          Writeln (list, '      -- ** -- This order through USUS -- ** --');
+          LineCount := LineCount + 1
+        END;
+      Writeln (list, 'Disks were ordered in ', Frmt[n], ' format.');
+      Writeln (list);
+      PrintVolLine;
+      Writeln (List, '________':56);
+      IF SalesTax OR Foreign
+        THEN BEGIN
+          SubMoney (ThisOrder, ExtraFee[n], SubTotal);
+          PrntHeadLine ('SUBTOTAL    $', SubTotal);
+          Writeln (List);
+          IF SalesTax
+            THEN PrntHeadLine ('SALES TAX    ', ExtraFee[n])
+            ELSE PrntHeadLine ('SHIPPING     ', ExtraFee[n]);
+          Writeln (List, '________':56);
+          LineCount := LineCount + 4
+        END;
+      PrntHeadLine ('TOTAL       $', ThisOrder);
+      Writeln (List);
+      PrntHeadLine ('RECEIVED (check)     ', PaidNow);
+      IF CreditNow[n].Dollars + CreditNow[n].Cents > 0
+        THEN BEGIN
+          PrntHeadLine ('OTHER CREDITS        ', CreditNow[n]);
+          LineCount := LineCount + 1
+        END;
+      Writeln (List, '________':56);
+      IF (BalDue.Dollars < 0) OR (BalDue.Cents < 0)
+        THEN PrntHeadLine ('CREDIT      $', BalDue)
+        ELSE PrntHeadLine ('BALANCE DUE $', BalDue);
+      Writeln (List);
+      IF (SpecialInstructions = '') OR (SpecialInstructions = ' ')
+        THEN Writeln (list)
+        ELSE Writeln (list, '           -***- SPECIAL INSTRUCTIONS -***-');
+      Writeln (list, SpecialInstructions);
+      FOR j := LineCount TO 28 DO Writeln (List)
+  END (*for*)
+END;
+
+PROCEDURE PrintLabels;
+BEGIN 
+  IF WaitForSp('Ready to print labels')
+    THEN FOR n := 1 TO CustCount DO WITH Customer [n] DO
+      BEGIN
+        Writeln (List, name);
+        Writeln (List, Addr1);
+        Writeln (List, Addr2);
+        Writeln (List, Addr3);
+        Writeln (List, Addr4);
+        Writeln (List);
+        IF NOT WaitForSp('Align labels again') THEN EXIT(PrintLabels)
+      END
+END;
+  
+  
+PROCEDURE SaveRecords;
+VAR ch: char;
+    Opened: boolean;
+    CustStore: CustRecord;
+    Savefile: FILE OF CustRecord;
+    
+BEGIN 
+  Writeln; Writeln;
+  IF NOT Yes ('Would you like to save the customer data on the disk')
+    THEN EXIT (SaveRecords);
+  Writeln ('Opening UCSDUSERS.DATA.....');
+  (*$I-*)
+  Reset (Savefile, '#5:UCSDUSERS.DATA');
+  IF IORESULT = 0
+    THEN Opened := true
+    ELSE BEGIN
+      Reset (Savefile, 'UCSDUSERS.DATA');
+      Opened := (IORESULT = 0);
+    END;
+  (*$I+*)
+  IF Opened 
+    THEN WHILE NOT eof (Savefile) DO Get (Savefile)
+    ELSE Rewrite (Savefile, '#5:UCSDUSERS.DATA');
+  Writeln ('Writing new customer data.....');
+  FOR j := 1 TO CustCount DO
+    BEGIN
+      Savefile^ := Customer [j];
+      Put (Savefile)
+    END;
+  Close (Savefile, lock)
+END;
+  
+  
+BEGIN
+  REPEAT Write ('Today''s date?  ');  Readln (Date) UNTIL Yes ('OK');
+  Rewrite (List, 'PRINTER:');
+  ReadMaskData;
+  GetCustData;
+  quit := false;
+  REPEAT
+    ClearScreen;  running := true;
+    CASE GetLetter (0, 
+'PRINT: I(nvoices or L(abels; "Q" = Q(uit printing (type "I", "L", or "Q"):  ',
+          ['I', 'L', 'Q']) OF
+      'I': FOR n := 1 TO CustCount DO 
+             IF running THEN BEGIN
+               IF (n-1) MOD 5 = 0
+                 THEN IF NOT WaitForSp('Align invoices in printer')
+                   THEN running := false;
+               IF running THEN DoPrintInvoice (n);
+             END;
+      'L': PrintLabels;
+      'Q': quit := true
+    END
+  UNTIL quit;
+  SaveRecords
+END.
+
+
+

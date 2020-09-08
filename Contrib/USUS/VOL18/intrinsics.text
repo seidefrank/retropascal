@@ -1,0 +1,306 @@
+  program benchusus;
+  (* a benchmark of system intrinsics using the structure of
+     bench.usus from volume 12   - gws *)
+  
+  (* If you have a real time clock, the program will time itself.  If you
+     don't, than don't fret, just get a stopwatch.  The timer code will 
+     detect the lack of a clock and not do anything.  *)
+     
+  var
+    i, j, k, l, test : integer;
+    starth,startl,endh,endl : integer;
+    num_loops : integer;
+    arg, result,overhead,t,s,e : real;
+    fudge_loop : boolean;
+    
+    procedure prompt;
+      procedure prompt1; { too big for 1200 bytes otherwise... }
+        var line:integer;
+        begin
+        gotoxy(0,23);
+        for line:=1 to 24 do writeln;
+        gotoxy(0,0);
+        writeln('Select a test or enter "0" for all tests.');
+        writeln('Enter a negative number to quit.');
+        writeln;
+        end;
+      begin
+      prompt1;
+      writeln(' 1. null for loops (to).           2. sin');
+      writeln(' 3. cos                            4. exp');
+      writeln(' 5. atan                           6. ln');
+      writeln(' 7. log                            8. pwroften');
+      writeln(' 9. trunc                         10. round');
+      writeln('11. fillchar a small array        12. fillchar a large array');
+      writeln('13. moveleft a small array        14. moveleft a large array');
+      writeln('15. scan a small array            16. scan a large array');
+      writeln('17. sizeof');
+      writeln;
+      write('Test number ? ');
+      end; { prompt }
+      
+  procedure doneit;
+  
+  
+  begin
+    writeln( chr ( 7 ), 'Done.');
+    s:=ABS(startl);
+    e:=ABS(endl);
+    t:=ABS(e-s)/60;
+    if t <> 0.0 then 
+      begin
+         write('Time = ',t:5:2,' seconds  ' );
+         if fudge_loop then  
+         writeln ((((t/numloops ) * 1000 ) - ( overhead )):7:3,' ms per loop ')
+         else writeln ((( t/numloops ) * 1000 ):7:3, ' ms per loop' );
+      end;
+  end;
+
+  procedure test1;
+    begin
+    fudge_loop := false;
+    write('1 . ',numloops,' null for loops (to).');
+    time(starth,startl);
+    for i := 1 to num_loops do begin end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test2;
+    begin
+    arg := 45.0;
+    fudge_loop := true;
+    write('2 . ',numloops,' sin.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := sin ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+  procedure test3;
+    begin
+    fudge_loop := true;
+    arg := 45.0;
+    write('3 . ',numloops,' cos.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := cos ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+
+procedure test4;
+    begin
+    fudge_loop := true;
+    arg := 3.14159;
+    write('4 . ',numloops,' exp.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := exp ( arg ); end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test5;
+    begin
+    fudge_loop := true;
+    arg := 0.0;
+    write('5 . ',numloops,' atan' );
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := atan ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test6;
+    begin
+    fudge_loop := true;
+    arg := 5.0;
+    write('6 . ',numloops,' ln.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := ln ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test7;
+    begin
+    fudge_loop := true;
+    arg := 5.0;
+    write('7 . ',numloops,' log.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := log ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test8;
+    begin
+    fudge_loop := true;
+    l := 5;
+    write('8 . ',numloops,' pwroften.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin result := pwroften ( l ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test9;
+    begin
+    fudge_loop := true;
+    arg := 5.6;
+    write('9 . ',numloops,' trunc.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := trunc ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test10;
+    begin
+    fudge_loop := true;
+    arg := 5.6;
+    write('10. ',numloops,' round.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := round ( arg ) end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test11;
+var ary : packed array [ 0..1 ] of char;
+    begin
+    fudge_loop := true;
+    write('11. ',numloops,' fillchar a small array.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                             fillchar ( ary, sizeof ( ary ), chr ( 0 ) ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+procedure test12;
+var ary : packed array [ 0..10000 ] of char;
+    begin
+    fudge_loop := true;
+    write('12. ',numloops,' fillchar a large array.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                             fillchar ( ary, sizeof ( ary ), chr ( 0 ) ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test13;
+    var ary,ary1 : packed array [ 0..1 ] of char;
+    begin
+    fudge_loop := true;
+    write('13. ',numloops,' moveleft a small array.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                             moveleft ( ary, ary1, sizeof ( ary ) ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test14;
+    var ary,ary1 : packed array [ 0..10000 ] of char;
+    begin
+    fudge_loop := true;
+    write('14. ',numloops,' moveleft a large array.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                             moveleft ( ary, ary1, sizeof ( ary ) ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test15;
+    var ary : packed array [ 0..1 ] of char;
+        j : integer;
+    begin
+    fillchar ( ary, sizeof ( ary ), chr ( 0 ) );
+    fudge_loop := true;
+    write('15. ',numloops,' scan a small array');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                           j := scan ( sizeof ( ary ), =chr(1), ary ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test16;
+    var ary : packed array [ 0..10000 ] of char;
+        j : integer;
+    begin
+    fillchar ( ary, sizeof ( ary ), chr ( 0 ) );
+    fudge_loop := true;
+    write('16. ',numloops,' scan a large array');
+    time(starth,startl);
+    for i := 1 to num_loops do begin 
+                           j := scan ( sizeof ( ary ), =chr(1), ary ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test17;
+    var ary : packed array [ 0..10000 ] of char;
+        j : integer;
+    begin
+    fudge_loop := true;
+    write('17. ',numloops,' sizeofs.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := sizeof ( ary ) end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  
+  
+  begin { main }
+  writeln ( 'initializing ... ' );
+  numloops := 10000;
+  test1;
+  s:=ABS(startl);
+  e:=ABS(endl);
+  t:=ABS(e-s)/60;
+  overhead := ( t/numloops ) * 1000;
+  writeln;
+  write('Enter number of loops per test : ');
+  readln(num_loops);
+  repeat
+    prompt; 
+    readln(test);
+    if (test >= 0) then 
+      case test of
+          0 : begin
+              test1; test2; test3; test4; test5; test6; test7; test8;
+              test9; test10; test11; test12; test13; test14; test15; test16;
+              test17;
+              end;
+          1 : test1;  
+          2 : test2; 
+          3 : test3; 
+          4 : test4;
+          5 : test5; 
+          6 : test6; 
+          7 : test7; 
+          8 : test8;
+          9 : test9; 
+         10 : test10; 
+         11 : test11;
+         12 : test12;
+         13 : test13;
+         14 : test14;
+         15 : test15;
+         16 : test16;
+         17 : test17;
+        end;
+        if test>=0 then
+          begin
+            write('Type <return> to continue');
+            readln;
+          end;
+    until (test < 0);
+  end.
+
+

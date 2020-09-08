@@ -1,0 +1,65 @@
+PROGRAM MODEM;
+
+     {Program Modem magically turns your expensive computer into a lowly dumb
+terminal.  I believe that this program may be processor dependant on a PDP-11
+as it uses the UNITBUSY function.  The users manual for the version II.0
+system says that UNITBUSY is only implemented on DEC computers.  Since
+UNITBUSY is the heart of this nearly trivial program, if you havn't got it
+then you're simply out of luck (SOL).  Modem has been tested up to 300 baud
+with an LSI-11 and it works fine.  Timing tests indicate that it might work at
+over 1200 baud but it has not been tested there.  When running with no work to
+do it loops at over 1300 loops/second.  It loops at 770 loops/second when the
+modem port is receiving data at 30 cps.  Since the user cannot type at more
+than 10 cps, the program would probably loop fast enough to handle 1200 baud
+(120 cps).
+
+     To use it you need a modem connected to the REMIN: and REMOUT: ports.
+These are addresses of 177520 thru 177526 and a vector of 120 for typical PDP-
+11.  The program enters a loop and trys to read a character from either the
+the KEYBOARD: or REMIN:. If one is not found it checks the other port.  When
+one is found it checks for special characters and usually sends it to REMOUT:
+or CONSOLE: respectivly.  Control-C from the console halts the program. Line
+feeds from the modem are ignored as the system inserts one. Nulls cannot be
+sent out and are ignored if recieved. Modem will not generate any spurious
+characters when started or stopped.  Breaks cannot be generated as they cannot 
+be represented as a character.  Half duplex could be handled by doing the
+UNITREAD and UNITBUSY from port 1 instead of port 2.
+
+Written 14-Nov-80 by George Schreyer}
+ 
+VAR
+  DATA_IN,DATA_OUT :PACKED ARRAY[0..1] OF CHAR;
+  CONTINUE : BOOLEAN;
+  
+BEGIN
+ CONTINUE:=TRUE;
+ DATA_OUT[0]:=CHR(0);
+ DATA_IN[0]:=CHR(0);
+ WRITELN;
+ WRITELN('modem version 2.2  30-Apr-81           Type CNTL-C when finished');
+ UNITCLEAR(2);
+ UNITCLEAR(7);
+ WHILE CONTINUE DO
+  BEGIN
+  IF NOT UNITBUSY(2) THEN
+   BEGIN
+    UNITREAD(2,DATA_OUT[0],1,,1);
+    IF DATA_OUT[0] = CHR(3) THEN
+     BEGIN
+      CONTINUE:=FALSE;
+     END
+    ELSE
+     BEGIN
+      IF DATA_OUT[0] <> CHR(0) THEN UNITWRITE(8,DATA_OUT[0],1,,1);
+     END;
+   END;
+   IF NOT UNITBUSY(7) THEN
+    BEGIN
+     UNITREAD(7,DATA_IN[0],1,,1);
+     IF (DATA_IN[0]<>CHR(10)) AND (DATA_IN[0]<>CHR(0)) 
+        THEN UNITWRITE(1,DATA_IN[0],1,,1); 
+    END;
+  END;
+END.
+
+

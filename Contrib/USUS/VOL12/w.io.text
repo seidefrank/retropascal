@@ -1,0 +1,341 @@
+{w.io - insert into implementation part of Window Manager}
+{Copyright 22-Feb-82 Austin Tate, ERCC}
+
+PROCEDURE WGotoXY{(X,Y:INTEGER)}; {Set Window cursor to X,Y}
+BEGIN
+  {X,Y are relative to top left of window - base of 0}
+  IF WSequence<>NoWindow THEN
+    WITH Windows[WSequence] DO BEGIN
+      IF HasHeading IN Options THEN Y:=Y+1;
+      IF X<0 THEN CurrX:=0
+      ELSE IF X<SizeX THEN CurrX:=X
+      ELSE IF CanPan IN Options THEN
+        BEGIN
+          IF X>=ScreenWidth THEN CurrX:=ScreenWidth-1
+          ELSE CurrX:=X;
+          ScreenValid:=FALSE;
+        END
+      ELSE CurrX:=SizeX-1;
+      IF Y<>CurrY THEN BEGIN
+        IF Y<0 THEN CurrY:=0
+        ELSE IF Y<SizeY THEN CurrY:=Y
+        ELSE CurrY:=SizeY-1;
+        FlushOutput;
+        GetLine; {get further lines as needed to get CurrY on a line}
+      END;
+    END;
+END;
+          
+PROCEDURE WScroll;
+VAR FirstFree,LastFree,Freed,i:INTEGER;
+  {Scroll current window - scroll up by one third of depth of window}
+BEGIN
+  {WSequence known not to be NoWindow}
+  FlushOutput;
+  WITH Windows[WSequence] DO BEGIN
+    CurrX:=0; OldXMin:=0; OldXMax:=0;
+    IF (CanPan IN Options) AND (CurrPan<>0) THEN
+      BEGIN
+        ScreenValid:=FALSE;
+        CurrPan:=0;
+      END;
+    IF SizeY<2 THEN BEGIN {cannot have heading - so don't check for this}
+        Lines[StartLine].Contents:=ClearLine;
+        Cleared:=TRUE;
+        ScreenValid:=FALSE;
+      END
+    ELSE BEGIN
+      IF (CurrY+1)>=SizeY THEN BEGIN
+        IF (CanScroll IN Options) AND (SizeY>1) THEN BEGIN {else overprint}
+          FirstFree:=StartLine;
+          IF HasHeading IN Options THEN
+            FirstFree:=Lines[FirstFree].NextLine;
+          LastFree:=FirstFree; Freed:=1;
+          FOR i:= 2 TO SizeY DIV 3 DO BEGIN
+            Freed:=Freed+1;
+            LastFree:=Lines[LastFree].NextLine;
+          END;
+          IF HasHeading IN Options THEN
+            Lines[StartLine].NextLine:=Lines[LastFree].NextLine
+          ELSE
+            StartLine:=Lines[LastFree].NextLine;
+          Lines[LastFree].NextLine:=0;
+          AddToFree(FirstFree);
+          Cleared:=TRUE;
+          ScreenValid:=FALSE;
+          CurrY:=CurrY-Freed+1; GetLine;
+        END;
+      END
+      ELSE IF FreeLine<>0 THEN BEGIN {free line - else overprint on bottom line}
+        CurrY:=CurrY+1;
+        CurrLine:=Lines[CurrLine].NextLine;
+        IF CurrLine=0 THEN GetLine; {get a further line}
+      END;
+    END;
+  END;
+  IF NOT ScreenValid THEN RePaint;
+END;
+
+PROCEDURE WClrEOL;
+VAR LastNonSpace:INTEGER;
+BEGIN
+  IF NOT ScreenValid THEN RePaint;
+  IF WSequence<>NoWindow THEN BEGIN
+    WITH Windows[WSequence],Lines[CurrLine] DO BEGIN
+      IF CurrX<OldXMin THEN OldXMin:=CurrX;
+      LastNonSpace:=ScreenWidth+SCAN(-ScreenWidth,<>' ',
+                                      Contents[ScreenWidth]);
+      IF LastNonSpace>CurrX THEN BEGIN
+        FILLCHAR(Contents[CurrX+1],LastNonSpace-CurrX,' ');
+        OldXMax:=LastNonSpace;
+      END;
+    END;
+  END;
+END;
+
+PROCEDURE WWriteLn;
+BEGIN
+  IF NOT ScreenValid THEN RePaint;
+  IF WSequence<>NoWindow THEN BEGIN
+    WScroll;
+    WClrEOL;
+  END;
+END;
+
+PROCEDURE WClrEOS;
+VAR X,Y,Line:INTEGER;
+BEGIN
+  IF NOT ScreenValid THEN RePaint;
+  IF WSequence<>NoWindow THEN BEGIN
+    WITH Windows[WSequence] DO BEGIN
+      X:=CurrX; Y:=CurrY; Line:=CurrLine;
+      WClrEOL;
+      WHILE CurrY<SizeY-1 DO WWriteLn;
+      FlushOutput; 
+      CurrX:=X; CurrY:=Y; CurrLine:=Line;
+      OldXMin:=X; OldXMax:=X;
+    END;
+  END;
+END;
+
+PROCEDURE WWriteCh{(Ch:CHAR)}; {write Ch at cursor position in window}
+VAR s:STRING;
+BEGIN
+  IF WSequence=NoWindow THEN EXIT(WWriteCh);
+  IF NOT ScreenValid THEN RePaint;
+  WITH Windows[Wsequence],Lines[CurrLine] DO BEGIN
+    IF Ch=CHR(Bs) THEN BEGIN
+      IF CurrX<>0 THEN BEGIN {erase last ch}
+        IF Contents[CurrX]<>' ' THEN BEGIN
+          Contents[CurrX]:=' ';
+          IF CurrX<=OldXMin THEN OldXMin:=CurrX-1;
+        END;
+        CurrX:=CurrX-1;
+      END;
+    END  {Backspace}
+    ELSE BEGIN
+      {$R-}
+      s[0]:=CHR(1);
+      {$R^}
+      s[1]:=Ch;
+      WWriteStr(s);
+    END;
+  END;
+END;
+
+PROCEDURE WWriteStr{(Str:STRING)}; {write Str at cursor position in window}
+VAR i,j,Actual:INTEGER;
+    Ch:CHAR;
+    Continue:BOOLEAN;
+BEGIN
+  IF WSequence=NoWindow THEN EXIT(WWriteStr); 
+  IF NOT ScreenValid THEN RePaint;
+  WITH Windows[WSequence],Lines[CurrLine] DO BEGIN
+    i:=1; j:=LENGTH(Str);
+    IF CurrX+j>=ScreenWidth THEN j:=ScreenWidth-CurrX;
+    Continue:=TRUE;
+    WHILE (j>=1) AND Continue DO
+      IF Contents[CurrX+j]=Str[j] THEN j:=j-1
+      ELSE Continue:=FALSE;
+    Continue:=TRUE;
+    WHILE (i<=j) AND Continue DO 
+      IF Contents[CurrX+i]=Str[i] THEN i:=i+1
+      ELSE Continue:=FALSE;
+    IF OldXMin=OldXMax THEN BEGIN
+      OldXMin:=CurrX+i-1; OldXMax:=OldXMin;
+    END;
+    Actual:=j-i+1;
+    IF Actual>0 THEN BEGIN
+      MOVELEFT(Str[i],Contents[CurrX+i],Actual);
+      IF CurrX+j>=OldXMax THEN OldXMax:=CurrX+j;
+    END;
+    CurrX:=CurrX+LENGTH(Str);
+    IF CurrX>=ScreenWidth THEN CurrX:=ScreenWidth-1;
+  END; {WITH}
+END;
+
+PROCEDURE WWriteInt{(Int,Width:INTEGER)};
+          {write Int at cursor posn in window}
+VAR i,j:INTEGER;
+    buff:STRING;
+BEGIN
+   i:=10000; j:=1; 
+   {$R-}
+   buff[0]:=CHR(80); {to avoid range check problems}
+   {$R^}
+   IF Int<0 THEN BEGIN
+      Int:=-Int;
+      IF Int<0 THEN BEGIN
+         WWriteStr('-32768'); EXIT(WWriteInt);
+      END;
+      buff[j]:='-'; j:=j+1; Width:=Width-1;
+   END;
+   WHILE (Int DIV i=0) AND (i<>1) DO BEGIN
+      Width:=Width+1; i:=i DIV 10;
+   END;
+   Width:=Width-5;
+   WHILE Width>0 DO BEGIN
+      buff[j]:=' '; j:=j+1; Width:=Width-1;
+   END;
+   REPEAT
+      buff[j]:=(CHR(ORD('0')+Int DIV i)); j:=j+1;
+      Int:=Int-(Int DIV i)*i; i:=i DIV 10;
+   UNTIL i=0;
+   {$R-}
+   buff[0]:=CHR(j-1);
+   {$R^}
+   WWriteStr(buff);
+END;
+
+PROCEDURE WReadCh{(VAR Ch:CHAR: Echo:BOOLEAN)}; {get character from keyboard}
+VAR NewPan,X,Y:INTEGER;
+    Key:PACKED ARRAY [0..1] OF CHAR;
+BEGIN
+  {Window functions can only take place within WReadCh}
+  {Echo is controlled by user - non printable chs echo as bell}
+  {First ensure screen is valid}
+  FlushOutput;
+  IF NOT ScreenValid THEN RePaint;
+  REPEAT
+    {Set X,Y of cursor in current window}
+    IF WSequence=NoWindow THEN BEGIN
+      X:=WX; Y:=WY; {No Window on screen}
+    END
+    ELSE
+      WITH Windows[WSequence] DO BEGIN
+        IF CurrX>=ScreenWidth THEN CurrX:=ScreenWidth-1;
+        IF CanPan IN Options THEN BEGIN
+          NewPan:=CurrPan;
+          WHILE CurrX<NewPan DO BEGIN
+            NewPan:=NewPan-(SizeX DIV 3);
+            IF NewPan<0 THEN NewPan:=0;
+          END;
+          WHILE CurrX-NewPan>=SizeX DO BEGIN
+            IF SizeX<3 THEN NewPan:=NewPan+1
+            ELSE
+              BEGIN
+                NewPan:=NewPan+(SizeX DIV 3);
+                IF NewPan+SizeX>ScreenWidth THEN NewPan:=ScreenWidth-SizeX;
+              END;
+          END;
+          CurrPan:=NewPan;
+          IF CurrPan<>OldPan THEN BEGIN
+            ScreenValid:=FALSE;
+            RePaint;
+          END;
+          X:=AtX+CurrX-CurrPan;
+        END
+        ELSE BEGIN
+          IF CurrX>=SizeX THEN X:=(AtX+SizeX)-1 ELSE X:=AtX+CurrX;
+        END;
+        IF CurrY>=SizeY THEN Y:=(AtY+SizeY)-1 ELSE Y:=AtY+CurrY;
+      END;
+    WMGoToXY(X,Y);
+    UNITREAD(SYSTERM,Key[0],1);
+    Ch:=Key[0];
+    IF Ch=CHR(27) THEN WindowFunction;
+  UNTIL Ch<>CHR(27);
+  IF Echo THEN BEGIN
+    IF ((ORD(Ch) MOD 128)>=ORD(' ')) OR (Ch=CHR(Bs)) THEN WWriteCh(Ch)
+    ELSE BEGIN
+      IF Ch=CHR(Cr) THEN WWriteLn
+      ELSE WRITE(CHR(Bel)); {cannot handle other control codes}
+    END;
+  END;
+END;
+
+PROCEDURE WReadLnStr{(VAR Str:STRING)}; {get a string from keyboard - echoed}
+VAR STemp:STRING;
+    Len:INTEGER;
+    Ch:CHAR;
+BEGIN
+  {string is ended by newline. Only edit ch allowed is backspace}
+  {non printable chs are not returned - but echo as bell}
+            (*         1         2         3         4         5*)
+            (*12345678901234567890123456789012345678901234567890*)
+  STR:=CONCAT('                                                 ',
+              '                            ');
+  {overlay onto a bed of spaces}
+  Len:=0;
+  REPEAT
+    WReadCh(Ch,TRUE);
+    IF (Ch=CHR(Bs)) AND (Len>0) THEN Len:=Len-1
+    ELSE BEGIN
+      IF ((ORD(Ch) MOD 128)>=ORD(' ')) THEN BEGIN
+        IF Len<ScreenWidth-1 THEN Len:=Len+1;
+        Str[Len]:=Ch;
+      END;
+    END;
+  UNTIL Ch=CHR(Cr);
+  {$R-}
+  Str[0]:=CHR(Len);
+  {$R^}
+END;
+
+FUNCTION StrToInt(Str:STRING):INTEGER;
+VAR Val,i,j,k:INTEGER; {result -ve if poor number input}
+    Neg,Ok:BOOLEAN;
+BEGIN
+  Val:=0;
+  Ok:=(LENGTH(Str)<>0);
+  IF Ok THEN BEGIN
+    Neg:=((Str[1]='-') AND (LENGTH(Str)>1));
+    IF Neg THEN k:=2 ELSE k:=1;
+    FOR i:=k TO LENGTH(Str) DO BEGIN
+      j:=ORD(Str[i])-ORD('0');
+      IF (j<0) OR (j>9) THEN Ok:=FALSE;
+      IF Ok THEN Val:=Val*10+j;
+    END;
+  END;
+  If Ok THEN BEGIN
+    IF Neg THEN Val:=-Val;
+    StrToInt:=Val;
+  END
+  ELSE StrToInt:=-MAXINT;
+END;
+ 
+PROCEDURE WReadLnInt{(VAR Int:INTEGER)}; {Get an integer from keyboard - echoed}
+VAR STemp:STRING;
+    Ch:CHAR;
+BEGIN
+  {integer is ended by newline. Only edit ch allowed is backspace}
+  {non printable chs are not returned - but echo as bell}
+  WReadLnStr(STemp);
+  Int:=StrToInt(STemp);
+END;
+
+PROCEDURE WReadLn{(Echo:BOOLEAN)}; {Read up to next newline from keyboard}
+VAR Ch:CHAR;
+BEGIN
+  {non printable chs echo as bell}
+  REPEAT
+    WReadCh(Ch,Echo)
+  UNTIL Ch=CHR(Cr);
+END;
+
+FUNCTION WCurrentWindow{:Window};
+         {Returns current window - one last shown - may be NoWindow}
+BEGIN
+  WCurrentWindow:=WSequence;
+END;
+

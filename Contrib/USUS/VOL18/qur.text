@@ -1,0 +1,33 @@
+program qur;
+
+     {This may seem to be a fairly trivial benchmark, but it actually has a
+fair amount of significance.  It indicates the minimal response time of the
+system to update, compile and execute a trivial program.  
+
+     The preferred test method is to load this program into the editor using
+the G(et command.  Update the file once to place it on your system disk as
+*SYSTEM.WRK.TEXT, and then re-enter the E(ditor. The compiler should be on
+your system disk.  Start timing when your type the "Q" of the "QUR" command
+sequence to update the workfile and run the program.  Stop timing when the 
+'hi there' message appears on the screen.
+
+     The actual performance being measured is the system's ability to shuffle
+around data in a often used sequence.  This test will not show much
+sensitivity to faster processors, and will be very much influenced by both the
+speed of your disk system and the type of software that you are using.
+Version II.0 type systems will respond much faster than IV.0 systems.  ASE
+will hurt a little. Extended memory will help, as the system won't have to
+mash memory as much.
+
+     If you wish to contribute your results, please include all of the
+information on the data collection form on this disk.  It is very important to
+know which version of the p-system you are running and what type of disk
+subsystem that you use.
+
+regards - gws}
+
+
+begin
+   writeln ( 'hi there' );
+end.
+

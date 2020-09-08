@@ -1,0 +1,635 @@
+
+     (******************************************************************)
+     (*                                                                *)
+     (*  Copyright (c) 1978 Regents of the University of California.   *)
+     (*  Permission to copy or distribute this software or documen-    *)
+     (*  tation in hard or soft copy granted only by written license   *)
+     (*  obtained from the Institute for Information Systems.          *)
+     (*                                                                *)
+     (******************************************************************)
+
+ SEGMENT PROCEDURE USERPROGRAM(INPUT,OUTPUT: FIBP);
+ BEGIN FWRITELN(SYSTERM^);
+   PL := 'No user program';
+   FWRITESTRING(SYSTERM^,PL,0)
+ END (*USERPROGRAM*) ;
+
+ SEGMENT PROCEDURE DEBUGGER;
+ BEGIN FWRITELN(SYSTERM^);
+   PL := 'No debugger in system';
+   FWRITESTRING(SYSTERM^,PL,0)
+ END (*DEBUGGER*) ;
+
+ SEGMENT PROCEDURE PRINTERROR(XEQERR,IORSLT: INTEGER);
+   VAR S: STRING[40];
+ BEGIN S := 'Unknown run-time error';
+   CASE XEQERR OF
+     1:  S := 'Value range error';
+     2:  S := 'No proc in seg-table';
+     3:  S := 'Exit from uncalled proc';
+     4:  S := 'Stack overflow';
+     5:  S := 'Integer overflow';
+     6:  S := 'Divide by zero';
+     7:  S := 'NIL pointer reference';
+     8:  S := 'Program interrupted by user';
+     9:  S := 'System IO error';
+    10:  BEGIN S := 'unknown cause';
+           CASE IORSLT OF
+             1:  S := 'parity (CRC)';
+             2:  S := 'illegal unit #';
+             3:  S := 'illegal IO request';
+             4:  S := 'data-com timeout';
+             5:  S := 'vol went off-line';
+             6:  S := 'file lost in dir';
+             7:  S := 'bad file name';
+             8:  S := 'no room on vol';
+             9:  S := 'vol not found';
+            10:  S := 'file not found';
+            11:  S := 'dup dir entry';
+            12:  S := 'file already open';
+            13:  S := 'file not open';
+            14:  S := 'bad input format'
+           END (*IO ERRORS*) ;
+         INSERT('IO error: ',S,1)
+       END;
+    11:  S := 'Unimplemented instruction';
+    12:  S := 'Floating point error';
+    13:  S := 'String overflow';
+    14:  S := 'Programmed HALT';
+    15:  S := 'Programmed break-point'
+   END (*XEQ ERRORS*) ;
+
+   WRITELN(OUTPUT,S);
+   WITH SYSCOM^.BOMBP^ DO
+     WRITE(OUTPUT,'S# ',MSSEG^[0] MOD 256,
+                  ', P# ',MSJTAB^[0] MOD 256,
+                  ', I# ',MSIPC-(ORD(MSJTAB)-2-MSJTAB^[-1]))
+ END (*PRINTERROR*) ;
+
+ SEGMENT PROCEDURE INITIALIZE;
+   VAR DOTRITON,JUSTBOOTED: BOOLEAN; LTITLE: STRING[40];
+       MONTHS: ARRAY [0..15] OF STRING[3];
+       DISPLAY: ARRAY [0..79,0..19] OF INTEGER; (*FOR TRITON*)
+       STKFILL: ARRAY [0..1199] OF INTEGER;
+
+   PROCEDURE INITSYSCOM;
+     VAR TITLE: STRING;
+         F: FILE OF MISCINFOREC;
+     BEGIN
+      (* FIRST SOME GLOBALS *)
+         FILLER[0] := CHR(SYSCOM^.CRTCTRL.FILLCOUNT);
+         FILLCHAR( FILLER[1], SYSCOM^.CRTCTRL.FILLCOUNT, CHR(0) );
+       DEBUGINFO := NIL;
+       IPOT[0] := 1; IPOT[1] := 10; IPOT[2] := 100;
+       IPOT[3] := 1000; IPOT[4] := 10000; DIGITS := ['0'..'9'];
+       WITH SYSCOM^ DO
+         BEGIN
+         XEQERR := 0;    IORSLT := INOERROR;
+         BUGSTATE :=0
+         END;
+       TITLE := '*SYSTEM.MISCINFO' ;
+       RESET( F, TITLE );
+       IF IORESULT = ORD(INOERROR) THEN
+         BEGIN
+         IF NOT EOF( F ) THEN
+           WITH SYSCOM^, F^ DO
+             BEGIN
+             MISCINFO := MSYSCOM.MISCINFO;
+             CRTTYPE := MSYSCOM.CRTTYPE;
+             CRTCTRL := MSYSCOM.CRTCTRL;
+             CRTINFO := MSYSCOM.CRTINFO;
+             FILLER[0] := CHR(SYSCOM^.CRTCTRL.FILLCOUNT);
+             FILLCHAR( FILLER[1], SYSCOM^.CRTCTRL.FILLCOUNT, CHR(0) );
+             END;
+         CLOSE( F, NORMAL )
+         END;
+       UNITCLEAR(1) (*GIVE BIOS NEW SOFT CHARACTERS FOR CONSOLE*)
+     END (*INITSYSCOM*) ;
+
+   PROCEDURE INITUNITABLE;
+     VAR LUNIT: UNITNUM; LDIR: DIRP;
+   BEGIN
+     FOR LUNIT := 0 TO MAXUNIT DO
+       WITH UNITABLE[LUNIT] DO
+         BEGIN UVID := '';
+           UISBLKD := LUNIT IN [4,5,9..12];
+           IF UISBLKD THEN UEOVBLK := MMAXINT;
+           UNITCLEAR(LUNIT);
+         END;
+     UNITABLE[1].UVID := 'CONSOLE';
+     UNITABLE[2].UVID := 'SYSTERM';
+     SYVID := '';
+     LUNIT := VOLSEARCH(SYVID,TRUE,LDIR);
+     SYVID := UNITABLE[SYSCOM^.SYSUNIT].UVID;
+     IF LENGTH(SYVID) = 0 THEN HALT;
+     IF JUSTBOOTED THEN DKVID := SYVID;
+     LUNIT := VOLSEARCH(SYVID,FALSE,LDIR);
+     IF LDIR = NIL THEN HALT;
+     THEDATE := LDIR^[0].DLASTBOOT;
+     UNITCLEAR(6);
+     IF IORESULT = ORD(INOERROR) THEN
+       UNITABLE[6].UVID := 'PRINTER';
+     UNITCLEAR(8);
+     IF IORESULT = ORD(INOERROR) THEN
+       UNITABLE[8].UVID := 'REMOTE';
+   END (*INITUNITABLE*) ;
+
+   PROCEDURE INITFNAMES;
+     VAR F: SYSFILE;
+         ALLOFEM, FOUND: SET OF SYSFILE;
+         LUNIT: UNITNUM;
+         LFIB: FIB;
+   BEGIN
+     FILENAME[ASSMBLER] := 'ASSMBLER';
+     FILENAME[COMPILER] := 'COMPILER';
+     FILENAME[EDITOR] := 'EDITOR';
+     FILENAME[FILER] := 'FILER';
+     FILENAME[LINKER] := 'LINKER';
+     FINIT(LFIB, NIL,-1);
+     FOUND := [];
+     FOR F := ASSMBLER TO LINKER DO
+       BEGIN
+         INSERT(':SYSTEM.', FILENAME[F], 1);
+         LTITLE := CONCAT(SYVID,FILENAME[F]);
+         FOPEN(LFIB, LTITLE, TRUE, NIL);
+         IF LFIB.FISOPEN THEN
+           BEGIN
+             FILENAME[F] := LTITLE;
+             FOUND := FOUND + [F]
+           END;
+         FCLOSE(LFIB, CNORMAL)
+       END;
+     LUNIT := 1;
+     ALLOFEM := [ASSMBLER,COMPILER,EDITOR,FILER,LINKER];
+     WHILE FOUND <> ALLOFEM DO
+       BEGIN
+         WITH UNITABLE[LUNIT] DO
+           IF UISBLKD THEN
+             IF UVID <> '' THEN
+               FOR F := ASSMBLER TO LINKER DO
+                 IF NOT (F IN FOUND) THEN
+                   BEGIN
+                     LTITLE := CONCAT(UVID, FILENAME[F]);
+                     FOPEN(LFIB,LTITLE,TRUE,NIL);
+
+                     IF LFIB.FISOPEN THEN
+                       BEGIN
+                         FILENAME[F] := LTITLE;
+                         FOUND := FOUND + [F]
+                       END;
+                     FCLOSE(LFIB, CNORMAL)
+                   END;
+         IF LUNIT = MAXUNIT THEN
+           FOUND := ALLOFEM
+         ELSE
+           LUNIT := LUNIT+1
+       END { WHILE }
+   END (*INITFNAMES*) ;
+
+   PROCEDURE INITCHARSET;
+   TYPE CHARSET= ARRAY [32..127] OF
+                   PACKED ARRAY [0..9] OF 0..255;
+   VAR I: INTEGER;
+       TRIX: RECORD CASE BOOLEAN OF
+               TRUE:  (CHARADDR: INTEGER);
+               FALSE: (CHARBUFP: ^ CHAR)
+             END;
+       CHARBUF: RECORD
+                    SET1: CHARSET;
+                    FILLER1: PACKED ARRAY [0..63] OF CHAR;
+                    SET2: CHARSET;
+                    FILLER2: PACKED ARRAY [0..63] OF CHAR;
+                    TRITON: ARRAY [0..63,0..3] OF INTEGER
+                  END (*CHARBUF*) ;
+       LFIB: FIB;
+   BEGIN FINIT(LFIB,NIL,-1);
+     LTITLE := '*SYSTEM.CHARSET';
+     FOPEN(LFIB,LTITLE,TRUE,NIL);
+     IF LFIB.FISOPEN THEN
+       BEGIN UNITWRITE(3,TRIX,128);
+         IF IORESULT = ORD(INOERROR) THEN
+           BEGIN
+             WITH LFIB.FHEADER DO
+               BEGIN DOTRITON := DLASTBLK-DFIRSTBLK > 4;
+                 UNITREAD(LFIB.FUNIT,CHARBUF,SIZEOF(CHARBUF),DFIRSTBLK)
+               END;
+             TRIX.CHARADDR := 512-8192;  (*UNIBUS TRICKYNESS!*)
+             FOR I := 32 TO 127 DO
+               BEGIN
+                 MOVERIGHT(CHARBUF.SET1[I],TRIX.CHARBUFP^,10);
+                 TRIX.CHARADDR := TRIX.CHARADDR+16
+               END;
+             TRIX.CHARADDR := 512-6144;
+             FOR I := 32 TO 127 DO
+               BEGIN
+                 MOVERIGHT(CHARBUF.SET2[I],TRIX.CHARBUFP^,10);
+                 TRIX.CHARADDR := TRIX.CHARADDR+16
+               END;
+             UNITABLE[3].UVID := 'GRAPHIC';
+             UNITWRITE(3,I,0)
+           END
+       END
+     ELSE
+       SYSCOM^.MISCINFO.HAS8510A := FALSE;
+     IF DOTRITON THEN
+       BEGIN (*INITIALIZE DISPLAY ARRAY*)
+         FILLCHAR(DISPLAY,SIZEOF(DISPLAY),0);
+         FOR I := 0 TO 63 DO
+           MOVELEFT(CHARBUF.TRITON[I],DISPLAY[I,10],8)
+       END;
+     FCLOSE(LFIB,CNORMAL)
+   END (*INITCHARSET*) ;
+
+   PROCEDURE INITHEAP;
+   VAR LWINDOW: WINDOWP;
+   BEGIN (*BASIC FILE AND HEAP SETTUP*)
+     SYSCOM^.GDIRP := NIL; (* MUST PRECEDE THE FIRST "NEW" EXECUTED *)
+     NEW(SWAPFIB,TRUE,FALSE); FINIT(SWAPFIB^,NIL,-1);
+     NEW(INPUTFIB,TRUE,FALSE);  NEW(LWINDOW);
+     FINIT(INPUTFIB^,LWINDOW,0);
+     NEW(OUTPUTFIB,TRUE,FALSE);  NEW(LWINDOW);
+     FINIT(OUTPUTFIB^,LWINDOW,0);
+     NEW(SYSTERM,TRUE,FALSE);  NEW(LWINDOW);
+     FINIT(SYSTERM^,LWINDOW,0);
+     GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+     WITH USERINFO DO
+       BEGIN
+         NEW(SYMFIBP,TRUE,FALSE); FINIT(SYMFIBP^,NIL,-1);
+         NEW(CODEFIBP,TRUE,FALSE); FINIT(CODEFIBP^,NIL,-1)
+       END;
+     MARK(EMPTYHEAP)
+   END (*INITHEAP*) ;
+
+   PROCEDURE INITWORKFILE;
+   BEGIN
+     WITH USERINFO DO
+       BEGIN (*INITIALIZE WORK FILES ETC*)
+         ERRNUM := 0; ERRBLK := 0; ERRSYM := 0;
+         IF JUSTBOOTED THEN
+           BEGIN
+             SYMTID := ''; CODETID := ''; WORKTID := '';
+             SYMVID := SYVID; CODEVID := SYVID; WORKVID := SYVID
+           END;
+         IF LENGTH(SYMTID) > 0 THEN
+           LTITLE := CONCAT(SYMVID,':',SYMTID)
+         ELSE
+           LTITLE := '*SYSTEM.WRK.TEXT';
+         FOPEN(SYMFIBP^,LTITLE,TRUE,NIL);
+         GOTSYM := SYMFIBP^.FISOPEN;
+         IF GOTSYM THEN
+           BEGIN SYMVID := SYMFIBP^.FVID;
+             SYMTID := SYMFIBP^.FHEADER.DTID
+           END;
+         FCLOSE(SYMFIBP^,CNORMAL);
+         IF LENGTH(CODETID) > 0 THEN
+           LTITLE := CONCAT(CODEVID,':',CODETID)
+         ELSE
+           LTITLE := '*SYSTEM.WRK.CODE';
+         FOPEN(CODEFIBP^,LTITLE,TRUE,NIL);
+         GOTCODE := CODEFIBP^.FISOPEN;
+         IF GOTCODE THEN
+           BEGIN CODEVID := CODEFIBP^.FVID;
+             CODETID := CODEFIBP^.FHEADER.DTID
+           END;
+         FCLOSE(CODEFIBP^,CNORMAL);
+         ALTMODE := SYSCOM^.CRTINFO.ALTMODE;
+         SLOWTERM := SYSCOM^.MISCINFO.SLOWTERM;
+         STUPID := SYSCOM^.MISCINFO.STUPID
+       END
+   END (*INITWORKFILE*) ;
+
+ PROCEDURE INITFILES;
+   BEGIN
+     FCLOSE(SWAPFIB^,CNORMAL);
+     FCLOSE(USERINFO.SYMFIBP^,CNORMAL);
+     FCLOSE(USERINFO.CODEFIBP^,CNORMAL);
+     FCLOSE(INPUTFIB^,CNORMAL);
+     FCLOSE(OUTPUTFIB^,CNORMAL);
+     LTITLE := 'CONSOLE:';
+     FOPEN(INPUTFIB^,LTITLE,TRUE,NIL);
+     FOPEN(OUTPUTFIB^,LTITLE,TRUE,NIL);
+     IF JUSTBOOTED THEN
+       BEGIN LTITLE := 'SYSTERM:';
+         FOPEN(SYSTERM^,LTITLE,TRUE,NIL)
+       END;
+     GFILES[0] := INPUTFIB;
+     GFILES[1] := OUTPUTFIB;
+     GFILES[2] := SYSTERM;
+     GFILES[3] := NIL; GFILES[4] := NIL; GFILES[5] := NIL;
+   END (*INITFILES*) ;
+
+ BEGIN (*INITIALIZE*)
+   JUSTBOOTED := EMPTYHEAP = NIL;
+   DOTRITON := FALSE;
+   MONTHS[ 0] := '???'; MONTHS[ 1] := 'Jan';
+   MONTHS[ 2] := 'Feb'; MONTHS[ 3] := 'Mar';
+   MONTHS[ 4] := 'Apr'; MONTHS[ 5] := 'May';
+   MONTHS[ 6] := 'Jun'; MONTHS[ 7] := 'Jul';
+   MONTHS[ 8] := 'Aug'; MONTHS[ 9] := 'Sep';
+   MONTHS[10] := 'Oct'; MONTHS[11] := 'Nov';
+   MONTHS[12] := 'Dec'; MONTHS[13] := '???';
+   MONTHS[14] := '???'; MONTHS[15] := '???';
+   IF JUSTBOOTED THEN INITHEAP
+   ELSE RELEASE(EMPTYHEAP);
+   INITUNITABLE; (*AND THEDATE*)
+   INITFNAMES;
+   INITFILES;
+   INITWORKFILE;
+   IF SYSCOM^.MISCINFO.HAS8510A THEN
+     INITCHARSET;
+   INITSYSCOM; (*AND SOME GLOBALS*)
+   CLEARSCREEN; WRITELN(OUTPUT);
+   IF JUSTBOOTED THEN
+     BEGIN
+       IF DOTRITON THEN
+         BEGIN (*ASSUME DATA MEDIA SCREEN*)
+           WRITE(OUTPUT,CHR(30),CHR(32),CHR(41));
+           UNITWRITE(3,DISPLAY[-80],23)
+         END;
+       WRITELN(OUTPUT,'Welcome  ',SYVID,',  to');
+       IF DOTRITON THEN WRITELN(OUTPUT);
+       WRITELN(OUTPUT,'U.C.S.D.  Pascal  System  I.5');
+       IF DOTRITON THEN WRITELN(OUTPUT);
+       WITH THEDATE DO
+         WRITE(OUTPUT,'Current date is  ',DAY,'-',MONTHS[MONTH],'-',YEAR)
+     END
+   ELSE
+     WRITE(OUTPUT,'System re-initialized')
+ END (*INITIALIZE*) ;
+
+ SEGMENT FUNCTION GETCMD(LASTST: CMDSTATE): CMDSTATE;
+   CONST ASSEMONLY = LINKANDGO;
+   VAR CH: CHAR; BADCMD: BOOLEAN;
+
+   PROCEDURE RUNWORKFILE(OKTOLINK, RUNONLY: BOOLEAN);
+     FORWARD;
+
+   FUNCTION ASSOCIATE(TITLE: STRING; OKTOLINK, RUNONLY: BOOLEAN): BOOLEAN;
+     LABEL 1;
+     VAR RSLT: IORSLTWD; LSEG: SEGRANGE;
+         SEGTBL: RECORD
+                   DISKINFO: ARRAY [SEGRANGE] OF SEGDESC;
+                   SEGNAME: ARRAY [SEGRANGE] OF
+                              PACKED ARRAY [0..7] OF CHAR;
+                   SEGKIND: ARRAY [SEGRANGE] OF
+                              (LINKED,HOSTSEG,SEGPROC,UNITSEG,SEPRTSEG);
+                   FILLER: ARRAY [0..143] OF INTEGER
+                 END { SEGTBL } ;
+   BEGIN ASSOCIATE := FALSE;
+     FOPEN(USERINFO.CODEFIBP^,TITLE,TRUE,NIL);
+     RSLT := SYSCOM^.IORSLT;
+     IF RSLT <> INOERROR THEN
+       BEGIN
+         IF TITLE <> '*SYSTEM.STARTUP' THEN
+           IF RSLT = IBADTITLE THEN
+             WRITE(OUTPUT,'Illegal file name')
+           ELSE
+             WRITE(OUTPUT,'No file ',TITLE);
+         GOTO 1
+       END;
+     WITH USERINFO,SYSCOM^ DO
+       IF CODEFIBP^.FHEADER.DFKIND <> CODEFILE THEN
+         BEGIN
+           WRITE(OUTPUT,TITLE,' not code');
+           GOTO 1
+         END
+       ELSE
+         BEGIN
+           UNITREAD(CODEFIBP^.FUNIT,SEGTBL,SIZEOF(SEGTBL),
+                         CODEFIBP^.FHEADER.DFIRSTBLK);
+           IF IORESULT <> ORD(INOERROR) THEN
+             BEGIN
+               WRITE(OUTPUT,'Bad block #0');
+               GOTO 1
+             END;
+           WITH SEGTBL DO
+             FOR LSEG := 0 TO MAXSEG DO
+               IF (SEGKIND[LSEG]<LINKED) OR (SEGKIND[LSEG]>SEPRTSEG) THEN
+                 BEGIN { PRE I.5 CODE...FIX UP! }
+                   FILLCHAR(SEGKIND, SIZEOF(SEGKIND), ORD(LINKED));
+                   FILLCHAR(FILLER, SIZEOF(FILLER), 0);
+                   UNITWRITE(CODEFIBP^.FUNIT, SEGTBL, SIZEOF(SEGTBL),
+                                 CODEFIBP^.FHEADER.DFIRSTBLK)
+                 END;
+           WITH SEGTBL DO
+             FOR LSEG := 0 TO MAXSEG DO
+               IF SEGKIND[LSEG] <> LINKED THEN
+               BEGIN
+                 IF OKTOLINK THEN
+                   BEGIN WRITELN(OUTPUT,'Linking...');
+                     FCLOSE(CODEFIBP^, CNORMAL);
+                     IF ASSOCIATE(FILENAME[LINKER], FALSE, FALSE) THEN
+                       BEGIN
+                         IF RUNONLY THEN GETCMD := LINKANDGO
+                         ELSE GETCMD := LINKDEBUG;
+                         EXIT(GETCMD)
+                       END
+                   END
+                 ELSE
+                   IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+                     WRITE(OUTPUT,'Must L(ink first');
+                 GOTO 1
+               END;
+           FOR LSEG := 1 TO MAXSEG DO
+             IF (LSEG = 1) OR (LSEG >= 7) THEN
+               WITH SEGTABLE[LSEG],SEGTBL.DISKINFO[LSEG] DO
+                 BEGIN CODEUNIT := CODEFIBP^.FUNIT;
+                   CODEDESC.CODELENG := CODELENG;
+                   CODEDESC.DISKADDR := DISKADDR+
+                                         CODEFIBP^.FHEADER.DFIRSTBLK
+                 END
+         END;
+     ASSOCIATE := TRUE;
+ 1:  FCLOSE(USERINFO.CODEFIBP^,CNORMAL)
+   END (*ASSOCIATE*) ;
+
+   PROCEDURE STARTCOMPILE(NEXTST: CMDSTATE);
+     LABEL 1;
+     VAR TITLE: STRING[40];
+   BEGIN
+     IF NEXTST = ASSEMONLY THEN
+       WRITE(OUTPUT,'Assembling')
+     ELSE
+       WRITE(OUTPUT,'Compiling');
+     WRITELN(OUTPUT,'...');
+
+     IF NEXTST = ASSEMONLY THEN
+       TITLE := FILENAME[ASSMBLER]
+     ELSE
+       TITLE := FILENAME[COMPILER];
+     IF ASSOCIATE(TITLE, FALSE, FALSE) THEN
+       WITH USERINFO DO
+         BEGIN
+             IF GOTSYM THEN
+               TITLE := CONCAT(SYMVID,':',SYMTID)
+             ELSE
+               BEGIN
+                 IF NEXTST = ASSEMONLY THEN
+                   WRITE(OUTPUT, 'Assemble')
+                 ELSE
+                   WRITE(OUTPUT, 'Compile');
+                 WRITE(OUTPUT,' what text? ');
+                 READLN(INPUT, TITLE);
+                 IF TITLE = '' THEN GOTO 1;
+                 INSERT('.TEXT', TITLE, LENGTH(TITLE)+1);
+                 GOTCODE := FALSE
+               END;
+             FOPEN(SYMFIBP^,TITLE,TRUE,NIL);
+             IF IORESULT <> ORD(INOERROR) THEN
+               BEGIN
+                 WRITE(OUTPUT,'Can''t find ', TITLE);
+                 GOTSYM := FALSE; GOTO 1
+               END;
+             TITLE := '*SYSTEM.SWAPDISK';
+             FOPEN(SWAPFIB^,TITLE,TRUE,NIL);
+             TITLE := '*SYSTEM.WRK.CODE[*]';
+             FOPEN(CODEFIBP^,TITLE,FALSE,NIL);
+             IF IORESULT <> ORD(INOERROR) THEN
+               BEGIN
+                 WRITE(OUTPUT,'Code open error!');
+                 GOTO 1
+               END;
+             ERRNUM := 0; ERRBLK := 0; ERRSYM := 0;
+             IF NEXTST = ASSEMONLY THEN
+               NEXTST := COMPONLY;
+             GETCMD := NEXTST; EXIT(GETCMD)
+         END;
+   1:
+   END (*STARTCOMPILE*) ;
+
+   PROCEDURE FINISHCOMPILE;
+   BEGIN
+     FCLOSE(USERINFO.SYMFIBP^,CNORMAL);
+     FCLOSE(SWAPFIB^,CNORMAL);
+     IF SYSCOM^.MISCINFO.HAS8510A THEN
+       UNITCLEAR(3);
+     WITH USERINFO DO
+       IF ERRNUM > 0 THEN
+         BEGIN GOTCODE := FALSE;
+           FCLOSE(CODEFIBP^,CPURGE);
+           IF ERRBLK > 0 THEN
+             BEGIN CLEARSCREEN; WRITELN(OUTPUT);
+               IF ASSOCIATE(FILENAME[EDITOR], FALSE, FALSE) THEN
+                 BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+             END
+         END
+       ELSE
+         BEGIN GOTCODE := TRUE;
+           CODEVID := CODEFIBP^.FVID;
+           CODETID := CODEFIBP^.FHEADER.DTID;
+           FCLOSE(CODEFIBP^,CLOCK);
+           IF LASTST IN [COMPANDGO,COMPDEBUG] THEN
+             RUNWORKFILE(TRUE, LASTST = COMPANDGO)
+         END
+   END (*FINISHCOMPILE*) ;
+
+   PROCEDURE EXECUTE;
+     VAR TITLE: STRING[255];
+   BEGIN
+     WRITE(OUTPUT,'Execute');
+     IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+       WRITE(OUTPUT,' what file');
+     WRITE(OUTPUT,'? '); READLN(TITLE);
+     IF LENGTH(TITLE) > 0 THEN
+       BEGIN
+         IF TITLE[LENGTH(TITLE)] = '.' THEN
+           DELETE(TITLE,LENGTH(TITLE),1)
+         ELSE
+           INSERT('.CODE',TITLE,LENGTH(TITLE)+1);
+         IF ASSOCIATE(TITLE, FALSE, FALSE) THEN
+           BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+       END
+   END (*EXECUTE*) ;
+
+   PROCEDURE RUNWORKFILE;
+   BEGIN
+     WITH USERINFO DO
+     IF GOTCODE THEN
+       BEGIN CLEARSCREEN;
+         IF ASSOCIATE(CONCAT(CODEVID,':',CODETID), OKTOLINK, RUNONLY) THEN
+           BEGIN
+             WRITELN(OUTPUT,'Running...');
+             IF RUNONLY THEN
+                 GETCMD := SYSPROG
+             ELSE
+                 GETCMD := DEBUGCALL;
+             EXIT(GETCMD)
+           END;
+         IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+           GOTCODE := FALSE
+       END
+     ELSE
+       IF RUNONLY THEN
+         STARTCOMPILE(COMPANDGO)
+       ELSE
+         STARTCOMPILE(COMPDEBUG)
+   END { RUNWORKFILE } ;
+
+ BEGIN (*GETCMD*)
+   FRESET(INPUTFIB^); FRESET(OUTPUTFIB^); FRESET(SYSTERM^);
+   GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+   IF LASTST = HALTINIT THEN
+     IF ASSOCIATE('*SYSTEM.STARTUP',FALSE,FALSE) THEN
+       BEGIN CLEARSCREEN;
+         WRITELN(OUTPUT,'Initializing...');
+         GETCMD := SYSPROG; EXIT(GETCMD)
+       END;
+   IF LASTST IN [COMPONLY,COMPANDGO,COMPDEBUG] THEN
+     FINISHCOMPILE;
+   IF LASTST IN [LINKANDGO,LINKDEBUG] THEN
+     RUNWORKFILE(FALSE, LASTST = LINKANDGO);
+   IF SYSCOM^.MISCINFO.USERKIND = AQUIZ THEN
+     IF LASTST = HALTINIT THEN
+       BEGIN LASTST := COMPANDGO; RUNWORKFILE(TRUE, TRUE) END
+     ELSE
+       BEGIN
+         EMPTYHEAP := NIL;
+         GETCMD := HALTINIT;
+         EXIT(GETCMD)
+       END;
+   WITH USERINFO DO
+     BEGIN ERRNUM := 0; ERRBLK := 0; ERRSYM := 0 END;
+   BADCMD := FALSE;
+   REPEAT
+     PL :=
+ 'Command: E(dit, R(un, F(ile, C(omp, L(ink, X(ecute, A(ssem, D(ebug,? [I.5e]';
+     PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN;
+     IF CH = '?' THEN
+       BEGIN PL := 'Command: U(ser restart, I(nitialize, H(alt';
+         PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN
+       END;
+     BADCMD := NOT (CH IN ['E','R','F','C','L','X','A','D','U','I','H','?']);
+     IF NOT BADCMD THEN
+       CASE CH OF
+         'E':  BEGIN WRITELN(OUTPUT);
+                 IF ASSOCIATE(FILENAME[EDITOR], FALSE, FALSE) THEN
+                   BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+               END;
+         'F':  BEGIN WRITELN(OUTPUT);
+                 IF ASSOCIATE(FILENAME[FILER], FALSE, FALSE) THEN
+                   BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+               END;
+         'L':  BEGIN WRITELN(OUTPUT,'Linking...');
+                 IF ASSOCIATE(FILENAME[LINKER], FALSE, FALSE) THEN
+                   BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+               END;
+         'X':  EXECUTE;
+         'C':  STARTCOMPILE(COMPONLY);
+         'A':  STARTCOMPILE(ASSEMONLY);
+         'U':  IF LASTST <> UPROGNOU THEN
+                 BEGIN
+                   WRITELN(OUTPUT,'Restarting...');
+                   GETCMD := SYSPROG; EXIT(GETCMD)
+                 END
+               ELSE
+                 BEGIN WRITELN(OUTPUT); WRITE(OUTPUT,'U not allowed') END;
+     'R','D':  RUNWORKFILE(TRUE, CH = 'R');
+     'I','H':  BEGIN
+                 GETCMD := HALTINIT;
+                 IF CH = 'H' THEN
+                   EMPTYHEAP := NIL;
+                 EXIT(GETCMD)
+               END
+       END
+   UNTIL FALSE
+ END (*GETCMD*) ;

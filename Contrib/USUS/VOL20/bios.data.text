@@ -1,0 +1,121 @@
+
+;  This section defines the working storage data blocks used by the 
+;  BIOS for its own purposes.
+
+;  Disk Command Tables
+;  ---- ------- ------
+
+SIS_CMD_TB:
+;  Table to define Sense Interrupt Status command.
+.BYTE     08H
+
+FDC_CMD_TBL:
+;  Table of control parameters needed by FDC.  Symboled entries
+;  are variable.  Not all commands require the full table, but all
+;  need an ordered subset.
+
+FDC_CMD   .BYTE 0                  ;  Command.
+
+FDC_DRVNO .BYTE 0                  ;  Disk number.
+
+FDC_TRACK .BYTE 0                  ;  Track number of track to which disk
+                                   ;  is currently positioned, or 0FFH if
+                                   ;  position is not known.
+          
+          .BYTE 0                  ;  Head number.
+
+FDC_SECTR .BYTE 0                  ;  Sector number.
+          
+          .BYTE 2                  ;  Sector size = 2 for 512.
+          
+          .BYTE 9                  ;  Sectors / track.
+          
+          .BYTE 27                 ;  Gap-3 read/write length.  Format
+                                   ;  length is 84 bytes for Sony disks.
+          .BYTE 0FFH               ;  Data length (superseded
+                                   ;  by sector size.
+          
+FDC_FMT_TBL:
+;  Command list for formatting a track.
+
+          .BYTE 4DH                ;  Format command byte.
+
+          .BYTE 1                  ;  Disk number (always 1).
+
+          .BYTE 2                  ;  Bytes/sector (2 => 512).
+
+          .BYTE 9                  ;  Sectors/track.
+
+          .BYTE 84                 ;  Gap 3 length for formatting.
+
+          .BYTE 4EH                ;  Formatted disk filler byte.
+
+;  Formatting Sector Definition Lists
+;  ---------- ------ ---------- -----
+
+FMT_0_LST:
+;  Sector sequence for track 0, to optimize access to bootstrap.
+          .BYTE 0, 0, 1, 2
+          .BYTE 0, 0, 6, 2
+          .BYTE 0, 0, 7, 2
+          .BYTE 0, 0, 8, 2
+          .BYTE 0, 0, 9, 2
+          .BYTE 0, 0, 2, 2
+          .BYTE 0, 0, 3, 2
+          .BYTE 0, 0, 4, 2
+          .BYTE 0, 0, 5, 2
+
+FMT_I_LST:
+;  Sector sequence for track 1, to optimize access
+;  through BIOS per format change study.
+
+          .BYTE 0, 0, 1, 2
+          .BYTE 0, 0, 6, 2
+          .BYTE 0, 0, 2, 2
+          .BYTE 0, 0, 7, 2
+          .BYTE 0, 0, 3, 2
+          .BYTE 0, 0, 8, 2
+          .BYTE 0, 0, 4, 2
+          .BYTE 0, 0, 9, 2
+          .BYTE 0, 0, 5, 2
+
+;  Operating System Link Storage
+;  --------- ------ ---- -------
+
+PASDCH    .BLOCK  2                ;  Address of disk change routine.
+
+PASEVENT  .BLOCK  2                ;  Address of event signal acceptor.
+
+;  Disk Control Storage
+;  ---- ------- -------
+
+FDC_DMADR       .BLOCK    2        ;  Address of sector buffer.
+
+FDC_DMA_LEN     .BLOCK    2        ;  Termination count for DMA.
+
+FDC_XFR_CMD     .BLOCK    1        ;  Storage for read/write command
+                                   ;  until needed.
+
+FDC_TGT_TK      .BLOCK    1        ;  Target track of next seek command.
+
+R_W_MSK         .BLOCK    1        ;  Error selection byte which
+                                   ;  prevents Write Only errors
+                                   ;  in the read operation.
+
+;  Disk Formatting Storage
+;  ---- ---------- -------
+
+FMT_D_LST       .BLOCK   FMT_SKEW * 4
+                                   ;  Pre-sector-table extension for
+                                   ;  rotating sector list through skew
+                                   ;  of 4.
+
+FMT_N_LST       .BLOCK   36        ;  Working copy of format list
+                                   ;  rotated to match skew requirements.
+                                   ;  NOTICE!  This table MUST follow
+                                   ;  FMT_D_LST immediately!
+
+FMT_X_BLK       .BLOCK   512       ;  Block for moving bootstrap from
+                                   ;  one disk to another during format.
+
+

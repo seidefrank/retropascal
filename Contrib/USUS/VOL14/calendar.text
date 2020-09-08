@@ -1,0 +1,233 @@
+{Program Author:  Walter I. Hess
+                 1460 Seven Pines Rd.
+                 Schaumberg, IL 60193
+                 
+Assumes Heath H19 or VT-52 CRT}
+
+PROGRAM CALENDAR;
+{Version "O"  W.I.H.  1/7/80}
+{Program will provide a calendar month in any year from 1753 on.}
+
+CONST
+  {The Gregorian Calendar was adopted in the U.S. in 1752}
+  STARTYR = 1753;
+  STARTDAY = 1;
+
+TYPE
+  SHINT = 0..255;
+
+VAR
+  CH,ESCH : CHAR;
+  MONTH : SHINT;
+  DAY,YEAR,J : INTEGER;
+
+PROCEDURE CALCDAY;
+{Procedure calculates the day of the week for the first day of the 
+ desired month. "0" is Sunday and "6" is Saturday. STARTDAY is the day
+ of the week (Monday) of January 1, 1753.}
+
+BEGIN
+  DAY := STARTDAY;
+  FOR J := STARTYR TO YEAR - 1 DO
+    IF ((J MOD 4 = 0) AND (J MOD 100 <> 0)) OR (J MOD 400 = 0)
+      THEN DAY := DAY + 2
+      ELSE DAY := DAY + 1;
+  CASE MONTH OF
+    2: DAY := DAY + 31;
+    3: DAY := DAY + 59;
+    4: DAY := DAY + 90;
+    5: DAY := DAY + 120;
+    6: DAY := DAY + 151;
+    7: DAY := DAY + 181;
+    8: DAY := DAY + 212;
+    9: DAY := DAY + 243;
+    10: DAY := DAY + 273;
+    11: DAY := DAY + 304;
+    12: DAY := DAY + 334;
+  END; {Case}
+  IF (MONTH > 2) AND (((YEAR MOD 4 = 0) AND (YEAR MOD 100 <> 0))
+                                                 OR (YEAR MOD 400 = 0))
+    THEN DAY := DAY + 1;
+  DAY := DAY MOD 7;
+END; {Calcday}
+
+PROCEDURE CLEARPRM;
+{Procedure clears the "prompt" line.}
+
+BEGIN
+  WRITE(ESCH,'Y8 ');
+  WRITE(ESCH,'l');
+END; {Clearprm}
+
+PROCEDURE PREPSCR;
+{Procedure draws the calendar outline on the screen}
+
+VAR
+  J,K : SHINT;
+  
+  PROCEDURE HLINE (LINE : SHINT);
+
+  BEGIN
+    GOTOXY(5,LINE);
+    FOR K := 5 TO 73 DO
+      WRITE('a');
+  END; {Hline}
+
+BEGIN
+  WRITE(ESCH,'E',ESCH,'F');
+  HLINE(3);
+  FOR J := 0 TO 6 DO
+    HLINE(5 + 3 * J);
+  FOR J := 0 TO 7 DO
+    FOR K := 4 TO 22 DO
+      BEGIN
+        GOTOXY(4 + 10 * J, K);
+        WRITE('`');
+      END;
+  GOTOXY(4,3);WRITE('f');
+  GOTOXY(4,23);WRITE('e');
+  GOTOXY(74,3);WRITE('c');
+  GOTOXY(74,23);WRITE('d');
+  FOR J := 0 TO 5 DO
+    BEGIN
+      GOTOXY(4, 5 + J * 3);WRITE('v');
+      GOTOXY(74, 5 + J * 3);WRITE('t');
+    END;
+  FOR J := 0 TO 5 DO
+    BEGIN
+      GOTOXY(14 + 10 * J, 3);
+      WRITE('s');
+      GOTOXY(14 + 10 * J, 23);
+      WRITE('u');
+      FOR K := 0 TO 5 DO
+        BEGIN
+          GOTOXY(14 + 10 * J, 5 + 3 * K);
+          WRITE('b');
+        END;
+    END;
+    WRITE(ESCH,'G');
+    GOTOXY(7,4);WRITE('SUNDAY');
+    GOTOXY(17,4);WRITE('MONDAY');
+    GOTOXY(26,4);WRITE('TUESDAY');
+    GOTOXY(35,4);WRITE('WEDNESDAY');
+    GOTOXY(46,4);WRITE('THURSDAY');
+    GOTOXY(57,4);WRITE('FRIDAY');
+    GOTOXY(66,4);WRITE('SATURDAY');
+END; {Prepscr}
+
+PROCEDURE CLEARMON;
+{Procedure clears the dates in preparation for a new month.}
+
+VAR
+  J,K,L : SHINT;
+
+BEGIN
+  GOTOXY(0,1);WRITE(ESCH,'l');
+  FOR J := 0 TO 6 DO
+    FOR K := 0 TO 5 DO
+      FOR L := 0 TO 1 DO
+        BEGIN
+          GOTOXY(5 + J * 10, 6 + K * 3 + L);
+          WRITE('         ');
+        END;
+END; {Clearmon}
+
+PROCEDURE DISPMONT;
+{Procedure displays the new month.}
+
+VAR
+  DAYS,J,K : SHINT;
+
+BEGIN
+  CASE MONTH OF
+    1: BEGIN
+         GOTOXY(33,1);WRITE('JANUARY ');
+         DAYS := 31;
+       END;
+    2: BEGIN
+         GOTOXY(32,1);WRITE('FEBRUARY ');
+         IF ((YEAR MOD 4 = 0) AND (YEAR MOD 100 <> 0)) OR (YEAR MOD 400 = 0)
+           THEN DAYS := 29
+           ELSE DAYS := 28;
+       END;
+    3: BEGIN
+         GOTOXY(34,1);WRITE('MARCH ');
+         DAYS := 31;
+       END;
+    4: BEGIN
+         GOTOXY(34,1);WRITE('APRIL ');
+         DAYS := 30;
+       END;
+    5: BEGIN
+         GOTOXY(35,1);WRITE('MAY ');
+         DAYS := 31;
+       END;
+    6: BEGIN
+         GOTOXY(34,1);WRITE('JUNE ');
+         DAYS := 30;
+       END;
+    7: BEGIN
+         GOTOXY(34,1);WRITE('JULY ');
+         DAYS := 31;
+       END;
+    8: BEGIN
+         GOTOXY(35,1);WRITE('AUGUST ');
+         DAYS := 31;
+       END;
+    9: BEGIN
+         GOTOXY(32,1);WRITE('SEPTEMBER ');
+         DAYS := 30;
+       END;
+    10: BEGIN
+          GOTOXY(33,1);WRITE('OCTOBER ');
+          DAYS := 31;
+        END;
+    11: BEGIN
+          GOTOXY(33,1);WRITE('NOVEMBER ');
+          DAYS := 30;
+        END;
+    12: BEGIN
+          GOTOXY(33,1);WRITE('DECEMBER ');
+          DAYS := 31;
+        END;
+  END; {Case}
+  WRITE(YEAR);
+  K := 6;
+  FOR J := 1 TO DAYS DO
+    BEGIN
+      GOTOXY(5 + DAY * 10, K);
+      WRITE(J:2);
+      DAY := DAY + 1;
+      IF DAY = 7
+        THEN
+          BEGIN
+            DAY := 0;
+            K := K + 3;
+          END;
+    END;
+END; {Dispmont}
+
+BEGIN {Calendar}
+  ESCH := CHR(27);
+  WRITE(ESCH,'E',ESCH,'x1',ESCH,'x5',ESCH,'y6');
+  PREPSCR;
+  REPEAT
+    CLEARPRM;
+    WRITE('ENTER YEAR OR "0" TO TERMINATE PROGRAM    ');
+    READLN(YEAR);
+    IF YEAR >= STARTYR 
+      THEN
+        BEGIN
+          REPEAT
+            CLEARPRM;
+            WRITE('ENTER MONTH (1 TO 12 FOR JANUARY TO DECEMBER)   ');
+            READLN(MONTH);
+          UNTIL (MONTH > 0 ) AND (MONTH < 13);
+          CLEARMON;
+          CALCDAY;
+          DISPMONT;
+        END;
+  UNTIL YEAR = 0;
+  WRITE(ESCH,'z');
+END. {Calendar}
+          

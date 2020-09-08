@@ -1,0 +1,339 @@
+{Mail6 - Add, Change}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+{SEGMENT except on II.0}  PROCEDURE Add;           
+ var ch:char;
+     oldladd:integer;
+  
+ PROCEDURE Findnextdel;
+  BEGIN
+   SEEK(disk,ladd);
+   GET(disk);
+   WHILE (ladd<numrecs) AND (      
+         (disk^.code='Change')  
+      OR (disk^.code='Add   ') 
+      OR (disk^.code='Perm  ')) DO   
+    BEGIN
+     ladd := ladd + 1;  
+     SEEK(disk,ladd);  
+     GET(disk);
+    END;
+  IF (ladd=numrecs) AND (
+     (disk^.code='Change') OR 
+     (disk^.code='Add   ') OR 
+     (disk^.code='Perm  ')  ) THEN 
+    BEGIN
+     numrecs := numrecs + 1;
+     recnumber := numrecs;
+     ladd := numrecs;
+(*$I-*)
+     disk^.code := 'Test  ';
+     SEEK(disk,recnumber); 
+     PUT(disk);
+     temp := IORESULT;
+     IF temp<>0 THEN        
+      BEGIN
+       SC_Clr_Screen;
+       WRITELN('Caution: no more room in file, please krunch or reallocate.');  
+       repeat
+         gotoxy(0,1);
+       until not space_wait(TRUE);
+       numrecs := numrecs - 1;
+       ladd := numrecs;
+       recnumber := numrecs;
+       EXIT(Add);
+      END;
+(*$I+*)
+     Wnew0rec;
+    END; 
+  recnumber := ladd;
+ END;  
+ 
+ PROCEDURE Getadd; 
+  
+  procedure GAddPrompts;
+  begin
+    SC_Clr_Screen;                                         
+    WRITELN;          
+    WRITELN;
+    WRITELN('prefix  :');
+    WRITELN('f name  :');
+    WRITELN('m init  :');
+    WRITELN('l name  :');
+    WRITELN('suffix  :');
+    WRITELN('title   :');
+    WRITELN('company :');
+    WRITELN('phone   :');
+    WRITELN('address :');
+    WRITELN('city    :');
+    WRITELN('state   :');
+    WRITELN('country :');
+    WRITELN('zip/post:');
+    WRITELN('misc    :');
+  end;
+  
+  BEGIN    
+  WITH disk^ DO                                                 
+   BEGIN   
+    GAddPrompts;
+    prefx := '     ';
+    fname := '          ';
+    minit := '  ';
+    lname := '               '; {length 15}
+    suffx := '      ';
+    title := lname;
+    coname := Spaces30; {constant string}
+    phone := lname;
+    address:= Spaces30;
+    city  := lname;
+    state := '  ';
+    country := lname;
+    zip := '        ';
+    misc := CONCAT(Spaces30,Spaces30,Spaces30); {length 90}
+    Rdata(0,9,2,5,prefx);
+    Rdata(0,9,3,10,fname);   
+    Rdata(0,9,4,2,minit);             
+    Rdata(0,9,5,15,lname);  
+    Rdata(0,9,6,6,suffx);
+    Rdata(0,9,7,15,title);
+    Rdata(0,9,8,30,coname);
+    Rdata(0,9,9,15,phone);    
+    Rdata(0,9,10,30,address);                                
+    Rdata(0,9,11,15,city);   
+    Rdata(0,9,12,2,state);      
+    Rdata(0,9,13,15,country);        
+    Rdata(0,9,14,8,zip); 
+    Rdata(0,9,15,90,misc);    
+           
+    WITH format^ DO   
+     BEGIN
+      FOR temp := 1 TO 48 DO flags[temp] := FALSE;
+      REPEAT
+       column := 0;    
+       temp1 := 0;
+       SC_Clr_Screen; 
+       FOR temp := 1 TO 48 DO   
+        BEGIN
+         temp1 := temp1 + 1;
+         GOTOXY(27*column,temp1+5);  
+         WRITE(temp:2,'.',meanings[temp]);         
+         IF flags[temp] THEN     
+          BEGIN  
+           WRITE('........................':21-LENGTH(meanings[temp]));       
+           WRITE('*');
+          END;        
+         IF temp1 = 16 THEN BEGIN temp1 := 0;column := column + 1;END;  
+        END; 
+       SC_Clr_Line(0);
+       WRITE('Flag to set (0 to quit) :');                    
+       temp:=-1; {return value if integer not legal}
+       Getint(0,0,temp);
+       IF (temp>0) AND (temp<=48) THEN flags[temp] := TRUE;      
+      UNTIL temp = 0;            
+     END (* WITH format^ *);        
+   END; (* WITH disk^ *)         
+  END (* Getadd *);
+  
+ BEGIN   
+  oldladd:=ladd; {save in case of exit}
+  Findnextdel; 
+  Getadd;   
+  outmode := ad;    
+  Outrec; 
+  SC_Clr_Line(1);
+  SC_Clr_Line(0);
+  writeln('N)o will abort this A)dd attempt. ',
+          'N.B. you can A)dd now then C)hange fields.');
+  WRITE('O.K. to A)dd (Y/N):');
+  repeat
+    READ(keyboard,ch);
+  until ch in ['Y','y','N','n'];
+  write(ch);
+  IF (ch='N') or (ch='n') THEN    
+   BEGIN
+    IF recnumber = numrecs THEN numrecs := numrecs - 1;
+    ladd:=oldladd;
+    EXIT(Add);                              
+   END;  
+  disk^.code := 'Add   ';                  
+  SEEK(disk,recnumber); 
+  PUT(disk);
+  NEW(ptr2);
+  ptr2^.intpart := recnumber;
+  ptr2^.lpart2 := first2;
+  first2 := ptr2;
+ END (* Add *);                     
+  
+  
+{SEGMENT except on II.0}  PROCEDURE Change;               
+   var ch:char;
+   
+ PROCEDURE Chgflg;
+  var ch1:char;
+  BEGIN
+   REPEAT;
+    WITH disk^,format^ DO
+     BEGIN
+      SC_Clr_Screen;
+      column := 0;
+      temp1 := 2;
+      FOR temp := 1 TO 48 DO  
+       BEGIN
+        temp1 := temp1 + 1;              
+        GOTOXY(column*27,temp1);    
+        WRITE(temp:2,'.',meanings[temp]);       
+        IF flags[temp] THEN   
+         BEGIN  
+          WRITE('........................':(21-LENGTH(meanings[temp])));
+          WRITE('*');      
+         END; 
+        IF temp1 = 18 THEN BEGIN temp1 := 2;column := column + 1;END;
+       END;        
+      repeat
+        SC_Clr_Line(0);
+        WRITE('Chgflags for ',lname,': R)emove, S)et, Q)uit:');
+        READ(KEYBOARD,ch1);  
+      until ch1 in ['R','r','S','s','Q','q'];
+      write(ch1);
+      CASE ch1 OF
+       'R','r' : BEGIN  
+                  SC_Clr_Line(0);
+                  WRITE('Enter flagnumber to be removed:');
+                  temp:=-1; {return value if integer not legal}
+                  Getint(0,0,temp);
+                  IF (temp>0) AND (temp<=48) THEN          
+                   flags[temp] := FALSE;     
+                 END;
+       'S','s' : BEGIN
+                  SC_Clr_Line(0);                                  
+                  WRITE('Enter flagnumber to be set:');
+                  temp:=-1; {return value if integer not legal}
+                  Getint(0,0,temp);
+                  IF (temp>0) AND (temp<=48) THEN  
+                   flags[temp] := TRUE;  
+                 END;
+      END (* CASE *)      
+    END (* WITH *);          
+   UNTIL ch1 IN ['Q','q']; 
+  END (* Chgflg *);  
+  
+ PROCEDURE Chgcase(cch:char);    
+  VAR tlname2 : STRING[15];   
+  BEGIN     
+   CASE cch OF      
+    'G','g' : Chgflg;                  
+    'P','p' : BEGIN     
+               WRITE('Enter new prefix:');
+               Rdata(0,19,0,5,disk^.prefx);
+              END;
+    'F','f' : BEGIN
+               WRITE('Enter new forename:');
+               Rdata(0,19,0,10,disk^.fname);
+              END;
+    'N','n' : BEGIN
+               WRITE('Enter new middle initials:');
+               Rdata(0,25,0,2,disk^.minit);
+              END;
+    'L','l' : BEGIN
+               WRITE('Enter new last name:');
+               Rdata(0,20,0,15,disk^.lname);
+              END;
+    'U','u' : BEGIN
+               WRITE('Enter new suffix:');
+               Rdata(0,17,0,6,disk^.suffx);
+              END;
+    'T','t' : BEGIN
+               WRITE('Enter new title:');
+               Rdata(0,16,0,15,disk^.title);
+              END;
+    'C','c' : BEGIN            
+               WRITE('Enter new company:');
+               Rdata(0,18,0,30,disk^.coname);
+              END;
+    '#'     : BEGIN
+               WRITE('Enter new phone #:');
+               Rdata(0,18,0,15,disk^.phone);
+              END;
+    'A','a' : BEGIN
+               WRITE('Enter new address:');
+               Rdata(0,18,0,30,disk^.address);
+              END;
+    'I','i' : BEGIN
+               WRITE('Enter new city:');
+               Rdata(0,15,0,15,disk^.city);
+              END;
+    'S','s' : BEGIN
+               WRITE('Enter new state:');
+               Rdata(0,16,0,2,disk^.state);
+              END;
+    'Y','y' : BEGIN
+               WRITE('Enter new country:');
+               Rdata(0,18,0,15,disk^.country);
+              END;
+    'Z','z' : BEGIN
+               WRITE('Enter new ZIP/post code:');
+               Rdata(0,24,0,8,disk^.zip);
+              END;
+    'M','m' : BEGIN
+               WRITE('Enter new misc:');
+               Rdata(0,15,0,90,disk^.misc);
+              END;
+    END (* CASE *);
+   END;
+ 
+ BEGIN        
+  IF disk^.code = 'Perm  ' THEN
+   BEGIN
+    NEW(ptr);    
+    NEW(ptr2);
+    STR(recnumber,disk^.code);       
+    ptr^.recpart := disk^;    
+    ptr2^.intpart := recnumber;
+    ptr^.lpart := first;  
+    ptr2^.lpart2 := first2;
+    first := ptr;
+    first2 := ptr2;
+    disk^.code := 'Change';    
+    SEEK(disk,recnumber);           
+    PUT(disk);            
+   END (* IF *);       
+  REPEAT       
+   outmode := ad;         
+   Outrec;     
+   repeat
+     SC_Clr_Line(1);
+     SC_Clr_Line(0);      
+     WRITELN('Change: P)refix, F)name, mi(N)it, L)name, s(U)ffix, T)itle, C)mpny,');
+     WRITE('        #)ph, A)dd, c(I)ty, S)tate, cntr(Y), Z)ip, M)isc, fla(G)s, Q)uit:');
+     READ(KEYBOARD,ch); 
+   until ch in ['P','p','F','f','N','n','L','l','U','u','T','t','C','c',
+                '#',    'A','a','I','i','S','s','Y','y','Z','z','M','m',
+                'G','g','Q','q'];
+   SC_Clr_Line(1);
+   SC_Clr_Line(0);  
+   Chgcase(ch);
+  UNTIL ch IN ['Q','q'];   
+  {top 2 lines already clear}
+  WRITELN('N)o will leave the record in its original state.');
+  WRITE('O.K. to C)hange (Y/N):');
+  repeat
+    READ(keyboard,ch);
+  until ch in ['Y','y','N','n'];
+  write(ch);
+  IF (ch='Y') or (ch='y') THEN BEGIN SEEK(disk,recnumber);PUT(disk);END 
+                          ELSE BEGIN SEEK(disk,recnumber);GET(disk);END;
+ END; (* Change *) 
+     
+

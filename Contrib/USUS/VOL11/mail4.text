@@ -1,0 +1,461 @@
+{Mail4 - Options}
+{
+22-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+SEGMENT PROCEDURE Options;
+ VAR illflg : BOOLEAN; 
+     ch:char;
+
+{$I-}
+PROCEDURE Dumpflgs;          
+ BEGIN 
+  WITH format^ DO  
+   BEGIN
+    column := 0;
+    REWRITE(odisk,ofilename);  
+    IF IORESULT<>0 THEN
+      Reporterr('Cannot open output file ',ofilename,IORESULT)
+    else
+      begin
+        if ofilename='#2:' then
+          begin
+            SC_Clr_screen;
+            gotoxy(0,2);
+          end;
+        WRITELN(odisk,'Descriptions and Flags Set');
+        WRITELN(odisk,'----------------------------------------------------------');
+        FOR temp := 1 TO 48 DO
+         BEGIN
+          column := column + 1;
+          WRITE(odisk,temp:2,'.',meanings[temp]);    
+          IF fflags[temp] THEN
+           BEGIN
+            WRITE(odisk,'........................':(21-LENGTH(meanings[temp])));
+            WRITE(odisk,'*  ');    
+           END
+          ELSE
+            WRITE(odisk,'                             ':24-LENGTH(meanings[temp]));
+          IF column = 3 THEN BEGIN column := 0;WRITELN(odisk);END; 
+         END;
+        CLOSE(odisk,lock);
+        if IORESULT<>0 then
+          Reporterr('Cannot close output file ',ofilename,IORESULT)
+      end;
+   END {with format^}; 
+ END;
+ {$I+}
+ 
+ PROCEDURE Chgfflgs; 
+  var ch,ch1:char;
+  BEGIN
+   WITH disk^,format^ DO  
+    REPEAT;
+      SC_Clr_Screen;
+      temp1 := 2;
+      column := 0;
+      FOR temp := 1 TO 48 DO        
+       BEGIN
+        temp1 := temp1 + 1;
+        GOTOXY(column * 27,temp1);
+        WRITE(temp:2,'.',meanings[temp]);  
+        IF fflags[temp] THEN
+         BEGIN
+          WRITE('.............................':(21-LENGTH(meanings[temp])));
+          WRITE('*');      
+         END;
+        IF temp1 = 18 THEN BEGIN temp1 := 2;column := column + 1;END;
+       END; 
+      WRITELN;
+      WRITE('Matching option: ');
+      IF option THEN WRITELN('A)ny positive match')
+                ELSE WRITELN('E)xact matches only');
+     repeat
+       SC_Clr_Line(0);   
+       WRITE('Match Flags: D)ump, O)ption, R)emove, S)et, Q)uit:');
+       READ(KEYBOARD,ch1);
+     until ch1 in ['D','d','O','o','R','r','S','s','Q','q'];
+     write(ch1);
+     CASE ch1 OF
+      'D','d' : Dumpflgs;
+      'O','o' : BEGIN
+                  repeat
+                    SC_Clr_Line(0);
+                    WRITE('Flag option: E)xact matches only, ',
+                          'A)ny positive match, Q)uit:');
+                    READ(KEYBOARD,ch);
+                 until ch in ['E','e','A','a','Q','q'];
+                 write(ch);
+                 CASE ch OF
+                  'E','e' : format^.option := FALSE;
+                  'A','a' : format^.option := TRUE;
+                 END;
+                END;    
+      'R','r' : BEGIN  
+                 SC_Clr_Line(0);
+                 WRITE('Enter flagnumber to be removed:');
+                 Getint(0,0,temp);  
+                 IF (temp>0) AND (temp<=48) THEN    
+                  fflags[temp] := FALSE;    
+                END;
+      'S','s' : BEGIN
+                 SC_Clr_Line(0);
+                 WRITE('Enter flagnumber to be set:');
+                 Getint(0,0,temp);
+                 IF (temp>0) AND (temp<=48) THEN   
+                  fflags[temp] := TRUE;   
+                END;  
+     END (* CASE *)  
+  UNTIL ch1 IN ['Q','q']; 
+  illflg := TRUE;
+ END (* Chgfflg *);          
+ 
+ PROCEDURE Chgmeanings;
+  BEGIN    
+   WITH format^ DO       
+    REPEAT
+     SC_Clr_Screen;
+     column := 0;temp1 := 2;
+     FOR temp := 1 TO 48 DO    
+      BEGIN
+       temp1 := temp1 + 1;
+       GOTOXY(column*26,temp1);     
+       WRITE(temp:2,'. ',meanings[temp]);
+       IF temp1 = 18 THEN BEGIN temp1 := 2;column := column + 1;END;
+      END; 
+     SC_Clr_Line(0);
+     WRITE('Number of Description to change, 0 to Quit:');   
+     Getint(0,0,temp);        
+     SC_Clr_Line(0);
+     IF (temp>0) AND (temp<=48) THEN       
+      BEGIN 
+       SC_Clr_Line(0);
+       WRITE('Enter new description #',temp:2,':');
+       Rdata(0,28,0,20,format^.meanings[temp]);
+      END;
+    UNTIL temp = 0;
+   illflg := TRUE;
+ END;       
+  
+ 
+ PROCEDURE Chgspacing;   
+  VAR ch1 : CHAR;
+  BEGIN
+   WITH format^ DO 
+    BEGIN
+     repeat
+       GOTOXY(32,7); 
+       READ(KEYBOARD,ch1);
+     until ch1 in ['S','s','D','d','T','t'];
+     CASE ch1 OF
+      's','S' : spacing := 1;
+      'd','D' : spacing := 2;
+      't','T' : spacing := 3;
+      END;
+     GOTOXY(32,7);
+     CASE spacing OF
+      1 : WRITELN('single');
+      2 : WRITELN('double');
+      3 : WRITELN('triple');
+     END;
+   END;
+  END; 
+     
+ PROCEDURE PutJOption;
+ BEGIN
+   GOTOXY(41,9);
+   WRITE('Justification');
+   GOTOXY(71,9);
+   if format^.joption then write(':yes') else write(':no');
+ END;
+ 
+ function lyes(x,y:integer):boolean;
+  var yes:boolean;
+      ch1:char;
+  BEGIN
+   repeat
+     GOTOXY(x,y);
+     READ(KEYBOARD,ch1); 
+   until ch1 in ['Y','y','N','n'];
+   yes:=((ch1='Y') or (ch1='y'));
+   GOTOXY(x,y);
+   IF yes THEN WRITELN('yes') 
+          ELSE WRITELN('no ');  
+   lyes:=yes;
+ END; 
+ 
+ PROCEDURE Chglmgins; 
+ var ch:char;
+ BEGIN    
+  repeat
+   repeat
+    SC_Clr_Line(0);
+    WRITE('Letter margins: L)eft, R)ight, T)op, P)aragraph, J)ustify, Q)uit:'); 
+    READ(KEYBOARD,ch);
+   until ch in ['L','l','R','r','T','t','P','p','J','j','Q','q'];
+   write(ch);
+   CASE ch OF                
+     'P','p' : repeat
+                 Getint(32,11,format^.lpin);   
+               until format^.lpin<=60;
+     'T','t' : begin
+                 Getint(32,10,format^.lvtab);   
+                 gotoxy(40,10);
+                 write('Bottom of page margin is fixed :5');
+               end;
+     'L','l' : repeat
+                 Getint(32,8,format^.llmgin);   
+               until format^.llmgin<=60;
+     'R','r' : BEGIN
+                 Getint(32,9,format^.lrmgin);   
+                 PutJOption;
+               END;
+     'J','j' : format^.joption:=lyes(72,9);
+   END; 
+  until ch in ['Q','q'];
+ END; 
+ 
+ PROCEDURE Chglopts;
+  var ch1,ch2:char;
+  BEGIN
+   repeat
+     repeat
+       SC_Clr_Line(0);
+       WRITE('Letter options: P)age, S)top-pages, ',
+             'F(eed pages, M(atch for flag paras, Q)uit:');
+       READ(KEYBOARD,ch2); 
+     until ch2 in ['M','m','F','f','P','p','S','s','Q','q'];
+     write(ch2);
+     WITH format^ DO
+      CASE ch2 OF
+      'M','m' : BEGIN
+                 GOTOXY(32,17);
+                 READ(ch1); 
+                 CASE ch1 OF
+                  's','S' : loption := FALSE;         
+                  'a','A' : loption := TRUE; 
+                 END (* CASE *);
+                 GOTOXY(32,17); 
+                 IF loption THEN WRITELN('all   ') 
+                            ELSE WRITELN('single');  
+                END; 
+      'F','f' : ffeed:=lyes(32,16);
+      'S','s' : foption:=lyes(32,15); 
+      'P','p' : poption:=lyes(32,14);  
+      END (* CASE *)      
+    until ch2 in ['Q','q'];
+  END;  
+  
+PROCEDURE Chgletter; 
+ VAR ch1,ch2 : CHAR;
+ BEGIN    
+  repeat
+   Repeat
+     SC_Clr_Line(0); 
+     WRITE('Letter: C)hrs/ln, L)ns/Pg, M)gin, D)irCh, O)pt, P)g#, ',
+           'S)pacing, W)idow, Q)uit:');
+     READ(KEYBOARD,ch1);
+   until ch1 in ['C','c','D','d','L','l','M','m',
+                 'O','o','P','p','S','s','W','w','Q','q'];
+   write(ch1);
+   CASE ch1 OF
+    'D','d' : begin
+                repeat
+                  gotoxy(32,4);
+                  read(KEYBOARD,Ch2);
+                until Ch2 in [' ','!','#','$','%','&','@','|','~'];
+                {excludes characters used elsewhere in Mail}
+                if Ch2<>' ' then 
+                  begin
+                    format^.lDirCh:=Ch2;
+                    write(Ch2);
+                  end;
+              end;
+    'C','c' : Getint(32,5,format^.lchar);    
+    'L','l' : Getint(32,6,format^.lpsiz);  
+    'M','m' : Chglmgins;
+    'O','o' : Chglopts;
+    'S','s' : Chgspacing;
+    'W','w' : Getint(32,13,format^.lpwid);   
+    'P','p' : Getint(32,12,format^.lspage);    
+   END;  
+  until ch1 in ['Q','q'];
+ END; 
+ 
+ PROCEDURE Chgtype;      
+  var ch:char;
+  BEGIN
+   repeat
+     GOTOXY(32,23);
+     READ(KEYBOARD,ch);    
+   until ch in ['E','e','R','r'];
+   CASE ch OF
+    'E','e' : format^.rolodex := FALSE;              
+    'R','r' : format^.rolodex := TRUE;          
+   END (* CASE *); 
+   GOTOXY(32,23);
+   IF format^.rolodex THEN WRITE('rolodex ') 
+                      ELSE WRITE('envelope');
+  END (* Chgtype *);          
+
+  
+PROCEDURE Chglabels;      
+ var ch1:char;
+ BEGIN    
+  repeat
+    repeat
+      SC_Clr_Line(0);
+      WRITE('Mailing labels: N)wide, V)tab, L)margin, T)ype, Q)uit:');
+      READ(KEYBOARD,ch1);          
+    until ch1 in ['N','n','V','v','L','l','N','n','T','t','Q','q'];
+    write(ch1);
+    CASE ch1 OF
+     'N','n' : Getint(32,22,format^.mwide);           
+     'V','v' : Getint(32,20,format^.mvtab);   
+     'L','l' : Getint(32,21,format^.mmgin); 
+     'T','t' : Chgtype;       
+    END;  
+  until ch1 in ['Q','q'];
+ END;
+
+  FUNCTION Fquit:BOOLEAN;
+   var ch:char;
+   BEGIN
+     repeat
+       SC_Clr_Line(0);
+       WRITE('Quit Option:');
+       WRITE(' E)xit without updating, R)eturn to give more options, U)pdate:');
+       READ(KEYBOARD,ch);
+     until ch in ['E','e','R','r','U','u'];
+     write(ch);
+     CASE ch OF    
+      'E','e' : BEGIN
+                 SEEK(format,0);  
+                 GET(format);
+                END;
+      'U','u' : BEGIN 
+                 SEEK(format,0);
+                 PUT(format);
+                END;
+     END;    
+     Fquit:=((ch<>'r') AND (ch<>'R'));
+   END;
+
+PROCEDURE Foutput;
+
+procedure fout1;
+var ch:char;
+begin
+  WITH format^ DO 
+   BEGIN
+    SC_Clr_Screen;
+    WRITELN; 
+    WRITELN('Input filename  :',infilename);
+    WRITELN('Output filename :',ofilename);
+    WRITELN;
+    
+    ch:=LDirCh;
+    if NOT (ch IN ['!','#','$','%','&','@','|','~']) then ch:='~';
+    WRITELN('*Letter Format - Directive char:',ch);
+    WRITELN(' Number of characters to a line:',lchar);
+    WRITELN(' Number of lines to a page     :',lpsiz);
+    WRITE  (' Spacing            (s, d or t):');
+    CASE spacing OF
+     1 : WRITELN('single');
+     2 : WRITELN('double');
+     3 : WRITELN('triple');
+    END;
+    WRITELN(' Left column margin            :',llmgin);
+    WRITE  (' Right column margin           :',lrmgin);
+    PutJOption; WRITELN;
+    WRITE  (' Top of page margin            :',lvtab);
+    WRITELN('        Bottom of page margin is fixed:5');
+    WRITELN(' Paragraph margin              :',lpin);
+    WRITELN(' Starting page number          :',lspage);
+   end {with format^}
+end {of Fout1};
+
+procedure pyesno(yes:boolean);
+begin
+  if yes then writeln('yes') else writeln('no');
+end;
+
+procedure fout2;
+begin
+  with format^ do
+   begin
+    WRITELN(' Paragraph widow               :',lpwid);
+    WRITE  (' Pagination            (y or n):');
+    pyesno(poption);
+    WRITE  (' Stop between pages    (y or n):');
+    pyesno(foption);
+    WRITE  (' Form feed each page   (y or n):');
+    pyesno(ffeed);
+    WRITE  (' Match for flag paras  (a or s):');
+    if loption then writeln('all')
+               else writeln('single');
+    WRITELN;
+    WRITELN('*Mailing Labels Format -');
+    WRITELN(' Vertical tab between rows     :',mvtab);
+    WRITELN(' Left margin before each label :',mmgin);
+    WRITELN(' Number of labels across page  :',mwide);
+    WRITE  (' Type                  (r or e):');
+    IF rolodex THEN WRITE('rolodex')
+               ELSE WRITE('envelope');
+   END;
+end {of fout2};
+
+BEGIN
+  fout1; {routines split to reduce individual code sizes}
+  fout2;
+END {of Foutput};
+
+BEGIN
+ RESET(format,ffilename);
+ SEEK(format,0);
+ GET(format);
+ WITH format^ DO  
+  REPEAT;
+   illflg := TRUE;
+   REPEAT
+    IF illflg THEN Foutput; 
+    illflg := FALSE;
+    repeat
+      SC_Clr_Line(0);
+      WRITE('Options: D)scrps, F)lags, M)labels, L)etter, I)nput, O)utput, Q)uit:');
+      READ(KEYBOARD,ch);
+    until ch in ['D','d','F','f','M','m','L','l','I','i','O','o','Q','q'];
+    write(ch);
+    CASE ch OF
+     'D','d' : Chgmeanings;
+     'F','f' : Chgfflgs;    
+     'I','i' : BEGIN 
+                REPEAT
+                 Rdata(1,17,1,30,infilename);   
+                 UpperCase(infilename);
+                 if (Length(infilename)<=5) or
+                    (POS('.TEXT',infilename)<>(Length(infilename)-4))
+                 then infilename := CONCAT(infilename,'.TEXT');
+                UNTIL Chkfiles(infilename); 
+               END;
+     'L','l' : Chgletter;
+     'M','m' : Chglabels;
+     'O','o' : Rdata(1,17,2,30,format^.ofilename);         
+    END; 
+   UNTIL ch IN ['Q','q'];    
+ UNTIL Fquit;   
+ Gtstdflgs;
+ CLOSE(format);
+END;
+ 
+

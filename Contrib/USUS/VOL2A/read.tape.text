@@ -1,0 +1,83 @@
+
+(* Program Author:   Walter Hess
+                     1460 Seven Pines Rd.
+                     Schaumberg, IL 60193
+                     
+                                                        *)
+                                                        
+(*          RTAPE and PUNCH
+               
+                    If you have the HEATH Paper Tape System, 
+               these two programs will transfer files between 
+               the paper tape system and disc files.  I have not 
+               used them much but I believe they work OK.*)
+               
+               
+(*$L SCRVOL:LRTAPE.TEXT*)
+PROGRAM RTAPE;
+(* VERSION "O"  06/12/79  WIH *)
+TYPE
+  LSTR = STRING[132];
+  POINTER = ^CHAR;
+
+VAR
+  PCH,PCHS : POINTER;
+  INSTR,FLSTR : LSTR;
+  OUTFIL : TEXT;
+  J : INTEGER;
+  CH : CHAR;
+
+PROCEDURE INITR (VAR PNT,PNTS : POINTER);
+CONST
+  RTAPEADD = -150;
+
+TYPE
+  REP = (POINTREP,INTREP);
+  ALIAST = RECORD
+    CASE REP OF
+      POINTREP:
+        (POINTVAL : POINTER);
+      INTREP:
+        (INTVAL : INTEGER);
+    END; (* CASE *)
+
+VAR
+  ALIAS : ALIAST;
+
+BEGIN
+  ALIAS.INTVAL := RTAPEADD;
+  PNT := ALIAS.POINTVAL;
+  ALIAS.INTVAL := RTAPEADD - 2;
+  PNTS := ALIAS.POINTVAL;
+END;
+
+PROCEDURE GETCH;
+VAR
+  K : INTEGER;
+
+BEGIN
+  PCHS^ := CHR(1);
+  REPEAT
+    K := ORD(PCHS^)
+  UNTIL K = 128;
+  CH := PCH^;
+END;
+
+BEGIN (* MAIN PROGRAM *)
+  INITR(PCH,PCHS);
+  WRITELN(' ENTER NAME OF FILE TO WRITE TO FROM READER');
+  READLN(FLSTR);
+  REWRITE(OUTFIL,FLSTR);
+  GETCH;
+  WHILE CH <> CHR(4) DO
+  BEGIN
+    IF CH <> CHR(0)
+      THEN
+      BEGIN
+        WRITE(OUTFIL,CH);
+        WRITE(CH);
+      END;
+    GETCH;
+  END;
+  CLOSE(OUTFIL,LOCK);
+END.

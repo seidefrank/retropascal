@@ -1,0 +1,176 @@
+
+          An Introduction to Using the Pacsal Transfer Program
+
+     This brief introduction will hopefully provide you with enough
+information to run PTP. The first question you will be asked after starting
+PTP is if your system can support binary mode. Inorder to support this 
+your modem (serial port) must be able to pass any 8-bit byte to the PTP
+program (most home systems can do this - most time sharing systems can not).
+Binary mode always considerably fast transfer and should be used if
+possible. The next questions select valid speeds at which your modem can
+operate. Simply answer yes to the valid baud rates. To support mulitple baud
+rates your modem baud rate must be software settable with the baud assembly
+language routine, if is not answer yes only to the 300 baud rate which will
+keep the baud rate at its inital value. Because the program uses a split baud
+rate for transmit and receive during baud rate negotiation it is not possible
+to switch baud rates manually. 
+
+     Next the number of data characters that can be sent and  received in
+one packet is requested. The actual packet maybe considerable larger due to
+packet overhead. The larger the packet the more likely a transmission error
+will occur.
+
+     The answer or orginate mode of the program must be different for two
+communciating programs. This is set to orginate mode when you dial a number
+and to answer when you go into an answer mode. The mode of the modem is set
+to the same mode as the program. 
+     
+     The top level menu varies depending upon if a carrier is detect. In
+the case there is no carrier the menu is as followed:
+
+     Autoans  - Wait for the phone to ring, answer in answer mode and
+                establish a connection. Typing any character will abort this 
+                mode.
+
+     Cntdial  - Continously redial the number after a delay in an attempt to 
+                establish a connection.
+
+     Dial     - Dial the number to be supplied. Do not use in spaces or other 
+                characters inbetween digits. A "*" should cause the dialer to 
+                wait for another dial tone detect (not tested). Typing any
+                character will interrupt this function.
+
+     Exit     - Exit the PTP program.
+
+     Go       - Used to continue when a modem connection is already 
+                established.
+
+     Hangup   - Hangup the phone.
+
+     Options  - Go to the options menu (see below).
+
+     Redial   - Redial the number last dialed.
+
+     Unattended - Same as autoanswer except that the program will go
+                back into the autoanswer mode at the end of a connection
+                to wait for the next call. Typing any character will exit
+                this mode.
+
+If a carrier is present the top level menu will be a subset of the above. The 
+"go" command in this case causes the modems to attempt to establish a 
+connection (usefully when you have been using voice and now wish to
+connect the programs without having to hangup).
+
+     The options menu allows the following options to be set:
+
+     PTP - Set the PTP mode which is what the program is all about.
+
+     Mode- Allows the resetting of the modes and baud rates setup
+           when the program was started. This will result in the 
+           renegotion of the mode and baud rates with the other
+           computer.
+
+     Trace- Set the tracing flags used for debugging. Also used to set
+           the local loopback mode (see trace below).
+     
+     Raw - This puts you in a raw terminal mode in which makes the system
+           look like a terminal and is intented mainly to allow logging 
+           into timesharing systems. Type a control-E to exit this mode.
+     
+     Baud- Set the baud rate to be used in raw mode.
+
+     Fullduplex - Set full duplex raw mode.
+
+     Halfduplex - Set half duplex raw mode.
+     
+     If you have made contact with another PTP both programs should now be in
+a loop sending empty packets back and forth. The first thing you will see
+after a connection is established is the id of the other program. 
+After this the programs will negotate binary or radix-41 mode, the baud rate 
+and buffer sizes. At this point you may try to send a terminal to terminal
+message. To do this type the first character of the message and wait for a
+">" follwed by the character you typed. Type the rest of the message and hit
+return (if the message is to long echoing will stop and the first part will
+be sent). The message will then be sent to the other PTP. It should be
+realised that whenever a PTP program is waiting for a character from the
+keyboard it will not be listening or sending on the modem line. This will
+cause the PTP on the other end to timeout while waiting for a transmission
+and display a receiver timeout message. If this were to continue for a long
+time the PTP on the other end would finally give up and abort. Also even
+after you finish typing your message it may take several transmissions for
+the programs to get their half duplex transmissions resynced (both programs
+may be sending at the same time and miss part of the other's transmission).
+This condition should correct itself shortly since the timeout for answer and
+orginate modes are different.
+ 
+     To send files or perform other functions it is first necessary to get
+the attention of the PTP, to do this type a control-E and wait. A menu should
+be displayed shortly simlar to the type displayed by the UCSD Pascal system.
+It should be remebered that when the program is in this mode it is the other
+PTP will be experiencing receiver timeouts. To exit the menu function and
+return control to PTP just hit a carriage return to the menu display. The
+following is a description of the current menu functions:
+
+     Get - Get a file from the other system. It should be noted that you
+           must already know the name of the file you wish transfered
+           and there is no remote list directory function. For this
+           reason it would be a good idea if each system contained a
+           file with the well know name "dir.text" which contains the 
+           name of the files which that person is willing to have
+           transfered. 
+
+     Send - Send a file from your system to the other system. The PTP
+            program will not create a file on a system if it already
+            exists. This is to prevent overwriting files on the other
+            system which you did not know existed.
+
+     Init - This function will reinitialize most of the counters
+           in the program. If you are in contact with another PTP
+           this will result in a loss of sequencing.
+    
+     Exit - Will cause PTP to terminate and return to the top menu level.
+
+     Mode- See mode above.
+
+     Trace- See trace below.
+
+     
+     Trace allows you to control various trace and other options as
+described below:
+          
+          Trace LTB - Trace the link transmission blocks. This trace
+                      dumps the variously encoded forms of all 
+                      transmissions sent and received. It is helpful
+                      in gaining an understanding of how the program
+                      works but does a lot of data and must be used
+                      with CRT type terminal.
+
+        Trace PPS - Trace the process to process stream functions. In
+                     general this trace is not very helpful unless you
+                     already know what you are looking for.
+
+        Trace FTP - Trace the file transfer functions and data. 
+
+        Local loopback test - This puts the program in a mode where
+                    it talks to itself and can be very useful in 
+                    testing the program especially when combined
+                    with the LTB trace. You should try this mode
+                    before attempting to use this program with 
+                    another PTP to see if the program will run on
+                    your system.
+
+     
+     Because of the low baud rates that our modems use and the encoding done
+in the PCNET format the transmission of files will be very slow, however, the
+transfered file should contain no transmission errors and any type of file
+including binary can be transfered. In addition files can be transfered in
+both directions at the same time and the terminal to terminal mode can still
+be used. Inorder to give you some assurance that the program is running      
+a dot will be printed when an packet is received. Be sure you are in PTP mode
+when you wish to transfer files. Best of luck and please contact me with
+errors, questions, or suggestions you may have.
+
+Mark Gang
+408-267-4913
+
+     

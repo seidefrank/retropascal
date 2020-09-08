@@ -1,0 +1,43 @@
+
+(*
+ * SYSTEM.STARTUP for Retro Pascal ][ -- Frank Seide, 2013
+ *
+ * UNIT for some functions specific to the ReTro implementation of UCSD Pascal.
+ *)
+
+program systemstartup;
+
+  uses retrostuff;
+
+  var
+    width, height: integer;    { terminal dimensions }
+
+begin
+  gettermsize(width, height);
+  page(output);
+  writeln;
+  writeln;
+  writeln('Welcome to Retro Pascal ][ -- a live computer museum based on UCSD Pascal of 1979!');
+  writeln;
+  writeln('UCSD Pascal is operated by the keyboard. There was no mouse in 1979.');
+  writeln('Please type a letter to execute a command from the command bar. Or touch it.');
+  writeln('Your typical work flow will be:');
+  writeln;
+  writeln(' - Type E to get into the Editor.');
+  writeln(' - Edit your code. For example, I to insert code, D to delete etc.');
+  writeln(' - Type Q to quit the Editor and U to update your disk file.');
+  writeln(' - Type R to run the program. This will invoke the Compiler.');
+  writeln(' - Repeat.');
+  writeln(' - To look at disks and copy files, type F to start the Filer.');
+  writeln;
+  writeln('Remember: E to edit; I, D, etc. to make changes, and Q U R to compile and run.');
+  writeln('It''s that simple. In 1979, computers were functional even without a mouse!');
+  writeln;
+  writeln('This message will appear every time you reboot. To disable, use the Filer to');
+  writeln('delete or rename SYSTEM.STARTUP on the RETRO system volume.');
+  writeln;
+  writeln('                                                                      -- Enjoy!');
+  writeln;
+  writeln('Copyright 2013 Frank Seide');
+  writeln('Copyright 1978, 1979 Regents of the University of California');
+end.

@@ -1,0 +1,343 @@
+SEGMENT PROCEDURE FORMS;
+TYPE
+     SETTYPE = ( NEWFILE, NEWREC, OLDREC );
+     
+VAR
+    MONTHS: ARRAY[1..12] OF STRING[3];
+    PRINT_LINE: INTEGER;
+    PREV_FORMAT: STRING[L_CFORMAT];
+    CONTROL_HEADER: STRING[69];
+    
+PROCEDURE BLANKREC;  FORWARD;
+PROCEDURE CHECKERR( ERRORNUM: INTEGER;  DELENTRY: BOOLEAN;  COND: SETTYPE );
+  FORWARD;
+FUNCTION  ABORT: BOOLEAN;  FORWARD;
+PROCEDURE PUTMAINHEAD;  FORWARD;
+PROCEDURE PUTCTRLHEAD( WHAT: STRING;  NUM: INTEGER );  FORWARD;
+PROCEDURE SETNUM( MIN, MAX: INTEGER;  WHAT: STRING;  VAR ANS: INTEGER;
+                    LINE: INTEGER );  FORWARD;
+PROCEDURE GETUSERID;  FORWARD;
+PROCEDURE GETFORMDESC;  FORWARD;
+PROCEDURE GETDATE;  FORWARD;
+PROCEDURE GET_CONSTANT( NUM, LINE: INTEGER;  OLD: BOOLEAN );  FORWARD;
+PROCEDURE SET_PAGE( PAGE: INTEGER; NO_PROMPT,NEWPAGE: BOOLEAN; COND: SETTYPE;
+                       VAR ERR: INTEGER );  FORWARD;
+PROCEDURE WRITEAREC( VAR OUTFILE: TXTFILE; NUM: INTEGER; VAR AREC: CTLRECORD );
+  FORWARD;
+PROCEDURE SET_CTRL_REC( VAR REC: CTLRECORD;  SETTINGROW: BOOLEAN;
+                           OFFSET: INTEGER;  NO_PROMPT: BOOLEAN;
+                              VAR HITESC: BOOLEAN;  COND: SETTYPE );
+  FORWARD;
+PROCEDURE DISPLAYDIR( VAR OUTFILE: TXTFILE;  TOSCREEN, ALL: BOOLEAN;
+                        RECNUMBER: INTEGER );  FORWARD;
+
+SEGMENT PROCEDURE DEF;           FORWARD;
+SEGMENT PROCEDURE LIST;          FORWARD;
+SEGMENT PROCEDURE CHG;           FORWARD;
+SEGMENT PROCEDURE INITIALIZE;    FORWARD;
+
+SEGMENT PROCEDURE DEF;     (* Form definition *)
+
+PROCEDURE CREATE;      (* Creates freeform directory *)
+VAR I: INTEGER;
+BEGIN
+  ONEMOMENT('Creating Freeform Directory');
+  REWRITE(DIRECTORY,CONCAT(DISKDRIVE,':',DIRNAME));
+  CHECKERR(2,FALSE,NEWFILE);  (* make sure directory was opened *)
+  FILEOPEN := TRUE;
+  I := 0;  BLANKREC;
+  WHILE I <= DIRSIZE DO
+    BEGIN               (* fill directory with blank records *)
+      PUT(DIRECTORY);
+      CHECKERR(2,FALSE,NEWFILE);(* escape and give err message if put failed *)
+      I := I + 1
+    END;
+  CLOSE(DIRECTORY,LOCK);  FILEOPEN := FALSE;
+END;     (* of create *)
+
+PROCEDURE FORMAT_CHOICE;     (* Prompt for choice of format (R/C) *)
+BEGIN
+  REPEAT
+    GETRESPONSE(TRUE,'Format Rows or Columns? (R/C)  ','R','',1,IS);
+    LCTOUC(IS);
+  UNTIL (IS='R') OR (IS='C');
+  IF IS='C' THEN
+    BEGIN IS := 'COLUMN'; DIRECTORY^.FORMAT := FCOL END
+  ELSE
+    BEGIN IS := 'ROW';    DIRECTORY^.FORMAT := FROW END;
+  PROMPT(CONCAT('Formatting is fixed by ',IS),5);
+END;     (* of format_choice *)
+
+PROCEDURE AUTO_CHOICE;     (* Automatic month descriptions? *)
+VAR  TEMP: INTEGER;
+
+BEGIN     (* AUTO_CHOICE *)
+  WITH DIRECTORY^ DO
+    (*$B 40COL- *)
+    IF YESNO('Do you want automatic month descriptions','N') THEN
+      BEGIN     (* wantauto *)
+        REPEAT
+          GETRESPONSE(TRUE,'Month descriptions for rows or columns? (R/C)  ',
+             'C','',1,IS);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    IF YESNO('Auto month descriptions','N') THEN
+      BEGIN     (* wantauto *)
+        REPEAT
+          GETRESPONSE(TRUE,'Descriptions for rows or cols? (R/C)  ',
+             'C','',1,IS);
+    (*$E 40COL  *)
+          LCTOUC(IS);
+        UNTIL (IS='C') OR (IS='R');
+        IF IS='R' THEN AUTO_SWITCH := AROW ELSE AUTO_SWITCH := ACOL;
+        (* select starting month *)
+        GETNUM(1,12,1,'Enter starting month #',TEMP);
+        START_MONTH := TEMP;
+      END
+    ELSE AUTO_SWITCH := NOAUTO;
+END;     (* of auto_choice *)
+
+PROCEDURE SET_CONSTANTS;     (* Gets desired # of constants and sets them   *)
+VAR I: INTEGER;              (* Also creates page in Dat file for Constants *)
+BEGIN
+  ONEMOMENT('Creating File for Constants');
+  REWRITE(FORM_CON_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.CON[4]'));
+  CHECKERR(2,TRUE,NEWFILE);
+  CON_OPEN := TRUE;
+  WITH DIRECTORY^ DO BEGIN
+    (*$B 40COL- *)
+    SETNUM(0,MAXCONSTS,'Calculation Constants',NO_CONSTS,6);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    SETNUM(0,MAXCONSTS,'Calc Constants',NO_CONSTS,6);
+    (*$E 40COL  *)
+    (* initialize all Constants to EMPTY value   SDA 12/03/80 *)
+    FORM_CON_FILE^ := EMPTY;
+    FOR I := 1 TO MAXCONSTS DO
+      BEGIN  PUT(FORM_CON_FILE);  CHECKERR(2,TRUE,NEWFILE)  END;
+    (* Gather the constants *)
+    FOR I := 0 TO NO_CONSTS-1 DO GET_CONSTANT(I+1,(I MOD (MSG_LINE-11))+7,FALSE)
+  END;
+  CLOSE(FORM_CON_FILE,LOCK);  CON_OPEN := FALSE
+END;     (* of set_constants *)
+
+PROCEDURE SET_THE_CTRLS( THEROWS: BOOLEAN );
+VAR
+     HITESC: BOOLEAN;
+     I, CNT: INTEGER;
+     WHAT: STRING[7];
+BEGIN
+  WITH DIRECTORY^ DO BEGIN
+    IF THEROWS THEN BEGIN  WHAT := 'Row';     CNT := NO_ROWS  END
+    ELSE            BEGIN  WHAT := 'Column';  CNT := NO_COLS  END;
+    PUTCTRLHEAD(WHAT, CNT);  (* load parameters into control file *)
+    I := 0;
+    WHILE I < CNT DO
+      BEGIN
+        I := I + 1;
+        (* give record a value before doing the Put *)
+        SET_CTRL_REC(FORM_CTL_FILE^,THEROWS,I,NO_PROMPT,HITESC,NEWFILE);
+        IF HITESC THEN
+          IF YESNO('Abort Define process','N') THEN
+            CHECKERR(0,TRUE,NEWFILE)
+          ELSE
+            BEGIN
+              IF I = 1 THEN
+                BEGIN
+                  I := 0;
+                  CNT := 1;
+                  (*$B 40COL- *)
+                  PRESSRETURN(CONCAT('One ',WHAT,' must be defined'), MSG_LINE)
+                  (*$E 40COL  *)
+                  (*$B 40COL+ *)
+                  PRESSRETURN(CONCAT('Must define one ',WHAT), MSG_LINE)
+                  (*$E 40COL  *)
+                END
+              ELSE CNT := I - 1;
+              IF THEROWS THEN NO_ROWS := CNT ELSE NO_COLS := CNT;
+              SEEKDIR(RECNUMBER,ANDPUT)
+            END
+        ELSE SEEKCTL(FORM_CTL_FILE,NOT THEROWS,I,ANDPUT)
+      END
+  END
+END;     (* of set_the_ctls *)
+
+PROCEDURE DEFINE;
+(* Prompts for form definition attributes and then creates a new entry
+   in the freeform directory
+*)
+VAR ALLOK: BOOLEAN;
+BEGIN
+  (* see if checkpoint prompts are desired *)
+  NO_PROMPT := NOT YESNO('Are checkpoint prompts desired','N');
+  (* set directory window variable *)
+  SEEKDIR(RECNUMBER,NOTHING);
+  DIRECTORY^.FORM_NAME := REQUESTED_FORM;  (* set form name *)
+  DIRECTORY^.VERSION   := THEVERSION;      (* set version  *)
+  GETUSERID;        (* prompt for user id *)
+  GETFORMDESC;      (* prompt for form description *)
+  GETDATE;          (* prompt for date created *)
+  
+  REPEAT
+    ALLOK := TRUE;
+    (* get number of pages, format control, and constants *)
+    SETNUM(1,MAXPAGES,'pages',DIRECTORY^.NO_PAGES,4);
+    FORMAT_CHOICE;  (* select row or column formatting *)
+    AUTO_CHOICE;    (* automatic month descriptions? *)
+    SET_CONSTANTS;  (* get constants desired *)
+    IF NOT NO_PROMPT THEN
+      ALLOK := NOT YESNO('Anything to change','N')
+  UNTIL ALLOK;
+
+  REPEAT         (* Set the Maxes for Rows and Cols as well as actual values *)
+    ALLOK := TRUE;
+    WITH DIRECTORY^ DO BEGIN   (* get # of rows and columns *)
+      (*$B 40COL- *)
+      GETNUM(1,MAXCOL,-1,'How many columns might ever be in the FORM ?',
+              THEMAXCOL);
+      THEMAXROW := ( MAXINT - WINDOWSIZE ) DIV THEMAXCOL;
+      GETNUM(1,THEMAXROW,-1,'How many rows might ever be in the FORM ?',
+              THEMAXROW);
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      GETNUM(1,MAXCOL,-1,'Max cols in FORM ?',THEMAXCOL);
+      THEMAXROW := ( MAXINT - WINDOWSIZE ) DIV THEMAXCOL;
+      GETNUM(1,THEMAXROW,-1,'Max rows in FORM ?',THEMAXROW);
+      (*$E 40COL  *)
+      SETNUM(1,THEMAXCOL,'columns',NO_COLS,MSG_LINE-3);
+      SETNUM(1,THEMAXROW,'rows',NO_ROWS,MSG_LINE-2);
+    END;
+    (*$B 40COL- *)
+    ALLOK := YESNO('Are the dimensions ok as specified','Y');
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    ALLOK := YESNO('Are the dimensions ok','Y');
+    (*$E 40COL  *)
+  UNTIL ALLOK;
+
+  ONEMOMENT('Updating Directory');
+  PUT(DIRECTORY);
+
+END;     (* of define *)
+
+PROCEDURE CREATE_CTLS;     (* Creates form controls *)
+VAR  
+     AWINDOW: WINDOWTYPE;
+     I, ERR: INTEGER;
+
+BEGIN
+  ONEMOMENT('Creating Form Control File');
+  REWRITE(FORM_CTL_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.CTL'));
+  CHECKERR(2,TRUE,NEWFILE);
+  CTL_OPEN := TRUE;
+  WITH DIRECTORY^ DO
+    FOR I := 0 TO THEMAXROW+THEMAXCOL DO
+      BEGIN  PUT(FORM_CTL_FILE);  CHECKERR(2,TRUE,NEWFILE)  END;
+  CLOSE(FORM_CTL_FILE, LOCK);  CTL_OPEN := FALSE;
+
+  ONEMOMENT('Creating Form Data and Titles File');
+  REWRITE(FORM_TIT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.TIT'));
+  CHECKERR(2,TRUE,NEWFILE);
+  FILLCHAR(FORM_TIT_FILE^,L_TITLE+1,0);
+  FOR I := 0 TO MAXPAGES DO
+    BEGIN PUT(FORM_TIT_FILE);  CHECKERR(2,TRUE,NEWFILE)  END;
+  CLOSE(FORM_TIT_FILE,LOCK);
+  
+  IF OPEN_TIT(REQUESTED_FORM) THEN;
+  
+  MEMORY;
+  
+  WITH DIRECTORY^, FORM_DAT_DESC DO BEGIN
+    REWRITE(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+    USEDHEAP := FALSE;
+    CHECKERR(2,TRUE,NEWFILE);
+    DAT_OPEN := TRUE;
+    BLKSPERPAGE := ( (THEMAXROW*THEMAXCOL) + WINDOWSIZE ) DIV ( WINDOWSIZE+1 );
+    (* load page titles into title file *)
+    PUTMAINHEAD;
+    (*$B 40COL- *)
+    WRITE(OUTPUT,'FREEFORM Page Parameter Definition for ',REQUESTED_FORM,
+                 '  Pages=',NO_PAGES {,'  Memavail=',MEMAVAIL} );
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    WRITE(OUTPUT,'FREEFORM Page Def for ',REQUESTED_FORM,
+                 '  Pages=',NO_PAGES {,'  Memavail=',MEMAVAIL} );
+    (*$E 40COL  *)
+    I := 0;
+    REPEAT
+      I := I + 1;
+      SET_PAGE(I,NO_PROMPT,TRUE,NEWFILE,ERR);(* accept page titles, zero form *)
+      IF ERR = 2 THEN    (* User pressed ESC *)
+        IF NOT YESNO('Abort Define process','N') THEN
+          BEGIN
+            ERR := 0;
+            IF I = 1 THEN
+              BEGIN
+                I := 0;
+                NO_PAGES := 1;
+                PRESSRETURN('Must define one Page', MSG_LINE)
+              END
+            ELSE NO_PAGES := I - 1;
+            SEEKDIR(RECNUMBER,ANDPUT);
+          END
+    UNTIL (ERR <> 0) OR (I >= NO_PAGES);
+    IF ERR <> 0 THEN
+      BEGIN
+        IF ERR = 1 THEN ERROR(2);
+        IF (ERR = 2) OR ( (ERR = 1) AND (I = 1) ) THEN
+          CHECKERR(0,TRUE,NEWFILE)
+        ELSE
+          IF YESNO('Is FORM O.K. with fewer Pages','Y') THEN
+            BEGIN
+              NO_PAGES := I - 1;
+              SEEKDIR(RECNUMBER,ANDPUT);
+              (* move file ptr back to end of last page *)
+              IF BLOCKREAD(FORM_DAT_FILE,AWINDOW,1,BLKSPERPAGE*NO_PAGES-1)=1 THEN
+            END
+          ELSE CHECKERR(0,TRUE,NEWFILE);
+      END;
+    CLOSE(FORM_DAT_FILE,CRUNCH);  DAT_OPEN := FALSE
+  END;
+  
+  TIT_OPEN := FALSE;
+  CLOSE(FORM_TIT_FILE, LOCK);
+  
+  MEMORY;
+  
+  IF OPEN_CTL(REQUESTED_FORM) THEN;
+  SET_THE_CTRLS( TRUE );      (* load row parameters into control file *)
+  SET_THE_CTRLS( FALSE );     (* load col parameters into control file *)
+  CLOSE(FORM_CTL_FILE);
+  
+  MEMORY;
+  
+  CTL_OPEN := FALSE;
+
+END;     (* of create_ctls *)
+
+BEGIN     (* DEF *)
+  PUTMAINHEAD;
+  WRITELN(OUTPUT,'New Forms Definition');
+  IF NOT DISK_DIR THEN
+    (*$B 40COL- *)
+    IF YESNO('Create a New Freeform directory','Y') THEN
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    IF YESNO('Create New directory','Y') THEN
+    (*$E 40COL  *)
+      BEGIN  CREATE;  OPEN_DIR  END
+    ELSE
+      EXIT(DEF);
+  
+  MEMORY;
+  
+  IF GET_FORM_NAME(REQUESTED_FORM, RECNUMBER) THEN
+    BEGIN
+      DEFINE;       (* prompt for form attributes *)
+      CREATE_CTLS;  (* prompt for row & col controls *)
+      
+      CLOSE(DIRECTORY,LOCK);
+      FILEOPEN := FALSE
+    END;
+END;      (* of def *)
+

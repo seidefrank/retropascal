@@ -1,0 +1,120 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Interpreter">
+      <UniqueIdentifier>{7c427279-d681-4638-a4ee-060fa9e710e9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{46498e48-f872-4a25-b368-a4aa2843e1eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Peripherals">
+      <UniqueIdentifier>{482e3941-4db5-4312-982e-7595bd39b438}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Standard Procs and Unit Emulation">
+      <UniqueIdentifier>{6d795d66-e848-4e84-a0d7-f990dbfe1ef1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pmachine.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="popcodes.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="await.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ptypes.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="pdisk.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="pgraphics.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="pperipherals.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="pterminal.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="pturtlegraphics.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="iterminal.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="pframestack.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="pglobals.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="pdecops.h">
+      <Filter>Standard Procs and Unit Emulation</Filter>
+    </ClInclude>
+    <ClInclude Include="plongint.h">
+      <Filter>Standard Procs and Unit Emulation</Filter>
+    </ClInclude>
+    <ClInclude Include="winrt\term_winrt.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="winrt\interpreter_thread.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="filesystem\converttext.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="filesystem\diskio_winrt.h">
+      <Filter>Peripherals</Filter>
+    </ClInclude>
+    <ClInclude Include="psnapshot.h">
+      <Filter>Interpreter</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pmachine.cpp">
+      <Filter>Interpreter</Filter>
+    </ClCompile>
+    <ClCompile Include="ptracing.cpp">
+      <Filter>Interpreter</Filter>
+    </ClCompile>
+    <ClCompile Include="pclipboard.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="pdisk.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="pgraphics.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="pterminal.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="pappleunitemulation.cpp">
+      <Filter>Standard Procs and Unit Emulation</Filter>
+    </ClCompile>
+    <ClCompile Include="pcompilersupport.cpp">
+      <Filter>Standard Procs and Unit Emulation</Filter>
+    </ClCompile>
+    <ClCompile Include="winrt\term_winrt.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="filesystem\converttext.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="filesystem\diskio_winrt.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="charset.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+    <ClCompile Include="psnapshot.cpp">
+      <Filter>Interpreter</Filter>
+    </ClCompile>
+    <ClCompile Include="paudio.cpp">
+      <Filter>Peripherals</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,29 @@
+
+{.fs} {$L L.SYSTEM.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+
+{$C Copyright (c) 1978 Regents of the University of California. PASCAL II.800}
+
+{$I GLOBALS }
+
+{.fs}
+{ The source exceeds the editor's maximum file size.                          }
+{ The original source came in parts, which we regroup and rename to begin     }
+{ with the same characters as the main source, for better grouping.           }
+{ The filenames of the original parts are given inside the soruce files.      }
+
+{$I S.PAS1INIT} { system initialization                                        }
+{$I S.PAS2SHEL} { top-level shell                                              }
+{$I S.PAS3OSYS} { system OS: execerror; system UI helpers; the file system     }
+{$I S.PAS4FILE} { Pascal runtime library: built-in FILE I/O functions          }
+{$I S.PAS5STRG} { Pascal runtime library: built-in string functions            }
+{.fs}
+
+BEGIN (*UCSD PASCAL SYSTEM*)
+  EMPTYHEAP := NIL;
+  INITIALIZE;
+  REPEAT
+    COMMAND;
+    IF EMPTYHEAP <> NIL THEN
+      INITIALIZE
+  UNTIL EMPTYHEAP = NIL
+END (*PASCALSYSTEM*) .

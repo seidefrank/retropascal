@@ -1,0 +1,187 @@
+
+        DOCUMENTATION FOR THE 512-BYTE SECTOR SYSTEM
+
+     This volume of two disks contains a sophisticated new BIOS (Basic Input-
+Output System) as well as other supporting programs to implement a noticable 
+speedup of disk access and a 23% greater disk capacity by the use of single-
+density disks with 512-byte sectors accessed sequentially.  The use of double-
+density and double-sided disks is also supported; these formats can be mixed 
+among the disk drives of your system in a manner transparent to the UCSD 
+operating system.  I have been running under this system for several months 
+now and am aware of no bugs in its operation.
+
+     You MUST have the following equipment and facilities in order to 
+implement the 512-byte package:
+
+     1) 8080, Z-80, or 8085 CPU.
+
+     2) Western Digital-based Disk Controller (i.e., containing a 1771, 1773, 
+1791, 1792, 1793, 1794, or 1795).  Adaptations to the code must be made if you 
+do not have one of the Tarbell boards or the Delta disk controller.
+
+     3) The source code to the 8080/Z-80 UCSD interpreter.
+
+     4) The UCSD 8080/Z-80 system assembler (though the interpreter could be 
+transported to CP/M and assembled with a CP/M-based assembler).
+
+     5) Digital Research's MAC (Macroassembler) running under CP/M (though it 
+is likely that a similar macroassembler, such as M-80 from Microsoft, would 
+also work -- you'd have to check that the syntax for the macro package is 
+compatible).
+
+DESCRIPTION OF THE 512-BYTE SYSTEM
+
+     The disk format used by the "standard" UCSD system on 8-inch disks is a
+derivative of DEC's RT-11 format, and consists of 76 tracks (track 0 is
+reserved for the booter and is not really used by the UCSD system once it's
+going) of 26 128-byte sectors each.  Every other sector is read from or
+written to, rather than sequential sectors being used, so that accessing a
+track requires two disk revolutions.  The scheme is somewhat complicated in
+that the first sector accessed on a new track is offset six sectors from the
+first sector on the previous track, which allows a six-sector delay for head
+settling when moving from track to track.  This arrangement speeds up disk
+access (you don't have to wait a full disk revolution when moving to a new
+track) and improves reliability.
+
+     Thus, the sectors on the "standard" disk are read as follows:
+TRACK 1:  1,3,5,...,23,25,2,4,...,24,26
+TRACK 2:  7,9,11,...,3,5,8,10,...,4,6
+TRACK 3:  13,15,17,...,9,11,14,16,...10,12
+and so on.  Notice that the change from odd to even occurs when the logical 
+first sector on the track is reached and differs from track to track, rather
+than occuring at a fixed point.
+
+     Those of us who use LSI-based disk controllers (until recently, 
+universally one of the Western Digital 1770 or 1790 series) realized that we 
+were not entirely happy with this disk format.  First, the UCSD operating 
+system utilizes logical sectors ("blocks") that are 512 bytes long, something 
+we could easily achieve physically on a floppy disk.  Second, our controllers 
+were quite capable of reading sequential sectors.  Finally, there is no 
+provision in the standard UCSD system for double-density 8-inch disks.
+
+     So I have provided programs on these two disks that provide the user of
+the UCSD system who has specific hardware (you MUST have a Z-80, 8080, or 8085
+CPU as well as a Western Digital-based disk controller) with a sophisticated
+UCSD-compatible BIOS that will utilize disks formatted with 128- or 512-byte
+sectors in single density or 512-byte sectors double density.  This BIOS
+contains most of the disk-handling and character-handling routines from the
+CPMIO section of the UCSD interpreter, so that within the BIOS we have
+complete control over the disk formats we use.  As a result, the BIOS on this
+disk allows operation of the UCSD system in a manner that is TRANSPARENT to
+the disk format currently in use, as well as allowing you to use disks of
+different formats simultaneously.  The only gotchas in this system are two:
+1) to change the density of the disks in a given disk drive requires rebooting
+the system, since the density code is read only at boot time (otherwise the
+drive will hang up), and 2) you can change the sector size of the single-
+density disks in a drive only if another drive is accessed immediately before
+the system tries to use the new disk you've just inserted.  This is because 
+the BIOS checks sector size (if the disk drive has been initialized as single-
+density) each time the system changes from one disk drive to another, and the 
+system will hang up if it tries to read a 128-byte sector from a 512-byte disk 
+or vice-versa without first checking sector size.
+
+     The routines on these two disks include specific code for three S-100 
+disk controller boards:  the Tarbell single- and double-density controllers 
+and the Delta double-density controller.  (All the Western Digital-based 
+double density controllers of which I am aware allow software-controlled 
+switching between single- and double-density disks.)   The routines have 
+already been altered by others for other Western-Digital-based controllers 
+such as the S.D. Sales and the Cromemco; you must have an intimate familiarity 
+with your disk controller and a reasonable facility with assembly language to 
+be able to accomplish this conversion.  All the programs that form this system 
+are amply documented, but there is no discussion of alternate controllers.
+
+     The programs that make up the 512-byte sector system include the 
+following:
+
+     VOLUME 2A (normally UCSD format):
+
+CPMIO.DOC.TEXT.  This file contains a discussion of the changes you must make 
+to CPMIO.TEXT (part of the UCSD Z-80/8080 interpreter) to move most of the 
+hardware-specific code out of the interpreter to the PBIOS (Pascal Basic Input-
+Output System), as well as implementing a number of nifty extensions to the 
+I/O Unit system, such as direct port I/O, a form of Peek and Poke, and a 
+system clock.  Deletions are fully described, and insertions are listed.  For 
+copyright reasons, we are NOT able to give you the full text of CPMIO.  Note 
+that CPMIO has changed very little since the first 8080/Z-80 release, so the 
+changes described will work for releases 1.4 to 2.0.  The new Adaptable System 
+just released by SofTec is NOT supported by this CPMIO file, although you 
+could probably adapt the files on the CP/M disk (Volume 2B) to work with that 
+system, since the conversion routines required are a part of the Adaptable 
+System.
+
+     To implement the system, after making the necessary changes in CPMIO (and 
+in the main INCLUDE file, as discussed in CPMIO.DOC), you must reassemble the
+entire interpreter and save it until the new PBIOS is ready.
+
+
+TIMING.DOC.TEXT contains a discussion of the timing considerations for the
+512-byte system; you will find that when you run your disk system at its
+maximum speed, you will discover all the subtle timing constraints you didn't
+have to worry about when you were going slower.
+
+
+     VOLUME 2B (normally CP/M format):
+
+DFOCO.ASM and DFOCO.DOC.  FOCO stands for fast FOrmat and COpy routine, and it 
+is the fastest such disk utility I have ever used, as well as being the most 
+flexible.  The D stands for the Double-density version.  It is highly hardware
+specific, including all the disk-access routines within the program for 
+improved speed.  Conditional assemblies are available for the Delta and both 
+Tarbell controller boards; adaptations for the Cromemco and other Western 
+Digital-based controllers have not been terribly difficult but require careful 
+attention to timing (best done by trying it out with your system).  DFOCO has 
+been around in various versions for two years; the present one has been 
+adapted to be compatible with the majority of disk hardware (you will note 
+long delays after a disk home, for instance, required by some systems).  In 
+its evolution, several routines that worked in the original version but turned 
+out not to be useful now bomb if you try to use them, particularly the logical-
+to-physical mapping utility or the facility that allows custom logical-to-
+physical sector numbering.  However, anything you really need (sector size 
+control, single or double density formatting and reading, the option of SKEW 
+within a track, or sector-numbering OFFSET between tracks) works well.  Only 
+one needed facility does not yet exist, which is the ability to copy one disk 
+to another when the disks have 512-byte sectors.
+
+     DFOCO is fairly well documented in DFOCO.DOC.  One aspect may not be 
+noted there: if you wish a track-to-track sector numbering offset, you must 
+use the compliment of the desired offset in your command (based on the number 
+of sectors per track).  So, if you wish a one-sector offset between tracks, 
+include the command "OFFSET 25" if a 26-sector track is used, or "OFFSET 7" if
+an 8-sector track is required.  I have noted other assorted bugs in DFOCO 
+which preclude its release as a proprietary program, but it is still head and 
+shoulders above any other such program I have used.  Mostly, the bugs do not 
+affect operation.  If you have trouble with DFOCO, particularly if you find 
+and fix a bug, Sam Singer (it author) would like to hear from you.  His 
+address is in the listing.
+
+
+BOOTER.ASM.  This file contains a combination of a custom PBIOS and the
+original UCSD PINIT file released with that system on the CP/M disk.  It has 
+been greatly expanded and revised.  Sophisticated terminal-handling routines 
+for an ADM-3A are provided, allowing you to use a "dumb terminal" with the 
+fancy UCSD screen editor.  Basically, the combination of BOOTER, DFOCO, and 
+PGEN should provide a full and sophisticated I/O system for the majority of 
+UCSD users running an 8080/Z-80 system.
+
+     
+PGEN.ASM.  This file contains the original PGEN released with the UCSD system 
+(to read and write the Track 0 booter and PBIOS on UCSD system disks).  In 
+addition, it has the 1-sector booter already in the file and will read the 
+format code of a newly formatted disk and preserve it correctly for use by the 
+initialization section of BOOTER.  See the documentation within the listings 
+of both BOOTER and PGEN for a more detailed discussion of what a format code 
+is and how it is used.
+
+     
+MACRO.LIB.  This file is a sophisticated macro library developed by Sam Singer 
+and used in the majority of his software (though not required by BOOTER or 
+PGEN).  Specifically, it must be on the disk before you can assemble DFOCO or 
+DUMP (a utility not related to the UCSD Pascal system).  MACRO.LIB is 
+relatively specific to the Digital Research macroassembler, though it should 
+not be hard to adopt for Microsoft's macroassembler.
+
+     
+SAMPLEIO.ASM.  This file contains the I/O portions of my EPROM-based monitor, 
+and has examples of sophisticated drivers for a keyboard queue and a memory-
+mapped video terminal.  It is well documented within the listing.

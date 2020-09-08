@@ -1,0 +1,40 @@
+{$S+}
+{ PROGRAM Format 
+
+        THE PASCAL PROGRAM FORMATTER
+        
+        AUTHOR:  Michael M. Condict, 1975
+                 Par Corp.
+                 228 Liberty Plaza
+                 Rome, NY 13440
+        UPDATED: Aug 1978, by Rick Marcus & Andy Mickel, then
+        PUBLISHED in Pascal News No. 13
+        
+        CONVERTED TO UCSD PASCAL, IDENTIFIER CASE-TRANSPARENCY ADDED:  Jan 1980
+        EXTENSIVELY REVISED (SEE ACCOMPANYING DOCUMENTATION):  Aug 1980
+                 Jim Gagne
+                 1433 Roscomare Road
+                 Los Angeles
+                 
+THIS PROGRAM IS FOR NONCOMMERCIAL USE ONLY.  FOR ALL OTHER PURPOSES, FIRST
+CONTACT MICHAEL CONDICT.}
+
+{$IFORMAT.1.TEXT}
+{FORMAT.1 contains the global declarations & constants initialization sections.}
+
+{$IFORMAT.2.TEXT}
+{FORMAT.2 has the (largely) original text from FORMAT.1 thru WRITESYMBOL.}
+
+{$IFORMAT.3.TEXT}
+{FORMAT.3 is the new menu-driven parameter setting section.}
+
+{$IFORMAT.4.TEXT}
+{FORMAT.4 contains a revised READSYMBOL, including the expanded 
+ comment-handling part.}
+
+{$IFORMAT.5.TEXT}
+{FORMAT.5 has the middle portion of the original FORMAT, to DOSTMTLIST.}
+
+{$IFORMAT.6.TEXT}
+{FORMAT.6 wraps up with the rest of DOBLOCK, DOSTATEMENT, etc., with many 
+ changes near the end.}

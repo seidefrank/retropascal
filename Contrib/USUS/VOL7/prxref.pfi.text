@@ -1,0 +1,359 @@
+(*********************************************)
+(* PRXREF.PFI -- for USUS -- 1980 July 14    *)
+(*********************************************)
+
+PROCEDURE PFILE( FNAME:STRING);
+  (* Print the file FNAME.  Handles included files recursively, *)
+  (*   (thus exceeding UCSD specs). *)
+TYPE
+  DIRRCD= RECORD (* for compiler and formatter directive info *)
+    DIRTYPE, DIRCHAR: CHAR; (* type ($ or cmdchar) and command *)
+    DIRSTR: BIGSTRING (* text associated with directive *)
+    END;
+VAR
+  INFILE: FILE; (* input file *)
+  INCBUFF: BUFFER; (* input buffer *)
+  ID: ALFA; (* for accumulating an identifier in SCANNER, handing to SEARCH *)
+  TI:INTEGER; (* pointer for ID *)
+  NOMORE: BOOLEAN; (* signals end of file *)
+  DIR: DIRRCD; (* contains directive info *)
+  PRINTIT: BOOLEAN; (* controls line print/suppresssion with directives *)
+
+  (* variables to deal with buffer; see GETLINE *)
+  STPTR, TPTR, BUFFLENGTH: BINDX;
+  LASTPTR, TLENGTH, LEFTLENGTH, WLENGTH: BINDXZ;
+
+  (* name and block number being read in include file *)
+  BLOCKNUM: INTEGER;  INCNAME: STRING;
+
+  (* states for sequential machine in SCANNER *)
+  STATE: (LOOKING, QUOTE, CURLYBRACKET, PARENSTAR, MAYBERC, NEWLC);
+  MAYBELC: BOOLEAN; (* help for seq machine *)
+  PROCFLAG: BOOLEAN; (* indicates PROC/FUNC kw *)
+  {***************************************************************************}
+
+  PROCEDURE SCANNER( CUTEND: BOOLEAN);
+    (*****************************************************)
+    (* Scan an input line (in the buffer), extract tokens and send them *)
+    (*   to SEARCH for entry into the xref table. Respect the sanctity *)
+    (*   of comments and quoted strings. *)
+    (* This routine uses a sequential machine tokenizing technique. *)
+    (*   Since it must work across line boundaries, the state and *)
+    (*   auxilliary variables are global to PFILE. *)
+    (* CUTEND ==> end of the call forces the end of a token; *)
+    (*   otherwise, accumulate token across calls *)
+    (*****************************************************)
+
+  VAR
+    C: CHAR;
+    I, STARTPTR: INTEGER;
+  (***********************)
+  PROCEDURE SEARCHP( ID: ALFA);
+    (* Call the table search routine to enter ID. *)
+    (* Place a special code in the table immediately following any *)
+    (*   symbol that is preceded by "PROCEDURE" OR "FUNCTION". *)
+    (*   This will result in printing a flag in the xref for such symbols *)
+  VAR
+    SAVELINE: INTEGER;
+  BEGIN
+    (* look for ID in xref table and enter if appropriate *) SEARCH( ID);
+    IF ( ID = 'PROCEDUR' ) OR ( ID = 'FUNCTION' ) THEN
+      (* remember that fact for next round *)  PROCFLAG := TRUE
+    ELSE IF PROCFLAG THEN BEGIN (* last round was PROC or FUNC keyword *)
+      (* put the special code into the xref table *)
+      PROCFLAG := FALSE;
+      SAVELINE := LINENUMBER;  LINENUMBER := PROCCODE; SEARCH( ID);
+      LINENUMBER := SAVELINE
+      END
+    END;
+  (***********************)
+  BEGIN (* scanner *)
+    (* respect the indent code at the beginning of a line *)
+    IF INCBUFF[ TPTR] = CHR( DLE) THEN STARTPTR := TPTR + 2
+    ELSE STARTPTR := TPTR;
+    (* main scanning loop -- to end of the line *)
+    FOR I := STARTPTR TO TPTR + WLENGTH - 1 DO BEGIN
+      C := INCBUFF[ I];
+      (* fold to upper case (efficiently) *)
+      IF ( C >= 'a') THEN IF ( C <= 'z') THEN C := CHR( ORD( C) - 32);
+      IF MAYBELC THEN BEGIN (* had left paren last, is this a * ?*)
+        IF C = '*' THEN (* yep, we are now starting a comment *)
+          STATE := NEWLC;
+        MAYBELC := FALSE
+        END;
+      CASE STATE OF (* main state selection for sequential machine *)
+        LOOKING: BEGIN (* looking for a token *)
+          IF (( C >= 'A') AND ( C <= 'Z')) OR (( C >= '0') AND (C <= '9'))
+            THEN BEGIN (* its an id character; accumulate it *)
+            IF (TI <= ALFALEN) THEN (* still under max token length *)
+              BEGIN ID[ TI] := C;  TI := TI + 1  END
+            END
+          ELSE IF C <> '_' THEN BEGIN (* not an id character }
+            (* enter appropriate state *)
+            IF C = '{' THEN STATE := CURLYBRACKET
+            ELSE IF C = '''' THEN STATE := QUOTE
+            ELSE IF C = '(' THEN (* possible left comment *) MAYBELC := TRUE;
+            IF TI > 1 THEN BEGIN (* just finished an id *)
+              (* place in xref table *) SEARCHP( ID);
+              (* initialize the id accumulator *)  TI := 1; ID := '        '
+              END
+            END
+          END; (* end LOOKING *)
+        NEWLC: (* now in middle of a parenstar comment *) STATE := PARENSTAR;
+        QUOTE: IF C = '''' THEN (* leave quoted string *) STATE := LOOKING;
+        CURLYBRACKET: IF C = '}' THEN (* leave comment *) STATE := LOOKING;
+        PARENSTAR: IF C = '*' THEN (* maybe end comment *) STATE := MAYBERC;
+        MAYBERC: IF C = ')' THEN (* leave comment *) STATE := LOOKING
+          ELSE IF C = '*' THEN (* still maybe end comment *) STATE := MAYBERC
+          ELSE (* whoops, back inside the comment *) STATE := PARENSTAR
+        END { case state }
+      END { big for loop };
+    IF CUTEND THEN (* end of call forces end of token *)
+      IF TI > 1 THEN BEGIN
+        SEARCHP( ID);  TI := 1;  ID := '        '  END
+    END;
+  (**************************************************************************)
+  (*$G+*)
+
+  FUNCTION DIRECTIVE( TPTR: INTEGER; TLENGTH: BINDX; VAR DIR: DIRRCD)
+      : BOOLEAN;
+    (* Check input buffer at TPTR, length TLENGTH for a directive, *)
+    (* that is, a Pascal comment beginning with $ or CMDCHAR *)
+    (* This is  a compiler directive ($) or format directive (CMDCHAR). *)
+    (* The only $ directive accepted is "$I FILENAME", file inclusion. *)
+    (* If found, TRUE is returned and DIR. set as follows: *)
+    (*    DIR.DIRTYPE := '$' or CMDCHAR as the case may be *)
+    (*    DIR.DIRCHAR := character following DIRTYPE, the actual directive *)
+    (*    DIR.DIRSTR  := the string between DIRCHAR and end of the comment *)
+    (* The routine is organized to waste as little time as possible on *)
+    (* non-directives, hence the GOTOs *)
+  LABEL 1; (* exit point *)
+  VAR
+    EPOS, SPTR: INTEGER;
+    ESTR: STRING;
+    CHK: RECORD CASE INTEGER OF  (* for string manipulation *)
+      0: (CHKARR: PACKED ARRAY[ 0..255] OF CHAR);
+      1: (CHKSTR: STRING[ 255])
+      END;
+    CHKLENGTH: INTEGER;
+
+  BEGIN  WITH DIR, CHK DO BEGIN
+    DIRECTIVE := FALSE; (* assume not a directive *)
+    IF INCBUFF[ TPTR] = CHR( DLE) THEN BEGIN (* account for ident code *)
+      TPTR := TPTR + 2;  TLENGTH := TLENGTH - 2  END;
+    IF TLENGTH < 4 (* not long enough for anything useful *) THEN GOTO 1;
+    IF INCBUFF[ TPTR] = '(' THEN BEGIN
+      IF INCBUFF[ TPTR+1] = '*' THEN BEGIN (* have a paren-star comment *)
+        IF TLENGTH < 6 THEN (* too short for paren-star directive *) GOTO 1;
+        SPTR := TPTR + 2;  ESTR := '*)'  END
+      ELSE (* false alarm, not paren-star *) GOTO 1
+      END
+    ELSE IF INCBUFF[ TPTR] = '{' THEN BEGIN (* have a curly bracket comment *)
+      SPTR := TPTR + 1;  ESTR := '}'  END
+    ELSE (* not a comment *) GOTO 1;
+    (* have a comment; get type and check if acceptable *)
+    DIRTYPE := INCBUFF[ SPTR];
+    IF DIRTYPE = '$' THEN (* have a compiler directive *) BEGIN
+      DIRCHAR := INCBUFF[ SPTR+1];  UCFOLD( DIRCHAR); (* get command char *)
+      IF DIRCHAR = 'I' THEN (* possible incl *) BEGIN
+        IF INCBUFF[ SPTR+2] IN ['+', '-'] THEN (* reject I+, I- *) GOTO 1
+        END
+      ELSE (* reject all $ directives but I *) GOTO 1
+      END
+    ELSE IF DIRTYPE = CMDCHAR THEN (* check for legal command *) BEGIN
+      DIRCHAR := INCBUFF[ SPTR+1];  UCFOLD( DIRCHAR); (* get command char *)
+      IF NOT (DIRCHAR IN CMDCHARSET) THEN GOTO 1
+      END
+    ELSE (* not a directive of either type *) GOTO 1;
+    (* have acceptable directive; find end of comment with string search *)
+    CHKLENGTH := TLENGTH + TPTR - SPTR - 2; (* length of remainder *)
+    IF CHKLENGTH > 0 THEN
+      MOVELEFT( INCBUFF[ SPTR+2], CHKARR[ 1], CHKLENGTH); (* set up string *)
+    CHKARR[ 0] := CHR( CHKLENGTH); (* with length *)
+    EPOS := POS( ESTR, CHKSTR); (* position of end of comment *)
+    IF EPOS = 0 THEN (* no end-of-comment; forget it *) GOTO 1;
+    DIRSTR := COPY( CHKSTR, 1, EPOS-1); (* extract the directive's text *)
+    DIRECTIVE := TRUE; (* report success *)
+    1: END END;
+  (*$G-*)
+  (**************************************************************************)
+
+  PROCEDURE PUTLINE;
+    (* Write line to printer file, directly from buffer if possible *)
+  VAR
+    N: INTEGER;
+    CUTLINE: BOOLEAN;
+    ORCD: RECORD CASE INTEGER OF (* for strng-lngth tricks *)
+      1: (OBUFF: STRING[ 135]);
+      2: (NBUFF: PACKED ARRAY[ 0..135] OF 0..255)
+      END;
+  BEGIN
+    (* scan away nulls at beginning of line *)
+    N := SCAN( TLENGTH, <>CHR( NULL), INCBUFF[ TPTR]);
+    IF N < TLENGTH THEN BEGIN (* something other than nulls on the line *)
+    BUMPLINE; (* count an output line *)
+      (* Strip possible carriage return from tail of line *)
+      (* and, indicate (CUTLINE) whether to scan ID's to next line *)
+      IF INCBUFF[ TPTR+TLENGTH-1] = CHR( CR) THEN BEGIN
+        WLENGTH := TLENGTH-1;  CUTLINE := TRUE  END
+      ELSE BEGIN WLENGTH := TLENGTH; CUTLINE := FALSE  END;
+      IF PRINTING THEN BEGIN (* actual output *)
+        IF NUMBERING THEN WRITE( OUTFILE, LINENUMBER: LNUMWIDTH, ' ');
+        IF UNITOUT THEN (* output to unit *) BEGIN
+          UNITWRITE( PRINTUNIT, INCBUFF[ TPTR], WLENGTH)
+          END
+        ELSE WITH ORCD DO BEGIN (* output to a file *)
+          MOVELEFT( INCBUFF[ TPTR], OBUFF[ 1], WLENGTH);
+          NBUFF[ 0] := WLENGTH;  WRITE( OUTFILE, OBUFF)
+          END
+        END;
+      IF XREFFING THEN (* scan and enter symbols in table *) SCANNER( CUTLINE);
+      PUTCRLF (* carriage return to printer *)
+      END
+    END;
+  (**************************************************************************)
+
+  PROCEDURE GETLINE;
+    (* Get an input line using BLOCKREAD. *)
+    (* Variables set here for other routines to use in processing: *)
+    (*   INCBUFF: input buffer, filled using BLOCKREAD; *)
+    (*   TPTR: start of line in INCBUFF;  *)
+    (*   TLENGTH: length of line. *)
+    (* Variables used internally:
+    (*   LEFTLENGTH: characters left to process in INCBUFF; *)
+    (*   LINELENGTH: printer line length (now a constant 130) *)
+    (*   TOSCAN: number of chars in INCBUFF to scan for CR *)
+    (*   BLKLENGTH: length of INCBUFF data excluding trailing nulls *)
+  VAR
+    I, BLKLENGTH: INTEGER;
+    TOSCAN: BINDXZ;
+  BEGIN
+    TPTR := TPTR + TLENGTH; (* hop over the previous line *)
+    LEFTLENGTH := BUFFLENGTH - TPTR + 1; (* adjust LEFTLENGTH accordingly *)
+    IF LEFTLENGTH <= LINELENGTH THEN BEGIN
+      (* not enough chars in buffer for a full print line *)
+      IF LEFTLENGTH > 0 THEN (* scrunch remaining chars to front of buffer *)
+        MOVELEFT( INCBUFF[ TPTR], INCBUFF[ 1], LEFTLENGTH);
+      (* read new bufferfull from input file *)
+      REPEAT
+        IF EOF( INFILE) THEN BEGIN (* fill remainder with nulls *)
+          FILLCHAR( INCBUFF[ LEFTLENGTH+1], 512, CHR( NULL));
+          LASTPTR := LEFTLENGTH;  BLKLENGTH := 512  END
+        ELSE BEGIN (* read a block from input file *)
+          (*$I-*)
+          I := BLOCKREAD( INFILE, INCBUFF[ LEFTLENGTH+1], 1, BLOCKNUM);
+          (*$I+*)
+          IOERR:=IORESULT;
+          GLOBLOCK := BLOCKNUM; (* for homebrew err msgs *)
+          BLOCKNUM := BLOCKNUM + 1;
+          IF (I <> 1) OR (IOERR > 0) THEN IOE( IOERR, FNAME);
+          (* set blocklength, omit trailing nulls *)
+          BLKLENGTH :=
+            512 + SCAN( -512, <>CHR( NULL), INCBUFF[ LEFTLENGTH + 512])
+          END
+        UNTIL ( BLKLENGTH > 0) OR EOF( INFILE);
+      (* show a new buffer *)
+      TPTR := 1; BUFFLENGTH := BLKLENGTH + LEFTLENGTH;
+      LEFTLENGTH := BUFFLENGTH;
+      END;
+    (* now have buffer with at least one printer line's worth in it *)
+    (*   (or end of file ) *)
+    (* scan for carriage return and set TLENGTH *)
+    IF LEFTLENGTH < LINELENGTH THEN TOSCAN := LEFTLENGTH
+    ELSE TOSCAN := LINELENGTH;
+    TLENGTH := 1 + SCAN( TOSCAN, =CHR( CR), INCBUFF[ TPTR]);
+    NOMORE := (TPTR + TLENGTH > LASTPTR) (* indicate if end of file *)
+    END;
+  (**************************************************************************)
+  PROCEDURE DOCMD( CMD: DIRRCD);
+    (* Carry out a formatting directive (CMD) set up by DIRECTIVE *)
+  VAR
+    NTOSKIP: INTEGER; (* how many to skip for 'S' *)
+    CLEANSTR: BIGSTRING;  (* for stripped operand string *)
+  BEGIN WITH CMD DO BEGIN
+    (* set up stripped operand string *)
+    CLEANSTR := DIRSTR;  STRIPSTRING( CLEANSTR);
+    IF DIRCHAR = 'H' THEN BEGIN (* header directive *)
+        (* H+ ==> turn on standard title headers (default) *)
+        (* H- ==> turn off headers altogether *)
+        (* H string ==> use string as a header *)
+      IF DIRSTR = '+' THEN BEGIN  HDRS := TRUE;  TITLEHDRS := TRUE  END
+      ELSE IF DIRSTR = '-' THEN BEGIN  HDRS := FALSE  END
+      ELSE BEGIN
+        HDRS := TRUE;  TITLEHDRS := FALSE;
+        (* use unstripped directive operand as header *) HEADER := DIRSTR;
+        (* except for one possible leading space *)
+        IF LENGTH( HEADER) > 0 THEN IF HEADER[ 1] = ' ' THEN
+          DELETE( HEADER, 1, 1)
+        END
+      END (* case 'H' *)
+    ELSE IF DIRCHAR = 'S' THEN BEGIN (* skip directive: S ntoskip *)
+      IF CLEANSTR = '' THEN CLEANSTR := '1';
+      NTOSKIP := STRTON( CLEANSTR); (* convert to number *)
+      IF (NTOSKIP > PAGELINES) OR (NTOSKIP < 0) THEN (* error *)
+        PRINTIT := TRUE (* give up and just print it *)
+      ELSE SKIP( NTOSKIP * SPACING) (* skip, accounting for scurrent spacing *)
+      END (* case 'S' *)
+    ELSE IF DIRCHAR = 'P' THEN BEGIN (* page skip *)
+      IF CLEANSTR = '' THEN TOPOFPAGE  ELSE PRINTIT := TRUE
+      END (* case 'P' *)
+    END END;
+  (**************************************************************************)
+
+BEGIN (* PFILE *)
+  IF NOT FILECHECK( FNAME) THEN BEGIN
+    MSG( 'File: ', 1);  WRITE( FNAME, ' cannot be opened');
+      EXIT( PRXREF)  END;
+  CLOSE( INFILE); RESET( INFILE, FNAME);
+  (* set name and numbering for included file *)
+  LNAME := FNAME;  LPAGE := 1;
+  IF INCLSKIPPING THEN TOPOFPAGE;  FININCL := FALSE;
+  (* initialize variables for GETLINE *)
+  BLOCKNUM := 2;  LASTPTR := BUFFMAX;
+  BUFFLENGTH := 1;  TPTR := BUFFLENGTH + 1;  TLENGTH := 0;
+  IF XREFFING THEN (* initialize variables for SCANNER *) BEGIN
+    TI := 1;  ID := '        ';  (* accumulator for identifiers *)
+    STATE := LOOKING;  MAYBELC := FALSE;  (* state variables *)
+    PROCFLAG := FALSE  (* proc/func kw flag *)
+    END;
+  (* main file read/print loop -- GETLINE and PUTLINE until end of file *)
+  REPEAT
+    GETLINE;  LINENUMBER := LINENUMBER + 1;
+    (* account for indent code on the line *)
+    IF INCBUFF[ TPTR] = CHR( DLE) THEN STPTR := TPTR + 2
+    ELSE STPTR := TPTR;
+    PRINTIT := TRUE; (* assume line will be printed *)
+    (* check for compiler directive or format comment *)
+    IF DIRECTIVE( TPTR, TLENGTH, DIR) THEN WITH DIR DO BEGIN (* directive *)
+      PRINTIT := FALSE; (* line probably won't be printed (could be wrong) *)
+      IF DIRTYPE = '$' THEN (* compiler directive -- include *) BEGIN
+        IF INCLU THEN (* including is enabled *) BEGIN
+          IF DIRCHAR = 'I' THEN (* just double-checking for $I *) BEGIN
+            STRIPSTRING( DIRSTR); (* strip blanks *)
+            INCNAME := DIRSTR;  (* this is include file's name *)
+            MSG( 'included file: ', 1);  WRITE( INCNAME);
+            LINENUMBER := LINENUMBER - 1; (* adjust for compiler numbering *)
+            (* recursively print the included file *)
+            PFILE( INCNAME);
+            IF ESCAPING THEN (* keep getting out of PFILE *) EXIT( PFILE);
+            LNAME := FNAME;  FININCL := TRUE;
+            LINENUMBER := LINENUMBER + 1; (* adjust for compiler numbering *)
+            MSG( ' ', 1);
+            END
+          END
+        END
+      ELSE IF DIRTYPE = CMDCHAR THEN (* format directive *) BEGIN
+        IF VFORMATTING THEN (* its enabled; do the command  *) DOCMD( DIR)
+        ELSE (* not enabled; just print the line *) PRINTIT := TRUE
+        END
+      END;
+    IF PRINTIT THEN (* line to be printed as-is *) BEGIN
+      IF FININCL THEN BEGIN  (* finish up include with page skip *)
+        FININCL := FALSE; TOPOFPAGE END;
+      PUTLINE (* print the line *)
+      END;
+    (* check user hit on keyboard with escape *)
+    IF ESCAPEHIT THEN EXIT( PFILE)
+    UNTIL (* GETLINE says *) NOMORE
+  END; {pfile}
+

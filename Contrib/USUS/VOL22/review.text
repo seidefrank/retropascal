@@ -1,0 +1,247 @@
+{$L- PRINTER:}
+UNIT REVIEW;
+
+INTERFACE
+
+CONST   PXMAX = 2000; {for small Hiplot}
+        PYMAX = 1400;
+
+TYPE    SCREENTYPE = PACKED ARRAY [0..4,0..4] OF BOOLEAN;
+
+VAR     PENSTATE,OLDIPX,OLDIPY  : INTEGER;
+        OLDPEN : BOOLEAN;
+        
+
+PROCEDURE INITPLOT;
+
+PROCEDURE DRAWLINE(VAR RANGE:INTEGER; VAR S:SCREENTYPE; ROWWIDTH,
+  XSTART,YSTART,DELTAX,DELTAY,INK:INTEGER);
+
+PROCEDURE HOME;
+
+PROCEDURE THROTTLE(TICKS : INTEGER);
+
+
+IMPLEMENTATION
+
+PROCEDURE DMP2PLOT(CH : CHAR);
+
+{Note: address of serial board receiver status register and receiver buffer
+ must be specified in decimal.  The easy way to do this is illustrated for
+ the standard REMOUT addresses, 177524 and 177526 (not used by the reviewer):
+    200000 - 177524 = 252 (8)   (using octal arithmetic)
+    (0*512)+(2*64)+(5*8)+(2*1) = 172 (10)
+    PXCSR = -172
+    PXBUF = -170}
+
+  CONST PXCSR = -684 (*176524 (octal); DLV11J address*);
+        PXBUF = -682 (*176526 (octal); DLV11J address*);
+        BITNO = 7;
+  TYPE  INFO = PACKED RECORD CASE BOOLEAN OF
+          TRUE : (CH : PACKED ARRAY [0..1] OF CHAR);
+          FALSE : (BIT : PACKED ARRAY [0..15] OF BOOLEAN);
+        END;
+        IOPORT = PACKED RECORD CASE BOOLEAN OF
+          TRUE : (ADDR : INTEGER);
+          FALSE : (PNTR : ^INFO)
+        END;
+  VAR   XCSR,XBUF : IOPORT;
+  
+  BEGIN
+    REPEAT
+      XCSR.ADDR := PXCSR
+    UNTIL XCSR.PNTR^.BIT[BITNO];
+    XBUF.ADDR := PXBUF;
+    XBUF.PNTR^.CH[0] := CH;
+  END;
+
+PROCEDURE ENCODE(COMMAND : INTEGER);
+
+  CONST SP = ' ';
+        DELAY = 24;  (*delay for pen changes*)
+  
+  VAR   PENCODE2 : CHAR;
+        I : INTEGER;
+        
+  BEGIN
+    IF (COMMAND IN [0..10]) THEN
+      BEGIN
+        CASE COMMAND OF
+          0 : PENCODE2 := ' ';     (*NOP*)
+          1 : PENCODE2 := 't';     (*-y*)
+          2 : PENCODE2 := 'p';     (*+y*)
+          3 : PENCODE2 := 'z';     (*pen down*)
+          4 : PENCODE2 := 'v';     (*-x*)
+          5 : PENCODE2 := 'u';     (*-x,-y*)
+          6 : PENCODE2 := 'w';     (*-x,+y*)
+          7 : PENCODE2 := 'y';     (*pen up*)
+          8 : PENCODE2 := 'r';     (*+x*)
+          9 : PENCODE2 := 's';     (*+x,-y*)
+         10 : PENCODE2 := 'q';     (*+x,+y*)
+       END;
+       DMP2PLOT(PENCODE2);
+       IF ((COMMAND IN [3,7]) AND (COMMAND <> PENSTATE)) THEN
+         BEGIN 
+           PENSTATE := COMMAND;
+           FOR I := 1 TO DELAY DO DMP2PLOT(SP)
+         END
+     END;
+  END;
+
+PROCEDURE PLOT(MOVE,INK : INTEGER);
+  BEGIN
+    IF NOT (INK IN [0..2]) THEN EXIT(PLOT);
+    CASE INK OF
+      0 : BEGIN
+            OLDIPX := 0;     (*set current pen position as plotter origin*)
+            OLDIPY := 0;     (*and initializes pen to undefined state*)
+            PENSTATE := 0;
+            EXIT(PLOT)
+          END;
+      1 : IF (NOT OLDPEN) THEN
+            BEGIN
+              ENCODE(3);  (*lower before*)
+              OLDPEN := TRUE
+            END;
+      2 : IF (OLDPEN) THEN
+            BEGIN
+              ENCODE(7);  (*raise before*)
+              OLDPEN := FALSE
+            END;
+    END; (*case*)
+    ENCODE(MOVE)
+  END;
+PROCEDURE DRAWLINE(*VAR RANGE:INTEGER; VAR S:SCREENTYPE; ROWWIDTH,
+  XSTART,YSTART,DELTAX,DELTAY,INK:INTEGER*);
+
+{This is a revision of the  Pascal implementation from Version 1.5 manual.
+ Added or revised code in lower case.  Several lines were deleted.}
+
+  VAR   X,Y,XINC,YINC,mode,move,xcode,ycode,xycode,dx,dy : INTEGER;
+  
+PROCEDURE DOFORX;   {MORE HORIZONTAL}
+  
+  VAR ERROR,I:INTEGER;
+  BEGIN
+    IF DELTAX=0 THEN EXIT(DRAWLINE);
+    ERROR:=DELTAX DIV 2;
+    I:=DELTAX;
+    REPEAT
+      X := X+XINC;
+      ERROR:=ERROR+DELTAY;
+      IF ERROR>=DELTAX THEN
+        BEGIN
+          ERROR:=ERROR-DELTAX;
+          Y := Y+YINC;
+          move := xycode;
+          if (y>PYMAX) or (y<0) then move := move-ycode
+        END
+      else
+        begin
+          move := xcode;
+          if (x>PXMAX) or (x<0) then move := 0
+        end;
+      plot(move,ink);
+      I:=I-1;
+    UNTIL I=0
+  END (*DOFORX*);
+  
+PROCEDURE DOFORY;   {MORE VERTICAL}
+  
+  VAR ERROR,I:INTEGER;
+  BEGIN
+    ERROR:=DELTAY DIV 2;
+    I:=DELTAY;
+    REPEAT
+      Y := Y+YINC;
+      ERROR:=ERROR+DELTAX;
+      IF ERROR>=DELTAY THEN
+        BEGIN
+          ERROR:=ERROR-DELTAY;
+          X := X+XINC;
+          move := xycode;
+          if (x>PXMAX) or (x<0) then move := move-xcode
+        END
+      else
+        begin
+          move := ycode;
+          if (y>PYMAX) or (y<0) then move := 0
+        end;
+      plot(move,ink);
+      I:=I-1;
+    UNTIL I=0
+  END (*DOFORY*);
+  
+  BEGIN (*DRAWLINE*)
+    X := XSTART;
+    Y := pymax-YSTART; {in pen coordinates}
+    DELTAY := -DELTAY; {in pen coordinates}
+    if (X<>oldipx) or (Y<>oldipy) then
+      begin
+        dx := x-oldipx;
+        dy := oldipy-y;
+        drawline(RANGE,S,ROWWIDTH,oldipx,pymax-oldipy,dx,dy,2);
+      end;
+    oldipx := x+deltax;
+    oldipy := y+deltay;
+    IF DELTAX < 0 THEN
+      BEGIN
+        xcode := 4;
+        XINC := -1;
+        DELTAX := -DELTAX
+      END
+    ELSE
+      begin
+        xcode := 8;
+        XINC := 1
+      end;
+    IF DELTAY < 0 THEN
+      BEGIN
+        ycode := 1;
+        YINC := -1;
+        DELTAY := -DELTAY
+      END
+    else
+      begin
+        ycode := 2;
+        YINC := 1
+      end;
+    xycode := xcode+ycode;
+    IF DELTAX >= DELTAY THEN DOFORX ELSE DOFORY;
+  END (*DRAWLINE*);
+  
+PROCEDURE INITPLOT;
+  BEGIN
+    PLOT(0,0);
+    ENCODE(7);
+    OLDPEN := FALSE;
+  END;
+  
+PROCEDURE HOME;
+  VAR RANGE,R:INTEGER;
+      S:SCREENTYPE;
+  BEGIN
+    DRAWLINE(RANGE,S,R,OLDIPX,PYMAX-OLDIPY,-OLDIPX,OLDIPY,2);
+  END;
+  
+PROCEDURE THROTTLE(*TICKS:INTEGER*);
+  
+  VAR   COUNT,HITIME,START,STOP,TIMEDIFF : INTEGER;
+  BEGIN
+    COUNT := 0;
+    TIME(HITIME,START);
+    REPEAT
+      COUNT := COUNT+1;
+      TIME(HITIME,STOP);
+      TIMEDIFF := STOP-START;
+      IF (TIMEDIFF < 0) THEN TIMEDIFF := TIMEDIFF+32767;
+      IF ((TIMEDIFF = 0) AND (COUNT = 1000)) THEN
+        BEGIN
+          GOTOXY(0,23);
+          WRITE(CHR(7),'Turn on the line time clock! Type <RTN> to continue.');
+          READLN
+        END;
+      UNTIL (TIMEDIFF >= TICKS)
+  END;
+
+END.

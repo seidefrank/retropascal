@@ -1,0 +1,50 @@
+        .PROC   READCPM,1
+        .PUBLIC DISKBUF
+        .ORG    0
+        POP     HL      ; EXTENT PASSED AS PARAMETER
+        EX      (SP),HL ;   UNDER RETURN ADDRESS
+        LD      BC,DISKBUF
+        ADD     HL,HL
+        ADD     HL,HL
+        ADD     HL,HL
+FETCH   PUSH    HL
+        PUSH    BC
+        LD      B,1
+        LD      DE,0-26
+DIVL    ADD     HL,DE
+        INC     B
+        LD      A,H
+        OR      A
+        JP      P,DIVL
+        LD      DE,TABLE+26
+        ADD     HL,DE
+        LD      C,(HL)
+        LD      L,21H   ; OFFSET OF SETSEC
+        CALL    BIOS
+        LD      C,B
+        LD      L,1EH   ; OFFSET OF SETTRK
+        CALL    BIOS
+        POP     BC
+        LD      L,24H   ; OFFSET OF SETDMA
+        CALL    BIOS
+        LD      HL,128
+        ADD     HL,BC
+        PUSH    HL
+        LD      L,27H   ; OFFSET OF READ
+        CALL    BIOS
+        POP     BC
+        POP     HL
+        INC     HL
+        LD      A,7
+(AND     L
+        JR      NZ,FETCH
+        RET
+BIOS    LD      A,(2)
+        LD      H,A
+        JP      (HL)
+TABLE   .BYTE   01H,07H,0DH,13H,19H,05H
+        .BYTE   0BH,11H,17H,03H,09H,0FH,15H
+        .BYTE   02H,08H,0EH,14H,1AH,06H,0CH
+        .BYTE   12H,18H,04H,0AH,10H,16H
+        .END
+

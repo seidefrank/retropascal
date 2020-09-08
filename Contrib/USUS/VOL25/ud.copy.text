@@ -1,0 +1,1746 @@
+{xL #5:CPYLST.TEXT }
+
+PROGRAM COPY_DATA_FILE;
+
+{ Author       : Mike Smith
+  Date written : July 23, 1981
+  Revision     :
+
+  This program copies records from one data file to another
+
+  Files required: UDE SCRN and TEXT files to copy from and
+                  SCRN and TEXT files to copy to. The program
+                  will create the TEXT file to copy to if it does
+                  not already exist.
+
+  Method: After opening the required files, the program prompts the
+          the user for information regarding which records of the
+          "from" data file are to be copied. The program then does the
+          following in a loop until the end of either data file is reached.
+          A record is read from the "from" data file and the fields
+          of that record are loaded into OLD_FIELDS. If it is decided
+          that that record is to be copied, the proper fields are
+          copied from OLD_FIELDS to NEW_FIELDS. The NEW_FIELDS are
+          put in the proper format and written out to a buffer to be
+          written to disk when full.                                       }
+
+USES {$U SH.SCREEN.UNIT} SCREEN40;
+
+CONST
+  SCREEN_TESTS = 13;
+  MAX_TESTS    = 52;
+  MAX_INT      = 32767;
+  MAX_REC_LEN  = 255;
+
+TYPE
+  MAP_REC  = RECORD
+               OLD_FLD_NO : INTEGER;
+               SET_TYPE   : CHAR;
+             END;
+  OPS      = (LT,GT,EQ,LE,GE,NE);
+  TEST_REC =  PACKED RECORD
+                FIELD_LOC  : 0..SCREEN_FIELDS;
+                OPERATOR   : OPS;
+                VALUE      : STRINGFL;
+              END;
+  GENFILE = FILE OF PACKED RECORD
+    CASE INTEGER OF
+    0:(NFLDS,RSIZE,NRECS,LIM : INTEGER);
+    1:(DATA : STRING[MAX_REC_LEN]);
+    END;
+  MAP_DEF = ARRAY[1..SCREEN_FIELDS] OF MAP_REC;
+  TEST_DEF = ARRAY[1..MAX_TESTS] OF TEST_REC;
+  STRING2   = STRING[2];
+  STRING5   = STRING[5];
+  STRING23  = STRING[23];
+  STRING40  = STRING[40];
+  STRING255 = STRING[255];
+  THREEWORDINT = INTEGER[8];
+  BUF_DEF      = PACKED ARRAY[0..511] OF 0..255;
+
+VAR
+  OLD_FIELDS,NEW_FIELDS : SCREEN_ARR;
+  MAP_ARRAY   : MAP_DEF;
+  TEST_ARRAY  : TEST_DEF;
+  DATA_RESULTS,         { 0 If data file exists }
+  DEFI_RESULTS,         { 0 If data file definition exists }
+  GET_RESULTS,          { 0 If 'GET.SCRN' loaded }
+  RESULTS,INDEX,NUM_OLD_FLDS,NUM_NEW_FLDS,NEW_REC_NO,NUM_FLDS,
+  FIELD_ROW,FIELD_COL,FIELD_LEN,FIELD_MIN,OLD_BLOCK,NEW_BLOCK,MAX_RECORDS,
+  NUM_OLD_RECS,I,II,OLD_REC_NO,OLD_REC_LEN,NEW_REC_LEN,
+  NUM_REC,ERRCOL,ERROW : INTEGER;
+  EXIT_KEY,FIELD_JUS,FIELD_NA,CH : CHAR;
+  FIELD_FLD : STRINGFL;
+  DIGITSET : SET OF CHAR;
+  VOLUME    : STRING[7];   { Data file volume }
+  NAME      : STRING[10];  { Data file name }
+  DB_NAME   : STRING[18];  { Volume + Data file name }
+  O_DEFI_NAME : STRING[23];{ Data File Definition Name }
+  N_DATA_NAME : STRING[23];{ Data File Name }
+  STR_RECNO : STRING[5];
+  OLD_FILE,NEW_FILE : FILE;
+  OLD_GEN_FILE : GENFILE;
+  TRUNC_FLDS_OK,ALL_TESTS,FIELD_SKIP,COPY_BLNKS,COPY_ALL_FLDS,COPY_ALL_RECS,
+  DB_IS_NEW,CLEAR_FILE,APPEND_FILE,UDE_FILE,REC_IS_BLANK : BOOLEAN;
+
+Procedure MESSAGE(M_ROW,M_COL :Integer; MSG :String; DING: Boolean);
+  FORWARD;
+
+Procedure EAT_SPACES(var TEMP :String; LEFT_EAT,RIGHT_EAT :Boolean);
+  FORWARD;
+
+PROCEDURE LEAVE(MSG : STRING);
+  FORWARD;
+
+SEGMENT PROCEDURE INITIALIZE;
+  BEGIN
+    FOR I := 1 TO SCREEN_FIELDS DO
+      WITH OLD_FIELDS[I] DO
+        BEGIN
+          S_ID := ''; S_ROW := END_SCREEN; S_COL := 0; S_LEN := 0;
+          S_MIN := 0; S_TYP := 'V'; S_JUS := 'L'; S_NA := 'A';
+          S_SKIP := TRUE; S_DEF := ''; S_FLD := '';
+        END;
+    FOR I := 1 TO SCREEN_FIELDS DO
+      WITH NEW_FIELDS[I] DO
+        BEGIN
+          S_ID := ''; S_ROW := END_SCREEN; S_COL := 0; S_LEN := 0;
+          S_MIN := 0; S_TYP := 'V'; S_JUS := 'L'; S_NA := 'A';
+          S_SKIP := TRUE; S_DEF := ''; S_FLD := '';
+        END;
+    FOR I := 1 TO MAX_TESTS DO
+      WITH TEST_ARRAY[I] DO
+        BEGIN
+          FIELD_LOC := 0; VALUE := '';
+        END;
+    WITH OLD_FIELDS[1] DO
+      BEGIN
+        S_ID := 'OLDVOL'; S_NA := 'S'; S_ROW := 7; S_COL := 15; S_LEN := 7;
+      END;
+    WITH OLD_FIELDS[2] DO
+      BEGIN
+        S_ID := 'OLDNAME'; S_ROW := 9; S_COL := 15; S_LEN := 10;
+      END;
+    WITH OLD_FIELDS[3] DO
+      BEGIN
+        S_ID := 'NEWVOL'; S_NA := 'S'; S_ROW := 16; S_COL := 15; S_LEN := 7;
+      END;
+    WITH OLD_FIELDS[4] DO
+      BEGIN
+        S_ID := 'NEWNAME'; S_ROW := 18; S_COL := 15; S_LEN := 10;
+      END;
+    ERASE_EOS(0,0);
+    GOTOXY(27,0);
+    WRITE('COPY A DATA FILE');
+    GOTOXY(27,1);
+    WRITE('================');
+    GOTOXY(27,2);
+    WRITE('Version IV.0');
+    GOTOXY(0,5);
+    WRITE('DATA FILE TO COPY FROM');
+    GOTOXY(0,7);
+    WRITE('Volume    :');
+    GOTOXY(0,9);
+    WRITE('Name      :');
+    GOTOXY(0,11);
+    WRITE('Type      :    SCRN and either TEXT or GEN');
+    GOTOXY(0,14);
+    WRITE('DATA FILE TO COPY TO');
+    GOTOXY(0,16);
+    WRITE('Volume    :');
+    GOTOXY(0,18);
+    WRITE('Name      :');
+    GOTOXY(0,20);
+    WRITE('Type      :    SCRN and TEXT');
+    OLD_BLOCK := -1;  NEW_BLOCK := -1;
+    DIGITSET := ['0'..'9'];
+    FIELD_LEN := 5; FIELD_MIN := 0;
+    ERRCOL := 40; ERROW := 23;
+    FIELD_JUS := 'L'; FIELD_NA := 'N';
+    FIELD_FLD := '0'; FIELD_SKIP := FALSE;
+  END;
+
+SEGMENT PROCEDURE GET_FILES;
+
+  { Gets the "from" and "to" data files }
+
+LABEL
+  1;
+
+VAR
+  DATA_FILE : FILE;
+  O_DATA_NAME,N_DEFI_NAME : STRING[23];
+  GET_PROMPTS : PROMPT_ARR;
+
+ SEGMENT Procedure GET_DATA_FILE;
+{ Procedure checks for data file data file.  If no data file exist
+         then the operator can create one. }
+ var
+   RIGHT: BOOLEAN;
+
+ function INTVALUE(S: STRING; var NUM: INTEGER): boolean;
+   var
+     I: integer;
+     NUML : THREEWORDINT;
+   begin
+     INTVALUE:=false;
+     I:=1;
+     NUML:=0;
+     EATSPL(S); EATSPR(S);
+     if length(S)=0 then exit(INTVALUE);
+     for I:=1 to length(S) do
+       if S[I] in DIGITSET then
+         NUML:=10*NUML+ord(S[I])-ord('0')
+       else exit(INTVALUE);
+     if NUML>MAX_INT then exit(INTVALUE);
+     NUM := TRUNC(NUML);
+     INTVALUE:=true;
+   end;  { INTVALUE }
+
+Procedure CREATE(var CREATE_NAME:STRING23;
+                   var CREATE_LENGTH,NUMBER_RECORDS,CREATE_RESULTS:Integer);
+  { Procedure creates and initilizes a file to hold data file records. }
+
+   var NO_BLOCKS : Integer;
+       buffer: packed array[0..1023] of 0..255;
+       off_set: integer;
+       IO_REC : PACKED RECORD
+                  CASE INTEGER OF
+                    1: (A: PACKED ARRAY[0..255] OF 0..255);
+                    2: (B: STRING[255]);
+                  END;
+       check: integer;
+
+   begin {CREATE}
+    CREATE_RESULTS:=1;
+    fillchar(IO_REC.A[0],sizeof(IO_REC),chr(00));
+    NO_BLOCKS:=NUMBER_RECORDS div (1024 div CREATE_LENGTH)+1;
+    (*$i-*)
+    rewrite(data_file,CREATE_NAME);
+    if IO_RESULT<>0 then exit(create);
+    fillchar(IO_REC.A[4],CREATE_LENGTH-5,' ');
+    IO_REC.A[0]:=CREATE_LENGTH;
+    IO_REC.A[1]:=16;
+    IO_REC.A[2]:=32;
+    IO_REC.A[3]:=126;
+    IO_REC.A[CREATE_LENGTH-1]:=42;
+    IO_REC.A[CREATE_LENGTH]:=13;
+    fillchar(buffer[0],sizeof(buffer),chr(00));
+    check:=blockwrite(data_file,buffer,2); (* text file prefix *)
+    if CHECK<>2 then begin
+      close(data_file);
+      exit(create);
+    end;
+    off_set:=0;
+    while off_set+create_length <= 1023 do begin
+      moveleft(io_rec.a[1],buffer[off_set],create_length);
+      off_set:=off_set+create_length;
+    end;
+    index:=1;
+    while index <= no_blocks do begin
+      check:=blockwrite(data_file,buffer,2);
+      if check<>2 then begin
+        close(data_file);
+        exit(create);
+      end;
+      index:=index+1;
+    end;  (* while *)
+    (*$i+*)
+    close(data_file,LOCK);
+    CREATE_RESULTS:=0;
+   end; {CREATE}
+
+ begin {GET_DATA_FILE}
+ {$I-}
+  DB_IS_NEW := FALSE;
+  reset(DATA_FILE,N_DATA_NAME);
+ {$I+}
+  if IO_RESULTS <> 0
+    then
+     begin
+      ERASE_EOL(0,MAX_ROW);
+      write('Create new data file Y/N ? Y');
+      gotoxy(27,MAX_ROW);
+      read(Keyboard,CH);
+      if CH in [' ','Y','y']
+        then
+         begin {make the file}
+          DB_IS_NEW := TRUE;
+          ERASE_EOL(0,MAX_ROW);
+          write('Maximum number of records ?');
+          REPEAT
+            FIELD_ROW:=MAX_ROW; FIELD_COL:=29;
+            FIELD_FLD:='0'; FIELD_SKIP:=FALSE;
+            FIELD(FIELD_ROW,FIELD_COL,ERROW,ERRCOL,FIELD_LEN,FIELD_MIN,
+              EXIT_KEY,FIELD_JUS,FIELD_NA,FIELD_FLD,FIELD_SKIP);
+            RIGHT:=INTVALUE(FIELD_FLD,MAX_RECORDS); { MAR 11 }
+            IF NOT RIGHT THEN
+              MESSAGE(MAX_ROW,40,'ERROR: Incorrect number of records',TRUE);
+          UNTIL RIGHT;
+          MESSAGE(MAX_ROW,40,'STATUS: Creating Data File',False);
+          CREATE(N_DATA_NAME,NEW_REC_LEN,MAX_RECORDS,RESULTS);
+          if RESULTS<>0
+            then
+             begin
+              MESSAGE(MAX_ROW,40,'ERROR: Unable to create text data file',
+                True);
+              DATA_RESULTS:=1;
+             end
+           else DATA_RESULTS:=0;
+          end
+         else DATA_RESULTS:=1;
+       end
+     else
+       begin
+        close(DATA_FILE);
+        DATA_RESULTS:=0;
+       end;
+end; {GET DATA FILE}
+
+SEGMENT Procedure RECORD_LENGTH(var S_ARRAY :SCREEN_ARR;
+                       var REC_LEN:integer; var NUM_FIELDS: integer);
+{ Function to find the length of the record defined by the data file
+     definition.}
+ var
+   DONE: boolean; { Jan 5 To correct end_screen problem }
+
+ begin {RECORD LENGTH}
+  REC_LEN:=0;
+  DONE:=false; { Jan 5 }
+  INDEX:=1;
+  while not DONE do
+    if S_ARRAY[INDEX].S_ROW=END_SCREEN then DONE:=true
+    else begin
+      REC_LEN:=REC_LEN+S_ARRAY[INDEX].S_LEN;
+      DONE := INDEX = SCREEN_FIELDS;
+      INDEX:=INDEX+1;
+    end;
+  REC_LEN:=REC_LEN+5;
+  NUM_FIELDS:=INDEX-1;  { Jan 5/Mar 12 }
+ end; {RECORD LENGTH}
+
+BEGIN {GET_FILES}
+  1: DISPLAY_SCREEN(OLD_FIELDS,0,0,0,23);
+     MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',false);
+     SCREEN(OLD_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+     IF EXIT_KEY = ESC_KEY THEN EXIT(COPY_DATA_FILE);
+     VOLUME := OLD_FIELDS[FIND('NEWVOL',OLD_FIELDS)].S_FLD;
+     EATSPR(VOLUME);
+     NAME := OLD_FIELDS[FIND('NEWNAME',OLD_FIELDS)].S_FLD;
+     EAT_SPACES(NAME,TRUE,TRUE);
+     DB_NAME := CONCAT(VOLUME,':',NAME);
+     N_DEFI_NAME := CONCAT(DB_NAME,'.SCRN');
+     N_DATA_NAME := CONCAT(DB_NAME,'.TEXT');
+     GET_FILE(N_DEFI_NAME,NEW_FIELDS,GET_PROMPTS,RESULTS);
+     IF RESULTS <> 0
+       THEN 
+         BEGIN
+           MESSAGE(MAX_ROW,40,'ERROR: Unknown "to" data file',TRUE);
+           GOTO 1;
+         END;
+     RECORD_LENGTH(NEW_FIELDS,NEW_REC_LEN,NUM_NEW_FLDS);
+     IF NEW_REC_LEN > 255
+       THEN 
+         BEGIN
+           MESSAGE(MAX_ROW,40,'ERROR: Defined screen is too long',TRUE);
+           GOTO 1;
+         END;
+     VOLUME := OLD_FIELDS[FIND('OLDVOL',OLD_FIELDS)].S_FLD;
+     EATSPR(VOLUME);
+     NAME := OLD_FIELDS[FIND('OLDNAME',OLD_FIELDS)].S_FLD;
+     EAT_SPACES(NAME,TRUE,TRUE);
+     DB_NAME := CONCAT(VOLUME,':',NAME);
+     O_DEFI_NAME := CONCAT(DB_NAME,'.SCRN');
+     O_DATA_NAME := CONCAT(DB_NAME,'.TEXT');
+     DATA_RESULTS := 0;
+     GET_FILE(O_DEFI_NAME,OLD_FIELDS,GET_PROMPTS,RESULTS);
+     IF RESULTS <> 0
+       THEN 
+         BEGIN
+           MESSAGE(MAX_ROW,40,'ERROR: Unknown "from" data file',TRUE);
+           GOTO 1;
+         END;
+     RECORD_LENGTH(OLD_FIELDS,OLD_REC_LEN,NUM_OLD_FLDS);
+     IF OLD_REC_LEN > 255
+       THEN 
+         BEGIN
+           MESSAGE(MAX_ROW,40,'ERROR: Defined screen is too long',TRUE);
+           GOTO 1;
+         END;
+     UDE_FILE := TRUE;
+   {$I-}
+     RESET(OLD_FILE,O_DATA_NAME);
+     IF IO_RESULT <> 0
+       THEN
+         BEGIN
+           UDE_FILE := FALSE;        { Copying from a GENLIST file }
+           O_DATA_NAME := CONCAT(VOLUME,':',NAME,'.GEN');
+           RESET(OLD_GEN_FILE,O_DATA_NAME);
+           IF IO_RESULTS <> 0
+             THEN 
+               BEGIN
+                 MESSAGE(MAX_ROW,40,
+                  'ERROR: Found no TEXT or GEN file to copy from',TRUE);
+                 GOTO 1;
+               END;
+   {$I+}
+           SEEK(OLD_GEN_FILE,0);
+           GET(OLD_GEN_FILE);
+           NUM_OLD_FLDS := OLD_GEN_FILE^.NFLDS;
+           OLD_REC_LEN  := OLD_GEN_FILE^.RSIZE;
+           NUM_OLD_RECS := OLD_GEN_FILE^.NRECS;
+         END;
+     GET_DATA_FILE;
+     FOR I := 1 TO SCREEN_FIELDS DO
+       BEGIN
+         EAT_SPACES(NEW_FIELDS[I].S_ID,TRUE,TRUE);
+         EAT_SPACES(OLD_FIELDS[I].S_ID,TRUE,TRUE);
+       END;
+END;
+
+SEGMENT PROCEDURE CREATE_MAP_ARRAY;
+
+  { Creates an array that determines the mapping of the fields of
+      the from data file to the fields of the to data file. There
+      is a one to one correspondance between elements of MAP_ARRAY
+      and elements of NEW_FIELDS. For example, the subscript of the
+      field in OLD_FIELDS to be copied to NEW_FIELDS[3].S_FLD may be
+      found in MAP_ARRAY[3].OLD_FLD_NO. A 0 in OLD_FLD_NO indicates
+      that there is no corresponding field in OLD_FIELDS. MAP_ARRAY
+      may be modified by the GET_COPY_INFO procedure depending
+      on the type of copy being executed. The SET_TYPE field of
+      MAP_ARRAY indicates what type of data is to be accepted into
+      the new field.                                                 }
+
+  VAR 
+    NO_GOOD  : BOOLEAN;
+    NUM_FLDS : INTEGER;
+  BEGIN
+    NO_GOOD := FALSE;
+    FOR I := 1 TO SCREEN_FIELDS DO
+      WITH MAP_ARRAY[I] DO
+        BEGIN
+          OLD_FLD_NO := FIND(NEW_FIELDS[I].S_ID,OLD_FIELDS);
+          SET_TYPE := '-';             { Indicates any data is acceptable }
+          IF OLD_FLD_NO > 0
+            THEN CASE OLD_FIELDS[OLD_FLD_NO].S_NA OF
+                   'A': CASE NEW_FIELDS[I].S_NA OF
+                          'N': SET_TYPE := 'N';  { Only numeric data }
+                          'L': SET_TYPE := 'L';  { Only alphabetic data }
+                        END;
+                   'N': IF NEW_FIELDS[I].S_NA = 'L'  { Conflict of data }
+                          THEN NO_GOOD := TRUE;
+                   'L': IF NEW_FIELDS[I].S_NA = 'N'  { Conflict of data }
+                          THEN NO_GOOD := TRUE;
+                   'S': CASE NEW_FIELDS[I].S_NA OF
+                          'A': SET_TYPE := 'A';
+                          'N': SET_TYPE := 'N';
+                          'L': SET_TYPE := 'L';
+                        END;
+                 END;
+        END;
+    IF NO_GOOD
+      THEN LEAVE('ERROR: Data files have incompatible field types');
+    I := 1;
+    NUM_FLDS := 0;
+    WHILE ((I <= SCREEN_FIELDS) AND (NUM_FLDS = 0)) DO
+      IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+        THEN NUM_FLDS := 1
+        ELSE I := I + 1;
+    IF NUM_FLDS = 0
+      THEN LEAVE('ERROR: Data files have no fields in common');
+  END;
+
+SEGMENT PROCEDURE GET_COPY_INFO;
+  
+  { Determines which records and fields of the from data file are to be
+      copied to the to data file.                                        }
+  
+  VAR
+    X,Y,Q_ROW : INTEGER;
+    GOOD      : BOOLEAN;
+    S,MSG : STRING;
+
+  SEGMENT PROCEDURE FIELDS_YN;
+
+    { Prompts the user to indicate which fields are to be copied. }
+    { This is the only procedure other than CREATE_MAP_ARRAY that }
+    { modifies MAP_ARRAY.                                         }
+    
+    VAR
+      NUM_FLDS : INTEGER;
+    
+    BEGIN
+      ERASE_EOS(0,0);
+      WRITELN('The following fields are common to both data files.',
+                                                           ' Indicate');
+      WRITELN('those fields whose information is to be copied (Y/N)');
+      MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',false);
+      FOR I := 1 TO SCREEN_FIELDS DO
+        WITH OLD_FIELDS[I] DO
+          BEGIN
+            S_ROW := END_SCREEN; S_COL := 0; S_MIN := 0; S_TYP := 'V';
+            S_JUS := 'L'; S_NA := 'L'; S_DEF := ''; S_FLD := '';
+            S_SKIP := TRUE; S_ID := ''; S_LEN := 0;
+          END;
+      NUM_FLDS := 0;
+      FOR I := 1 TO SCREEN_FIELDS DO
+        IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+          THEN NUM_FLDS := NUM_FLDS + 1;
+      X := 0;
+      Y := 3;
+      FOR I := 1 TO SCREEN_FIELDS DO
+        BEGIN
+          IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+            THEN
+              BEGIN
+                GOTOXY(X,Y);
+                WRITE(NEW_FIELDS[I].S_ID);
+                WITH OLD_FIELDS[I] DO
+                  BEGIN
+                    S_COL := X + 9; S_ROW := Y; S_NA := 'L';
+                    S_SKIP := TRUE; S_DEF := 'Y'; S_LEN := 1;
+                  END;
+              END;
+          IF NUM_FLDS <= 20            { If there are 20 or less common }
+            THEN Y := Y + 1            { fields they are written out in }
+            ELSE                       { a single column. Otherwise they}
+              IF X = 20                { are written out alternating    }
+                THEN                   { between two columns.           }
+                  BEGIN
+                    Y := Y + 1;
+                    X := 0;
+                  END
+                ELSE X := 20;
+        END;
+      REPEAT
+        DISPLAY_SCREEN(OLD_FIELDS,0,0,0,23);
+        SCREEN(OLD_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+        IF EXIT_KEY = ESC_KEY THEN EXIT(COPY_DATA_FILE);
+        NUM_FLDS := 0;
+        I := 1;
+        
+    { Check to see that at least one field is to be copied. For any field 
+      that is not to be copied, set its OLD_FLD_NO to 0.                  }
+
+        WHILE ((I <= SCREEN_FIELDS) AND (NUM_FLDS = 0)) DO
+          BEGIN
+            IF ((OLD_FIELDS[I].S_FLD = 'Y') OR (OLD_FIELDS[I].S_FLD = 'y'))
+              THEN IF MAP_ARRAY[I].OLD_FLD_NO > 0
+                     THEN NUM_FLDS := NUM_FLDS + 1;
+            I := I + 1;
+          END;
+        IF NUM_FLDS = 0
+          THEN MESSAGE(MAX_ROW,40,'ERROR: Must respond Y to at least one',
+                                                                     TRUE)
+          ELSE FOR I := 1 TO SCREEN_FIELDS DO
+            IF (NOT((OLD_FIELDS[I].S_FLD = 'Y') OR 
+                                          (OLD_FIELDS[I].S_FLD = 'y')))
+              THEN MAP_ARRAY[I].OLD_FLD_NO := 0;
+      UNTIL NUM_FLDS > 0;
+    END;
+
+SEGMENT PROCEDURE GET_TEST_ARRAY;
+
+  { Gets the tests to be made on each record of the "from" data file
+      before it is copied to the "to" data file. Only a limited no.
+      of these tests are displayed on the screen at any one time
+      (limited by the no. of possible fields in OLD_FIELDS).       }
+
+  VAR
+    FIRST_TEST,NUM_TESTS  : INTEGER;
+    ERROR : BOOLEAN;
+    PROMPT : STRING[50];
+    
+SEGMENT PROCEDURE USER_TESTS;
+  VAR
+    NUM_FIELDS,ROW,ID_COL,ID_ROW : INTEGER;
+  BEGIN
+    ERASE_EOS(0,0);
+    WRITE('Comparison tests to be made on fields of each record:');
+    GOTOXY(62,0);
+    WRITE('Choose from the');
+    GOTOXY(62,1);
+    WRITE('following fields:');
+    GOTOXY(0,18);
+    WRITE('Valid operators are:  < , > , = , <= , >= , or <>');
+    GOTOXY(0,20);
+    WRITE('Currently viewing tests 1 - 13');
+    GOTOXY(0,22);
+    PROMPT := 'Get, Save tests, Change, Next, Back, Quit:';
+    FOR I := 1 TO LENGTH(PROMPT) DO
+      IF NOT(PROMPT[I] IN ['A'..'Z'])
+        THEN PROMPT[I] := CHR(ORD(PROMPT[I])+128);
+    WRITE(PROMPT);
+    I := 1;
+    ROW := 4;
+    WHILE I < SCREEN_FIELDS-1 DO
+      BEGIN
+        WITH OLD_FIELDS[I] DO          { Field }
+          BEGIN
+            S_ROW := ROW; S_COL := 0; S_LEN := 8; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        WITH OLD_FIELDS[I+1] DO        { Operator }
+          BEGIN
+            S_ROW := ROW; S_COL := 12; S_LEN := 2; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        WITH OLD_FIELDS[I+2] DO        { Value }
+          BEGIN
+            S_ROW := ROW; S_COL := 18; S_LEN := 40; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        ROW := ROW + 1;
+        I := I + 3;
+      END;
+    WITH OLD_FIELDS[SCREEN_FIELDS] DO
+      BEGIN
+        S_ROW := END_SCREEN; S_LEN := 0; S_FLD := '';
+      END;
+    DISPLAY_SCREEN(OLD_FIELDS,0,0,0,23);
+    GOTOXY(0,2);
+    WRITE('FIELD ID  OPERATOR                 VALUE');
+    NUM_FIELDS := 0;
+    FOR I := 1 TO SCREEN_FIELDS DO
+      IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+        THEN NUM_FIELDS := NUM_FIELDS + 1;
+
+    { The following code writes out the ids the user may choose from
+      in testing the fields to be copied. If there are less than 20,
+      they are written out in a single column, otherwise they are
+      written out alternating between two columns.                   }
+
+    IF NUM_FIELDS <= 20
+      THEN ID_COL := 66    { Center a single column }
+      ELSE ID_COL := 62;   { Center double columns  }
+    ID_ROW := 3;
+    I := 1;
+    WHILE I <= SCREEN_FIELDS DO
+      BEGIN
+        IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+          THEN
+            BEGIN
+              GOTOXY(ID_COL,ID_ROW);
+              WRITE(NEW_FIELDS[I].S_ID);
+              IF ID_COL = 62
+                THEN          { Alternate ids between 1st and 2nd cols }
+                  ID_COL := 72
+                ELSE
+                  IF ID_COL = 66
+                    THEN ID_ROW := ID_ROW + 1
+                    ELSE IF ID_COL = 72
+                           THEN
+                             BEGIN
+                               ID_COL := 62;
+                               ID_ROW := ID_ROW + 1;
+                             END;
+            END;
+        I := I + 1;
+      END;
+  END; {USER_TESTS}
+
+SEGMENT PROCEDURE DISPLAY_TESTS(TEST_NO : INTEGER);
+  
+  { Transfers the appropriate section of TEST_ARRAY tests to OLD_FIELDS
+      for display.                                                      }
+  
+  VAR
+    FOUND : BOOLEAN;
+  BEGIN
+    FOR I := 1 TO SCREEN_FIELDS DO
+      OLD_FIELDS[I].S_FLD := '';
+    I := 1;
+    WHILE I < SCREEN_TESTS*3 DO
+      WITH TEST_ARRAY[TEST_NO +(I DIV 3)] DO
+        BEGIN
+          II := 1;
+          FOUND := FALSE;
+          WHILE NOT FOUND DO
+            BEGIN
+              IF MAP_ARRAY[II].OLD_FLD_NO <> FIELD_LOC
+                THEN II := II + 1
+                ELSE FOUND := TRUE;
+              IF II > SCREEN_FIELDS
+                THEN
+                  BEGIN
+                    II := 0;
+                    FOUND := TRUE;
+                  END;
+            END;
+          IF ((FIELD_LOC = 0) OR (II = 0))
+            THEN
+              BEGIN
+                OLD_FIELDS[I].S_FLD := '';
+                OLD_FIELDS[I+1].S_FLD := '';
+                OLD_FIELDS[I+2].S_FLD := '';
+              END
+            ELSE
+              BEGIN
+                OLD_FIELDS[I].S_FLD := NEW_FIELDS[II].S_ID;
+                WITH OLD_FIELDS[I+1] DO
+                  CASE OPERATOR OF
+                    LT: S_FLD := '<';
+                    GT: S_FLD := '>';
+                    EQ: S_FLD := '=';
+                    LE: S_FLD := '<=';
+                    GE: S_FLD := '>=';
+                    NE: S_FLD := '<>';
+                  END;
+                OLD_FIELDS[I+2].S_FLD := VALUE;
+              END;
+          I := I + 3;
+        END;
+    DISPLAY_SCREEN(OLD_FIELDS,0,0,0,23);
+  END;
+
+SEGMENT PROCEDURE UPDATE_TEST_ARRAY(TEST_NO : INTEGER);
+
+  { Checks the tests in OLD_FIELDS for validity and transfers them
+    to the appropriate section of TEST_ARRAY.                      }
+
+  VAR
+    OP : OPS;
+    FLD_LEN,I,K,LOCATION : INTEGER;
+    BLANK_FIELD,BLANK_OP,BLANK_VALUE : BOOLEAN;
+
+  PROCEDURE CHK_FIELD(VAR FIELD      : STRING;
+                    VAR LOC        : INTEGER;
+                    VAR IS_BLANK   : BOOLEAN;
+                    VAR FLD_LENGTH : INTEGER);
+  { Determines if the field name of the test is valid. Passes back the
+      length of the fields value field so that CHK_VALUE may determine
+      if the length of value of the test is within the maximum allowable. }
+
+  VAR
+    FOUND : BOOLEAN;
+
+  BEGIN
+    EAT_SPACES(FIELD,TRUE,TRUE);
+    IF LENGTH(FIELD) = 0
+      THEN IS_BLANK := TRUE
+      ELSE IS_BLANK := FALSE;
+    FLD_LENGTH := 0;
+    IF NOT IS_BLANK
+      THEN
+        BEGIN
+          FOUND := FALSE;
+          II := FIND(FIELD,NEW_FIELDS);
+          IF II <> 0
+            THEN IF MAP_ARRAY[II].OLD_FLD_NO <> 0
+              THEN
+                BEGIN
+                  LOC := MAP_ARRAY[II].OLD_FLD_NO;
+                  FOUND := TRUE;
+                  FLD_LENGTH := NEW_FIELDS[II].S_LEN;
+                END;
+          IF NOT FOUND
+            THEN
+              BEGIN
+                MESSAGE(MAX_ROW,40,CONCAT('ERROR: ',FIELD,
+                                            ' is an invalid field name'),
+                                                                   TRUE);
+                ERROR := TRUE;
+                EXIT(UPDATE_TEST_ARRAY);
+              END;
+        END;
+  END;
+
+PROCEDURE CHK_OP(VAR OP_STRING : STRING;
+                 VAR OPRATR    : OPS;
+                 VAR IS_BLANK  : BOOLEAN);
+
+  { Determine if the operator of the test is valid. Valid operators
+      are: "<", ">", "<=", ">=", "<>", and "=".                      }
+
+  VAR
+    GOOD : BOOLEAN;
+  BEGIN
+    EAT_SPACES(OP_STRING,TRUE,TRUE);
+    GOOD := TRUE;
+    IS_BLANK := FALSE;
+    IF LENGTH(OP_STRING) = 0
+      THEN IS_BLANK := TRUE
+      ELSE
+        IF OP_STRING = '<'
+          THEN OPRATR := LT
+        ELSE IF OP_STRING = '>'
+          THEN OPRATR := GT
+        ELSE IF OP_STRING = '='
+          THEN OPRATR := EQ
+        ELSE IF OP_STRING = '<='
+          THEN OPRATR := LE
+        ELSE IF OP_STRING = '>='
+          THEN OPRATR := GE
+        ELSE IF OP_STRING = '<>'
+          THEN OPRATR := NE
+        ELSE GOOD := FALSE;
+    IF NOT GOOD
+      THEN
+        BEGIN
+          MESSAGE(MAX_ROW,40,CONCAT('ERROR: ',OP_STRING,' is an invalid ',
+                                                           'operator'),TRUE);
+          ERROR := TRUE;
+          EXIT(UPDATE_TEST_ARRAY);
+        END;
+  END;
+
+PROCEDURE CHK_VALUE(VAR VALUE: STRING; IS_BLANK: BOOLEAN; FLD_LENGTH: INTEGER);
+
+  { Determines if the length of the value of the test is within the maximum. }
+
+  VAR
+    COL : INTEGER;
+  BEGIN
+    IF FLD_LENGTH > 0
+      THEN
+        BEGIN
+          EAT_SPACES(VALUE,TRUE,TRUE);
+          IF LENGTH(VALUE) > FLD_LENGTH
+            THEN
+              BEGIN
+                STR(FLD_LENGTH,MSG);
+                MSG := CONCAT('ERROR: Value "',VALUE,'" exceeds max length',
+                                          ' of ',MSG);
+                COL := 80-LENGTH(MSG);
+                IF COL > 40 THEN COL := 40;
+                MESSAGE(MAX_ROW,COL,MSG,TRUE);
+                ERROR := TRUE;
+                EXIT(UPDATE_TEST_ARRAY);
+              END
+            ELSE
+              IF LENGTH(VALUE) = 0
+                THEN IS_BLANK := TRUE
+                ELSE IS_BLANK := FALSE;
+        END;
+  END;
+
+BEGIN {UPDATE_TEST_ARRAY}
+    ERASE_EOL(0,MAX_ROW);
+    ERROR := FALSE;
+    I := 1;
+    WHILE I < 3*SCREEN_TESTS DO
+      BEGIN
+        CHK_FIELD(OLD_FIELDS[I].S_FLD,LOCATION,BLANK_FIELD,FLD_LEN);
+        CHK_OP(OLD_FIELDS[I+1].S_FLD,OP,BLANK_OP);
+        CHK_VALUE(OLD_FIELDS[I+2].S_FLD,BLANK_VALUE,FLD_LEN);
+        IF ((BLANK_OP) AND (NOT BLANK_FIELD))
+          THEN
+            BEGIN
+              MESSAGE(MAX_ROW,40,'ERROR: Missing operator',true);
+              ERROR := TRUE;
+              EXIT(UPDATE_TEST_ARRAY);
+            END;
+        IF ((BLANK_FIELD) OR (BLANK_OP))
+          THEN TEST_ARRAY[TEST_NO + (I DIV 3)].FIELD_LOC := 0
+          ELSE
+            WITH TEST_ARRAY[TEST_NO+(I DIV 3)] DO
+              BEGIN
+                FIELD_LOC := LOCATION;
+                OPERATOR := OP;
+                VALUE := OLD_FIELDS[I+2].S_FLD;
+              END;
+        I := I + 3;
+      END;
+  END;   {UPDATE_TEST_ARRAY}
+
+PROCEDURE GET_SAVE(COMMAND : CHAR);
+    VAR
+      GOOD      : BOOLEAN;
+      FILE_NAME : STRING[23];
+      TEST_FILE : FILE OF TEST_REC;
+  
+    BEGIN
+      FOR II := 1 TO SCREEN_FIELDS DO
+        WITH OLD_FIELDS[II] DO
+          BEGIN
+            S_ROW := END_SCREEN; S_COL := 14; S_MIN := 0; S_TYP := 'V';
+            S_JUS := 'L'; S_NA := 'S'; S_DEF := ''; S_FLD := '';
+          END;
+      WITH OLD_FIELDS[1] DO
+        BEGIN
+          S_ID := 'VOL'; S_ROW := 6; S_LEN := 7;
+        END;
+      WITH OLD_FIELDS[2] DO
+        BEGIN
+          S_ID := 'NAME'; S_ROW := 8; S_LEN := 10;
+        END;
+      ERASE_EOS(0,0);
+      GOTOXY(25,0);
+      IF COMMAND = 'G'
+        THEN WRITE('GET COMPARISON TESTS')
+        ELSE WRITE('SAVE COMPARISON TESTS');
+      GOTOXY(25,1);
+      IF COMMAND = 'G'
+        THEN WRITE('====================')
+        ELSE WRITE('=====================');
+      GOTOXY(0,6);
+      WRITELN('Volume    :');
+      WRITELN;
+      WRITELN('Name      :');
+      WRITELN;
+      WRITELN('Type      :   Cmpr');
+      MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',false);
+      DISPLAY_SCREEN(OLD_FIELDS,0,0,0,23);
+      REPEAT
+        GOOD := TRUE;
+        SCREEN(OLD_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+        IF EXIT_KEY = ESC_KEY THEN EXIT(GET_SAVE);
+        VOLUME := OLD_FIELDS[1].S_FLD;
+        NAME := OLD_FIELDS[2].S_FLD;
+        EAT_SPACES(VOLUME,TRUE,TRUE);
+        EAT_SPACES(NAME,TRUE,TRUE);
+        FILE_NAME := CONCAT(VOLUME,':',NAME,'.CMPR');
+     {$I-}
+        IF COMMAND = 'G'
+          THEN
+            BEGIN
+              RESET(TEST_FILE,FILE_NAME);
+              IF IO_RESULT = 0
+                THEN
+                  BEGIN
+                    FOR I := 1 TO MAX_TESTS DO
+                      BEGIN
+                       TEST_ARRAY[I].FIELD_LOC := TEST_FILE^.FIELD_LOC;
+                       TEST_ARRAY[I].OPERATOR  := TEST_FILE^.OPERATOR;
+                       TEST_ARRAY[I].VALUE     := TEST_FILE^.VALUE;
+                       IF I <> MAX_TESTS THEN GET(TEST_FILE);
+                       IF IO_RESULT <> 0 THEN GOOD := FALSE;
+                      END;
+                    CLOSE(TEST_FILE,LOCK);
+                  END
+                ELSE GOOD := FALSE;
+            END
+          ELSE
+            BEGIN
+              REWRITE(TEST_FILE,FILE_NAME);
+              IF IO_RESULT = 0
+                THEN
+                  BEGIN
+                    FOR I := 1 TO MAX_TESTS DO
+                      BEGIN
+                        TEST_FILE^.FIELD_LOC := TEST_ARRAY[I].FIELD_LOC;
+                        TEST_FILE^.OPERATOR  := TEST_ARRAY[I].OPERATOR;
+                        TEST_FILE^.VALUE     := TEST_ARRAY[I].VALUE;
+                        PUT(TEST_FILE);
+                        IF IO_RESULT <> 0 THEN GOOD := FALSE;
+                      END;
+                    CLOSE(TEST_FILE,LOCK);
+                  END
+                ELSE GOOD := FALSE;
+            END;
+        IF NOT GOOD
+          THEN MESSAGE(MAX_ROW,40,'ERROR: Invalid file specification',true);
+      UNTIL GOOD;
+     {$I+}
+    END; {GET_SAVE}
+
+  BEGIN {GET_TEST_ARRAY}
+  USER_TESTS;
+  FIRST_TEST := 1;
+  ERROR := FALSE;
+  REPEAT
+    IF ERROR
+      THEN CH := 'C'
+      ELSE 
+        BEGIN
+          GOTOXY(43,MAX_ROW-1);
+          READ(KEYBOARD,CH);
+          IF CH = ESC_KEY THEN EXIT(PROGRAM);
+          ERASE_EOL(0,MAX_ROW);
+        END;
+    CASE CH OF
+      'C','c': BEGIN
+                 SCREEN(OLD_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+                 IF EXIT_KEY = ESC_KEY THEN EXIT(COPY_DATA_FILE);
+                 UPDATE_TEST_ARRAY(FIRST_TEST);
+               END;
+      'B','b': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       IF FIRST_TEST <> 1
+                         THEN FIRST_TEST := FIRST_TEST - SCREEN_TESTS
+                         ELSE FIRST_TEST := MAX_TESTS-SCREEN_TESTS+1;
+                       STR(FIRST_TEST,S);
+                       STR(FIRST_TEST+12,MSG);
+                       MSG := CONCAT('Currently viewing tests ',S,' - ',
+                                                                 MSG,' ');
+                       MESSAGE(20,0,MSG,FALSE);
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      'G','g': BEGIN
+                 GET_SAVE('G');
+                 USER_TESTS;
+                 FIRST_TEST := 1;
+                 DISPLAY_TESTS(FIRST_TEST);
+               END;
+      'S','s': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       GET_SAVE('S');
+                       USER_TESTS;
+                       FIRST_TEST := 1;
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      'N','n': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       IF FIRST_TEST < MAX_TESTS-SCREEN_TESTS+1
+                         THEN FIRST_TEST := FIRST_TEST + SCREEN_TESTS
+                         ELSE FIRST_TEST := 1;
+                       STR(FIRST_TEST,S);
+                       STR(FIRST_TEST+12,MSG);
+                       MSG := CONCAT('Currently viewing tests ',S,' - ',
+                                                                  MSG,' ');
+                       MESSAGE(20,0,MSG,FALSE);
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      'Q','q': IF ERROR
+                 THEN
+                   BEGIN
+                     WRITE(ALARM_BELL);
+                     CH := ' ';
+                   END;
+      END;
+  UNTIL ((CH = 'Q') OR (CH = 'q'));
+  II := 1;
+  NUM_TESTS := 0;
+  WHILE ((II <= MAX_TESTS) AND (NUM_TESTS < 2)) DO
+    BEGIN
+      IF TEST_ARRAY[II].FIELD_LOC > 0
+        THEN NUM_TESTS := NUM_TESTS + 1;
+      II := II + 1;
+    END;
+  ALL_TESTS := TRUE;
+  IF NUM_TESTS > 1
+    THEN
+      BEGIN
+        ERASE_EOS(0,0);
+        WRITE('Copy each record if :');
+        GOTOXY(0,2);
+        WRITE('1) All of the above tests have been met');
+        GOTOXY(0,4);
+        WRITE('2) Any of the above tests has been met');
+        GOTOXY(0,6);
+        WRITE('Enter 1 or 2 :');
+        REPEAT
+          ERASE_EOL(15,6);
+          READ(KEYBOARD,CH);
+          IF CH = ESC_KEY THEN EXIT(PROGRAM);
+        UNTIL ((CH = '1') OR (CH = '2'));
+        WRITE(CH);
+        IF CH = '2'
+          THEN ALL_TESTS := FALSE;
+      END;
+END; {GET_TEST_ARRAY}
+
+BEGIN {GET_COPY_INFO}
+  ERASE_EOS(0,0);
+  GOTOXY(0,0);
+  WRITE('Please answer the following questions:');
+  Q_ROW := 3;
+  CLEAR_FILE := FALSE;
+  APPEND_FILE := FALSE;
+  IF NOT DB_IS_NEW         {DB_IS_NEW flag is set in procedure GET_COPY_INFO}
+    THEN
+      BEGIN
+        Q_ROW := 6;
+        GOTOXY(0,3);
+        WRITELN('Data file being copied to has existing records. ',
+              'Do you wish');
+        WRITELN('to delete them? (Y/N): Y');
+        GOTOXY(23,4);
+        REPEAT
+          READ(KEYBOARD,CH);
+          IF CH = ESC_KEY THEN EXIT(PROGRAM);
+        UNTIL CH IN [' ','Y','y','N','n'];
+        IF CH <> ' ' THEN WRITE(CH);
+        CLEAR_FILE := (CH IN [' ','Y','y']);
+        IF NOT CLEAR_FILE
+          THEN
+            BEGIN
+              Q_ROW := 8;
+              GOTOXY(0,6);
+              WRITELN('Do you wish to add the new records at ',
+                                       'the end of the data file? (Y/N): Y');
+              GOTOXY(71,6);
+              REPEAT
+                READ(KEYBOARD,CH);
+                IF CH = ESC_KEY THEN EXIT(PROGRAM);
+              UNTIL CH IN [' ','Y','y','N','n'];
+              IF CH <> ' ' THEN WRITE(CH);
+              APPEND_FILE := (CH IN [' ','Y','y']);
+              IF NOT APPEND_FILE
+                THEN
+                  BEGIN
+                    Q_ROW := 11;
+                    GOTOXY(0,8);
+                    WRITELN('NOTE: Any fields of the existing ',
+                         'data file that are not copied to will');
+                    WRITELN('be left intact. Do you wish to proceed?',
+                               ' (Y/N): Y');
+                    GOTOXY(47,9);
+                    REPEAT
+                      READ(KEYBOARD,CH);
+                      IF CH = ESC_KEY THEN EXIT(PROGRAM);
+                    UNTIL CH IN [' ','Y','y','N','n'];
+                    IF (NOT(CH IN [' ','Y','y'])) THEN EXIT(PROGRAM);
+                  END;
+            END;
+      END;
+  GOTOXY(0,Q_ROW);
+  WRITE('Do you wish to copy all fields common to both data files? (Y/N): Y');
+  REPEAT
+    GOTOXY(65,Q_ROW);
+    READ(KEYBOARD,CH);
+    IF CH = ESC_KEY THEN EXIT(PROGRAM);
+  UNTIL CH IN [' ','Y','y','N','n'];
+  IF CH <> ' ' THEN WRITE(CH);
+  COPY_ALL_FLDS := (CH IN [' ','Y','y']);
+  IF NOT COPY_ALL_FLDS
+    THEN 
+      BEGIN
+        FIELDS_YN;
+        Q_ROW := 3;
+        ERASE_EOS(0,0);
+      END
+    ELSE Q_ROW := Q_ROW + 2;
+  IF Q_ROW = 3 
+    THEN
+      BEGIN
+        GOTOXY(0,0);
+        WRITE('Please answer the following questions:');
+      END;
+  GOTOXY(0,Q_ROW);
+  WRITELN('Are fields to be tested for certain values before record');
+  WRITELN('is copied? (Y/N): N');
+  Q_ROW := Q_ROW + 1;
+  REPEAT
+    GOTOXY(18,Q_ROW);
+    READ(KEYBOARD,CH);
+    IF CH = ESC_KEY THEN EXIT(PROGRAM);
+  UNTIL CH IN [' ','Y','y','N','n'];
+  IF CH <> ' ' THEN WRITE(CH);
+  COPY_ALL_RECS := (CH IN [' ','N','n']);
+  IF NOT COPY_ALL_RECS
+    THEN
+      BEGIN
+        GET_TEST_ARRAY;
+        ERASE_EOS(0,0);
+        Q_ROW := 3;
+      END
+    ELSE Q_ROW := Q_ROW + 2;
+  IF Q_ROW = 3 
+    THEN
+      BEGIN
+        GOTOXY(0,0);
+        WRITE('Please answer the following questions:');
+      END;
+  GOTOXY(0,Q_ROW);
+  WRITE('Copy blank records? (Y/N): N');
+  REPEAT
+    GOTOXY(27,Q_ROW);
+    READ(KEYBOARD,CH);
+    IF CH = ESC_KEY THEN EXIT(PROGRAM);
+  UNTIL CH IN [' ','Y','y','N','n'];
+  IF CH <> ' ' THEN WRITE(CH);
+  COPY_BLNKS := (CH IN ['Y','y']);
+END;
+
+SEGMENT PROCEDURE READ_TEST_COPY;
+
+ VAR
+   S,MSG : STRING;
+   OFFSET_RECS  : INTEGER;
+   END_NEW_FILE : BOOLEAN;
+   IO_REC       : PACKED RECORD
+                    CASE INTEGER OF
+                      1: (A: PACKED ARRAY[0..255] OF 0..255);
+                      2: (B: STRING[255]);
+                    END;
+   GET_PROMPTS  : PROMPT_ARR;
+   OLD_BUF,NEW_BUF : BUF_DEF;
+
+ SEGMENT Procedure READ_WRITE(    RW_COMMAND,
+                          WHICH_FILE      :Char;
+                      var REC_NO,
+                          REC_LEN         :Integer;
+                      var BUFFER          :BUF_DEF;
+                      var CURRENT_BLOCK,
+                          IO_RET_CODE     :Integer);
+
+  var IO_BLOCKS,START_POSITION,TWO_BLOCK,START_REC,BYTE_TWO_BLOCK,
+      BLOCK_NO,REC_NUM,FIRST_MOV_LEN,CHAR_OFFSET: Integer;
+
+  begin {READ_WRITE}
+ {$I-}
+   IO_RET_CODE:=-1;
+   REC_NUM:=REC_NO-1;
+   if REC_NUM<0 then REC_NUM:=0;
+   TWO_BLOCK:=REC_NUM div (1023 div REC_LEN);  (* 1024 correction Dec 5 1980 *)
+   START_REC:=TWO_BLOCK*(1023 div REC_LEN);    (* 1024 correction Dec 5 1980 *)
+   BYTE_TWO_BLOCK:=(REC_NUM-START_REC)*REC_LEN;
+   BLOCK_NO:=(TWO_BLOCK*2)+2;
+   if BYTE_TWO_BLOCK>=512  (* = correction Dec 5 1980 *)
+     then
+      begin
+       BLOCK_NO:=BLOCK_NO+1;
+       CHAR_OFFSET:=BYTE_TWO_BLOCK-512;
+      end
+     else CHAR_OFFSET:=BYTE_TWO_BLOCK;
+   if CHAR_OFFSET+REC_LEN>512
+     then
+      begin
+       if CURRENT_BLOCK<>BLOCK_NO
+         then
+          begin
+           IF WHICH_FILE = 'O'
+             THEN IO_BLOCKS:=blockread(OLD_FILE,BUFFER,1,BLOCK_NO)
+             ELSE IO_BLOCKS:=blockread(NEW_FILE,BUFFER,1,BLOCK_NO);
+           IF IO_BLOCKS=0 then exit(READ_WRITE);
+          end;
+       FIRST_MOV_LEN:=512-CHAR_OFFSET;
+       if RW_COMMAND='W'
+         then
+           begin
+            moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],FIRST_MOV_LEN);
+            IF WHICH_FILE = 'O'
+             THEN IO_BLOCKS:=blockwrite(OLD_FILE,BUFFER,1,BLOCK_NO)
+             ELSE IO_BLOCKS:=blockwrite(NEW_FILE,BUFFER,1,BLOCK_NO);
+            IF IO_BLOCKS=0 then exit(READ_WRITE);
+           end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],FIRST_MOV_LEN);
+       BLOCK_NO:=BLOCK_NO+1;
+       IF WHICH_FILE = 'O'
+         THEN IO_BLOCKS:=blockread(OLD_FILE,BUFFER,1,BLOCK_NO)
+         ELSE IO_BLOCKS:=blockread(NEW_FILE,BUFFER,1,BLOCK_NO);
+       IF IO_BLOCKS=0 then exit(READ_WRITE);
+       if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[FIRST_MOV_LEN+1],BUFFER[0],REC_LEN-FIRST_MOV_LEN);
+           IF WHICH_FILE = 'O'
+             THEN IO_BLOCKS:=blockwrite(OLD_FILE,BUFFER,1,BLOCK_NO)
+             ELSE IO_BLOCKS:=blockwrite(NEW_FILE,BUFFER,1,BLOCK_NO);
+           IF IO_BLOCKS=0 then exit(READ_WRITE);
+          end
+        else moveleft(BUFFER[0],IO_REC.A[FIRST_MOV_LEN+1],
+                                            REC_LEN-FIRST_MOV_LEN);
+      end
+    else
+     begin
+      if ((RW_COMMAND='R') AND (CURRENT_BLOCK<>BLOCK_NO))
+        then
+         begin
+           IF WHICH_FILE = 'O'
+             THEN IO_BLOCKS:=blockread(OLD_FILE,BUFFER,1,BLOCK_NO)
+             ELSE IO_BLOCKS:=blockread(NEW_FILE,BUFFER,1,BLOCK_NO);
+           IF IO_BLOCKS=0 then exit(READ_WRITE);
+         end;
+      if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],REC_LEN);
+           IF ((CURRENT_BLOCK<>BLOCK_NO) OR (CHAR_OFFSET+(2*REC_LEN)>=512))
+             THEN                        { WRITE BUFFER; NEXT READ WOULD  }
+               BEGIN                     { CUASE NEW BUFFER TO BE READ IN }
+                 IF WHICH_FILE = 'O'
+                   THEN IO_BLOCKS:=blockwrite(OLD_FILE,BUFFER,1,BLOCK_NO)
+                   ELSE IO_BLOCKS:=blockwrite(NEW_FILE,BUFFER,1,BLOCK_NO);
+                 IF IO_BLOCKS=0 then exit(READ_WRITE);
+               END;
+          end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],REC_LEN);
+     end;
+    CURRENT_BLOCK:=BLOCK_NO;
+    if IO_REC.A[3]=0 then exit(READ_WRITE);
+    IO_RET_CODE:=0;
+    IO_REC.A[0]:=REC_LEN;
+  {$I+}
+  end;  {READ_WRITE}
+
+SEGMENT Procedure LOAD_SCREEN(LOAD_COMMAND :Char; var S_ARRAY: SCREEN_ARR;
+                    NUMBER_FLDS:INTEGER; var RECORD_STRING: STRING255);
+  { Procedure load the screen array from a record obtained from the disk  }
+  { file.                                                                 }
+
+   var LOAD_INDEX,T_INDEX,COPY_INDEX,COPY_LENGTH : Integer;
+
+   begin {LOAD_SCREEN}
+    COPY_INDEX := 4;
+    LOAD_INDEX:=1;
+    while LOAD_INDEX <= NUMBER_FLDS  do
+     with S_ARRAY[LOAD_INDEX] do
+      begin
+       COPY_LENGTH:=S_LEN;
+       if (LOAD_COMMAND = 'A') or
+          ((LOAD_COMMAND = 'D') and (S_ID = COPY(S_DEF,2,LENGTH(S_DEF)-2)))
+         then
+           S_FLD:=copy(RECORD_STRING,COPY_INDEX,COPY_LENGTH)
+         else
+          begin
+            IF (S_DEF = '') OR (S_DEF = COPY(UNDERLINE,1,1))
+              THEN
+               BEGIN
+                 S_FLD := ' ';
+                 FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX);
+               END
+              ELSE  { s_def<>''  Mar 12 }
+                if s_def[1]<>'[' then begin
+                  s_fld:=' ';
+                  FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX)
+                end
+                else begin { s_def[1]='[' }
+                  t_index:=find(copy(s_def,2,length(s_def)-2),S_ARRAY);
+                  if t_index=0 then s_fld:=s_def
+                    else s_fld:=S_ARRAY[t_index].s_fld;
+                end;
+          end;
+        COPY_INDEX:=COPY_INDEX + COPY_LENGTH;
+        LOAD_INDEX:=LOAD_INDEX + 1;
+      end; {with/while}
+   end; {LOAD SCREEN}
+
+SEGMENT Procedure BUILD_RECORD;
+  { Procedure builds records to be placed on the disk. }
+
+   begin {BUILD RECORD}
+    IO_REC.A[0]:=3;
+    for INDEX:=1 to NUM_NEW_FLDS do  { Jan 5 To correct value range error }
+       IO_REC.B:=concat(IO_REC.B,NEW_FIELDS[INDEX].S_FLD);
+    (*get rid of leftover low-intensity underscores *)
+    for index:=1 to length(io_rec.b) do
+      if io_rec.a[index]=223 then io_rec.a[index]:=32;  (* blank *)
+    IO_REC.A[0]:=NEW_REC_LEN;
+    IO_REC.A[1]:=16; (* dle *)
+    IO_REC.A[2]:=32; (* space *)
+    IO_REC.A[3]:=42; (* * *)
+    IO_REC.A[NEW_REC_LEN-1]:=42;
+    IO_REC.A[NEW_REC_LEN]:=13; (* carriage return *)
+   end; {BUILD RECORD}
+
+ SEGMENT FUNCTION COPY_RECORD : BOOLEAN;
+  
+  { Determines whether a record is to be copied or not. }
+
+  VAR
+    BLANK,PASSED : BOOLEAN;
+    F : STRINGFL;
+
+  FUNCTION COMPARE(TEST : TEST_REC): BOOLEAN;
+
+    { Function is true if test passes, false if not. }
+
+    VAR
+      OLD_VAL : STRINGFL;
+      NUM1,NUM2 : REAL;
+     
+     function STR_TO_REAL(var S: STRING; var NUM: REAL): boolean;
+      
+      { Returns a value of true and the real value in NUM if
+        string can be converted to real, is set to false otherwise }
+      
+      var
+        I : integer;
+        FACTOR : REAL;
+        D_PT : BOOLEAN;
+      begin
+        STR_TO_REAL:=false;
+        I:=1;
+        D_PT := FALSE;
+        NUM:=0;
+        EATSPL(S); EATSPR(S);
+        if length(S)=0 then exit(STR_TO_REAL);
+        WHILE ((I <= LENGTH(S)) AND (NOT D_PT)) DO
+          BEGIN
+            if S[I] in DIGITSET then
+              NUM:=10*NUM+ord(S[I])-ord('0')
+            ELSE IF S[I] = '.' THEN D_PT := TRUE
+            else exit(STR_TO_REAL);
+            I := I + 1;
+          END;
+        IF D_PT
+          THEN
+            BEGIN
+              FACTOR := 10;
+              WHILE I <= LENGTH(S) DO
+                IF S[I] IN DIGITSET
+                  THEN
+                    BEGIN
+                      NUM := NUM + ((ord(S[I])-ord('0'))/FACTOR);
+                      FACTOR := FACTOR * 10;
+                      I := I + 1;
+                    END
+                  ELSE EXIT(STR_TO_REAL);
+            END;
+        STR_TO_REAL:=true;
+      end;  { STR_TO_REAL }
+      
+    BEGIN   { COMPARE }
+      COMPARE := FALSE;
+      OLD_VAL := OLD_FIELDS[TEST.FIELD_LOC].S_FLD;
+      EAT_SPACES(OLD_VAL,TRUE,TRUE);
+      WITH TEST DO
+        IF ((STR_TO_REAL(OLD_VAL,NUM1)) AND (STR_TO_REAL(VALUE,NUM2)))
+          THEN     { Compare as reals if possible }
+            CASE TEST.OPERATOR OF
+              LT: COMPARE := NUM1 < NUM2;
+              GT: COMPARE := NUM1 > NUM2;
+              EQ: COMPARE := NUM1 = NUM2;
+              LE: COMPARE := NUM1 <= NUM2;
+              GE: COMPARE := NUM1 >= NUM2;
+              NE: COMPARE := NUM1 <> NUM2;
+            END
+          ELSE     { Otherwise compare as strings }
+            CASE TEST.OPERATOR OF
+              LT: COMPARE := OLD_VAL < VALUE;
+              GT: COMPARE := OLD_VAL > VALUE;
+              EQ: COMPARE := OLD_VAL = VALUE;
+              LE: COMPARE := OLD_VAL <= VALUE;
+              GE: COMPARE := OLD_VAL >= VALUE;
+              NE: COMPARE := OLD_VAL <> VALUE;
+            END;
+    END; {COMPARE}
+
+  BEGIN {COPY_RECORD}
+    COPY_RECORD := TRUE;
+    IF NOT COPY_ALL_RECS      { Then see if record meets the user's tests }
+     THEN
+      BEGIN
+       IF ALL_TESTS          { COPY_RECORD set to true if all tests pass }
+         THEN
+           BEGIN
+             I := 1;
+             PASSED := TRUE;
+             WHILE ((I <= MAX_TESTS) AND (PASSED)) DO
+               BEGIN
+                 IF TEST_ARRAY[I].FIELD_LOC > 0
+                   THEN PASSED := COMPARE(TEST_ARRAY[I]);
+                 I := I + 1;
+               END;
+             COPY_RECORD := PASSED;
+           END
+         ELSE
+           BEGIN            {COPY_RECORD set to true if any test passes}
+             I := 1;
+             PASSED := FALSE;
+             WHILE ((I <= MAX_TESTS) AND (NOT PASSED)) DO
+               BEGIN
+                 IF TEST_ARRAY[I].FIELD_LOC > 0
+                   THEN PASSED := COMPARE(TEST_ARRAY[I]);
+                 I := I + 1;
+               END;
+             COPY_RECORD := PASSED;
+           END;
+      END;
+  END; {COPY_RECORD}
+
+SEGMENT PROCEDURE READ_OLD_RECORD(VAR IS_BLANK : BOOLEAN;
+                                  VAR READ_RESULTS : INTEGER);
+
+{ This procedure determines whether the "from" data file is a UDE file
+  or a GENLIST file and reads a record from it.
+  NOTE: In a UDE file a blank record is defined to be one where
+        IO_REC.A[3] = 126. In a GENLIST file a blank record is defined
+        be one where OLD_GEN_FILE^.DATA[1] = chr(127). Any other records
+        are assumed to be non-blank, even if all of their fields are
+        blank.                                                            }
+
+BEGIN
+  READ_RESULTS := 0;
+  IS_BLANK := FALSE;
+  IF UDE_FILE
+    THEN
+      BEGIN
+        READ_WRITE('R','O',OLD_REC_NO,OLD_REC_LEN,OLD_BUF,
+                                                OLD_BLOCK,READ_RESULTS);
+        IF READ_RESULTS = 0
+          THEN
+            BEGIN
+              IF IO_REC.A[3] = 126
+                THEN IS_BLANK := TRUE
+                ELSE LOAD_SCREEN('A',OLD_FIELDS,NUM_OLD_FLDS,IO_REC.B);
+            END;
+      END
+    ELSE
+      BEGIN
+        IF OLD_REC_NO <= NUM_OLD_RECS
+          THEN
+            BEGIN
+              SEEK(OLD_GEN_FILE,OLD_REC_NO);
+              GET(OLD_GEN_FILE);
+              IF OLD_GEN_FILE^.DATA[1] = CHR(127)
+                THEN IS_BLANK := TRUE 
+                ELSE
+                  BEGIN
+                    INDEX := 1;
+                    FOR II := 1 TO NUM_OLD_FLDS DO
+                      IF OLD_FIELDS[II].S_LEN > 0
+                        THEN
+                          BEGIN
+                            OLD_FIELDS[II].S_FLD := COPY(OLD_GEN_FILE^.DATA,
+                                                  INDEX,OLD_FIELDS[II].S_LEN);
+                            INDEX := INDEX + OLD_FIELDS[II].S_LEN;
+                          END;
+                  END;
+            END
+          ELSE READ_RESULTS := -1;
+      END;
+END; {READ_OLD_RECORD}
+
+SEGMENT PROCEDURE COPY_FIELDS;
+
+  { Copies the fields of the current "from" record to the current "to"
+      record.                                                          }
+
+  VAR
+    I,CHAR_INDEX : INTEGER;
+    ONE_CHAR     : CHAR;
+    TOO_LONG     : BOOLEAN;
+
+  FUNCTION CHR_IN_SET(CHR,SET_TYPE : CHAR) : BOOLEAN;
+
+    { CHR_IN_SET is set to true if chr is in the indicated set. }
+
+    BEGIN
+      CHR_IN_SET := FALSE;
+      CASE SET_TYPE OF
+        'A': IF CHR IN ['A'..'Z','a'..'z','''','.','0'..'9','+','-',' ']
+               THEN CHR_IN_SET := TRUE;
+        'N': IF CHR IN ['0'..'9','.','+','-',' ']
+               THEN CHR_IN_SET := TRUE;
+        'L': IF CHR IN ['A'..'Z','a'..'z','''','.',' ']
+               THEN CHR_IN_SET := TRUE;
+        '-': CHR_IN_SET := TRUE;
+      END;
+    END;
+
+  BEGIN  {COPY_FIELDS}
+    GOTOXY(0,19);
+    FOR I := 1 TO SCREEN_FIELDS DO
+      BEGIN
+        IF MAP_ARRAY[I].OLD_FLD_NO <> 0
+          THEN
+            WITH OLD_FIELDS[MAP_ARRAY[I].OLD_FLD_NO] DO
+              BEGIN
+                CHAR_INDEX := 1;
+                WHILE ((CHAR_INDEX <= LENGTH(S_FLD)) AND (CHAR_INDEX <=
+                                                   NEW_FIELDS[I].S_LEN)) DO
+                  BEGIN
+                    ONE_CHAR := S_FLD[CHAR_INDEX];
+                    IF CHR_IN_SET(ONE_CHAR,MAP_ARRAY[I].SET_TYPE)
+                      THEN 
+                        NEW_FIELDS[I].S_FLD[CHAR_INDEX] := S_FLD[CHAR_INDEX]
+                      ELSE
+                        BEGIN     
+                          MESSAGE(MAX_ROW,30,CONCAT('ERROR: Data is of ',
+                             'wrong type for field ',S_ID),TRUE);
+                          EXIT(COPY_DATA_FILE);
+                        END;
+                    CHAR_INDEX := CHAR_INDEX + 1;
+                  END;
+                S := S_FLD;
+                EAT_SPACES(S,TRUE,TRUE);
+                IF ((LENGTH(S) > NEW_FIELDS[I].S_LEN) AND (NOT TRUNC_FLDS_OK))
+                  THEN
+                    BEGIN
+                      MSG := S_ID;
+                      EAT_SPACES(MSG,TRUE,TRUE);
+                      ERASE_EOS(0,MAX_ROW-1);
+                      WRITELN('One or more of the fields',
+                         ' is not large enough to hold all of the');
+                      WRITE('data being copied ',
+                              'to it. Proceed anyway? Y/N :');
+                      WRITE(ALARM_BELL);
+                      GOTOXY(47,MAX_ROW);
+                      CH := ' ';
+                      REPEAT
+                        READ(KEYBOARD,CH);
+                      UNTIL CH IN ['Y','y','N','n'];
+                      IF (NOT (CH IN ['Y','y']))
+                        THEN EXIT(COPY_DATA_FILE);
+                      GOTOXY(0,22);
+                      WRITE('                                        ',
+                                             '                          ');
+                      ERASE_EOS(0,MAX_ROW);
+                      TRUNC_FLDS_OK := TRUE;
+                    END;
+              END;
+      END;
+  END; {COPY_FIELDS}
+
+BEGIN {READ_TEST_COPY}
+  GET_FILE(O_DEFI_NAME,OLD_FIELDS,GET_PROMPTS,RESULTS);
+  ERASE_EOS(0,22);
+  RESET(NEW_FILE,N_DATA_NAME);
+  RESULTS := 0;
+  OFFSET_RECS := 0;
+  TRUNC_FLDS_OK := FALSE;
+  END_NEW_FILE := FALSE;
+  OLD_REC_NO := 1;
+  NEW_REC_NO := 1;
+  IF APPEND_FILE                  { Find last non-blank record }
+    THEN
+      WHILE RESULTS = 0 DO
+        BEGIN
+          READ_WRITE('R','N',NEW_REC_NO,NEW_REC_LEN,NEW_BUF,NEW_BLOCK,
+                                                               RESULTS);
+          IF ((IO_REC.A[3] <> 126) AND (RESULTS = 0))
+            THEN OFFSET_RECS := NEW_REC_NO;
+          NEW_REC_NO := NEW_REC_NO + 1;
+        END;
+  RESULTS := 0;
+  NEW_REC_NO := OFFSET_RECS + 1;
+  WHILE RESULTS = 0 DO
+    BEGIN
+      READ_OLD_RECORD(REC_IS_BLANK,RESULTS);
+      IF RESULTS = 0 
+       THEN
+        BEGIN
+         IF REC_IS_BLANK
+           THEN
+             BEGIN
+               IF COPY_BLNKS
+                THEN
+                 BEGIN
+                  READ_WRITE('R','N',NEW_REC_NO,NEW_REC_LEN,NEW_BUF,
+                                                   NEW_BLOCK,RESULTS);
+                  IF RESULTS = 0
+                   THEN
+                    BEGIN
+                     FILLCHAR(IO_REC.A[0],NEW_REC_LEN,' ');
+                     IO_REC.A[0] := NEW_REC_LEN;
+                     IO_REC.A[1] := 16;
+                     IO_REC.A[2] := 32;
+                     IO_REC.A[3] := 126;
+                     IO_REC.A[NEW_REC_LEN-1] := 42;
+                     IO_REC.A[NEW_REC_LEN] := 13;
+                     READ_WRITE('W','N',NEW_REC_NO,NEW_REC_LEN,
+                                              NEW_BUF,NEW_BLOCK,RESULTS);
+                     STR(OLD_REC_NO,S);
+                     MESSAGE(MAX_ROW,40,CONCAT('STATUS: Copying record# ',
+                                                                 S),FALSE);
+                     NEW_REC_NO := NEW_REC_NO + 1;
+                    END
+                  ELSE END_NEW_FILE := TRUE;
+                 END;
+              END
+             ELSE
+               IF COPY_RECORD
+                THEN
+                  BEGIN
+                    READ_WRITE('R','N',NEW_REC_NO,NEW_REC_LEN,
+                                             NEW_BUF,NEW_BLOCK,RESULTS);
+                    IF RESULTS = 0
+                      THEN
+                        BEGIN
+                          IF CLEAR_FILE
+                            THEN
+                              FOR II := 1 TO SCREEN_FIELDS DO
+                                BEGIN
+                                  NEW_FIELDS[II].S_FLD := '';
+                                  FOR I := 1 TO NEW_FIELDS[II].S_LEN DO
+                                    INSERT(' ',NEW_FIELDS[II].S_FLD,1);
+                                END
+                            ELSE
+                              LOAD_SCREEN('A',NEW_FIELDS,NUM_NEW_FLDS,
+                                                               IO_REC.B);
+                          COPY_FIELDS;
+                          BUILD_RECORD;
+                          STR(OLD_REC_NO,S);
+                          MESSAGE(MAX_ROW,40,CONCAT('STATUS: Copying record# ',
+                                                                  S),FALSE);
+                          READ_WRITE('W','N',NEW_REC_NO,NEW_REC_LEN,NEW_BUF,
+                                                         NEW_BLOCK,RESULTS);
+                          NEW_REC_NO := NEW_REC_NO + 1;
+                        END
+                    ELSE END_NEW_FILE := TRUE;
+                   END;
+        END;
+      OLD_REC_NO := OLD_REC_NO + 1;
+    END;
+  IF CLEAR_FILE
+    THEN
+      BEGIN
+        II := NEW_REC_NO;
+        RESULTS := 0;
+        WHILE RESULTS = 0 DO
+         BEGIN
+          READ_WRITE('R','N',II,NEW_REC_LEN,NEW_BUF,NEW_BLOCK,RESULTS);
+          IF RESULTS = 0
+           THEN
+            BEGIN
+             FILLCHAR(IO_REC.A[0],NEW_REC_LEN,' ');
+             IO_REC.A[0] := NEW_REC_LEN;
+             IO_REC.A[1] := 16;
+             IO_REC.A[2] := 32;
+             IO_REC.A[3] := 126;
+             IO_REC.A[NEW_REC_LEN-1] := 42;
+             IO_REC.A[NEW_REC_LEN] := 13;
+             READ_WRITE('W','N',II,NEW_REC_LEN,NEW_BUF,NEW_BLOCK,RESULTS);
+             II := II + 1;
+            END
+         END;
+      END;
+  NEW_REC_NO := NEW_REC_NO - 1;
+  IF ((NEW_REC_NO >= 1) OR (CLEAR_FILE))
+    THEN                         { Forces NEW_BUF to be written after }
+      BEGIN                      { last record has been written to it }
+        READ_WRITE('R','N',NEW_REC_NO,NEW_REC_LEN,NEW_BUF,NEW_BLOCK,RESULTS);
+        NEW_BLOCK := -1;
+        READ_WRITE('W','N',NEW_REC_NO,NEW_REC_LEN,NEW_BUF,NEW_BLOCK,RESULTS);
+      END;
+  STR(NEW_REC_NO-OFFSET_RECS,S);
+  IF ((S = '0') AND (NOT(END_NEW_FILE)))
+    THEN MSG := 'Found no records meeting specifications'
+    ELSE
+      IF END_NEW_FILE
+        THEN MSG := CONCAT('File full, ',S,' records copied.')
+        ELSE MSG := CONCAT('Copy complete, ',S,' records copied.');
+  ERASE_EOS(0,22);
+  MESSAGE(MAX_ROW,40,MSG,TRUE);
+  CLOSE(NEW_FILE,LOCK);
+END; {READ_TEST_COPY}
+
+Procedure MESSAGE{M_ROW,M_COL :Integer; MSG :String; DING: Boolean};
+{ Procedure displays messages at the message row and column. }
+
+  begin {MESSAGE}
+    gotoxy(M_COL,M_ROW);  write(MSG);
+    if DING then write(ALARM_BELL);
+  end; {MESSAGE}
+
+Procedure EAT_SPACES{var TEMP :String; LEFT_EAT,RIGHT_EAT :Boolean};
+{ Procedure to remove the spaces from either or both sides of a string. }
+
+  begin {EAT SPACES}
+   if LEFT_EAT then EATSPL(TEMP);
+   if RIGHT_EAT then EATSPR(TEMP);
+  end; {EAT SPACES}
+
+PROCEDURE LEAVE{MSG : STRING};
+  BEGIN
+    MESSAGE(MAX_ROW,38,MSG,TRUE);
+    EXIT(COPY_DATA_FILE);
+  END;
+
+BEGIN {COPY_DATA_FILE}
+  INITIALIZE;
+  GET_FILES;
+  CREATE_MAP_ARRAY;
+  GET_COPY_INFO;
+  READ_TEST_COPY;
+END.
+

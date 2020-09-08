@@ -1,0 +1,455 @@
+PROGRAM WFiler; {revision 22-Feb-82 Austin Tate}
+
+USES {$U Windows.code} WindowManager;
+
+CONST Bel=7;
+
+VAR Ch:CHAR;
+    ScriptWindow,MessWindow,CommWindow:Window;
+
+{$I-}
+
+PROCEDURE ShowCommand(FirstTime:BOOLEAN);
+VAR W:Window;
+BEGIN
+  IF FirstTime THEN
+    BEGIN
+      CommWindow:=WNew(0,2,12,10,
+                       [HasHeading,CanHide,CanMove,CanAlter],'Commands....');
+      WShow(CommWindow);
+      WWriteStr('C(reate file');WWriteLn;
+      WWriteStr('D(ate');       WWriteLn;
+      WWriteStr('E(xt. dir');   WWriteLn;
+      WWriteStr('L(ist dir');   WWriteln;
+      WWriteStr('R(emove');     WWriteLn;
+      WWriteStr('V(olumes');    WWriteLn;
+      WWriteStr('............');WWriteLn;
+      WWriteStr('?(Commands');  WWriteLn;
+      WWriteStr('Q(uit');
+    END
+  ELSE
+    BEGIN
+      IF WCurrentWindow<>CommWindow THEN WShow(CommWindow);
+    END;
+END;
+
+PROCEDURE ShowMessage(FirstTime:BOOLEAN);
+VAR W:Window;
+BEGIN
+  IF FirstTime THEN MessWindow:=WNew(0,0,80,1,[CanMove],'')
+  ELSE WClearAndShow(MessWindow);
+END;
+
+PROCEDURE ShowScript(FirstTime:BOOLEAN);
+          {Script window should always be left at start of a newline}
+VAR W:Window;
+BEGIN
+  IF FirstTime THEN
+    BEGIN
+      ScriptWindow:=WNew(0,17,80,7,
+                       [HasHeading,CanHide,CanMove,CanAlter,CanScroll,CanPan],
+                       'TypeScript');
+      WShow(ScriptWindow);
+    END
+  ELSE
+    BEGIN
+      IF WCurrentWindow<>ScriptWindow THEN WShow(ScriptWindow);
+    END;
+END;
+
+PROCEDURE OpenDirWindow(Title:STRING; Detail:BOOLEAN);
+VAR W:Window;
+    Width,X,Y:INTEGER;
+BEGIN
+  WXY(X,Y);
+  IF Detail THEN Width:=60 ELSE Width:=31;
+  W:=WNew(X,Y,Width,12,
+          [HasHeading,CanAlter,CanMove,CanKill],
+          CONCAT('Directory of ',Title,':'));
+  WShow(W);
+END;
+
+PROCEDURE OpenVolsWindow;
+VAR W:Window;
+    X,Y:INTEGER;
+BEGIN
+  WXY(X,Y);
+  W:=WNew(X,Y,13,13,[HasHeading,CanAlter,CanMove,CanKill],'Volumes');
+  WShow(W);
+END;
+
+PROCEDURE OpenDateWindow;
+VAR W:Window;
+    X,Y:INTEGER;
+BEGIN
+  WXY(X,Y);
+  W:=WNew(X,Y,19,1,[CanMove,CanKill],'');
+  WShow(W);
+END;
+
+PROCEDURE FileH(Action:CHAR);
+
+{ Assume all input through                                 }
+{   WReadCh       input character from source stream       }
+{   WReadLnStr    input string from source stream up to NL }
+{                                                          }
+{Assume all output through                                 }
+{   WWriteCh      output character to destination stream   }
+{   WWriteStr     output string    to destination stream   }
+{   WWriteInt     output integer   to destination stream   }
+{   WWriteLn      output a newline to destination stream   }
+
+{Directory layouts, etc. ideas from various sources including}
+{UCSD p-System Users' Society Software Library Volume 8      }
+
+CONST VIDLENG=7;  {NUMBER OF CHARS IN A VOLUME ID}
+      TIDLENG=15; {NUMBER OR CHARS IN A TITLE ID}
+      MAXDIR=77;  {MAX NUMBER OF ENTRIES IN A Directory}
+
+TYPE  DATEREC = PACKED RECORD
+                  MONTH: 0..12;          {0 IMPLIES DATE NOT MEANINGFUL}
+                  DAY: 0..31;            {DAY OF MONTH}
+                  YEAR: 0..100           {100 IS TEMP DISK FILE FLAG}
+                END {DATEREC};
+      DIRRANGE = 0..MAXDIR;
+      TID = STRING[TIDLENG];
+ 
+      FILEKIND = (UNTYPEDFILE,XDSKFILE,CODEFILE,TEXTFILE,
+                  INFOFILE,DATAFILE,GRAFFILE,FOTOFILE,SECUREDIR);
+ 
+      DIRENTRY = RECORD
+                   DFIRSTBLK: INTEGER;          {FIRST PHYSICAL DISK ADDR}
+                   DLASTBLK: INTEGER;           {POINTS AT BLOCK FOLLOWING}
+                   CASE DFKIND: FILEKIND OF
+                     SECUREDIR,
+                     UNTYPEDFILE:               {normally in DIR[0]..vol info}
+                       (DVID: STRING[VIDLENG];  {NAME OF DISK VOLUME}
+                        DEOVBLK: INTEGER;       {LASTBLK OF VOLUME}
+                        DNUMFILES: DIRRANGE;    {NUM FILES IN DIR}
+                        DLOADTIME: INTEGER;     {TIME OF LAST ACCESS}
+                        DLASTBOOT: DATEREC);    {MOST RECENT DATE SETTING}
+                     XDSKFILE,CODEFILE,TEXTFILE,INFOFILE,
+                     DATAFILE,GRAFFILE,FOTOFILE:
+                       (DTID: TID;              {TITLE OF FILE}
+                        DLASTBYTE: 1..512;      {NUM BYTES IN LAST BLOCK}
+                        DACCESS: DATEREC)       {LAST MODIFICATION DATE}
+                 END {DIRENTRY};
+
+VAR   DI: RECORD CASE BOOLEAN OF
+            TRUE: (RECTORY: ARRAY [DIRRANGE] OF DIRENTRY);
+            FALSE:(RBLOCKS: ARRAY[1..4] OF ARRAY[1..512] OF CHAR)
+          END;
+      Months: ARRAY [0..15] OF STRING[3];
+
+
+PROCEDURE SPACES(V:INTEGER);
+BEGIN
+   FOR V:=V DOWNTO 1 DO WWriteCh(' ');
+END;
+
+PROCEDURE DIRINIT(UnitNum:INTEGER);
+BEGIN
+  UNITREAD(UnitNum,DI.RBLOCKS[1],2048,2); {LOAD DIR}
+END {DIRINIT} ;
+
+FUNCTION GETUNIT:BOOLEAN;
+VAR UnitNum,I:INTEGER;
+    GOOD:BOOLEAN;
+    INSTRING:STRING;
+    UNames:ARRAY[4:12] OF STRING[3];
+BEGIN
+   UNames[4]:='#4';
+   UNames[5]:='#5';
+   UNames[6]:='';
+   UNames[7]:='';
+   UNames[8]:='';
+   UNames[9]:='#9';
+   UNames[10]:='#10';
+   UNames[11]:='#11';
+   UNames[12]:='#12';
+   If WCurrentWindow<>ScriptWindow THEN ShowScript(FALSE);
+   WWriteStr('Volume or Unit: '); WReadLnStr(INSTRING);
+   IF INSTRING<>'' THEN IF INSTRING[LENGTH(INSTRING)]=':' THEN BEGIN
+      {$R-}
+      INSTRING[0]:=PRED(INSTRING[0]);
+      {$R+}
+   END;
+   IF INSTRING='*' THEN INSTRING:='#4';
+   GOOD:=FALSE;
+   IF INSTRING<>'' THEN BEGIN
+      UnitNum:=3;
+      REPEAT
+         UnitNum:=SUCC(UnitNum);
+         IF INSTRING[1]='#' THEN BEGIN
+            IF INSTRING=UNames[UnitNum] THEN BEGIN
+               DIRINIT(UnitNum);
+               GOOD:=(IORESULT=0);
+            END;
+         END ELSE BEGIN
+            IF UNames[UnitNum]<>'' THEN BEGIN
+               DIRINIT(UnitNum);
+               GOOD:=(IORESULT=0) AND (DI.RECTORY[0].DVID=INSTRING);
+            END;
+         END;
+      UNTIL GOOD OR (UnitNum=12);
+   END;
+   IF NOT GOOD THEN BEGIN
+      WWriteStr('Volume or Unit not on-line.');
+      WWriteLn;
+   END;
+   GETUNIT:=GOOD;
+END;
+
+PROCEDURE Date(StandAlone:BOOLEAN);
+BEGIN
+  IF StandAlone THEN
+    BEGIN
+      OpenDateWindow;
+      DirInit(4); {get date on system disk}
+      WWriteStr('Date is:');
+    END;
+  WITH DI.RECTORY[0] DO
+    BEGIN
+      IF DLASTBOOT.MONTH > 0 THEN BEGIN
+         SPACES(2);
+         WWriteInt(DLASTBOOT.DAY,2);
+         WWriteCh('-');
+         WWriteStr(Months[DLASTBOOT.MONTH]);
+         WWriteCh('-');
+         WWriteInt(DLASTBOOT.YEAR,2);
+      END;
+    END;
+END;
+
+PROCEDURE Directory(DETAIL:BOOLEAN);
+VAR LINES,I,LARGEST,FREEBLKS,USEDAREA,USEDBLKS: INTEGER;
+    GS: STRING;
+
+PROCEDURE SENDLN;
+CONST WDepth=10;
+VAR CH:CHAR;
+BEGIN
+   WWriteLn;
+   LINES:=LINES+1;
+   IF LINES=WDepth THEN BEGIN
+      WWriteStr('Press <space> to continue');
+      REPEAT
+         WReadCh(CH,FALSE);
+      UNTIL CH=' ';
+      WClear;
+      LINES:=0;
+   END;
+END;
+
+PROCEDURE FREECHECK(FIRSTOPEN,NEXTUSED: INTEGER);
+VAR FREEAREA: INTEGER;
+BEGIN
+  FREEAREA := NEXTUSED-FIRSTOPEN;
+  IF FREEAREA > LARGEST THEN LARGEST := FREEAREA;
+  IF FREEAREA > 0 THEN
+    BEGIN FREEBLKS := FREEBLKS+FREEAREA;
+      IF DETAIL THEN
+        BEGIN
+          WWriteStr('< UNUSED >      ');
+          WWriteInt(FREEAREA,4);
+          SPACES(11);
+          WWriteInt(FIRSTOPEN,6);
+          SENDLN;
+        END
+    END;
+END {FREECHECK} ;
+
+BEGIN
+  IF NOT GETUNIT THEN EXIT(Directory);
+  FREEBLKS := 0; USEDBLKS := 0;
+  LARGEST := 0;
+  GS:=DI.RECTORY[0].DVID;
+  OpenDirWindow(GS,DETAIL);
+  LINES:=0;
+  FOR I := 1 TO DI.RECTORY[0].DNUMFILES DO
+    WITH DI.RECTORY[I] DO
+      BEGIN
+        FREECHECK(DI.RECTORY[I-1].DLASTBLK,DFIRSTBLK);
+        USEDAREA := DLASTBLK-DFIRSTBLK;
+        USEDBLKS := USEDBLKS+USEDAREA;
+        IF DACCESS.YEAR IN [1..99] THEN
+        BEGIN
+          WWriteStr(DTID);
+          SPACES(TIDLENG-LENGTH(DTID)+1);
+          WWriteInt(USEDAREA,4);
+          IF DACCESS.MONTH > 0 THEN
+            BEGIN
+              SPACES(2);
+              WWriteInt(DACCESS.DAY,2);
+              WWriteCh('-');
+              WWriteStr(Months[DACCESS.MONTH]);
+              WWriteCh('-');
+              WWriteInt(DACCESS.YEAR,2);
+            END;
+          IF DETAIL THEN
+            BEGIN
+              IF DACCESS.MONTH = 0 THEN SPACES(11);
+              WWriteInt(DFIRSTBLK,6);
+              WWriteInt(DLASTBYTE,6);
+              GS := '     file';
+              CASE DFKIND OF
+                XDSKFILE: GS := 'Bad block';
+                CODEFILE: GS := 'Code file';
+                TEXTFILE: GS := 'Text file';
+                INFOFILE: GS := 'Info file';
+                DATAFILE: GS := 'Data file';
+                GRAFFILE: GS := 'Graf file';
+                FOTOFILE: GS := 'Foto file'
+              END;
+              SPACES(2);
+              WWriteStr(GS)
+            END;
+          SENDLN;
+        END;
+      END;
+  FREECHECK(DI.RECTORY[I-1].DLASTBLK,DI.RECTORY[0].DEOVBLK);
+  WWriteInt(DI.RECTORY[0].DNUMFILES,0);
+  WWriteStr(' files, ');
+  WWriteInt(USEDBLKS,0);
+  WWriteStr(' blocks used, ');
+  WWriteInt(FREEBLKS,0);
+  WWriteStr(' unused');
+  IF DETAIL THEN BEGIN
+     WWriteStr(', ');
+     WWriteInt(LARGEST,0);
+     WWriteStr(' in largest area.');
+  END;
+END; {Directory}
+
+PROCEDURE Vols;
+VAR UnitNum:INTEGER;
+BEGIN
+   OpenVolsWindow;
+   WWriteStr(' 1  CONSOLE:'); WWriteLn;
+   WWriteStr(' 2  KEYBOARD:');WWriteLn;
+   WWriteStr(' 3  GRAPHIC:');
+   FOR UnitNum:=4 TO 12 DO 
+      BEGIN
+        IF UnitNum=9 THEN
+          BEGIN
+            WWriteLn; WWriteStr(' 6  PRINTER:');
+            WWriteLn; WWriteStr(' 7  REMIN:');
+            WWriteLn; WWriteStr(' 8  REMOUT:');
+          END;
+        IF UnitNum IN [4,5,9,10,11,12] THEN BEGIN
+        DIRINIT(UnitNum);
+        IF IORESULT=0 THEN BEGIN
+           WWriteLn;
+           WWriteInt(UnitNum,2);
+           SPACES(2);
+           WWriteStr(DI.RECTORY[0].DVID);
+           WWriteCh(':');
+        END;
+     END;
+   END;
+END;
+
+PROCEDURE RemoveFile;
+VAR STR:STRING;
+    DFILE:FILE;
+BEGIN
+   IF WCurrentWindow<>ScriptWindow THEN ShowScript(FALSE);
+   WWriteStr('Remove filename:');
+   WReadLnStr(STR);
+   RESET(DFILE,STR);
+   IF IORESULT<>0 THEN
+      WWriteStr('File does not exist.')
+   ELSE BEGIN
+      CLOSE(DFILE,PURGE);
+      WWriteStr('File ');
+      WWriteStr(STR);
+      WWriteStr(' removed.');
+   END;
+   WWriteLn;
+END;
+
+BEGIN
+   Months[ 0] := '???'; Months[ 1] := 'Jan';
+   Months[ 2] := 'Feb'; Months[ 3] := 'Mar';
+   Months[ 4] := 'Apr'; Months[ 5] := 'May';
+   Months[ 6] := 'Jun'; Months[ 7] := 'Jul';
+   Months[ 8] := 'Aug'; Months[ 9] := 'Sep';
+   Months[10] := 'Oct'; Months[11] := 'Nov';
+   Months[12] := 'Dec'; Months[13] := '???';
+   Months[14] := '???'; Months[15] := '???';
+   CASE Action OF
+     'E':Directory(TRUE);
+     'L':Directory(FALSE);
+     'V':Vols;
+     'R':RemoveFile;
+     'D':Date(TRUE);
+   END;
+END;
+
+PROCEDURE CreateFile;
+CONST NoSuchFile=10;
+VAR F:TEXT;
+    Str:STRING;
+    i:INTEGER;
+    Abort:BOOLEAN;
+BEGIN
+  ShowScript(FALSE);
+  WWriteStr('Create filename:');
+  WReadLnStr(Str);
+  RESET(F,STR);
+  IF IORESULT<>NoSuchFile THEN WWriteStr('File open error.')
+  ELSE
+    BEGIN
+      REWRITE(F,Str);
+      WWriteStr('Give text - end with @');  WWriteLn;
+      REPEAT
+        WReadLnStr(Str);
+        i:=POS('@',Str);
+        IF i<>0 THEN Str:=COPY(Str,i-1,LENGTH(Str)-1);
+        WRITELN(F,Str);
+        Abort:=(IORESULT<>0);
+      UNTIL (i<>0) OR Abort;
+      IF Abort THEN WWriteStr('File write error.')
+      ELSE
+        BEGIN
+          CLOSE(F,LOCK);
+          IF IORESULT<>0 THEN WWriteStr('File close error.')
+          ELSE WWriteStr('File created okay.');
+        END;
+    END;
+    WWriteLn;
+  END;
+  
+{$I+}
+BEGIN
+ WStartup; {- not used if Window manager in *SYSTEM.PASCAL} {<<<<<<<}
+ {WInit; - needed if Window manager in *SYSTEM.PASCAL}      {<<<<<<<}
+ ShowScript(TRUE);
+ WWriteStr('ESC enters Window manager mode - then ? will get help information');
+ WWriteLn;
+ ShowCommand(TRUE);
+ ShowMessage(TRUE); {does not actually show the window}
+ WCursorXY(30,6);
+ REPEAT
+   ShowMessage(FALSE);
+   WWriteStr('WFiler: give command letter: ');
+   REPEAT
+     WReadCh(Ch,FALSE);
+     IF (Ch>='a') AND (Ch<='z') THEN Ch:=CHR(ORD(Ch)-32);
+   UNTIL Ch IN ['?','C','D','H','R','E','L','V','Q'];
+   WWriteCh(Ch); WWriteLn;
+   IF (Ch='H') OR (Ch='?') THEN ShowCommand(FALSE)
+   ELSE IF (Ch='C') THEN CreateFile
+   ELSE IF (Ch<>'Q') THEN FileH(Ch);
+ UNTIL Ch='Q';
+ WHide(ScriptWindow);
+ WHide(CommWindow);
+ WHide(MessWindow);
+ WDispose(ScriptWindow);
+ WDispose(CommWindow);
+ WDispose(MessWindow);
+ {other windows left on screen for info in case WindowManager is a
+  System Unit in *SYSTEM.PASCAL}
+END.
+
+

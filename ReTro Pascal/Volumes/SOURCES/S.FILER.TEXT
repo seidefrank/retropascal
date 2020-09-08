@@ -1,0 +1,51 @@
+
+{.fs} {$L L.FILER.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+{$C Copyright (c) 1979 Regents of the University of California. FILER II.799}
+
+{**********************************************}
+{                                              }
+{           UCSD Pascal Filehandler            }
+{                                              }
+{    Release level:  II.0 February, 1979       }
+{                                              }
+{                                              }
+{    Written by Roger T. Sumner                }
+{      Release level I.4, Winter 1977          }
+{                                              }
+{    Written by Steven S Thomson               }
+{      Release level F.5a Summer 1979          }
+{      Release level II.0 Winter 1978-79       }
+{                                              }
+{    Institute for Information Systsems        }
+{    UC San Diego, La Jolla, California        }
+{                                              }
+{    Kenneth L. Bowles, Director               }
+{                                              }
+{                                              }
+{**********************************************}
+
+
+{     Copyright (C) 1979 Regents of the University of California.     }
+{     Permission to copy or distribute this software or documen-      }
+{     tation in hard or soft copy granted only by written license     }
+{     obtained from the Institute for Information Systems.            }
+
+
+{$S+}
+{$I GLOBALS.TEXT}
+
+SEGMENT PROCEDURE FILEHANDLER(ZZZZZ,ZZZZZZ : INTEGER);
+
+{.fs}
+{ The source exceeds the editor's maximum file size.                          }
+{ The original source came in parts, which we regroup and rename to begin     }
+{ with the same characters as the main source, for better grouping.           }
+{ The filenames of the original parts are given inside the soruce files.      }
+
+{$I S.FILE1UTL} { global variables and types; init, helpers, UI helpers       }
+{$I S.FILE2FIL} { paths: parsing, dir scanning, input; file commands          }
+{$I S.FILE3VOL} { workfile commands, dir cmds, volume cmds, shell, main       }
+{.fs}
+
+BEGIN
+END.

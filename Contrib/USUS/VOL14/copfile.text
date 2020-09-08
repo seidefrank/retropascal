@@ -1,0 +1,154 @@
+program copfile;
+  { copy verify file utility program.
+    written by Jon Bondy Feb 1982 }
+  const 
+    { number of retries for reading and writing }
+    readretries = 1;
+    writeretries = 3;
+    buffsize = 32; { blocks }
+    bs = 8;
+  type
+    block = packed array [0..255] of integer;
+  var
+    buff1, buff2 : array[1..buffsize] of block;
+    retrycount : integer;
+    source, dest : file;
+    fname : string;
+    ch : char;
+    proceed : boolean;
+      
+  procedure docopy;
+    var
+      startblock : integer;
+      size : integer;
+      error : boolean;
+      i : integer;
+      
+    procedure doread(var size : integer; startblock : integer);
+      var
+        retrycount : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try source read after block ',
+            startblock,'.');
+        { obtain actual amount of data read here for use later on }
+        {$I-} size := blockread(source,buff1,buffsize,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until (ioresult = 0) or (retrycount > readretries);
+      if (ioresult <> 0) then begin
+        writeln('Unrecoverable error reading source file after block ',
+          startblock,'.');
+        exit(docopy);
+        end;
+      end; { doread }
+        
+    procedure dowrite(size, startblock : integer);
+      var
+        retrycount, size_read : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try write after block ',startblock,'.');
+        {$I-} size_read := blockwrite(dest,buff1,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until ((ioresult = 0) and (size_read = size)) or 
+          (retrycount > writeretries);
+      if (ioresult <> 0) or (size_read <> size) then begin
+        writeln('Unrecoverable error writing destination file after block ',
+          startblock,'.');
+        exit(docopy);
+        end;
+      end; { dowrite }
+        
+    function docompare(size, startblock : integer) : boolean;
+      { return true if compare error }
+      var
+        retrycount, size_read : integer;
+        i : integer;
+        error : boolean;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try destination read after block ',
+            startblock,'.');
+        {$I-} size_read := blockread(dest,buff2,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until ((ioresult = 0) and (size_read = size)) or 
+          (retrycount > readretries);
+      if (ioresult <> 0) or (size_read <> size) then begin
+        writeln('Error re-reading destination file after block ',
+          startblock,'.');
+        docompare := true; { signal error }
+        exit(docompare);
+        end;
+      error := false;
+      for i := 1 to size do
+        error := error or (buff1[i] <> buff2[i]);
+      if error then writeln('Compare error after block ',startblock,'.');
+      docompare := error;
+      end; { docompare }
+        
+    begin { docopy }
+    startblock := 0;
+    repeat
+      size := buffsize; { try to fill buffer each time }
+      retrycount := 0;
+      repeat
+        write('Copying block ',startblock:4,'    ');
+        for i := 1 to 22 do write(chr(bs));
+        doread(size,startblock);
+        dowrite(size,startblock);
+        error := docompare(size,startblock);
+        { true if error on compare }
+        if error then writeln('Retrying copy starting at block ',startblock);
+        retrycount := retrycount + 1;
+        until not error or (retrycount > readretries);
+      if error then begin
+        writeln; writeln('Unable to copy due to unrecoverable errors.');
+        exit(docopy);
+        end;
+      startblock := startblock + buffsize;
+      until (size < buffsize);
+    writeln;
+    close(dest,lock);
+    writeln('Copy completed successfully.');
+    end; { docopy }
+    
+  begin { main }
+  repeat
+    writeln('Copy/Verify File Utility.  Written by Jon Bondy, 2/82.');
+    repeat
+      write('Enter source file name : ');
+      readln(fname);
+      close(source); {$I-} reset(source,fname); {$I+}
+      until (ioresult = 0);
+    repeat
+      write('Enter destination file name : ');
+      readln(fname); close(dest); 
+      { try to open for read } {$I-} reset(dest,fname); {$I+}
+      if (ioresult = 0) then begin { file found }
+         write('File exists: destroy it ? ');
+         read(ch); writeln;
+         if (ch = 'y') or (ch = 'Y') then begin
+            close(dest,purge);
+            proceed := true;
+            end
+         else proceed := false; { prevent copy }
+         end
+      else proceed := true; { file not found }
+      close(dest); 
+      if proceed then {$I-} rewrite(dest,fname); {$I+}
+      until (ioresult = 0);
+    if proceed then docopy;
+    write('Do you wish to make another copy? ');
+    read(ch); writeln;
+    until (ch = 'n') or (ch = 'N');
+  write('Press <CR> when system disk is in Unit 4 again.');
+  readln(ch);
+  end.
+
+

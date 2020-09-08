@@ -1,0 +1,233 @@
+{     
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+}
+
+{BASPROC2.TEXT}                             
+
+PROCEDURE Change;
+ VAR temp : INTEGER;
+     opartnum,npartnum : STRING[16];
+     ch : CHAR;
+ BEGIN 
+  Clear;
+  WRITE('Change :: I)nventory, A)rchive, B)oth ::');
+  READ(ch);
+  IF ch IN ['I','i','A','a','B','b'] THEN
+   BEGIN
+    Clrline(0,2); 
+    WRITE('enter partnumber to be changed --->');
+    Rdata(35,2,16,opartnum); 
+    Clrline(0,3);
+    WRITE('enter new partnumber ------------->'); 
+    Rdata(35,3,16,npartnum);
+    IF (opartnum='') OR (npartnum='') THEN EXIT(Change);
+    CASE ch OF
+     'I','i' : BEGIN
+                WRITELN;
+                WRITE('searching inventory');
+                FOR temp := 1 TO nirecs DO 
+                 BEGIN
+                  SEEK(invfile,temp);
+                  GET(invfile);
+                  IF invfile^.partnum = opartnum THEN 
+                   BEGIN
+                    invfile^.partnum := npartnum;     
+                    SEEK(invfile,temp);
+                    PUT(invfile);
+                   END;
+                  WRITE('.');
+                 END;
+                WRITELN;
+               END;
+     'A','a' : BEGIN
+                WRITELN;
+                WRITE('searching archive');
+                FOR temp := 1 TO narecs DO 
+                 BEGIN
+                  SEEK(arcfile,temp);
+                  GET(arcfile);
+                  IF arcfile^.partnum = opartnum THEN 
+                   BEGIN
+                    arcfile^.partnum := npartnum;                    
+                    SEEK(arcfile,temp);        
+                    PUT(arcfile);
+                   END;
+                  WRITE('.');
+                 END;
+                WRITELN;
+               END;
+     'B','b' : BEGIN
+                WRITELN;
+                WRITE('searching inventory');
+                FOR temp := 1 TO nirecs DO 
+                 BEGIN
+                  SEEK(invfile,temp);
+                  GET(invfile);
+                  IF invfile^.partnum = opartnum THEN 
+                   BEGIN
+                    invfile^.partnum := npartnum;
+                    SEEK(invfile,temp);
+                    PUT(invfile);
+                   END;
+                  WRITE('.');
+                 END;
+                WRITELN;
+                WRITELN;
+                WRITE('searching archive');
+                FOR temp := 1 TO narecs DO 
+                 BEGIN
+                  SEEK(arcfile,temp);
+                  GET(arcfile);
+                  IF arcfile^.partnum = opartnum THEN 
+                   BEGIN
+                    arcfile^.partnum := npartnum;
+                    SEEK(arcfile,temp);
+                    PUT(arcfile);
+                   END;
+                  WRITE('.');
+                 END;
+                WRITELN;
+               END;
+           END {CASE}; 
+       END {IF}; 
+ END {Change}; 
+ 
+PROCEDURE Delete;
+ VAR temp,temp1 : INTEGER;
+     dpartnum : STRING[16];
+     ch : CHAR;
+ BEGIN
+  Clear;
+  WRITE('Delete :: A)rchive, I)nventory, B)oth ::');
+  READ(ch);
+  IF ch IN ['A','a','I','i','B','b'] THEN
+   BEGIN
+    Clrline(2,0);
+    WRITE('enter partnumber to be deleted ---->');                    
+    READLN(dpartnum);
+    CASE ch OF 
+     'A','a' : BEGIN
+                WRITELN;
+                WRITE('searching archive');
+                temp := 0; 
+                FOR temp1 := 1 TO narecs DO
+                 BEGIN
+                  SEEK(arcfile,temp1);
+                  GET(arcfile);
+                  IF arcfile^.partnum<>dpartnum THEN
+                   BEGIN
+                    temp := temp + 1;
+                    SEEK(arcfile,temp);
+                    PUT(arcfile);
+                   END;
+                  WRITE('.');
+                 END; 
+                narecs := temp;
+                Wnarecs;
+                WRITELN;
+               END;
+     'I','i' : BEGIN
+                WRITELN;
+                WRITE('searching inventory');
+                temp := 0; 
+                FOR temp1 := 1 TO nirecs DO
+                 BEGIN
+                  SEEK(invfile,temp1);
+                  GET(invfile);
+                  IF invfile^.partnum <> dpartnum THEN
+                   BEGIN
+                    temp := temp + 1;
+                    SEEK(invfile,temp);
+                    PUT(invfile);
+                   END;
+                  WRITE('.');
+                 END;
+                nirecs := temp; 
+                Wnirecs;
+                WRITELN;
+               END;
+     'B','b' : BEGIN
+                WRITELN;
+                WRITE('searching archive');
+                temp := 0; 
+                FOR temp1 := 1 TO narecs DO
+                 BEGIN
+                  SEEK(arcfile,temp1);
+                  GET(arcfile);
+                  IF arcfile^.partnum<>dpartnum THEN
+                   BEGIN
+                    temp := temp + 1;
+                    SEEK(arcfile,temp);
+                    PUT(arcfile);
+                   END;
+                  WRITE('.');  
+                 END; 
+                narecs := temp;
+                Wnarecs;
+                WRITELN;
+                WRITELN;  
+                WRITE('searching inventory');  
+                temp := 0;  
+                FOR temp1 := 1 TO nirecs DO
+                 BEGIN
+                  SEEK(invfile,temp1);
+                  GET(invfile);
+                  IF invfile^.partnum <> dpartnum THEN
+                   BEGIN
+                    temp := temp + 1;
+                    SEEK(invfile,temp);
+                    PUT(invfile);
+                   END;
+                  WRITE('.');
+                 END;
+                nirecs := temp; 
+                Wnirecs;
+                WRITELN;
+               END;
+         END;
+     END;
+ END; 
+ 
+PROCEDURE Sort;
+ VAR ch : CHAR; 
+     trec1,trec2 : invrec; 
+ BEGIN (* Sort *)      
+  Clear;
+  WRITE('Are you sure you want to sort the inventory file ?');
+  READ(ch);
+  IF ch IN ['Y','y'] THEN
+   BEGIN
+    temp := 1;
+    WRITELN;WRITELN('Sorting ');
+    WHILE temp < nirecs DO   
+     BEGIN
+      WRITE('.');
+      SEEK(invfile,temp);  
+      GET(invfile);
+      trec1 := invfile^;
+      SEEK(invfile,temp+1);
+      GET(invfile);
+      IF (invfile^.partnum<trec1.partnum) THEN
+       BEGIN
+        SEEK(invfile,temp);
+        PUT(invfile);
+        invfile^ := trec1;
+        SEEK(invfile,temp + 1);
+        PUT(invfile);
+        IF temp > 1 THEN temp := temp - 1; 
+       END
+      ELSE temp := temp + 1;
+     END;
+   END;
+ END;
+  

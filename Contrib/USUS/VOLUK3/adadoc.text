@@ -1,0 +1,166 @@
+
+            DOCUMENTATION FOR THE SYNTAX CHECKER
+                     BY EDGAR DE SOUZA
+                     SWURCC MICRO UNIT
+
+_1.  _O_b_j_e_c_t_i_v_e_s
+
+SWURCC initially obtained a copy of the Ada Syntax  Checker,
+with  the  intention  that  we  would  distribute the Syntax
+Checker to the U.K Universities.
+
+In our opinion (after several months) we realised  that  not
+many  micro  units  in the UK Universities wanted the Syntax
+Checker in its original form, since it  could  only  run  on
+machines  with vast amounts of main memory (i.e mainframes).
+Therefore it was decided that the Syntax Checker  should  be
+modified  to  run  on smaller machines which would be easily
+accessible to the majority of UK Universities. As the  Micro
+Unit  at SWURCC had a Onyx microcomputer running the popular
+Unix Operating System, we decided on trying to get the  Syn-
+tax Checker running on this machine.
+
+When this was achieved, Ali Tabatabai had completed his pro-
+ject  on  getting the UCSD Operating System to run on top of
+the Unix Operating System. Therefore it was  agreed  that  I
+should  try  running  the Syntax Checker under UCSD with the
+aim of allowing Universities with their 8 bit micros to  use
+the Checker. On completing this task I transfered the Syntax
+Checker to the Apple microcomputer thus putting  the  syntax
+checker on two five and a quarter inch floppy disks.  It was
+decided that a copy of these floppies should be made  avail-
+able  to  the  USUS library, enabling all UCSD users to have
+access to this software.
+
+2. The Ada Syntax Checker running under the Unix Operating
+System on the Onyx Microcomputer.
+NB- In order to run the checker I had  to  insure  that  the
+parser  tables  had  to be converted from a text file into a
+file of integer. I did this by writing a short  pascal  pro-
+gram named "gendat.text". This program converts
+ 'textdat.text' into  'tabdat.t'.  Once  the  parser  tables
+(i.e. the file tabdat.t) consisting of 19486 numbers was set
+up I managed to run the program. (Note  to  run  the  syntax
+checker, the file ada.code must be executed).
+
+At this stage it  must  be  noted  that  Ada  programs  were
+entered  via  the  keyboard and the checked Ada program with
+error messages was written to a file.  I  modified  this  by
+redirecting  the  error messages to the console so one could
+immediately see the errors as the program was being checked.
+
+_3.  _T_h_e _A_d_a _S_y_n_t_a_x _C_h_e_c_k_e_r _r_u_n_n_i_n_g _u_n_d_e_r _U_C_S_D _v_e_r_s_i_o_n _2._0 _o_n
+_t_h_e _O_n_y_x _M_i_c_r_o_c_o_m_p_u_t_e_r
+
+I then tried running the syntax checker (which  was  written
+in  standard  Pascal) on the UCSD operating system which was
+running on top of Unix. The firstproblem I  encountered  was
+the  size of the UCSD stack (64K). It was impossible for the
+whole syntax checker to be run, but it was possible  to  run
+the checker with a bigger stack under Ali's UCSD implementa-
+tion which had a stack size of 68K.  However  this  did  not
+achieve  the  objective  of  running the syntax checker on a
+standard UCSD machine, although it was useful in the initial
+stages  of  modifying  the checker for the UCSD system.  The
+way I finally overcame this problem was by setting  up  seg-
+ment procedures. Initially I tried cutting down some ineffi-
+cient text of the program, these changes are as follows:
+ (a) new_symbol in procedure lu_error_symbol
+ (b) new_current_char in procedure la_next_sym etc.
+
+Finally I created the following segment procedures:
+  (a) segment  procedure  parser  -  which  initializes  the
+parser  tables  and  does  the  actual syntax checking using
+these parser tables.
+  (b) segment procedure  lu_init  -  which  initializes  the
+reserved word table
+  (c) segment procedure  la_init  -  which  initializes  the
+character set
+  (d) segment procedure lu_error_symbol - which is used  for
+error output
+
+The reason for choosing the above is:
+
+     (a) I had to choose procedure parser (even though it is
+     heavily  used)  since  it  is the biggest procedure and
+     space had to be created to load the next two initializ-
+     ing procedures.
+
+     (b)+(c) In the case of the init's (la-init and lu_init)
+     they  are only used at the beginning for initialisation
+     and never againn.
+
+     (d) In the case of lu_error_symbol this procedure  will
+     only be used if errors are encountered.
+
+In order to set up these segments I had to split the file up
+into  logical units in Unix before passing them over to UCSD
+as the UCSD editor has a maximum limit of about 20K  and  my
+program  was  about  64K.  I wrote two simple shell programs
+which facilitated the import and export of Unix files to and
+from UCSD.
+
+I split the program up into the above segment procedures, as
+well as the other files listed below:
+  (1) st_get.text
+  (2) la_next.text
+  (3) co_int.text
+
+(NB- all these three files are used in the input part of the
+syntax  checker, validating the input and passing it over to
+the parser).
+
+  (4)  types.text  -  This  file  contains  all  the  global
+declarations of constants, types and varables.
+
+On inspection of my program it  can  be  seen  that  I  have
+included 7 files in the main program entitled "asc" found in
+the file "ada.text". Each file included in the program has a
+compiler  directive  put  in  front  of  the filename, which
+informs the compiler that the source from an  external  file
+must  be  compiled and the code must be added to the code of
+the program. The compiler directive and the filename must be
+enclosed within a comment i.e. (*$I filename *).
+
+On creating the  above  segment  procedures  and  using  the
+included  files, I managed to run the program on UCSD (which
+was running on the Onyx). One point to notice  is  that  all
+the  text  for  the segment procedures must occur before any
+other text from the program or  other  ordinary  procedures.
+Also  if  any ordinary procedures are used by a segment pro-
+cedure the ordinary procedure must be declared FORWARD.
+
+_4.  _T_h_e _A_d_a _S_y_n_t_a_x _C_h_e_c_k_e_r _r_u_n_n_i_n_g _u_n_d_e_r _U_C_S_D _o_n  _t_h_e  _A_p_p_l_e
+_M_i_c_r_o_c_o_m_p_u_t_e_r
+
+My final goal was to transport  this  program  over  to  the
+Apple  running UCSD Version 2.1. I managed to get the syntax
+checker over after several file transfers. I  then  modified
+the  checker to accept more than one file of input, (via the
+keyboard only) thus avoiding the  overhead  of  loading  the
+parser tables each time a program was checked.
+
+I then included a printer unit named filecheck which allowed
+input  from a file possible as well as input from the termi-
+nal. In order to achieve this last goal  (usually  a  simple
+task   in   'UCSD'   Pascal).   I   had  to  create  a  unit
+'Filecheck.text' The reason being is that I  needed  to  use
+the UCSD 'string' intrinsic which in the program was defined
+as a packed array of char in standard Pascal.
+
+With the presence of the unit filecheck in  the  Ada  syntax
+checker,  the  unit must now be compiled and the code linked
+to the code of the main program.
+
+The checker running under UCSD successfully checks the  test
+Ada program named "adatest.text" which contains all the con-
+structs of the Ada language. This program  is  part  of  the
+original  distribution.   If the checker is working properly
+no errors should be found. I have also checked another short
+Ada program of my own, it is entitled "dial.text".
+
+One final point to note under the present  UCSD  version  of
+the  checker  is that the end of file (eof) character is the
+'$', this can be changed to suit your system. Also when typ-
+ing  in from the keybaord the '$' character must be typed in
+after the Ada program is typed in.

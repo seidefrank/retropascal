@@ -1,0 +1,761 @@
+(*   $LPrinter:*)
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ Pascal Screen Generator - Edit Screen}
+{ by Lee Meador -- Copyright (c) 1981  }
+{ World Bible Translation Center       }
+{ 1401 Hillcrest Dr.                   }
+{ Arlington, TX  76010  (817) 469-6019 }
+{                                      }
+{ This program will create or modify a }
+{   data file that is used by SCRGEN   }
+{   to write a Pascal Procedure in a   }
+{   text file. This procedure will set }
+{   up a form on the screen and allow  }
+{   you to input and output information}
+{   for the blanks in the form.        }
+{                                      }
+{ When creating a new screen use the   }
+{   option available to clear (zero)   }
+{   the screen. Then enter information }
+{   for each field on the screen. You  }
+{   have a label and a series of '_'s  }
+{   for each field. You must specify   }
+{   the maximum length allowed, the    }
+{   type (integer, real, string, etc.  }
+{   that is being entered along with   }
+{   the name of the variable to put the}
+{   data into once someone enters it.  }
+{   Display type of Normal is the only }
+{   one supported.                     }
+{                                      }
+{ Note: The new field entry code was   }
+{   written using a version of these   }
+{   programs.                          }
+{                                      }
+{ Good Luck...                         }
+{   let me know about enhancements     }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+PROGRAM PScrn_1;
+
+CONST MaxNumOfItems = 60;
+
+TYPE
+
+        Actcode = (inscr,outscr,setscr);
+        stat    = (good,backup,default);
+        s       = String[80];
+
+(*$I:TYPES.TEXT *)
+
+VAR     Scrfile : FILE OF Scrn;
+        Txt     : TEXT;
+        ScreenName,
+        ScreenRes: STRING;
+        YesNo,Yes: SET OF CHAR;
+        ThatsAll,
+        SaveIt   : BOOLEAN;
+        ItemNum  : INTEGER;
+        Status   : Stat;
+
+procedure clear_screen;
+begin
+   gotoxy ( 0, 0 );
+   write ( chr ( 27 ) , 'J' );  {H-19 specific}
+end;
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ Get Functions                        }
+{ by Lee Meador - Copyright (c) 1981   }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ The following TYPE must be defined   }
+{                                      }
+{ TYPE Stat = (Good,Backup,Default);   }
+{                                      }
+{ The functions here are:              }
+{  VAL - returns a Real given a string }
+{  GetBoolean - returns a Boolean from }
+{    whatever is input in the field    }
+{  GetInteger - returns an Integer     }
+{    from what is input in the field   }
+{  GetReal - returns a Real from what  }
+{    is input in the field             }
+{  GetString - returns a String as the }
+{    third parameter from what is      }
+{    input in the field.               }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+FUNCTION VAL(STRNG:STRING):REAL;
+
+   (* BY David Stringham    *)
+   (* 2102 Overbrook        *)
+   (* Arlington, Tex. 71014 *)
+   (* 7-MAR-81              *)
+   { Mods by Lee Meador      }
+   {  1 Apr 81               }
+
+VAR
+   S:STRING;
+   PTEN,ZERO,I:INTEGER;
+   NUMBER:REAL;
+
+BEGIN (* VAL *)
+   
+   ZERO:=ORD('0');
+   
+   (* BEGIN CULLING NON VALID CHRS *)
+   (* INDIVIDUAL NUMBERS IN SAME   *)
+   (* STRING MUST BE SEPARATED BY  *)
+   (* A NON VALID CHARACTER; SUCH  *)
+   (* AS A BLANK. THUS $100.00$15  *)
+   (* WILL RETURN       100.0015   *)
+   (* AND $100.00 $15 RETURNS 100.0*)
+   
+   
+   IF LENGTH(STRNG)<1 THEN 
+     BEGIN
+       VAL:=0.0;
+       EXIT(VAL)
+     END;
+     
+   I:=0;
+   REPEAT 
+     I:=I+1
+   UNTIL (NOT (STRNG[I] IN ['+', '$', ',', '.', '-', '0'..'9'])
+         OR (I=LENGTH(STRNG)));
+   
+   S:=COPY(STRNG,1,I);
+        
+        (* GET THE REAL NUMBER *)
+   NUMBER:=0.0;
+   PTEN:=0;
+   FOR I:=LENGTH(S) DOWNTO 1 DO
+       CASE S[I] OF
+       
+       '0','1','2','3','4','5','6','7',
+       '8','9' :BEGIN
+                   NUMBER:=NUMBER+ (ORD(S[I])-ZERO)*PWROFTEN(PTEN);
+                   PTEN:=PTEN+1;
+                END;
+       
+       '.'     :BEGIN
+                   NUMBER:=NUMBER/PWROFTEN(PTEN);
+                   PTEN:=0
+                END;
+       
+       '-'     :NUMBER:=-NUMBER
+       END; (* CASE *)
+       
+       (* IF NON NUMBER THEN *)
+       (* IGNORE IT          *)
+              
+     VAL:=NUMBER; (* ASSIGN VAL*)
+                   (* ITS VALUE  *)
+     
+END; (* VAL *)
+      
+PROCEDURE GetString(Len:INTEGER;VAR Status:STAT;VAR RET:S);
+
+VAR     CH: CHAR;
+        C : STRING;
+        Str : STRING;
+        Chars : INTEGER;
+        
+BEGIN
+   Chars := 0; { The length }
+   Str   := '';{ The String }
+   
+   REPEAT
+      READ(ch);
+      IF (ch = ' ') and (EOLN) THEN ch := chr(13);
+         { make cr back to cr }
+      CASE ord(ch) OF
+      
+      13 : BEGIN {return}
+              IF Chars = 0 THEN BEGIN
+                 Ret := '';
+                 Status    := Default;
+                 EXIT(GetString);
+                END;
+              Ret := Str;
+              Status := Good;
+              EXIT(GetString);
+             END;
+             
+      8  : BEGIN {backspace}
+              IF Chars = 0 THEN BEGIN
+                 Ret := '';
+                 Status    := Backup;
+                 EXIT(GetString);
+                END;
+              WRITE(chr(8),'_',chr(8));
+              Chars := Chars-1;
+              Str := COPY(Str,1,LENGTH(Str)-1);
+             END
+      END;
+      
+      IF ORD(ch) IN [0..7,9..31,127] THEN
+         CH := ' ';
+      IF ORD(ch) IN [32..126] THEN BEGIN
+         Chars := Chars+1;
+         (*$R-*)
+         C[1] := CH; C[0]:=CHR(1);
+         (*$R+*)
+         Str := CONCAT(Str,C);
+        END;
+        
+   UNTIL Chars >= Len;
+   Ret := Str;
+   Status := Good;
+END; { Get String }
+
+FUNCTION GetBoolean(Len:INTEGER;VAR Status:STAT):BOOLEAN;
+
+VAR S: String;
+    I: Integer;
+
+BEGIN
+   GetString(Len,Status,S);
+   
+   { change all to upper case }
+   
+   FOR I := 0 TO LENGTH(S) DO 
+      IF I > 0 THEN
+         IF S[I] IN ['a'..'z'] THEN
+            S[I] := CHR(ORD(S[I])-32);
+   
+   IF   (S = 'TRUE') OR
+        (S[1] = 'Y')
+      THEN GetBoolean := TRUE
+      ELSE GetBoolean := FALSE;
+
+END; { Get Boolean }
+
+FUNCTION GetReal(Len:INTEGER;VAR Status:STAT):REAL;
+
+VAR S: String;
+
+BEGIN
+   GetString(Len,Status,S);
+   GetReal := VAL(S);
+END;
+
+FUNCTION GetInteger(Len:INTEGER;VAR Status:STAT):INTEGER;
+
+VAR S: String;
+
+BEGIN
+   GetString(Len,Status,S);
+   GetInteger := ROUND(VAL(S));
+END;
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ END OF Get Functions                 }
+{ by Lee Meador - Copyright (c) 1981   }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+PROCEDURE SCREENOUT(Action:ACTCODE);
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ SCREENOUT is the result of using this}
+{   program to enhance itself. This    }
+{   code was written by SCRGEN on info }
+{   stored by an earlier version of    }
+{   this program. Some changes were    }
+{   made to that code to add some new  }
+{   features and support my defined    }
+{   data types. The calls to this will }
+{   help you understand what is being  }
+{   done.                              }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+VAR TempBoolean: BOOLEAN;
+    TempString : STRING;
+    TempInteger: INTEGER;
+    TempReal   : REAL;
+    TempLongInteger: INTEGER[36];
+    Return     : Stat;
+    
+PROCEDURE INPROC;
+
+LABEL 1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9;
+
+BEGIN
+
+WITH Scrfile^[ItemNum] DO BEGIN { Lee's Line added }
+
+(*$G+*)
+
+      (* Input ItemLabel *)
+      1: GOTOXY(8,8);
+      GetSTRING(33,Return,TempSTRING);
+      IF Return = Backup THEN GOTO 1;
+      IF Return = Default THEN TempSTRING:=ItemLabel;
+      GOTOXY(8,8);
+      WRITE(TempSTRING);
+      ItemLabel:=TempSTRING;
+
+      (* Input ItemName *)
+      2: GOTOXY(11,9);
+      GetSTRING(30,Return,TempSTRING);
+      IF Return = Backup THEN GOTO 1;
+      IF Return = Default THEN TempSTRING:=ItemName;
+      GOTOXY(11,9);
+      WRITE(TempSTRING);
+      ItemName:=TempSTRING;
+
+      (* Input ItemType *)
+      3: GOTOXY(11,10);
+      GetSTRING(15,Return,TempSTRING);
+      IF Return = Backup THEN GOTO 2;
+      IF Return = Default THEN TempSTRING:='STRING';
+      GOTOXY(11,10);
+      WRITE(TempSTRING);
+      ItemType:=TempSTRING;
+
+      (* Input ItemLength *)
+      4: GOTOXY(9,11);
+      TempINTEGER:=GetINTEGER(3,Return);
+      IF Return = Backup THEN GOTO 3;
+      IF Return = Default THEN TempINTEGER:=0;
+      GOTOXY(9,11);
+      WRITE(TempINTEGER);
+      ItemLength:=TempINTEGER;
+
+      (* Input ItemY *)
+      5: GOTOXY(21,11);
+      TempINTEGER:=GetINTEGER(3,Return);
+      IF Return = Backup THEN GOTO 4;
+      IF Return = Default THEN TempINTEGER:=12;
+      GOTOXY(21,11);
+      WRITE(TempINTEGER);
+      ItemY:=TempINTEGER;
+
+      (* Input ItemX *)
+      6: GOTOXY(34,11);
+      TempINTEGER:=GetINTEGER(3,Return);
+      IF Return = Backup THEN GOTO 5;
+      IF Return = Default THEN TempINTEGER:=0;
+      GOTOXY(34,11);
+      WRITE(TempINTEGER);
+      ItemX:=TempINTEGER;
+
+      (* Input ItemDisplayType *)
+      7: GOTOXY(16,13);
+      GetSTRING(8,Return,TempSTRING);
+      IF Return = Backup THEN GOTO 6;
+      IF Return = Default THEN TempSTRING:='NORMAL';
+      GOTOXY(16,13);
+      WRITE(TempSTRING);
+      CASE TempSTRING[1] OF
+      'N','n':
+          ItemDisplayType:=NORMAL;
+      'I','i':
+          ItemDisplayType:=INVERSE;
+      'F' ,'f' :
+          ItemDisplayType:=FLASH
+      END; {Case}
+      
+      (* Input ItemEdit *)
+      8: GOTOXY(7,15);
+      TempBOOLEAN:=GetBOOLEAN(6,Return);
+      IF Return = Backup THEN GOTO 7;
+      IF Return = Default THEN TempBOOLEAN:=TRUE;
+      GOTOXY(7,15);
+      IF TempBOOLEAN THEN WRITE('Yes') ELSE WRITE('No');
+      ItemEdit:=TempBOOLEAN;
+
+      (* Input ItemDefault *)
+      9: GOTOXY(10,16);
+      GetSTRING(60,Return,TempSTRING);
+      IF Return = Backup THEN GOTO 8;
+      IF Return = Default THEN TempSTRING:=ItemDefault;
+      GOTOXY(10,16);
+      WRITE(TempSTRING);
+      ItemDefault:=TempSTRING;
+(*$G-*)
+END;
+END; {INPROC}
+
+BEGIN
+
+WITH Scrfile^[ItemNum] DO BEGIN { Lee's Line added }
+
+CASE action OF
+   SETSCR : BEGIN 
+      clear_screen;
+      GOTOXY(1,8);
+      WRITE ('Label: _________________________________');
+      GOTOXY(1,9);
+      WRITE ('Var Name: ______________________________');
+      GOTOXY(1,10);
+      WRITE ('VAR Type: _______________');
+      GOTOXY(1,11);
+      WRITE ('Length: ___');
+      GOTOXY(15,11);
+      WRITE ('Line: ___');
+      GOTOXY(26,11);
+      WRITE ('Column: ___');
+      GOTOXY(1,13);
+      WRITE ('Display Style: ________');
+      GOTOXY(1,15);
+      WRITE ('Edit? ______');
+      GOTOXY(1,16);
+      WRITE ('Default: ____________________________________________________________');
+   END; (* Setup *)
+   
+   INSCR: BEGIN
+      INPROC;
+   END; (* Input *)
+   
+   OUTSCR : BEGIN
+      (* Print ItemLabel *)
+      GOTOXY(8,8);
+      WRITE(ItemLabel);
+      (* Print ItemName *)
+      GOTOXY(11,9);
+      WRITE(ItemName);
+      (* Print ItemType *)
+      GOTOXY(11,10);
+      WRITE(ItemType);
+      (* Print ItemLength *)
+      GOTOXY(9,11);
+      WRITE(ItemLength);
+      (* Print ItemY *)
+      GOTOXY(21,11);
+      WRITE(ItemY);
+      (* Print ItemX *)
+      GOTOXY(34,11);
+      WRITE(ItemX);
+      (* Print ItemDisplayType *)
+      GOTOXY(16,13);
+      CASE ItemDisplayType OF
+         Normal : WRITE('Normal');
+         Inverse: WRITE('Inverse');
+         Flash  : WRITE('Flash')
+      END; (* CASE *)
+      (* Print ItemEdit *)
+      GOTOXY(7,15);
+      IF ItemEdit THEN WRITE('Yes')
+         ELSE WRITE('No ');
+      (* Print ItemDefault *)
+      GOTOXY(10,16);
+      WRITE(ItemDefault);
+   END (* Output *)
+END; (* CASE *)
+
+END; { WITH ... Lee's Line added }
+
+END; (* ScreenOut *)
+
+PROCEDURE OPEN_FILE;
+
+BEGIN
+
+  { Open Screen Definition }
+  GOTOXY(5,5);
+  WRITELN('What Screen shall I process?');
+  WRITE  ('     (dev:fname) ');
+  READLN(ScreenName);
+  IF POS('.SCRN',ScreenName) = 0 THEN
+     ScreenName := CONCAT(ScreenName,'.SCRN');
+
+  (*$I-*)
+     RESET(Scrfile,ScreenName);
+  (*$I+*)
+  
+  IF IORESULT <> 0 THEN { Create file }
+     REWRITE(Scrfile,ScreenName);
+
+  SEEK(Scrfile,0);
+     
+END; { OPEN_FILE  }
+     
+  
+FUNCTION Menu:INTEGER; { Show Menu and Return 1..5 }
+
+VAR CH  : CHAR;
+
+BEGIN
+   CLEAR_SCREEN;
+   GOTOXY(10,1);
+   WRITELN('Pascal Screen Editor');
+   GOTOXY(5,5);
+   WRITELN('1. Clear Screen');
+   GOTOXY(5,7);
+   WRITELN('2. Clear Item');
+   GOTOXY(5,9);
+   WRITELN('3. Edit Item');
+   GOTOXY(5,11);
+   WRITELN('4. Exit and Save Changes');
+   GOTOXY(5,13);
+   WRITELN('5. Exit w/o Saving');
+   GOTOXY(5,15);
+   WRITELN('6. Show Screen');
+   GOTOXY(5,17);
+   WRITELN('7. Enter Item');
+   
+   GOTOXY(1,22);
+   WRITE('Enter Command Number: ');
+      
+   REPEAT
+      READ(CH);
+      IF NOT (CH IN ['1'..'7']) THEN
+         WRITE (CHR(7),CHR(8)); { Beep - BS }
+   UNTIL CH IN ['1'..'7'];
+   
+   Menu := ORD(CH) - ORD('0');
+   
+END; { Menu }
+
+PROCEDURE ZeroScreen;
+
+VAR CH: CHAR;
+    I : INTEGER;
+
+BEGIN
+   CLEAR_SCREEN;
+   GOTOXY(5,5);
+   WRITE('Clearing Screen Definition. OK? ');
+   READ(CH);
+   IF CH in Yes THEN
+      FOR I := 1 TO MaxNumOfItems DO 
+         WITH Scrfile^[I] DO BEGIN
+            ItemLabel := '';
+            ItemLength:= 0;
+            ItemX     := 0;
+            ItemY     := 0;
+            ItemEdit  := False;
+            ItemDefault:='';
+            ItemType  := 'String';
+            ItemDisplayType := Normal;
+            ItemValid := FALSE;
+           END; {LOOP}
+         
+END; { Clear All Items }
+
+FUNCTION WhichItem(Action:String):INTEGER; { Returns Item Number }
+
+VAR I : Integer;
+
+BEGIN
+   CLEAR_SCREEN;
+   GOTOXY(5,5);
+   WRITELN('Which Item do you want to ',Action,'? ');
+   WRITE  ('     (1-60) ');
+   READLN(I);
+   WhichItem := I;
+END; { WhichItem }
+
+PROCEDURE ZeroItem;
+
+VAR CH: CHAR;
+    I : INTEGER;
+
+BEGIN
+   
+   I := WhichItem('Remove');
+   GOTOXY(5,7);
+   WRITE('Removing Item ',I,'. OK? ');
+   READ(CH);
+   IF CH in Yes THEN
+      Scrfile^[I].ItemValid := False;
+
+END; { Clear an Items }
+
+PROCEDURE EnterItem;
+
+VAR CH: CHAR;
+
+BEGIN
+   ItemNum := WhichItem('Enter');
+   IF Scrfile^[ITEMNUM].ItemValid THEN BEGIN
+      GOTOXY(5,7);
+      WRITELN('Item ',ItemNum,' Exists');
+      WRITE  ('   Shall I ReEnter it? ');
+      READ(CH);
+      IF NOT (CH in Yes) THEN
+         EXIT(EnterItem);
+     END;
+     
+   REPEAT
+      ScreenOut(Setscr);
+      ScreenOut(Inscr);
+      ScreenOut(Setscr);
+      ScreenOut(outscr);
+      GOTOXY(0,23);
+      WRITE(' Is This Correct ');
+   UNTIL GetBoolean(1,Status);
+   Scrfile^[ITEMNUM].ItemValid := TRUE;
+   
+END;
+
+PROCEDURE EditItem;
+
+VAR I: INTEGER;
+
+PROCEDURE ChangeS(VAR Value:String;Name:String);
+
+VAR CH: CHAR;
+
+BEGIN
+   WRITELN(Name:15,' ',Value);
+   REPEAT
+      WRITE('Make Changes (y/n)? ');
+      READ(CH);
+      WRITELN;
+   UNTIL CH IN YesNo;
+   IF CH IN Yes THEN
+      BEGIN
+      WRITELN('Enter New Value ');
+      READLN(Value);
+      END;
+END; { ChangeS }
+
+PROCEDURE ChangeI(VAR Value:INTEGER;Name:STRING);
+
+VAR CH: CHAR;
+
+BEGIN
+   WRITELN(Name:15,' ',Value);
+   REPEAT
+      WRITE('Make Changes (y/n)? ');
+      READ(CH);
+      WRITELN;
+   UNTIL CH IN YesNo;
+   IF CH IN Yes THEN
+      BEGIN
+      WRITELN('Enter New Value ');
+      READLN(Value);
+      END;
+
+END; { ChangeI }
+   
+BEGIN { Body of EditItem }
+   
+   I := WhichItem('Edit');
+      
+   WITH Scrfile^[I] DO BEGIN
+      IF NOT ItemValid THEN BEGIN
+         
+         ItemName := '';
+         ItemLabel:= '';
+         ItemType := '';
+         ItemDefault := '';
+         ItemEdit := FALSE;
+         ItemLength := 0;
+         ItemX      := 0;
+         ItemY      := 0;
+         ItemDisplayType := Normal;
+        END;
+      
+      ChangeS(ItemName,'Name');
+      ChangeS(ItemLabel,'Label');
+      ChangeS(ItemType,'VAR type');
+      ChangeS(ItemDefault,'Default Value');
+      ChangeI(ItemLength,'Length');
+      ChangeI(ItemX,'Column');
+      ChangeI(ItemY,'Line Number');
+      ItemValid := True;
+   
+   END;
+
+END; { Edit an Item }
+  
+PROCEDURE ShowScreen;
+
+VAR ItemNum,
+    x,y,I   : INTEGER;
+    CH      : CHAR;
+    First   : BOOLEAN;
+
+BEGIN
+   CLEAR_SCREEN;
+   First := True;
+   FOR ItemNum := 1 to MaxNumOfItems DO
+      WITH Scrfile^[ITEMNUM] DO
+        IF ItemValid THEN BEGIN
+         
+         IF First THEN BEGIN
+            x := ItemX+1+Length(ItemLabel);
+            y := ItemY;
+            First := FALSE;
+           END;
+           
+         GOTOXY(ItemX,ItemY);
+         WRITE (ItemLabel,' ');
+         FOR I := 0 to ItemLength DO
+            IF I > 0 THEN WRITE('_');
+        END;
+   
+   GOTOXY(x,y);
+   READ(CH);
+
+END; { ShowScreen }
+
+BEGIN { Main }
+
+  YesNo := ['Y','y','N','n'];
+  Yes   := ['Y','y'];
+  
+  CLEAR_SCREEN;
+  GOTOXY(10,0);
+  WRITELN('Edit or Create Screen');
+
+  OPEN_FILE;
+  
+  ThatsAll := FALSE;
+  REPEAT
+     
+    CASE Menu OF
+     
+     1 : ZeroScreen;
+     
+     2 : ZeroItem;
+     
+     3 : EditItem;
+     
+     4 : BEGIN { Exit and Save }
+           SaveIt := True;
+           ThatsAll := TRUE;
+           SEEK(Scrfile,0);
+           PUT (Scrfile);
+         END;
+     
+     5 : BEGIN { Exit w/o Save }
+           SaveIt := False;
+           ThatsAll := TRUE;
+         END;
+        
+     6 : ShowScreen;
+        
+     7 : EnterItem
+     
+    END; (* Case Statement *)
+  
+  UNTIL ThatsAll = TRUE;
+  
+  IF SaveIt THEN CLOSE(Scrfile,LOCK)
+            ELSE CLOSE(Scrfile);
+  
+END.
+  

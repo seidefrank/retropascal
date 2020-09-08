@@ -1,0 +1,309 @@
+function variable: boolean;
+var
+  globordummy: boolean;         (* gord *)
+  passedadj: ^vartab;           (* k *)
+  rarg: boolean;                (* rd *)
+  parmptr: ^valtab;             (* pt *)
+  validvar: boolean;
+  validindex: boolean;
+
+procedure inputval;
+var
+  auxptrtoda: ^valtab;
+  auxvaluesptr: ^values;
+  aux2valuesptr: ^values;
+  realv: real;
+  boolv: boolean;
+  ccntr, cnt: integer;
+  auxdimeninfoptr: ^dimeninfo;
+begin (* inputval *)
+  cnt := 0;
+  position := 1;
+  auxptrtoda := ptrtoda;
+  getvalt(ptrtoda);
+  if auxptrtoda = nil
+  then auxptrtoda := ptrtoda
+  else auxptrtoda^.nextvaltablink := ptrtoda;
+  auxopertabptr := opertabptr;
+  getoper(opertabptr);
+  ptrlastoper := opertabptr;
+  opertabptr^.lastoper := auxopertabptr;
+  opertabptr^.operptr := ptrtoda;
+  getvalu(aux2valuesptr);
+  ptrtoda^.firstvalue := aux2valuesptr;
+  getaplstatement;
+  repeat
+    makeanumber(realv, boolv);
+    skipspaces;
+    if not boolv
+    then
+      begin
+        for colcnt := 1 to messagelength do
+          write(outfile, errormsgs[62, colcnt]);
+        writeln(outfile);
+        position := 1;
+        cnt := 0;
+        aux2valuesptr := opertabptr^.operptr^.firstvalue;
+        getaplstatement
+      end
+    else
+      begin
+        cnt := cnt + 1;
+        auxvaluesptr := aux2valuesptr;
+        getvalu(aux2valuesptr);
+        auxvaluesptr^.realval := realv;
+        auxvaluesptr^.nextvalue := aux2valuesptr
+      end
+  until position > linelength;
+  ridvalu(aux2valuesptr);
+  auxvaluesptr^.nextvalue := nil;
+  ptrtoda^.intermedresult := false;
+  ptrtoda^.dimensions := 1;
+  ptrtoda^.forwardorder := true;
+  ptrtoda^.nextvaltablink := nil;
+  getdim(auxdimeninfoptr);
+  ptrtoda^.firstdimen := auxdimeninfoptr;
+  auxdimeninfoptr^.dimenlength := cnt;
+  auxdimeninfoptr^.nextdimen := nil
+end; {inputval}
+
+procedure getarrayposition(var valuesptr: typevaluesptr);
+var
+  indice: real;
+  kcnt: integer;
+  sl: integer;
+  auxdimeninfoptr: ^dimeninfo;
+begin (* getarrayposition *)
+  if npv <> parmptr^.dimensions
+  then error(45); (* wrong number of subscripts *)
+  sl := 0;
+  auxopertabptr := opertabptr;
+  auxdimeninfoptr := parmptr^.firstdimen;
+  for kcnt := 1 to npv do
+    begin
+      if auxopertabptr^.operptr^.dimensions <> 0
+      then error(35); (* non-scalar indices *)
+      indice := auxopertabptr^.operptr^.firstvalue^.realval;
+      if indice - 1.0*trunc(indice) <> 0.0
+      then error(37); (* non-integer indices *)
+      if not (trunc(indice) in [1..auxdimeninfoptr^.dimenlength])
+      then error(38); (* out of range index *)
+      sl := (sl*auxdimeninfoptr^.dimenlength) + trunc(indice) - 1;
+      auxopertabptr := auxopertabptr^.lastoper;
+      ridoper(opertabptr);
+      opertabptr := auxopertabptr;
+      auxdimeninfoptr := auxdimeninfoptr^.nextdimen
+    end;
+  valuesptr := parmptr^.firstvalue;
+  while sl <> 0 do (*              determine which value in               *)
+                   (* pt[sval(sv)], pt[sval(sv-1)] ... pt[sval(sv-npv+1)] *)
+                   (*                  := sval(sv-npv)                    *)
+    begin
+      valuesptr := valuesptr^.nextvalue;
+      sl := sl - 1
+    end
+end; {getarrayposition}
+
+procedure linkresults;
+var
+  ptrtovalues: ^values;
+begin (* linkresults *)
+  if npv = 0
+  then
+    begin
+      if not globordummy
+      then
+        if rarg
+        then rparmptr^.ptrval := opertabptr^.operptr
+        else lparmptr^.ptrval := opertabptr^.operptr
+      else passedadj^.valtabptr := opertabptr^.operptr
+    end
+  else
+    begin
+      if globordummy
+      then parmptr := passedadj^.valtabptr
+      else parmptr := passedadj^.deferedvaltabptr^.ptrval;
+      getarrayposition(ptrtovalues);
+      if opertabptr^.operptr^.dimensions <> 0
+      then error(36); (* assigned expression not a scalar *)
+      ptrtovalues^.realval := opertabptr^.operptr^.firstvalue^.realval
+    end;
+  auxopertabptr := opertabptr;
+  opertabptr := opertabptr^.lastoper;
+  ridoper(auxopertabptr);
+  ptrlastoper := opertabptr
+end; {linkresults}
+
+procedure stackpointers;
+var
+  auxptrtoda: ^valtab;
+  ptrtovalues, auxvaluesptr: ^values;
+begin (* stackpointers *)
+  if npv = 0
+  then
+    begin
+      auxopertabptr := opertabptr;
+      getoper(opertabptr);
+      opertabptr^.lastoper := auxopertabptr;
+      opertabptr^.operptr := parmptr;
+      ptrlastoper := opertabptr
+    end
+  else
+    begin
+      auxptrtoda := ptrtoda;
+      getvalt(ptrtoda);
+      ptrtoda^.nextvaltablink := auxptrtoda;
+      ptrtoda^.intermedresult := true;
+      ptrtoda^.dimensions := 0;
+      ptrtoda^.firstdimen := nil;
+      ptrtoda^.forwardorder := true;
+      getvalu(auxvaluesptr);
+      ptrtoda^.firstvalue := auxvaluesptr;
+      getarrayposition(ptrtovalues);
+      ptrtoda^.firstvalue^.realval := ptrtovalues^.realval;
+      ptrtoda^.firstvalue^.nextvalue := nil;
+      auxopertabptr := opertabptr;
+      getoper(opertabptr);
+      opertabptr^.lastoper := auxopertabptr;
+      opertabptr^.operptr := ptrtoda;
+      ptrlastoper := opertabptr
+    end
+end; {stackpointers}
+
+function simplevariable: boolean;
+var
+  validsv: boolean;
+begin (* simplevariable *)
+  validsv := false;
+  rarg := false;
+  globordummy := false;
+  if assign
+  then
+    begin
+      if (tokentabptr^.noun = formres)
+         or (tokentabptr^.noun = globvar)
+      then
+        begin
+          globordummy := true;
+          passedadj := tokentabptr^.vartabptr;
+          hold := tokentabptr;
+          tokentabptr := tokentabptr^.nextoken;
+          validsv := true
+        end
+      else
+        if tokentabptr^.noun = formarg
+        then
+          begin
+            if namesmatch(tokentabptr^.vartabptr^.functabptr^.leftarg,
+                          tokentabptr^.vartabptr^.varname)
+            then rarg := true;
+            passedadj := tokentabptr^.vartabptr
+          end
+    end
+  else
+    begin
+      if (tokentabptr^.noun = formres)
+         or (tokentabptr^.noun = globvar)
+      then
+        begin
+          parmptr := tokentabptr^.vartabptr^.valtabptr;
+          if parmptr <> nil
+          then
+            begin
+              hold := tokentabptr;
+              tokentabptr := tokentabptr^.nextoken;
+              validsv := true
+            end
+        end
+      else
+        begin
+          if tokentabptr^.noun = formarg
+          then
+            begin
+              if namesmatch(tokentabptr^.vartabptr^.functabptr^.leftarg,
+                            tokentabptr^.vartabptr^.varname)
+              then parmptr := lparmptr^.ptrval
+              else parmptr := rparmptr^.ptrval;
+              hold := tokentabptr;
+              tokentabptr := tokentabptr^.nextoken;
+              validsv := true
+            end
+        end
+    end;
+  simplevariable := validsv
+end; {simplevariable}
+
+procedure index(var validi: boolean);
+var
+  valide1, valide2: boolean;
+begin (* index *)
+  validi := false;
+  expression(valide1);
+  if valide1
+  then
+    begin
+      npv := 1; (* no. of index expressions *)
+      while specsymbol(xsemicolsym) do
+        begin
+          npv := npv + 1;
+          expression(valide2);
+          if not valide2
+          then error(39) (* invalid index expression *)
+        end;
+      validi := true
+    end
+end; {index}
+
+begin (* variable *)
+validvar := false;
+npv := 0;
+if not assign
+then
+  if specsymbol(xquadsym)
+  then
+    begin
+      inputval;
+      validvar := true
+    end
+  else
+    begin
+      if specsymbol(xrightbracket)
+      then
+        begin
+          index(validindex);
+          if (not validindex) or (not specsymbol(xleftbracket))
+          then error(34) (* invalid index expression *)
+        end;
+      if simplevariable
+      then
+        begin
+          stackpointers;
+          validvar := true
+        end
+    end
+else
+  if specsymbol(xquadsym)
+  then
+    begin
+      outputval;
+      validvar := true
+    end
+  else
+    begin
+      if specsymbol(xrightbracket)
+      then
+        begin
+          index(validindex);
+          if (not validindex) or (not specsymbol(xleftbracket))
+          then error(34) (* invalid index expression *)
+        end;
+      if simplevariable
+      then
+        begin
+          linkresults;
+          validvar := true
+        end
+    end;
+variable := validvar
+end; {variable}
+

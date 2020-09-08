@@ -1,0 +1,635 @@
+{AUGMENT - AUGMENT PASCAL PROGRAMS WITH CODE TO GATHER EXECUTION TIME
+           PERFORMANCE MEASUREMENTS.
+
+        PROGRAM HISTORY:
+
+ S. MATWIN AND M. MISSALA, 1975
+ POLISH ACADEMY OF SCIENCES COMPUTER CENTRE, PKIN, WARSAW, POLAND. 
+ 
+ REFERENCE:
+   "A SIMPLE MACHINE INDEPENDENT TOOL FOR OBTAINING ROUGH MEASURES OF PASCAL
+   PROGRAMS."  SIGPLAN NOTICES, 1976 AUGUST, 42-45.
+ 
+ MODIFIED, GENERALIZED, AND RENAMED FROM "PROFILE" TO "AUGMENT" BY:
+   A. B. MICKEL AND H. U. RUBENSTEIN, 1977. 
+   UNIVERSITY OF MINNESOTA COMPUTER CENTER, MINNEAPOLIS, MN 55455 USA.
+ 
+ PUBLISHED IN PASCAL NEWS, NO. 12, 1978 JUNE.
+ 
+ MODIFIED FOR UCSD PASCAL BY: JAMES GAGNE, 1981.
+   DATAMED RESEARCH, INC., 1433 ROSCOMARE ROAD, LOS ANGELES, CA 90077, USA.
+   MODIFICATIONS MARKED WITH EMPTY COMMENT SIGNS.
+ 
+ THE NAMES AND ORGANIZATIONS GIVEN HERE MUST NOT BE DELETED IN ANY USE OF THIS
+ PROGRAM.  
+ [NOTE ADDED 26 SEPT 1981:
+   THIS PROGRAM IS NOT KNOWN TO BEAR ANY FORM OF COPYRIGHT. JLG]
+ 
+ futher modification to allow include files, units and lower case identifiers
+ and EXIT (somewhat kludged) by George Schreyer. changes marked by "gws".
+ 
+ corrections to gws modifications by Jim Gagne, 12 Nov 81; marked by "|" in
+ empty comment brackets.}
+ 
+ PROGRAM AUGMENT;
+ 
+ CONST
+        BeginSy = 1;
+        CaseSy = 2;
+        EndSy = 3;
+        ExternSy = 4;
+{gws}   ExitSy = 5;
+        FortranSy = 6;
+        ForwardSy = 7;
+        FuncSy = 8;
+        GotoSy = 9;
+        LabelSy = 10;
+        ProcSy = 11;
+        ProgramSy = 12;
+        VarSy = 13;
+        MaxModules = 2000;
+        LLMax = 120;                    {line length max}
+        LLMin = 72;                     {line length min}
+        AlfaLeng = 10;
+
+TYPE
+        Alfa = PACKED ARRAY [1..AlfaLeng] OF char;
+        CodeType = (Entry, ExitP, GotoEntry, Declare);
+        Symbols = BeginSy..VarSy;
+        NameNode = RECORD
+                     Name: Alfa;
+                     Link: ^ NameNode
+                   END;
+        ModuleCnt = 0..MaxModules;
+        LabelPtr = ^ LabelNode;
+        LabelNode = RECORD
+                      Labl: 0..9999;
+                      DeclaredIn: ModuleCnt;
+                      Next: LabelPtr
+                    END;
+
+VAR
+        IdLen, LastIdLen: 0..AlfaLeng;  {identifier length}
+        Sy: Symbols;
+        Number: 0..9999;
+{|}     {BadNames,}ReadingLabels, InEOLN, InEOF, Trace, WantsComments: boolean;
+{gws}   WantsInclude,TempInclude : boolean;  {indicates reading include file}
+        LineLength, ColCnt, InBuffPtr, IncBuffPtr,
+          LastInBuff, LastIncBuff: integer;
+        ch: char;
+        BadList: ^ NameNode;            {list of excepted module names}
+        Count: ModuleCnt;               {running count of modules}
+{|}     DotCount: integer;              {count of dots marking lines read}
+        ChBuf: ARRAY [1..AlfaLeng] OF char;
+        Identifier: Alfa;
+        TimeVolume: string[10];
+        Key: ARRAY [Symbols] OF Alfa;
+        InBuff, IncBuff: PACKED ARRAY [0..1023] OF char;
+{}      Infile,                         {input file: source program}
+{Note: all references to "Input" have been changed to "Infile".  JLG}
+{gws}   Incfile: file;                  {Include file}
+        Inter,                          {output file: augmented program}
+        Except: text;                   {file of excepted module names}
+        Inter2: FILE OF Alfa;           {file of all module names}
+
+PROCEDURE WriteFatalError(message: string);      {procedure added: JLG}
+BEGIN
+  Writeln;  Writeln(CHR(7), '*FATAL ERROR* -- ', message, '.');  
+  close(Inter,lock); {gws   so we can see what blew up}
+EXIT(Program) END;
+
+
+PROCEDURE NextCh;       {|} {rewritten using block i/o for more speed...jlg}
+VAR     GoodRead: boolean;
+BEGIN
+  IF WantsInclude
+    THEN BEGIN
+      IF IncBuffPtr > LastIncBuff
+        THEN BEGIN
+          GoodRead := BlockRead(IncFile, IncBuff, 2) = 2;
+          IF GoodRead
+            THEN BEGIN
+              LastIncBuff := 1023 + SCAN(-1023,<>CHR(0),IncBuff[1023]);
+              IncBuffPtr := 0;  IF LastIncBuff < 1 THEN GoodRead := false;
+            END;
+          IF NOT GoodRead
+            THEN BEGIN
+              WantsInclude := false;  LastIncBuff := 1023;  Close(IncFile);
+              IncBuffPtr := 1024;  DotCount := 0;
+              Writeln;  Writeln('  --> back to source file');
+            END
+        END;
+      IF WantsInclude
+        THEN BEGIN
+          ch := IncBuff[IncBuffPtr];  IncBuffPtr := IncBuffPtr + 1;
+          IF ch <> CHR(13) THEN InEOLN := false
+            ELSE BEGIN
+              ch := ' ';  InEOLN := true;  ColCnt := 0;
+              IF DotCount >= 0
+                THEN BEGIN Write('.');  Dotcount := Dotcount + 1 END;
+              IF DotCount > 50 THEN BEGIN Writeln;  Dotcount := 0 END
+            END
+        END
+    END;
+  IF NOT WantsInclude
+    THEN BEGIN
+      IF InBuffPtr > LastInBuff
+        THEN IF BlockRead(InFile, InBuff, 2) <> 2 THEN InEOF := true
+          ELSE BEGIN
+            LastInBuff := 1023 + SCAN(-1023,<>CHR(0),InBuff[1023]);
+            InBuffPtr := 0;  IF LastInBuff < 1 THEN InEOF := true;
+          END;
+      IF NOT InEOF
+        THEN BEGIN
+          ch := InBuff[InBuffPtr];  InBuffPtr := InBuffPtr + 1;
+          IF ch <> CHR(13) THEN InEOLN := false
+            ELSE BEGIN
+              ch := ' ';  InEOLN := true;  ColCnt := 0;
+              IF DotCount >= 0
+                THEN BEGIN Write('.');  Dotcount := Dotcount + 1 END;
+              IF DotCount > 50 THEN BEGIN Writeln;  Dotcount := 0 END
+            END
+        END
+    END;
+END;
+
+
+PROCEDURE Advance;
+BEGIN
+  IF InEOLN
+    THEN BEGIN
+      Writeln(Inter);  NextCh;
+      IF ch = CHR(16)
+        THEN BEGIN
+          NextCh;
+          IF ch = ' ' THEN NextCh
+          ELSE IF ch = '!' THEN ch := ' '
+          ELSE BEGIN Write(Inter, CHR(16), pred(ch));  ch := ' ' END
+        END
+    END
+    ELSE BEGIN Write(Inter, ch);  NextCh END
+END;
+
+
+PROCEDURE ReadId;
+{}      VAR     i: integer;
+BEGIN
+  IdLen := 0;
+  REPEAT
+    IF IdLen < AlfaLeng THEN BEGIN IdLen := IdLen + 1;  ChBuf[IdLen] := ch END;
+    NextCh
+{} UNTIL NOT (ch IN ['0'..'9', 'A'..'Z', '_', 'a'..'z']);
+  IF IdLen >= LastIdLen
+    THEN LastIdLen := IdLen
+    ELSE REPEAT ChBuf[LastIdLen] := ' ';  LastIdLen := LastIdLen - 1
+         UNTIL LastIdLen = IdLen;
+{} {PACK(chbuf, 1, Identifier;}
+{gws} FOR i := 1 TO AlfaLeng DO IF ChBuf[i] in ['a'..'z'] THEN
+   Identifier[i] := chr(ord(ChBuf[i]) - 32) ELSE Identifier[i] := ChBuf[i]
+END;
+
+
+PROCEDURE WriteId;
+VAR     i: integer;
+BEGIN
+{} FOR i := 1 TO IdLen DO Write(Inter, ChBuf[i])
+END;
+
+
+PROCEDURE Comment;
+BEGIN
+{gws} REPEAT WHILE ch <> '*' DO Advance;  Advance UNTIL ch = ')';  Advance
+END;
+
+
+PROCEDURE StdComment;
+BEGIN {gws} WHILE ch <> '}' DO Advance; Advance END;
+
+
+PROCEDURE DumpComment;
+BEGIN
+  REPEAT
+    WHILE ch <> '*' DO BEGIN IF ch = CHR(16) THEN NextCh;  NextCh END;  NextCh
+  UNTIL ch = ')';
+  Write(Inter,'*)');  NextCh
+END;
+
+PROCEDURE DumpStdComment;
+BEGIN
+  WHILE ch <> '}' DO BEGIN IF ch = CHR(16) THEN NextCh;  NextCh END;  Advance
+END;
+
+PROCEDURE GetInclude;  {procedure added: GWS}
+  VAR i: integer;
+      Message,IncName : string;
+      Strg : string;
+BEGIN
+   IncName := '';
+   Strg := ' ';
+{|} WHILE (ch IN [' ','#',':', '0'..'9','.','A'..'Z','a'..'z'])
+       AND (Length(IncName) < 80) DO
+     BEGIN
+       IF ch IN ['a'..'z'] THEN ch := CHR(ORD(ch) + ORD('A') - ORD('a'));
+       IF ch <> ' ' THEN 
+         BEGIN Strg[1] := ch;  IncName := concat(Incname,Strg) END;
+       NextCh;
+     END;
+{$I-}
+   Reset(Incfile,IncName);
+{|} IF (IORESULT > 0) AND (POS('.TEXT',IncName) = 0)
+     THEN Reset(IncFile, CONCAT(IncName, '.TEXT'));
+   i := IORESULT;
+   IF i = 0 THEN i := BlockRead(IncFile, IncBuff, 2, 0) - 2;
+{$I+}
+   IF i = 0
+     THEN BEGIN Writeln;  Writeln('  --> ',IncName);  TempInclude := true END
+   ELSE WriteFatalError(concat('Include File ',IncName,' not found'))
+END;{-}
+
+
+FUNCTION CheckDirective: boolean;  {procedure added: GWS; rewritten: JLG}
+VAR     GotDirective: boolean;
+BEGIN
+   Advance;  GotDirective := false;
+   IF ch = '+' THEN Trace := true
+   ELSE IF ch = '-' THEN Trace := false
+   ELSE IF ch = '$' THEN
+     BEGIN
+       NextCh;  GotDirective := true;
+{|}    IF ch <> 'I' THEN Write(Inter,'$')
+{|}      ELSE BEGIN
+{|}        NextCh;  IF ch IN ['-','+'] THEN Write(Inter,'$I') ELSE GetInclude
+         END
+     END;
+   CheckDirective := GotDirective
+END;
+
+
+FUNCTION SkipComments: boolean;  {function added: JLG}
+VAR     Found: boolean;
+BEGIN
+  Found := true;
+  IF ch = '(' THEN 
+     BEGIN 
+        Advance;
+{|}     IF ch <> '*' THEN Found := false
+          ELSE IF CheckDirective OR WantsComments THEN Comment ELSE DumpComment
+     END
+  ELSE IF ch = '{'
+    THEN IF CheckDirective OR WantsComments THEN StdComment ELSE DumpStdComment
+  ELSE Found := false;
+  SkipComments := found; 
+  IF TempInclude THEN  {block added: gws}
+    BEGIN
+      TempInclude := false;  Writeln(Inter);  WantsInclude := true;
+      NextCh
+    END;
+END;
+
+
+FUNCTION NoKey(Id: alfa): boolean;   {binary search}
+VAR  i, j: integer;
+BEGIN
+  i := BeginSy;  j := VarSy;
+  REPEAT
+    Sy := (i + j) DIV 2;
+    IF Key[Sy] <= Id THEN i := Sy + 1;  IF Key[Sy] >= Id THEN j := Sy - 1
+  UNTIL i > j;
+  NoKey := Key[Sy] <> Id
+END;
+
+
+PROCEDURE SkipOver;             {renamed: JLG}
+{Find next identifier (or number if reading labels).  Skip strings & comments.}
+{}
+BEGIN
+  WHILE NOT InEOF DO
+    BEGIN
+      WHILE NOT InEOLN DO
+{}      IF SkipComments THEN {ignore}
+        ELSE IF ch = ' ' THEN BEGIN IF Trace THEN Write(' ');  Advance END
+{|}     ELSE IF ch = CHR(16) THEN BEGIN Advance;  Advance END
+        ELSE IF ch = ''''
+          THEN BEGIN
+            REPEAT Advance UNTIL ch = ''''; Advance;  IF Trace THEN Write('''')
+          END
+{}      ELSE IF ch IN ['A'..'Z', 'a'..'z']
+          THEN BEGIN
+            ReadId;  ReadingLabels := false;  IF Trace THEN Write(Identifier);
+{}          IF NoKey(Identifier){AND NOT BadNames}
+{}{|}         THEN BEGIN IF Trace THEN Writeln;  WriteId END
+  {|}         ELSE BEGIN IF Trace THEN Writeln('(',Sy,')');  Exit(SkipOver) END
+          END
+        ELSE IF ch IN ['0'..'9']
+          THEN IF ReadingLabels
+{|}         THEN BEGIN NextCh;  EXIT(SkipOver) END
+            ELSE REPEAT Advance
+{}               UNTIL NOT (ch IN ['0'..'9', 'A'..'Z', '_', 'a'..'z'])
+        ELSE Advance;
+      Writeln(Inter);  NextCh
+    END
+END;
+
+
+PROCEDURE ComplModule(LastL: LabelPtr);
+{ Process the block of a program, procedure, or function to find the
+  appropriate code insertion points.  LastL is the head of the list of labels
+  whose scope applies to the block.  ComplModule must parse label, var, proce-
+  dure, and function declarations, as well as goto statements and the compound
+  statement forming the statement part of each module. }
+
+VAR     Depth: integer;
+        Params: boolean;
+        L: LabelPtr;
+        GotoLabel: 0..9999;
+        Looking: boolean;
+        Tag: ModuleCnt;
+        Name: Alfa;
+
+  PROCEDURE InsertNewText(Code: CodeType; ITag: integer);
+  BEGIN                                  {modified for UCSD Time functn}
+    CASE Code OF
+      Entry:  BEGIN
+                Write(Inter, 'WITH Timing^ DO BEGIN xi:=', ITag, ';');
+{}              Writeln(Inter, 'Time(xh,xl);xm:=0 END;Put(Timing);')
+              END;
+      ExitP:  BEGIN
+                Writeln(Inter,';');
+                Write(Inter, 'WITH Timing^ DO BEGIN xi:=', ITag, ';');
+{}              Writeln(Inter, 'Time(xh,xl);xm:=1 END;Put(Timing);');
+{}              IF ITag = 1 THEN Writeln(Inter, 'Close(Timing,lock);')
+              END;
+      GotoEntry:
+              BEGIN
+                Write(Inter, 'WITH Timing^ DO BEGIN xi:=',L^.DeclaredIn,';');
+{}              Writeln(Inter, 'Time(xh,xl);xm:=2 END;Put(Timing);')
+              END;
+      Declare:BEGIN
+                Write(Inter, 'Timing:FILE OF PACKED RECORD ');
+{}              Writeln(Inter, 'xi:0..2000;xm:0..2;xh,xl:integer END;');
+{}              Writeln(Inter)
+              END
+      END
+  END;
+
+
+  FUNCTION NameOK: Boolean;
+  { Check procedure or function name against list of names to be excluded.}
+  
+  VAR     n: ^NameNode;
+          Looking: boolean;
+  BEGIN
+    n := BadList;  Looking := true;
+    WHILE (n <> nil) AND Looking DO
+      BEGIN Looking := n^.Name <> Name;  n := n^.Link END;
+    NameOK := Looking
+  END;
+
+
+BEGIN {ComplModule}
+{} WHILE NOT (ch IN ['A'..'Z','a'..'z']) DO IF NOT SkipComments THEN Advance;
+   ReadId;  Name := Identifier;  WriteId;  Tag := Count;  Params := false;
+   WHILE NOT Params AND (ch <> ';') DO IF ch = '('
+     THEN BEGIN Advance;  IF ch = '*' THEN Comment ELSE Params := true END
+     ELSE IF ch = '{' THEN StdComment ELSE Advance;
+   IF Params THEN WHILE ch <> ')' DO        {read through parameter list)
+{}   IF NOT SkipComments THEN Advance;
+{} Write(Inter, ch);  NextCh;  SkipOver;  IF Trace THEN Write('!');
+   IF Sy IN [ForwardSy, ExternSy, FortranSy] THEN WriteId
+   ELSE BEGIN
+     Count := Count + 1;
+     IF Count = MaxModules
+{}     THEN WriteFatalError('Too many procedures/functions to process');
+{}   Inter2^ := Name;  Put(Inter2);
+     IF Sy = LabelSy     {label declaration}
+       THEN BEGIN        {read local labels}
+         WriteId;  ReadingLabels := true;  SkipOver;
+         REPEAT
+           New(L);  L^.Labl := Number;  L^.DeclaredIn := Tag;
+           Write(Inter, Number:4);  L^.Next := LastL;  LastL := L;  SkipOver
+         UNTIL NOT ReadingLabels
+       END;
+     WHILE Sy IN [CaseSy, EndSy] DO      {type declaration}
+       BEGIN WriteId;  SkipOver END;
+     IF NOT (Sy IN [BeginSy, FuncSy, ProcSy]) THEN WriteId;
+     IF Sy = VarSy
+       THEN BEGIN
+         SkipOver;  WHILE Sy IN [CaseSy, EndSy] DO BEGIN WriteId;  SkipOver END;
+       END;
+     IF Tag = 1 THEN InsertNewText(Declare,1);    {main program}
+     WHILE Sy IN [FuncSy, ProcSy] DO
+       BEGIN WriteId;  ComplModule(LastL) END;
+     IF Sy = BeginSy                     {statement part}
+       THEN BEGIN
+         Depth := 1;  WriteID;  Writeln;  Write(Name,' <',Tag:4,' >');
+{|}      DotCount := 0;
+         IF Tag = 1
+           THEN Writeln(Inter,' rewrite(Timing,''',TimeVolume,'TIMING.DAT'');')
+           ELSE Writeln(Inter);
+         IF NameOK THEN InsertNewText(Entry, Tag)
+       END
+{}   ELSE WriteFatalError('"BEGIN" expected');
+     REPEAT                      {look for last EndSy}
+       SkipOver;
+       IF Sy = GotoSy
+         THEN BEGIN              {check against local labels}
+           ReadingLabels := true;  SkipOver;  GotoLabel := Number;
+           ReadingLabels := false;  Looking := true;  L := LastL;
+           WHILE (L <> nil) AND Looking DO
+             IF L^.Labl = GotoLabel THEN Looking := false ELSE L := L^.Next;
+{}         IF Looking THEN {WriteFatalError('undeclared label')}
+           ELSE BEGIN      {modified for local labels only per UCSD: JLG}
+{}         (* IF L^.DeclaredIn <> Tag
+{}             THEN BEGIN                {exit goto}
+{}               Writeln(Inter, 'BEGIN');
+{}               IF NameOK THEN InsertNewText(GotoEntry,Tag)
+{}             END;  *)
+            Write(Inter, 'GOTO ', GotoLabel);
+{}         { IF L^.DeclaredIn <> Tag THEN Writeln(Inter, ' END') }
+           END
+         END
+{gws}  ELSE IF Sy = ExitSy
+{gws}    THEN BEGIN
+{|}        Write(Inter,' BEGIN ');  InsertNewText(ExitP,Tag);
+{|}        REPEAT IF ch = CHR(16) THEN BEGIN NextCh;  NextCh END;  NextCh
+{gws}      UNTIL NOT (ch IN ['(',' ']);  ReadId;
+{gws}      IF NOT NoKey (Identifier) THEN
+{|}          BEGIN  IF Sy = ProgramSy THEN
+{gws}          BEGIN
+{|}              InsertNewText(ExitP,1);  Writeln(Inter,'EXIT(PROGRAM)')
+{gws}          END
+{|}          END
+{gws}        ELSE Writeln(Inter,'EXIT(',Identifier,')');
+{gws}      Write(Inter,'END;');  NextCh;
+{gws}    END
+        ELSE IF Sy IN [BeginSy, CaseSy]
+          THEN BEGIN
+            Depth := Depth + 1;  WriteId;
+            IF Trace THEN Write(Inter,'{',Depth,'}')
+          END
+        ELSE If Sy = EndSy
+          THEN BEGIN
+            Depth := Depth - 1;
+            IF Depth <> 0
+              THEN BEGIN WriteId;  IF Trace THEN Write(Inter,'{',Depth,'}') END
+          END
+{}      ELSE WriteFatalError('"END" expected')
+     UNTIL Depth = 0;
+     IF NameOK THEN InsertNewText(ExitP,Tag);
+     Write(Inter, 'END');  IF Trace THEN Write(Inter,' {p/f}');
+   END;
+   SkipOver
+END;
+
+
+PROCEDURE Initialize;                   {all init moved here: JLG}
+
+
+  FUNCTION Yes(prompt: string): boolean;   {added: JLG}
+  VAR   ch: char;
+  BEGIN
+    Write(prompt, ' (Y/N)?  ');
+    REPEAT Read(keyboard, ch) UNTIL ch IN ['y','Y','n','N'];
+    IF ch IN ['y', 'Y'] THEN BEGIN Yes := true;  Writeln('Yes') END
+    ELSE BEGIN Yes := false;  Writeln('No') END
+  END;
+  
+  
+  PROCEDURE AllCaps(VAR s: string);     {added: JLG}
+  VAR   i: integer;
+  BEGIN
+    FOR i := 1 TO Length(s) DO IF s[i] IN ['a'..'z']
+      THEN s[i] := CHR(ORD(s[i]) + ORD('A') - ORD('a'))
+  END;
+
+
+  FUNCTION GotFile(WantsInput: boolean;  prompt: string; VAR f: text): boolean;
+  VAR   i: integer;                     {function added: JLG}
+        s: string;
+  BEGIN
+    REPEAT
+      Writeln('Please enter the name of ', prompt, ' (<ret> to skip):');
+      Write('--> ':12);  Readln(s);  Allcaps(s);
+      IF (s = '') OR (s = ' ') THEN s := ''
+      ELSE IF WantsInput
+        THEN BEGIN
+{$I-}
+          Reset(f,s);  i := IORESULT;
+          IF (i > 0) AND (POS('.TEXT',s) = 0)
+            THEN BEGIN
+              s := CONCAT(s, '.TEXT');  Reset(f,s);  i := IORESULT
+            END;
+          IF i > 0 THEN BEGIN Reset(f, CONCAT('#5:',s));  i := IORESULT END;
+          IF i > 0 THEN BEGIN Reset(f, CONCAT('#4:',s));  i := IORESULT END;
+{$I+}
+          IF i > 0
+            THEN BEGIN s := '';  Write(CHR(7),'Can''t open input file...') END
+        END
+        ELSE BEGIN
+{$I-}
+          IF POS('.TEXT',s) = 0 THEN s := CONCAT(s, '.TEXT');
+          Rewrite(f,s);  i := IORESULT;
+{$I+}
+          IF i > 0
+            THEN BEGIN s := '';  Write(CHR(7),'Can''t open output file...') END
+        END
+    UNTIL (s = '') OR (i = 0);  GotFile := i = 0
+  END;
+  
+  
+  PROCEDURE GetBadNames;                {added: JLG}
+  VAR   n: ^ NameNode;
+        s: string;
+          
+  
+    PROCEDURE PutName;                  {added: JLG}
+    VAR i: integer;
+    BEGIN
+      IF (s <> '') AND (s <> ' ')
+      THEN BEGIN
+        New(n);
+        FOR i := 1 TO AlfaLeng DO
+          IF i > Length(s) THEN n^.Name[i] := ' ' ELSE n^.Name[i] := s[i];
+        n^.Link := BadList;  BadList := n
+      END
+    END;
+      
+  
+    PROCEDURE ReadBadNames;             {moved & rewritten: JLG}
+    VAR   i: 1..AlfaLeng;
+    BEGIN
+      IF GotFile(true, 'the "exceptions" file', except)
+        THEN BEGIN
+          Writeln(
+          'The following names will not be AUGMENTed with timing information:');
+          Writeln;
+          WHILE NOT EOF(except) DO
+            BEGIN Readln(except, s);  Writeln(s:25);  PutName END
+        END
+    END;
+  
+  
+  BEGIN
+    BadList := nil;
+    IF Yes('Do you wish to enter procedures/function names NOT to process')
+      THEN IF Yes('Are these names in a disk-based file (1 per line)')
+        THEN ReadBadNames
+        ELSE BEGIN
+          Writeln(
+     'If you wish to skip over certain procedures or functions now,');
+          Writeln(
+           'Enter the one such procedure/function name per line (no blanks);');
+          Writeln('Enter a blank line (ie, just type <ret>) when done:');
+          REPEAT Write(' ':16);  Readln(s);  PutName
+          UNTIL (s = '') OR (s = ' ')
+        END
+  END;
+
+
+BEGIN {Initialize}
+  IF NOT GotFile(true, 'the source file to be processed', Infile)
+    THEN EXIT(Program);
+  IF BlockRead(InFile, InBuff, 2) <> 2
+    THEN WriteFatalError('can''t read source file');
+  IF NOT GotFile(False, 'the destination of the Pascal source', Inter)
+    THEN EXIT(Program);
+{$I-}
+  Rewrite(Inter2, 'AUG.PROCNAMES');
+  IF IORESULT > 0 THEN Rewrite(Inter2, '#5:AUG.PROCNAMES');
+  IF IORESULT > 0 THEN WriteFatalError('can''t open procedure name file');
+{$I+}
+{|} Writeln(
+'To which volume do you wish to direct the timing file (<ret> for Prefix)?');
+{|} Write('--> ':12);  Readln(TimeVolume);
+{|} WantsComments := Yes('Want to keep ALL comments in AUGMENTed file');
+{|} WHILE POS(' ', TimeVolume) > 0 DO DELETE(TimeVolume,POS(' ',TimeVolume),1);
+{|} TempInclude := false;  WantsInclude := false;  {gws}
+{|} InEOLN := false;  InEOF := false;  InBuffPtr := 1024;  LastInBuff := 1023;
+{|} IncBuffPtr := 1024;  LastIncBuff := 1023;  DotCount := -1;
+{|} NextCh;  Count := 1;  ColCnt := 1;  LineLength := LLMax;
+{|} Trace := Yes('Want to trace AUGMENT''s scanner');
+  LastIdLen := AlfaLeng;
+  Key[BeginSy  ] := 'BEGIN     ';  Key[CaseSy   ] := 'CASE      ';
+  Key[EndSy    ] := 'END       ';  Key[ExitSy   ] := 'EXIT      ';
+  Key[ExternSy ] := 'EXTERNAL  ';
+  Key[FortranSy] := 'FORTRAN   ';  Key[ForwardSy] := 'FORWARD   ';
+  Key[FuncSy   ] := 'FUNCTION  ';  Key[GotoSy   ] := 'GOTO      ';
+  Key[LabelSy  ] := 'LABEL     ';  Key[ProcSy   ] := 'PROCEDURE ';
+  Key[ProgramSy] := 'PROGRAM   ';  Key[VarSy    ] := 'VAR       ';
+  GetBadNames;  SkipOver;  ReadingLabels := false;  Writeln;
+END;
+
+
+PROCEDURE DoAugment;
+BEGIN {DoAugment}
+  Initialize;
+  IF Sy = ProgramSy THEN BEGIN Write(Inter, 'PROGRAM');  ComplModule(nil) END
+  ELSE WriteFatalError('"PROGRAM" expected')
+END;
+
+
+BEGIN {program}
+  DoAugment;  Writeln;  Writeln;  Writeln('Process complete.');
+  Close(Inter, lock);  Close(Inter2, lock)
+END.
+

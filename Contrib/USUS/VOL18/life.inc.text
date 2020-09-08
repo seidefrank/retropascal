@@ -1,0 +1,93 @@
+procedure write_prompt(prompt:string);
+begin      
+  gotoxy(2,0);            
+  clear_line;
+  write(prompt,' ',copy(border,1,76-length(prompt)),'+');
+  gotoxy(length(prompt)+2,0)
+end {write_prompt};  
+
+function read_int(low_lim,hi_lim,digits_allowed:integer):integer;  
+var
+  ch:char;
+  result,digits,i:integer;
+  ok:boolean;
+begin  
+  ok:=FALSE; 
+  repeat
+    result := 0; digits := 0;
+    repeat         
+      read(keyboard,ch);                  
+      while not(ch in ['0'..'9',chr(SP),chr(BS)]) do read(keyboard,ch);    
+      if ch=chr(BS)
+        then begin 
+          if digits>0
+            then begin  {erase last character}
+              write(chr(BS),chr(SP),chr(BS));         
+              result := result div 10;
+              digits := digits-1
+              end
+          end
+        else if ch<>chr(SP)
+          then if digits<digits_allowed 
+            then begin  {accept a digit}
+              write(ch);
+              result := result*10+ord(ch)-ord('0'); 
+              digits := digits+1
+              end
+      until ch=chr(SP); 
+    if (low_lim<=result) and (result<=hi_lim)
+      then begin  {result in acceptable range}
+        read_int := result;
+        ok := TRUE
+        end
+      else  {result not in range - start over}
+        for i:=1 to digits do write(chr(BS),chr(SP),chr(BS));
+    until ok
+end {read_int};
+      
+      procedure dummy;
+      begin
+      writeln('To set pattern:'); 
+      writeln('  Cursor movement commands: left, right, up, down');
+      writeln('    Plain, i.e. lower case: writes and then moves');  
+      writeln('    Caps, i.e. upper case: erases and then moves');      
+      writeln('    CNTL, i.e. with CONTROL key held: just moves');
+      writeln('  Cursor movement command: CR');
+      writeln('    Moves to beginning of next line');
+      writeln('  All cursor movement is performed with full wraparound');
+      writeln('  ESC - Aborts');          
+      writeln('  ETX - Accepts initial pattern as displayed.');     
+      writeln;     
+      end;
+              
+procedure print_intro; 
+begin              
+  clear_screen;                  
+  gotoxy(32,0);
+  writeln('THE GAME OF LIFE');
+  write('Do you want instructions? (''y'' or ''n''):');            
+  read(ch);
+  if (ch='y') or (ch='Y')
+    then begin
+      gotoxy(0,1); clear_line;
+      writeln('....more stuff about the game....');    
+      writeln('Options available during game:');
+      writeln('  n(ext - display next generation according to i(nterval');
+      writeln('  r(un - repeatedly display generations according to ',      
+              'i(nterval');
+      writeln('         When ''run''ning, hit any key to stop');  
+      writeln('  i(nterval - set number of generations to compute ',
+              'between displays');
+      writeln('  c(hange - change pattern');  
+      writeln('  s(ave - save (part of) pattern in a file');
+      writeln('    File name is suffixed ''.LIFE''');
+      writeln('  g(et - get (part of) pattern from a file');             
+      writeln('  ESC - quit'); 
+      writeln;
+      writeln;
+      dummy;
+      write('Type anything to begin entering initial pattern:');         
+      read(ch)             
+      end
+end {print_intro};  
+

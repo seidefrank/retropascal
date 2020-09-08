@@ -1,0 +1,87 @@
+(*$S+*)
+(*$L PRINTER: *)
+(**********************************************************************)
+(*                                                                    *)
+(*    Screen Oriented Editor                        July 11, 1978     *)
+(*    ------ -------- ------                                          *)
+(*                                                   _________        *)
+(*    By Richard S. Kaufmann,                       /         \       *)
+(*       IIS                                        | Version |       *)
+(*       University of California, San Diego        |   E.6b  |       *)
+(*       La Jolla CA 92093                          \_________/       *)
+(*                                                                    *)
+(*                                                                    *)
+(*    Now of Tektronix, MS 94-344 P.O. Box 500 Beaverton OR 97077     *)
+(*                                                                    *)
+(*    Copyright (c) 1978, by The Regents of the University of         *)
+(*       California at San Diego                                      *)
+(*                                                                    *)
+(**********************************************************************)
+
+(*$I SOURCE:HEAD *)
+
+(* Forward declared procedures.. all procedures are in MISC and UTIL *)
+
+PROCEDURE ERROR(S:STRING;HOWBAD:ERRORTYPE); FORWARD;
+PROCEDURE ERASETOEOL(X,LINE:INTEGER); FORWARD;
+FUNCTION  GETCH:CHAR; FORWARD;
+PROCEDURE CLEARSCREEN; FORWARD;
+PROCEDURE ERASEOS(X,LINE:INTEGER); FORWARD;
+PROCEDURE CLEARLINE(Y:INTEGER); FORWARD;
+FUNCTION  MAPTOCOMMAND(CH:CHAR): COMMANDS; FORWARD;
+FUNCTION  UCLC(CH:CHAR): CHAR; FORWARD;
+PROCEDURE PROMPT; FORWARD;
+PROCEDURE REDISPLAY; FORWARD;
+FUNCTION  MIN(A,B:INTEGER): INTEGER; FORWARD;
+FUNCTION  MAX(A,B:INTEGER): INTEGER; FORWARD;
+FUNCTION  SCREENHAS(WHAT: SCREENCOMMAND): BOOLEAN; FORWARD;
+FUNCTION  HASKEY(WHAT: KEYCOMMAND): BOOLEAN; FORWARD;
+PROCEDURE CONTROL(WHAT: SCREENCOMMAND); FORWARD;
+PROCEDURE PUTMSG; FORWARD;
+PROCEDURE HOME; FORWARD;
+PROCEDURE ERRWAIT; FORWARD;
+PROCEDURE BLANKCRT(Y: INTEGER); FORWARD;
+FUNCTION  LEADBLANKS(PTR:PTRTYPE;VAR BYTES: INTEGER): INTEGER; FORWARD;
+PROCEDURE CENTERCURSOR(VAR LINE: INTEGER; LINESUP: INTEGER; NEWSCREEN:BOOLEAN);
+  FORWARD;
+PROCEDURE FINDXY(VAR INDENT,LINE: INTEGER); FORWARD;
+PROCEDURE SHOWCURSOR; FORWARD;
+FUNCTION  GETNUM: INTEGER; FORWARD;
+PROCEDURE GETLEADING; FORWARD;
+FUNCTION  OKTODEL(CURSOR,ANCHOR:PTRTYPE):BOOLEAN; FORWARD;
+PROCEDURE LINEOUT(VAR PTR:PTRTYPE; BYTES,BLANKS,LINE: INTEGER); FORWARD;
+PROCEDURE UPSCREEN(FIRSTLINE,WHOLESCREEN:BOOLEAN; LINE: INTEGER); FORWARD;
+PROCEDURE READJUST(CURSOR: PTRTYPE; DELTA: INTEGER); FORWARD;
+PROCEDURE THEFIXER(PARAPTR: PTRTYPE;RFAC: INTEGER;WHOLE: BOOLEAN); FORWARD;
+PROCEDURE GETNAME(MSG:STRING; VAR M:NAME); FORWARD;
+
+(*$I SOURCE:INIT      *)
+(*$I SOURCE:OUT       *)
+(*$I SOURCE:COPYFILE  *)
+(*$I SOURCE:ENVIRON   *)
+(*$I SOURCE:PUTSYNTAX *)
+(*$I SOURCE:COMMAND   *)
+(*$I SOURCE:INSERTIT  *)
+(*$I SOURCE:MOVEIT    *)
+(*$I SOURCE:FIND      *)
+(*$I SOURCE:USER      *)
+(*$I SOURCE:MISC      *)
+(*$I SOURCE:UTIL      *)
+
+BEGIN (* Segment procedure EDITOR *)
+  INITIALIZE; GETLEADING; CURSOR:=MAX(CURSOR,STUFFSTART);
+  REPEAT
+    CENTERCURSOR(TRASH,(SCREENHEIGHT DIV 2)+1,TRUE);
+    NEEDPROMPT:=TRUE;
+    IF USERINFO.ERRBLK>0 THEN PUTSYNTAX;
+    REPEAT
+      HOME; CLEARLINE(0);
+      EDITCORE;
+      IF COMMAND=SETC THEN ENVIRONMENT
+      ELSE IF COMMAND=COPYC THEN COPYFILE
+    UNTIL COMMAND=QUITC;
+  UNTIL OUT;
+  SYSCOM^.MISCINFO.NOBREAK := FALSE  (* 28 SEPT 77*)
+END;
+
+BEGIN END.

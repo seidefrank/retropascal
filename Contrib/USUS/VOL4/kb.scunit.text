@@ -1,0 +1,289 @@
+(*$L #5:SCUNIT.LST.TEXT*)
+(*$S+*)
+UNIT SCUNIT;
+  (*Copyright 1980 Kenneth L. Bowles, All rights reserved. Permission is
+    hereby granted to use this material for any non-commercial purpose*)
+  
+  (*This version includes specific constants for Terak 8510A*)
+INTERFACE
+TYPE
+    SCCHSET = SET OF CHAR;
+    SCKEYCOMMAND = (BACKSPACEKEY,ETXKEY,ESCKEY,DELKEY,UPKEY,DOWNKEY,
+                                LEFTKEY,RIGHTKEY,NOTLEGAL);
+    
+VAR
+  SCCH:CHAR;
+
+PROCEDURE SCINITIALIZE;
+PROCEDURE SCLEFT;
+PROCEDURE SCRIGHT;
+PROCEDURE SCUP;
+PROCEDURE SCDOWN;
+PROCEDURE SCGETCCH(VAR CH:CHAR; OKSET:SCCHSET);
+FUNCTION  SCMAPCRTCOMMAND(KCH: CHAR): SCKEYCOMMAND;
+PROCEDURE SCREADSTRG(VAR S:STRING; WIDTH:INTEGER; 
+                                 CCHSET:SCCHSET; ROW,COL:INTEGER);
+PROCEDURE SCREADINT(VAR X: INTEGER; WIDTH:INTEGER; ROW,COL:INTEGER);
+
+IMPLEMENTATION
+CONST
+  SCEOL=13;
+  BELL=7;
+  UNDERLINE='_';
+  
+VAR
+  TRANSLATE: PACKED ARRAY[CHAR] OF SCKEYCOMMAND;
+  KEYBRD: PACKED ARRAY[SCKEYCOMMAND] OF CHAR;
+
+PROCEDURE SCINITIALIZE;
+  VAR I:INTEGER;
+  BEGIN
+    FOR I:=0 TO 255 DO TRANSLATE[CHR(I)]:=NOTLEGAL;
+    
+    TRANSLATE[CHR(8)]:=BACKSPACEKEY;
+    KEYBRD[BACKSPACEKEY]:=CHR(8);
+    
+    TRANSLATE[CHR(3)]:=ETXKEY;
+    KEYBRD[ETXKEY]:=CHR(3);
+    
+    TRANSLATE[CHR(26)]:=UPKEY;
+    KEYBRD[UPKEY]:=CHR(26);
+    
+    TRANSLATE[CHR(12)]:=DOWNKEY;
+    KEYBRD[DOWNKEY]:=CHR(12);
+    
+    TRANSLATE[CHR(23)]:=LEFTKEY;
+    KEYBRD[LEFTKEY]:=CHR(23);
+    
+    TRANSLATE[CHR(11)]:=RIGHTKEY;
+    KEYBRD[RIGHTKEY]:=CHR(11);
+    
+    KEYBRD[ESCKEY]:=CHR(27);
+    
+    KEYBRD[DELKEY]:=CHR(127);
+    
+  END (*INITIALIZE*);
+
+FUNCTION SCMAPCRTCOMMAND(*(VAR KCH:CHAR): SCKEYCOMMAND*);
+BEGIN
+  SCMAPCRTCOMMAND:=TRANSLATE[KCH]
+END;
+
+PROCEDURE SCLEFT;
+BEGIN
+  WRITE(CHR(8));
+END (*SCLEFT*);
+
+PROCEDURE SCRIGHT;
+BEGIN
+  WRITE(CHR(28));
+END (*SCRIGHT*);
+
+PROCEDURE SCUP;
+BEGIN
+  WRITE(CHR(31));
+END (*SCUP*);
+
+PROCEDURE SCDOWN;
+BEGIN
+  WRITE(CHR(10));
+END (*SCDOWN*);
+
+PROCEDURE SQUAWK;
+BEGIN
+  WRITE(CHR(BELL));
+END;
+
+PROCEDURE SCGETCCH(*VAR CH: CHAR; OKSET: SCCHSET*);
+BEGIN
+  REPEAT (*If user wants a character then get one that's LEGAL*)
+    READ(KEYBOARD,CH);
+    IF EOLN(KEYBOARD) THEN CH:=CHR(SCEOL);
+    IF NOT (CH IN OKSET) THEN
+      SQUAWK;
+  UNTIL (CH IN OKSET);
+END;
+    
+PROCEDURE UCLC(VAR CH:CHAR);
+BEGIN
+  IF CH IN ['a'..'z'] THEN CH:=CHR(ORD(CH)-32);
+END (*UCLC*);
+
+PROCEDURE FILLFIELD(CH:CHAR; WIDTH:INTEGER);
+(*fill a field on screen with CH by fastest method (in practice) *)
+VAR A:PACKED ARRAY[0..79] OF CHAR;
+BEGIN
+  FILLCHAR(A[0], WIDTH, CH);
+  WRITE(A:WIDTH);
+END (*FILLFIELD*);
+
+PROCEDURE TRUNCSTRING(WIDTH:INTEGER; INSTRG:STRING; 
+                        VAR OUTSTRG: STRING);
+BEGIN
+  IF LENGTH(INSTRG)<=WIDTH THEN
+    OUTSTRG:=INSTRG
+  ELSE
+    OUTSTRG:=COPY(INSTRG,1,WIDTH);
+END (*TRUNCSTRG*);
+
+(*$G+*)
+
+PROCEDURE SCREADSTRG(*VAR S:STRING; WIDTH:INTEGER; 
+                                 CCHSET:SCCHSET; ROW,COL:INTEGER*);
+(*this is (hopefully) a reasonably friendly string read to replace the
+  standard routine in the system*)
+(*display S, with underlining to fill out remainder of WIDTH columns.
+  allow editing within the displayed field. See embedded comments
+  regarding edit commands.*)
+LABEL 2;
+VAR
+  CH:CHAR;
+  X:STRING[1];
+  CURSINX,CHCNT:INTEGER;
+  CHOK:SCCHSET;
+  TS,TAILS:STRING;
+BEGIN
+  X:=' ';
+  TS:=S;
+  CHCNT:=LENGTH(TS);
+  GOTOXY(COL,ROW);
+  IF LENGTH(TS) > WIDTH THEN
+    DELETE(TS,WIDTH+1, (WIDTH-LENGTH(TS)));
+  WRITE(TS);
+  IF LENGTH(TS) < WIDTH THEN
+    FILLFIELD(UNDERLINE, WIDTH - LENGTH(TS));
+  GOTOXY(COL,ROW);
+  CURSINX:=1;
+  CHOK:=CCHSET + [CHR(SCEOL), KEYBRD[ESCKEY], KEYBRD[RIGHTKEY],
+            KEYBRD[LEFTKEY], KEYBRD[BACKSPACEKEY], KEYBRD[DELKEY] ];
+  REPEAT
+    SCGETCCH(CH,CHOK);
+    IF CH=KEYBRD[ESCKEY] THEN
+      BEGIN (*restore previous string to screen & bail out*)
+        GOTOXY(COL,ROW);
+        FILLFIELD(' ',WIDTH);
+        GOTOXY(COL,ROW);
+        WRITE(S);
+        GOTO 2;
+      END;
+    IF CH IN [KEYBRD[BACKSPACEKEY], KEYBRD[LEFTKEY] ] THEN
+      BEGIN (*move cursor left one position*)
+        IF CURSINX > 1 THEN
+          BEGIN
+            SCLEFT;
+            CURSINX:=CURSINX-1;
+          END;
+      END
+    ELSE
+      IF CH=KEYBRD[RIGHTKEY] THEN
+        BEGIN (*move cursor right one position*)
+          IF (CURSINX < (CHCNT+1)) AND (CURSINX < WIDTH) THEN
+            BEGIN
+              SCRIGHT;
+              CURSINX:=CURSINX+1;
+            END;
+        END
+      ELSE
+        IF CH=KEYBRD[DELKEY] THEN
+          BEGIN (*delete one character, redisplay the tail*)
+            IF CHCNT > 0 THEN
+              BEGIN
+                DELETE(TS,CURSINX,1);
+                CHCNT:=CHCNT-1;
+                TAILS:=TS;
+                IF CURSINX > 1 THEN
+                  DELETE(TAILS,1,CURSINX-1);
+                WRITE(TAILS);
+                WRITE(UNDERLINE);
+                GOTOXY((COL+CURSINX-1),ROW);
+              END;
+          END
+        ELSE
+          IF CH <> CHR(SCEOL) THEN
+            (*insert the character and redisplay the tail*)
+            IF CHCNT < WIDTH THEN
+              BEGIN
+                X[1]:=CH;
+                INSERT(X,TS,CURSINX);
+                CHCNT:=CHCNT+1;
+                TAILS:=TS;
+                DELETE(TAILS,1,CURSINX-1);
+                WRITE(TAILS); (*only the tail needs to be rewritten*)
+                IF CURSINX < WIDTH THEN
+                  CURSINX:=CURSINX+1;
+                GOTOXY((COL+CURSINX-1),ROW);
+              END;
+  UNTIL (CH = CHR(SCEOL));
+  S:=TS;
+2:
+END (*SCREADSTRG*);
+
+PROCEDURE SCREADINT(*VAR X: INTEGER; WIDTH:INTEGER; ROW,COL:INTEGER*);
+(*read integers in as friendly a way as possible - without blowing up*)
+(*This is for reading 16 bit integers - not long integers*)
+LABEL 1,2;
+CONST
+  BADINT= -32767;
+VAR NUM,PCH,PWRTEN,DIGIT:INTEGER;
+  CH:CHAR;
+  NEGATIVE,DONE:BOOLEAN;
+  S:STRING[7];
+BEGIN
+  GOTO 2; (*Jump over error handling*)
+1:
+  GOTOXY(COL,ROW);
+  FOR PCH:=1 TO WIDTH DO WRITE('*');
+  SQUAWK;
+2:
+  S:='';
+  SCREADSTRG(S,WIDTH,[' ','-','+','0'..'9'],ROW,COL);
+  NUM:=0;
+  PWRTEN:=1;
+  PCH:=1;
+  NEGATIVE:=FALSE;
+  DONE:=FALSE;
+  X:=BADINT;
+  (*Strip off leading blanks*)
+  WHILE (LENGTH(S)>0) AND (NOT DONE) DO
+    IF S[1]=' ' THEN
+      DELETE(S,1,1)
+    ELSE
+      DONE:=TRUE;
+  IF LENGTH(S)>0 THEN
+    BEGIN
+      IF S[1] IN ['+','-'] THEN
+        BEGIN
+          NEGATIVE:=(S[1]='-');
+          DELETE(S,1,1);
+        END;
+      PCH:=LENGTH(S);
+      WHILE (PCH>=1) AND (NUM<10000) DO
+        BEGIN
+          IF S[PCH] IN [' ','+','-'] THEN
+            GOTO 1
+          ELSE
+            DIGIT:=ORD(S[PCH])-ORD('0');
+          IF NUM>1000 THEN
+            CASE S[PCH] OF
+              '0','1','2': NUM:=NUM+DIGIT*PWRTEN;
+                      '3': IF NUM<=2767 THEN
+                             NUM:=NUM+30000
+                           ELSE
+                             GOTO 1;
+              '4','5','6','7','8','9': GOTO 1
+            END (*CASES*)
+          ELSE
+            NUM:=NUM+DIGIT*PWRTEN;
+          PWRTEN:=PWRTEN*10;
+          PCH:=PCH-1;
+        END (*WHILE*);
+      IF NEGATIVE THEN
+        X:=-NUM
+      ELSE
+        X:=NUM;
+    END (*LENGTH(S)>0*);
+END (*READINT*);
+
+
+END.
+

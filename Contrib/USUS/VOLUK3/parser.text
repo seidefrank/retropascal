@@ -1,0 +1,560 @@
+
+(**********************************************************************)
+segment procedure parser;
+label  1;    (*  PARSER EXIT  *)
+const
+     stackend     = 100 ;
+     startstate   =   1 ;
+(**********************************************************************)
+(*                GENERATED PARSER CONSTANTS                       *)
+(**********************************************************************)
+     zemaxbit2         =   63;   (*ADJUST*)  (*MAX SET ELEMENT*)
+     zemax2bits        =   64;   (*ADJUST*)  (*MAX SET SIZE*)
+     zemaxterminalcode =   93;
+     zemaxrslaenge     =   11;
+     zemaxprodnrliste  =  180;
+     zeanzzst          =  487;
+     zemaxfez          =  153;
+     zemaxfes          =   77;
+     zemaxteintrag     =  196;
+     zeanzotzst        =   38;
+     zeanzots          =   37;
+     zemaxnteintrag    =   62;
+     zeanzonzst        =   82;
+     zeanzons          =   19;
+     zeanznt           =  124;
+     zeanzprod         =  345;
+     zemaxztv          =  223;
+     zemaxznv          =   82;
+     zemaxtv           =   37;
+     zemaxnv           =   19;
+     zetindex          =    1;(*ADJUST*)(*ZEMAXTERMINALCODE/ZEMAXBITS2*)
+     zezuindex         =    7;(*ADJUST*) (*ZEANZZST / ZEMAXBITS2*)
+     zefindex          =    1;(*ADJUST*) (*ZEMAXFES / ZEMAXBITS2*)
+     zezplusn          =    7;
+     zezplust          =    5;
+     zestopsymbol      =    5;
+type
+(**********************************************************************)
+(*                     PARSER   TYPES                                 *)
+(**********************************************************************)
+     state         = 1..zeanzzst;
+     production    = 1..zeanzprod;
+     terminalsymbol= 0..zemaxterminalcode;
+     errorsymbol   = 0..zemaxfes;
+     errorstate  = 1..zemaxfez;
+     nonterminal   = 1..zeanznt;
+     prodnrliste   = 0..zemaxprodnrliste; (* 0 == ERROR EXIT *)
+     termin_set   = array[0..zetindex] of set of 0..zemaxbit2;
+     errorset      = array[0..zefindex] of set of 0..zemaxbit2;
+     statesset     = array[0..zezuindex] of set of 0..zemaxbit2;
+     ttabtyp       = array[1..zeanzotzst,1..zeanzots] of 0..zemaxteintrag;
+     ntabtyp       = array[1..zeanzonzst,1..zeanzons] of 0..zemaxnteintrag;
+     ztvtyp        = array[state] of 1..zemaxztv;
+     znvtyp        = array[state] of 1..zemaxznv;
+     termtermtyp   = array[terminalsymbol] of 0..zemaxtv;
+     ntnttyp       = array[nonterminal] of 1..zemaxnv;
+     termzutyp     = array[terminalsymbol] of 0..zeanzzst;
+     ntzutyp       = array[nonterminal] of 0..zeanzzst;
+     termprotyp    = array[terminalsymbol] of 0..zeanzprod;
+     ntprotyp      = array[nonterminal] of 0..zeanzprod;
+     zupltyp       = array[state] of prodnrliste;
+     plprotyp      = array[prodnrliste] of production;
+     pronttyp      = array[production] of nonterminal;
+     errortyp      = array[errorstate] of errorset;
+     prorsltyp     = array[production] of 0..zemaxrslaenge;
+     zutermtyp     = array[state] of terminalsymbol;
+     zuzplusttyp   = array[state] of 1..zezplust;
+     termzplusttyp = array[terminalsymbol] of 1..zezplust;
+     zuzplusntyp   = array[state] of 1..zezplusn;
+     ntzplusntyp   = array[nonterminal] of 1..zezplusn;
+     stackpointer     = 0..stackend;
+     parserstack = array [ stackpointer ] of state ;
+                         (* PARSERSTACK [ 0 ] = 'dummy' *)
+     parseraction = (handleerror,read,reduce,
+                     readreduce);
+     table_entry = record
+                          case action : parseraction of
+                            (* HANDLEERROR: *)
+                            read:( nextstate : state );
+                            reduce,readreduce:
+                              ( product_snr : production )
+                       end;
+     token_type =
+        record
+           syntaxcode : terminalsymbol;
+           pos        : so_position;
+           symbol     : lu_sym_descriptor
+        end;
+(**********************************************************************)
+(*             STATE VARIABLES OF THE PARSER                         *)
+(**********************************************************************)
+var
+    stack    : parserstack;
+    pointer  : stackpointer;
+    entry    : table_entry;
+    token    : token_type;
+(**********************************************************************)
+(*             PARSER TABLES   AND  CONSTANTS                       *)
+(**********************************************************************)
+    error  : errortyp;
+    ztv    : ztvtyp;
+    tv     : termtermtyp;
+    ttab   : ttabtyp;
+    znrtv  : termzutyp;
+    pnrtv  : termprotyp;
+    ptl    : plprotyp;
+    ptla   : zupltyp;
+    ft     : zuzplusttyp;
+    gt     : termzplusttyp;
+    fez    : array[state] of 0..zemaxfez;
+    fes    : array[terminalsymbol] of 0..zemaxfes;
+    ls         : pronttyp;
+    lengthrs   : prorsltyp;
+    ntab       : ntabtyp;
+    znv        : znvtyp;
+    nv         : ntnttyp;
+    znrnv      : ntzutyp;
+    pnrnv      : ntprotyp;
+    fn         : zuzplusntyp;
+    gn         : ntzplusntyp;
+    fsymbol,
+    rsymbol    : zutermtyp;
+    semklammer,
+    overread   : termin_set;
+    emptystateset     : statesset;
+(**********************************************************************)
+(**********************************************************************)
+function is_stopentry (e : table_entry) : boolean;
+begin
+   is_stopentry := false;
+   if e.action = read then
+      if e.nextstate = startstate then
+         is_stopentry := true;
+end;
+(**********************************************************************)
+function inset(m : termin_set;
+                 i : terminalsymbol ): boolean;
+begin
+  inset:=(i mod zemax2bits) in m[i div zemax2bits];
+end; (* VON INSET *)
+(**********************************************************************)
+function infeset(m : errorset; i : errorsymbol): boolean;
+begin
+  infeset:=(i mod zemax2bits) in m[i div zemax2bits];
+end; (* INFESET *)
+(**********************************************************************)
+function instateset( m : statesset ; i : state ) : boolean;
+begin
+  instateset:=(i mod zemax2bits) in m[i div zemax2bits];
+end; (* INSTATESET *)
+(**********************************************************************)
+procedure tostateset( var m : statesset ; i : state );
+begin
+    m [ i div zemax2bits ] := m [ i div zemax2bits ] +
+                                [ i mod zemax2bits ] ;
+end; (* TOSTATESET *)
+(**********************************************************************)
+PROCEDURE TTABLE(   Z:STATE;
+                    S:TERMINALSYMBOL;
+                VAR E:TABLE_ENTRY);
+(* TTABLE DETERMINES THE ACTION, WHICH IS EXECUTED NEXT *)
+(* IF THE CURRENT SYMBOL IS A TERMINAL                  *)
+VAR
+    TET:INTEGER;
+BEGIN
+  WITH E DO
+  IF INFESET(ERROR[FEZ[Z]],FES[S]) THEN
+    ACTION:=HANDLEERROR
+  ELSE
+  BEGIN
+    IF FT[Z]<GT[S] THEN TET:=ZTV[Z]
+    ELSE
+    IF FT[Z]>GT[S] THEN TET:=TV[S]
+    ELSE 
+       TET:=TTAB[ZTV[Z],TV[S]];
+    CASE TET MOD 3 OF
+      0: BEGIN
+          ACTION:=READ;
+          NEXTSTATE:=ZNRTV[S] + (TET DIV 3);
+         END;
+      1: BEGIN
+          ACTION:=READREDUCE;
+          PRODUCT_SNR:=PNRTV[S] + (TET DIV 3);
+         END;
+      2: BEGIN
+          ACTION:=REDUCE;
+          PRODUCT_SNR:=PTL[PTLA[Z] + (TET DIV 3)];
+         END;
+    END;
+   END;
+END; (* TTABLE *)
+(*********************************************************************)
+PROCEDURE NTABLE( Z:STATE;
+                  S:NONTERMINAL;
+              VAR E:TABLE_ENTRY);
+(* NTABLE DETERMINES THE ACTION WHICH IS EXECUTED NEXT *)
+(* IF THE CURRENT SYMBOL IS A NONTERMINAL              *)
+VAR
+   TET:INTEGER;
+BEGIN
+  with e do
+  begin
+    if fn[z]<gn[s] then tet:=znv[z]
+    else
+    if fn[z]>gn[s] then tet:=nv[s]
+    else
+       tet:=ntab[znv[z],nv[s]];
+    case tet mod 2 of
+      0: begin
+           action:=read;
+           nextstate:=znrnv[s] + (tet div 2);
+         end;
+      1: begin
+           action:=readreduce;
+           product_snr:=pnrnv[s] + (tet div 2);
+         end;
+    end;
+  end;
+end;  (* NTABLE *)
+(**********************************************************************)
+(*  INITIALIZATION  OF THE PARSER TABLES AND CONSTANTS *)
+(**********************************************************************)
+procedure parserinitialization;
+var
+    z   : 0 .. zezuindex;
+(**********************************************************************)
+(*  PARSERINITIALIZATION . PARSERREAD *)
+(**********************************************************************)
+procedure parserread(*TABDAT*);
+(**********************************************************************)
+(*      FILES :                                                       *)
+(*          TABDAT      : FILE OF INTEGER; (INPUT)                    *)
+(*             CONTAINS THE PARSER TABLES                             *)
+(**********************************************************************)
+var
+    i,j           : integer;
+    emptyterset   : termin_set;
+    emptyerrorset : errorset;
+(**********************************************************************)
+procedure zertest(i : integer);
+begin
+  if tabdat^ <> i then begin
+    er_error_message (5097, er_compiler_error, token.pos,
+                      lu_no_symbol);
+    exit(parser);   (*******  PARSER  STOP  *******)
+  end;
+  get(tabdat);
+end; (* ZERTEST *)
+(**********************************************************************)
+procedure zuterset(var t : termin_set; i : terminalsymbol);
+var
+    j : 0..zetindex;
+begin
+  j:=i div zemax2bits;
+  t[j]:=t[j]+[i mod zemax2bits];
+end;  (* ZUTERSET *)
+(**********************************************************************)
+procedure zufeset(var f : errorset; i : errorsymbol);
+var
+    j : 0..zefindex;
+begin
+  j:=i div zemax2bits;
+  f[j]:=f[j]+[i mod zemax2bits];
+end; (* ZUFESET *)
+(**********************************************************************)
+procedure parser_2_read;
+begin
+    zertest( -13);
+    for i := 0 to zemaxterminalcode do begin
+       tv[i] := tabdat^;    get(tabdat);
+       znrtv[i] := tabdat^; get(tabdat);
+       pnrtv[i] := tabdat^; get(tabdat);
+       gt[i] := tabdat^;    get(tabdat);    
+    end;
+    zertest(-14);
+    for i:=1 to zeanzotzst do
+       for j:=1 to zeanzots do begin
+          ttab[i,j] := tabdat^; get(tabdat); 
+       end;
+    zertest( -15);
+    reset(tabdat);
+end; (* PARSER_2_READ *)
+
+begin  (* PARSERREAD *)
+   writeln('Initialising Parser Tables...Takes about 10 minutes');
+   for i:=0 to zetindex do emptyterset[i]:=[];
+    for i:=0 to zefindex do emptyerrorset[i] := [];
+    semklammer:=emptyterset;
+    overread:=emptyterset;
+    for i := 0 to 4 do zuterset( overread, i);
+    zuterset( semklammer,  5);
+    zuterset( semklammer,  13);
+    zuterset( semklammer,  17);
+    zuterset( semklammer,  24);
+    zuterset( semklammer,  29);
+    zuterset( semklammer,  30);
+    zuterset( semklammer,  45);
+    zuterset( semklammer,  48);
+    zuterset( semklammer,  59);
+    reset(tabdat, '#5:tabdat.t' );
+    for i:=1 to zeanzzst do begin
+       fsymbol[i] := tabdat^; get(tabdat);
+       rsymbol[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -1 );
+    for i:=1 to zeanzonzst do
+       for j:=1 to zeanzons do begin
+          ntab[i,j] := tabdat^; get(tabdat); 
+       end;
+    zertest( -2 );
+    for i:=1 to zeanzzst do begin
+       znv[i] := tabdat^; get(tabdat);
+       fn[i] := tabdat^; get(tabdat);  
+    end;
+    zertest( -3 );
+    for i:=1 to zeanznt do begin
+       nv[i] := tabdat^;    get(tabdat);
+       znrnv[i] := tabdat^; get(tabdat);
+       pnrnv[i] := tabdat^; get(tabdat);
+       gn[i] := tabdat^;    get(tabdat);    
+    end;
+    zertest( -4 );
+    for i:=1 to zeanzzst do begin
+       fez[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -5 );
+    for i:=0 to zemaxterminalcode do begin
+        fes[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -6 );
+    for i:=1 to zemaxfez do begin
+       error[i] := emptyerrorset;
+       while tabdat^ <> -8 do begin 
+          zufeset(error[i], tabdat^); get(tabdat);
+       end;
+       get(tabdat);
+    end;
+    zertest( -9 );
+    for i:=1 to zeanzzst do begin
+        ptla[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -10);
+    for i:=0 to zemaxprodnrliste do begin
+        ptl[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -11);
+    for i:=1 to zeanzprod do begin
+       ls[i] := tabdat^; get(tabdat);
+       lengthrs[i] := tabdat^; get(tabdat); 
+    end;
+    zertest( -12);
+    for i:=1 to zeanzzst do begin
+       ztv[i] := tabdat^; get(tabdat);
+       ft[i] := tabdat^ ; get(tabdat); 
+    end;
+    parser_2_read;
+end;
+begin (* PARSERINITIALIZATION *)
+    if not morefiles then parserread;
+    for z := 0 to zezuindex do emptystateset [ z ] := [ ];
+end (* PARSERINITIALIZATION *) ;
+(**********************************************************************)
+(*                    SYNTAX ERROR RECOVERY                           *)
+(**********************************************************************)
+procedure errorhandling ( var stack      : parserstack;
+                          var pointer    : stackpointer;
+                          var token      : token_type;
+                          var entry      : table_entry);
+(**********************************************************************)
+(*  ERRORHANDLING . SEARCHRESTART                              *)
+(**********************************************************************)
+procedure searchrestart ;
+    var starkestates , schwachestates : statesset ;
+        gefunden : boolean ;
+        zz       : 0 .. zeanzzst;
+        e        : table_entry;
+        schwach  : boolean;
+(**********************************************************************)
+(*  ERRORHANDLING . SEARCHRESTART . REACHABLESTATES  *)
+(**********************************************************************)
+procedure reachablestates;
+    var kel : parserstack;
+        peg : stackpointer;
+        e   : table_entry;
+        t   : terminalsymbol;
+        starkephase : boolean ;
+begin (* REACHABLESTATES *)
+    schwachestates := emptystateset;
+    starkestates   := emptystateset ;
+    starkephase := true ;
+    kel := stack ;
+    peg := pointer - 1;
+    e . nextstate := stack [ pointer ] ;
+    repeat
+        if peg = stackend
+        then
+        begin
+          er_error_message (5099, er_comp_restriction,
+                            token.pos, lu_no_symbol);
+         (*************************)
+          exit(parser);  (* PARSER STOP*)
+         (*************************)
+        end;
+        peg := peg + 1; kel [ peg ] := e . nextstate ;
+        if instateset ( schwachestates , e . nextstate )
+        then t := fsymbol [ e . nextstate ]
+        else t := rsymbol [ e . nextstate ] ;
+        tostateset ( schwachestates , e . nextstate );
+        if starkephase
+        then tostateset ( starkestates , e . nextstate );
+        ttable ( e . nextstate , t , e );
+        if e . action = reduce then
+        begin peg := peg - 1; e . action := readreduce end
+        else if inset ( semklammer , t ) then starkephase := false;
+        while e . action = readreduce do
+        begin peg := peg - lengthrs [ e . product_snr ] + 1 ;
+              ntable ( kel [ peg ] , ls [ e . product_snr ] , e );
+        end;
+    until is_stopentry(e);
+end (* REACHABLESTATES *) ;
+begin (* SEARCHRESTART *) ;
+    reachablestates;
+    gefunden := false;
+    repeat
+        if token . syntaxcode = zestopsymbol
+        then gefunden := true else
+        if not inset ( overread , token . syntaxcode ) then
+        begin
+            schwach := inset ( semklammer , token . syntaxcode );
+            zz := 0;
+            repeat
+                zz := zz + 1;
+                if schwach
+                then gefunden := instateset ( schwachestates , zz )
+                else gefunden := instateset ( starkestates , zz );
+                if gefunden then
+                begin
+                    ttable ( zz , token . syntaxcode , e );
+                    if not ( e . action in [ read , readreduce ] )
+                    then gefunden := false;
+                end;
+            until gefunden or ( zz = zeanzzst );
+        end;
+        if not gefunden then begin
+            la_next_sym (token.symbol, token.pos);
+            token.syntaxcode := ord (token.symbol.sym);
+        end;
+    until gefunden;
+   er_error_message (5001, er_reset_position, token . pos, lu_no_symbol);
+end (* SEARCHRESTART *) ;
+(**********************************************************************)
+(*  ERRORHANDLING . REACHRESTART                           *)
+(**********************************************************************)
+procedure reachrestart;
+    var aktivestates : statesset;
+        t               : terminalsymbol;
+        e               : table_entry;
+        fdeskr          : token_type;
+        eingefuegt      : boolean;
+        peg             : stackpointer;
+        l               : lu_lexical_unit;
+begin (* REACHRESTART *)
+    aktivestates := emptystateset;
+    e . nextstate := stack [ pointer ];
+    pointer := pointer - 1;
+    repeat
+        if pointer = stackend
+        then
+        begin
+          er_error_message (5099, er_comp_restriction,
+                            token.pos, lu_no_symbol);
+         (************************)
+          exit(parser);  (* PARSER STOP *)
+         (*************************)
+        end;
+        pointer := pointer + 1; stack [ pointer ] := e . nextstate;
+        ttable ( e . nextstate , token . syntaxcode , entry );
+        if not ( entry . action in [ read , readreduce ] ) then
+        begin
+            if instateset ( aktivestates , e . nextstate )
+            then t := fsymbol [ e . nextstate ]
+            else t := rsymbol [ e . nextstate ];
+            tostateset ( aktivestates , e . nextstate );
+            ttable ( e . nextstate , t , e );
+            if e . action = reduce then
+            begin pointer := pointer - 1; e . action := readreduce end
+            else
+            begin
+              fdeskr.pos := token.pos;
+              fdeskr.syntaxcode := t;
+              l := lu_identifier_sym;
+              while ord (l) <> t do begin
+                  l := succ (l);
+              end;
+              lu_error_symbol (l, fdeskr.symbol);
+              er_error_message (5002, er_sym_inserted,
+                                fdeskr.pos, fdeskr.symbol);
+            end;
+            while e . action = readreduce do
+            begin
+                pointer := pointer - lengthrs [ e . product_snr ] + 1;
+                ntable(stack[ pointer ], ls[ e . product_snr ], e);
+            end;
+        end;
+    until ( entry . action in [ read , readreduce ] ) or
+            is_stopentry(e);
+    if is_stopentry(e) then
+    begin
+        entry := e;
+    end;
+end (* REACHRESTART *);
+(**********************************************************************)
+(*                 START ERRORHANDLING                        *)
+(**********************************************************************)
+begin (* ERRORHANDLING *)
+    er_error_message (5000, er_syntax_error, token.pos,lu_no_symbol);
+    searchrestart;
+    reachrestart;
+end (* ERRORHANDLING *) ;
+(**********************************************************************)
+(*                    START PARSER                            *)
+(**********************************************************************)
+begin (* PARSER *)
+    pointer := 0;
+    entry . nextstate := startstate;
+    parserinitialization;
+    la_next_sym (token.symbol, token.pos);
+    token.syntaxcode := ord (token.symbol.sym);
+    repeat
+        if pointer = stackend then begin
+          er_error_message (5099, er_comp_restriction,
+                              token.pos, lu_no_symbol);
+         (************************)
+          goto 1;  (* PARSER STOP*)
+         (*************************)
+        end;
+        pointer := pointer + 1;
+        stack [ pointer ] := entry . nextstate;
+        ttable ( entry . nextstate , token . syntaxcode , entry );
+        if entry . action = handleerror
+        then errorhandling ( stack , pointer , token , entry  );
+        if entry . action = reduce then
+        begin pointer := pointer - 1; entry . action := readreduce end
+        else begin
+           la_next_sym (token.symbol, token.pos);
+           token.syntaxcode := ord (token.symbol.sym);
+        end;
+        while entry . action = readreduce do
+        begin
+            pointer := pointer - lengthrs [ entry . product_snr ] + 1;
+            ntable( stack[ pointer ], ls[ entry . product_snr ],
+                      entry );
+        end;
+    until is_stopentry(entry);
+(**************************************)
+  1:   (* PARSER STOP*)
+(***************************************)
+end (* PARSER *) ;
+(**********************************************************************)
+

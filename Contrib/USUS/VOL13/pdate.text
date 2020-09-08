@@ -1,0 +1,48 @@
+(*$S+*)
+(*$I globals*)
+(* You will need the globals from volume 8 to compile this unit. *)
+(* If you have a small interpreter, you may need it also as the globals
+   eat the symbol table alive. *)
+(* George Schreyer *)
+(*$L+*)
+(*$D+*)
+separate unit puts_date ;
+interface
+
+procedure set_prefix ( prefix_volume : vid );
+procedure eeos;
+procedure eeol;
+procedure p_date ( date : daterec ) ;
+procedure get_date ( var date : daterec );
+
+implementation
+
+procedure set_prefix (*prefix_volume : vid*);
+begin
+  dkvid := prefix_volume;
+end;
+
+procedure eeos;
+begin
+   clearscreen;
+end;
+
+procedure eeol;
+begin
+   clearline;
+end;
+
+procedure get_date (*var date : daterec *);
+begin
+   date := thedate;
+end;
+
+procedure p_date (*date : daterec *);
+begin
+ thedate := date;
+end;
+
+end;
+begin
+end.
+

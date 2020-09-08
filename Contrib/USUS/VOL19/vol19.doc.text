@@ -1,0 +1,102 @@
+                                USUS Volume #19
+                                  
+                         ---> DEC & RX01 Specific <---
+                             
+            UCSD Version I.3 bootable run-time system and DEC notes
+
+VOL19:
+MODEM.PAS.TEXT     6   A simple routine to redirect I/O 
+DEC.INDEX.TEXT     6   An index of the DEC specific software already
+                                   in the USUS Library
+2K.KEY.TEXT       12   Some patches for the 2k Key                    
+PATCHES.TEXT      30   A summary of the patches to the UCSD DEC
+PATCH.CONT.TEXT   20     interpreters to make them work right
+SYSTEM.INTERP     18   The interpreter for I.3
+SYSTEM.PASCAL    110   The operating system for I.3
+XFER.CODE          3   A single drive file transfer program for I.3
+BOOTER.CODE        2   The I.3 bootstrap copier
+SETUP.CODE        13   The I.3 Setup utility
+MAKE_I.3.TEXT      4   An RT-11 command file to assemble and link
+                                the I.3 interpreter
+RX11.TEXT         26   The I.3 floppy driver
+EIS.TEXT           4   A conditional assembly definition
+MACROS.TEXT       14   Macro definitions for the I.3 interp
+MAINOP.TEXT       64   Part of the guts of the I.3 interp
+TRAPS.TEXT        36     ditto
+PROCOP.TEXT       64     ditto
+LP11.TEXT         10   The printer driver for I.3
+RXBOOT             2   The boot block for I.3
+PVM.MAC.TEXT      16   A RAMDISK handler for II.0
+ZAPRAM.TEXT        6   A utility to initialize RAMDISK on boot
+VOL19.DOC.TEXT    10   You're reading it
+__________________________________________________________________________
+                         
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 19 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+
+                          I.3 bootable run-time system
+
+     This disk should boot on an RX01.  It will not work with an RX02.  If you
+are lucky and it does boot, then welcome to the wonderful world of I.3.  Read
+up on YALOE as I.3 doesn't have a screen editor.  There is documentation
+available in the USUS archive, but not in soft form.  I am going to try to get
+the users manual in soft form into the Library sometime.  In the meanwhile,
+you'll have to fake it.  The system is marginally set up for an H-19.
+
+     The sources for the operating system are on volume 17, with the source to
+the debugger on volume 18.  The interpreter sources are on this disk, but you
+must have RT-11 or HT-11 to assemble them and FORLIB.OBJ or SYSLIB.OBJ to link
+them.  The file MAKE_I.3 is an RT-11 command file to assemble and link the
+interpreter.  You can use EDITTORT11.CODE (in your UCSD distribution kit) to
+move the sources over to RT-11 and the interpreter back to UCSD.  You must use
+the B(inary option to move the interpreter. 
+     
+                                    PATCHES
+
+     The UCSD interpreter was never implemented "right" for the LSI-11.  This
+file lists some of the most common problems and object patches that you can do
+with PATCH, DISKREAD, UNLPATCH or some other patch utility to "fix" the
+problems.
+
+                                     2K_KEY
+
+     This is a description of the bootstrap patches necessary to make the 2K_KEY
+ROM (for an H-27) be able to recognize the 4k bytes extra memory that you bought
+it for.
+                                        
+                                   DEC_INDEX
+
+     This is a short index of all of the DEC specific software published in
+previous volumes of the USUS Software Library.
+
+                                   MODEM.PAS
+
+     This simple routine redirects the remote port to the console port so
+that you can control your p-system from a remote terminal.  It works on both
+IV.0 and II.0.  You have to cold boot to switch it back.
+
+                                    PVM.MAC
+
+     This is an adaption of the VM.MAC RAMDISK handler in DECUS.  It is
+supposed to work with II.0 and an LSI-11/23 with the KT-11 MMU and extended
+memory. There will be an upcoming article in the newsletter by Eli Willner
+about RAMDISK.  ZAPRAM is a Pascal program which you can install as
+SYSTEM.STARTUP to initialize RAMDISK on bootup.  You need RT-11 and the II.0 
+building kit or sources to install it.
+
+

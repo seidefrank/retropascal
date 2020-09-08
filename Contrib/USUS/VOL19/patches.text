@@ -1,0 +1,317 @@
+                        Patching Your LSI-11 Interpreter
+
+                                  compiled by
+                                        
+                                George Schreyer
+
+                                        
+     The LSI-11 implementation of the UCSD p-system has some bugs which make 
+it act differently than most other implementations.  The specific problems are 
+described below.
+
+     1) The system comes preconfigured for parallel printers (the
+Printronix in particular).  This will cause the system to crash if a serial
+interface is used at the printer port.  This problem occurs ONLY in
+version II.0.
+
+     2) If a serial printer is used, the interpreter cannot recognize the
+standard X-ON/X-OFF protocol of typical serial (RS-232) printers.  The symptom
+is the loss of printed data due to printer buffer overflows.
+
+     3) The interpreter strips the parity bit off incoming characters at
+the remote port, REMIN:.  This prevents 8 bit data (such as found in code and
+data files) from being read from REMIN:.
+
+     4) Your remote port doesn't work and you are using a DLV-11J.  The vectors
+of the printer and remote port are not contigious even though the addresses are.
+Since your DLV-11J requires that the three non-console devices have contigous
+addresses and vectors, you have a hardware/software mismatch.  No one seems to
+know why it was done this way, but you can fix it.  See Problem #4 for the
+general method of moving port addresses and vectors around.  See Problem #4A for
+specific (easy) modifications to get your DLV-11J to work with the remote port.
+
+     5) DLE expansion problems.  If you use UNITWRITES to the console you may
+find that the left margin of displayed text is shifted left by one character.
+This is a bug in the interpreter which can be fixed so that the - 11 system will
+work like any other.  
+
+     6) The control code (5th parameter of UNITREAD and UNITWRITE) does not 
+work as specified in the IV.0 internal archecture guide.  You cannot suppress 
+the automatic LF after a CR and you cannot suppress special character handling 
+on input.  There is no known object patch.
+
+     7) The printer driver expands tabs, it will not send chr ( 9 ).  Instead
+it sends 8 spaces.  This may be considered a "feature", but it is not done
+on any other version of the p-system that I know of and it causes real problems
+when you need an HT as a control character for your printer.  You must send
+chr ( 128 + 9 ) instead or you may apply the patch listed below to fix the
+problem forever.
+
+     These are the patches that you can make to the interpreter to solve some
+of these problems once and for all.
+
+                           Problem #1 System Crashes
+
+     If your system crashes with an unimplemented instruction error anytime
+that you access the printer, you must patch the interpreter with a short 
+Pascal program, shown below.  Key this program into your computer, compile and 
+execute it.  This patch is necessary only in version II.0.
+
+        {Printerfix modifies the interpreter so that the printer will
+         work.  This program was obtained from Softech Microsystems}
+        
+        {You must hard boot to bring in the new version of the
+         interpreter}
+         
+        VAR F: FILE OF PACKED ARRAY [0..255] OF INTEGER;
+        BEGIN
+        RESET (F,'SYSTEM.PDP-11');
+        F^[66]:=F^[64];
+        F^[67]:=F^[65];
+        SEEK(F,0);
+        PUT(F);
+        CLOSE(F,LOCK);
+        END.
+
+                           Problem #2  Printer Overflows
+
+     
+     If your printer goes berserk or loses data after a few lines or pages
+have been printed, then your interpreter and printer are not properly
+coordinating the transmission of data.  One solution (the one most often used)
+is to set the baud rate of the serial printer port to a slow rate so that the
+computer cannot send data any faster than the printer can print it.  However
+by doing this, you cannot run your printer at its maximum speed.  
+
+     Many serial printers will send an X-OFF character (most often a control-
+S) to the serial line when their internal buffers are nearly full.  This
+character should be read by the computer and the computer should stop sending
+until the printer indicates that it is ready to receive more data by sending
+an X-ON character (most often a control-Q).  The UCSD p-system ignores those
+control characters and keeps right on sending data to the printer.
+
+     You can patch your interpreter to install a very short routine to cause 
+your computer to respond to these characters.  The patch is done with the UCSD 
+utility PATCH.  The patch can be done on both version II.0 and IV.0 
+interpreters.  This patch was given to me by Eli Willner and is reproduced 
+in part below (the original version is in NewsLetter #6).
+
+     The patch described here was designed for the SYSTEM.PDP-11 configured 
+for the EIS chip, using RX01 (distributed as LSI.EIS.RX).  However, it will 
+not be difficult to discover the appropriate addresses to patch in other 
+versions on SYSTEM.PDP-11.
+
+     The patch:
+
+     1) Make a backup copy of your entire system disk.  Be sure to install the 
+          software bootstrap.  (This is Very Important!).
+          
+     2) Invoke the PATCH utility. G(et SYSTEM.PDP-11 and V(iew block 0
+          (which has already been read as a result of the G(et).
+          
+     3) The assumption is made that the trap vector for the printer is at 
+          location 128 (decimal).  Note the contents of location 128.  In the 
+          version of SYSTEM.PDP-11 described above, the contents should be 
+          4822.  After noting the contents, change location 128 to C000.  To 
+          do this, go to T(ype mode, position the cursor over location 128, 
+          enter H(ex mode and type C000. Type a control-c to accept the 
+          change.
+          
+     4) Location 132 (decimal) should have the same original contents as 128.  
+          Change that location to C000 as well and Q(uit the type mode to re-
+          enter the main command mode of PATCH.
+          
+     5) You have just installed a jump to location 192 (decimal).  This
+          location contains the copyright message which you are going to
+          overwrite with the routine to check for the X-ON/X-OFF characters.
+          Make sure that location 192 really is the start of your copyright 
+          message.  Do this by typing M(ixed and V(iewing the block.  The 
+          first character of the copyright message should be visible at 
+          location 192.
+          
+     6) Change the contents of locations 192-227 to the following:
+          DFB5 8000 4CFF 0C03 DFA5 9300 4EFF 0802 DFB5 8000 4CFF FC03 DFA5 
+          9100 4EFF F802 5F00 4822
+          
+     7) Note the number that was formerly in locations 128 and 132 before they 
+          were changed.  If is is NOT 4822 then change the last grouping of 
+          hex digits from 4822 to the number that you noted.  This causes the 
+          patch to jump back to wherever the jump from 128 or 132 went.
+          
+     8) The presumption is made that your printer sends the X-ON/X-OFF 
+          characters with the parity bit set.  If your parity bit is cleared, 
+          then change the 9300 to 1300 and the 9100 to 1100.  If your printer
+          uses different handshake characters, install the approproate hex
+          values instead the of the ones listed.
+          
+     9) S(ave the block and re-boot your system.  Your printer should not 
+          overflow any more.  If the system crashes or your printer still 
+          overflows, carefully make sure that you typed the patch in correctly 
+          and make sure that your printer is sending the X-ON/X-OFF characters 
+          as control-Q/control-S.
+                           
+                           Problem #3 REMIN: troubles
+     
+     This patch was supplied by Peter A. Mason and is also published in 
+newsletter #6.  
+
+     The remote port, REMIN:, strips the parity bit.  If you just read ASCII
+data from REMIN: then you will never notice any trouble.  But if you want to
+read 8 bit data from REMIN:, the loss of the 8th bit is a disaster.  The patch
+to fix this is quite simple, you just have to locate and change only one byte
+in SYSTEM.PDP-11.
+
+     1) Make a backup copy of your entire system disk.  Be sure to install the 
+          software bootstrap.  (This is Very Important!).
+          
+     2) Invoke the PATCH utility and G(et SYSTEM.PDP-11.  R(read block 18 for
+          version IV.0 or block 15 for version II.0.  V(eiw the block.  For IV.1
+          you may have to calculate the offset of the start of the REMOTE driver
+          from the contents of the vector at 80 decimal (120 octal) in block 0,
+          that is, unless that you have changed it.  This value is the byte
+          flipped hex address of the start of the REMIN: handler.  Refer to the
+          section on tab expansion for an explaintion on how to calculate the
+          offset.
+          
+     3) You are looking for the hex grouping FFC5 8000.  Look through the 
+          block for this grouping.  IF you calculate it from the value in
+          the REMIN: vector, the offending word will be offset 14 bytes from
+          the start of the handler.  When you find it, enter T(ype mode and 
+          position the cursor over the 8 in 8000.  Enter H(ex mode and type 
+          00. Type control-C to make the change and the Q(uit type mode.
+          S(ave the block and you are done.
+          
+     If you have any communications software which uses REMIN:, you should not 
+notice any problems unless data is received with the parity bit set.  Since 
+the interpreter removed the parity bit, your communications software 
+probably never assumed that the bit could be set.  You may have to include a 
+statement in your software to check if the ordinal value of received 
+characters are above 127 and if they are you must subtract 128 from their 
+ordinal value as shown below.
+
+ if ord ( ch ) > 127 then ch := chr ( ord ( ch ) - 128 ) );
+
+     
+     Problem #4  REMIN:/REMOUT: address and vector changes
+
+     This patch was supplied by Eli Willner and is also published in NL#7.
+
+     One of the consequences of the current unfortunate lack of an adaptable p-
+System for the LSI/PDP-11 computers, is the inablilty of the user to custom 
+configure the device and vector addresses of the various Q-bus peripherals.
+
+     Presently, the LSI/PDP-11 p-System has all vector and device addresses 
+"hard-wired" to certain "standard" values.  The user who requires different 
+addresses (eg. the system may be running other operating systems >shudder< 
+besides the p-System) has no recourse.
+
+     This causes problems most frequently with the remote serial port, whose 
+address are perhaps the least "standard" of Q-bus devices.  Herewith, we 
+describe a patch to SYSTEM.PDP-11 to allow the user to set the remote serial 
+port device and vector addresses to whatever values are required.  I am 
+indebted to Walt Farrell for supplying this patch.
+
+     We assume for purposes of illustration that the current device address is 
+177520 and the current vector address is 120 (the "standard" values) and it is 
+desired to change the device address to 177570 and the vector address to 320.
+
+     1.  Make a backup copy of your system disk, including SYSTEM.PDP-11.  
+VERY IMPORTANT!!!
+
+     2. E(xecute the Patch utility, and G(et block 0 to the SYSTEM.PDP-11.
+
+     3. V(iew block 0.  At the current vector location of 120 (octal), which 
+is 80 (decimal), are 4 words containing the REMIN and REMOUT interrupt 
+vectors.  These consist of the REMIN interrupt address and its priority, 
+followed by the REMOUT interrupt address and its priority.  These values may 
+differ from one version of SYSTEM.PDP-11 to another; in any case note them.  
+For purposes of illustration, assume that these values to be 6424 8000 9C23 
+8000 in byte-flipped hex.
+
+     4. After noting the values, get into T(ype mode, and change all four 
+words to zeros.
+
+     5. We are going to change the vector to 320 (octal), or 208 (decimal), so
+V(iew the value there in character mode.  That location should be within the 
+copyright notice.  MAKE SURE THAT THE FOUR WORDS AT YOUR NEW VECTOR LOCATION 
+ARE IN A "DEAD CODE" AREA OF THE INTERPRETER!  If you neglect to do this, you
+may be wrecking some vital interpreter code. [Note that this patch location
+will interfere with the XON/XOFF patch described above.  If you are using that
+patch, you will have to relocate it to some other "dead code" area, if you can 
+find one.  Good luck to you!]
+
+     6. Get into T(ype mode, and copy the four words you noted earlier to the 
+area beginning at 203 (decimal) [in this example].  S(ave block 0 to disk.  
+You have just completed the modification to the interrupt vector.
+
+     7. We must now modify the device address.  Examine the first and third 
+words of the four previously noted (the REMIN and REMOUT interrupt routine
+address, respectively) and find the lower of those two numbers.  (This 
+procedure is easiest if the values are first converted from byte-flipped hex 
+to decimal.) In our example case, this value is 9C23, or 9116 (decimal).
+
+     8. This value must now be converted into a block number and offset into
+SYSTEM.PDP-11.  Divide it by 512.  The quotient is the block number; the 
+remainder is the offset.  In our example case we get block number 17, offset 
+412.
+
+     9. G(et block 17 and V(iew it.  Subtract 44 from the remainder, yielding 
+[in our example] 368.  Examine byte 368 in block 17.  It and the three words
+beyond it should contain 50FF 52FF 54FF 56FF in byte-flipped hex, which are
+177520, 177522, 177524, 177526 (octal), the address of the REMOTE ports.
+
+     10.  IF THESE ARE THE VALUES YOU GET (or the equivalent for your system) 
+change the four words to 78FF 7AFF 7CFF 7EFF, which are 177570 177572 177574 
+177576 (octal) (or your equivalent).  IF THESE ARE NOT THE VALUES YOU GET then 
+you are at the wrong location in the interperter.  Do NOT make any changes.  
+If you did make a change and want to keep it, S(ave it to disk.
+
+     Note: You must also change the jumpers or switches on your serial card to 
+correspond to whatever vector and addresses you patch into your interpreter.
+
+
+     Problem 4A.  Getting your DLV-11J to work with the remote port.
+
+     The problem with the DLV-11J is that three of the ports require contigous
+addresses and vectors.  The "standard" UCSD printer address is 177510 and the
+"standard" remote address is 177520.  These are already contigous so no problem
+occurs here.  The problem is that the "standard" printer vector is 200 and the
+"standard" remote vector is 120.  These are not contigous!
+
+     The solution would seem easy, move the remote vector to 220, and all is
+well.  Not so.  DEC has done a number on you.  If you investigate the problem in
+the Interfaces Handbook a little, you will realize that there are not enough
+pins available on the DLV-11J to put the address and vectors anywhere you want.
+The address must start on even 100's and the vectors must start on even 40's as
+the least significant bits of the fields are pre-set.  
+
+     However, the solution is still not too complicated.  You must set port 0 of
+the DLV-11J at 177500 and the vector for that port at 200.  Then port 1 comes at
+177510 (for the printer) and port 2 comes at 177520 (for the remote).  Port 3 is
+the independant port and is probably set at 177560, vector 60, for your
+console.  The vector for port 1 is 210 (which will be your new printer vector)
+and the vector for port 2 is 220 (which will be your new remote vector).  Note
+that if you have an RK05, you are out-of-luck at this point as the standard
+vector for the RK05 is also 220.
+
+     Changing vectors is easy.  It is all done in block 0 of your interpreter.
+First locate the printer vector at location 200 octal (128 decimal).  Note the
+contents of the four words starting at 128 (decimal) and copy them into the four
+words immediatly following (starting at 136 decimal).  This moves your printer
+vectors.  Next, locate the contents of the four words starting at 120 octal (80
+decimal).  Copy these into the four locations starting at 144 decimal.  This
+moves your remote vectors.  If you have an RK05, this also wipes out its
+vectors, so don't expect it to work.  
+
+     You may also be able to move the vectors to 100, 110, and 120 octal without
+damaging anything.  In this case you will only have to copy the printer vector
+as the remote vector is already in the right spot.  Unfortunatly, 100 octal is
+your clock vector.  This dissallows the use of port 0 of the DLV-11J as
+everytime it generates an interrupt, the clock will tick instead.  If nothing is
+hooked to that port, you might get away with it, but I haven't tried it.
+
+(*$I patch.cont.text*)
+
+
+
+

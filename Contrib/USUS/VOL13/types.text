@@ -1,0 +1,36 @@
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ TYPES.TEXT begins here               }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ Pascal Screen Code Generator         }
+{ by Lee Meador -- Copyright (c) 1981  }
+{                                      }
+{ Type definitions:                    }
+{ Use by putting these lines in program}
+{                                      }
+{ TYPE                                 }
+{ (*$I WBTC1:TYPES.TEXT *)             }
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+  DisplayType = (Normal,Inverse, Flash);
+  
+  Item = RECORD
+            ItemValid       :BOOLEAN;
+            ItemLabel       :STRING;
+            ItemLength      :INTEGER;
+            ItemX,
+            ItemY           :INTEGER;
+            ItemEdit        :Boolean;
+            ItemDefault,
+            ItemName,
+            ItemType        :STRING;
+            ItemDisplayType :DisplayType;
+         END;
+         
+  Scrn = ARRAY [1..60] OF Item;
+        
+

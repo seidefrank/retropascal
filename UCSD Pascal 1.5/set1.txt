@@ -1,0 +1,348 @@
+<div class="moz-text-flowed" style="font-family: -moz-fixed">
+
+.INCLUDE	Z8080:SET1.TEXT
+		.IF ~LSTSET
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; start of file SET1
+
+
+;************************************************
+;*************** Set arithmetic *****************
+
+SETUP	; routine to give needed information about sets on
+	;   stack to INT, DIF, and UNI set operators.
+; before  -------------------------------------------------------------
+;	  ! ret ! szb !	 set_b	! sza !	 set_a	!  rest of stack
+;	  -------------------------------------------------------------
+;	   !;	   SP
+;
+; after	  -------------------------------------------------------------
+;	  !  set_b  ! sza !  set_a  ! rest of stack
+;	  -------------------------------------------------------------
+;	   !	     !	   !
+;	   SP	  (NEWSP)  HL
+; 
+; B = szb, A = sza
+
+	SAVIPC
+	POP	HL		; return_address
+	EX	(SP),HL		; HL := szb
+	LD	B,L		; B := szb
+	INC	HL		; skip over return_addr on stack
+	ADD	HL,HL		; HL := ^sza
+	ADD	HL,SP
+	LD	A,(HL)		; A := sza
+	LD	(NEWSP),HL	; keep future SP around
+	INC	HL
+	INC	HL
+	RET
+
+INT	; Set intersection. AND set_b into set_a, then zero-fill
+	;   set_a if sza>szb
+	CALL	SETUP
+	SUB	B		; B := min(sza,szb), C := max(sza-szb, 0)
+	JP	NC,$10 
+	ADD	A,B
+	LD	B,A
+	CLRA
+$10	LD	C,A
+	LD	A,B		; if min(sza,szb)=0, skip intersection loop
+	TSTA
+	JP	Z,$30 
+$20	POP	DE		; intersection loop
+	LD	A,E
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$20 
+$30	LD	A,C
+	TSTA			; if sza <= szb, no zero-fill
+	JP	Z,$50 
+	LD	B,A
+	CLRA
+$40	LD	(HL),A
+	INC	HL
+	LD	(HL),A
+	INC	HL
+	DJNZM	$40 
+$50	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+
+DIF	; Set difference.  AND (NOT set_b) into set_a.
+	CALL	SETUP
+	CP	B		; B := min(sza,szb)
+	JP	NC,$10 
+	LD	B,A
+$10	LD	A,B
+	TSTA
+	JP	Z,$30 
+$20	POP	DE		; difference loop
+	LD	A,E
+	CPL
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	CPL
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$20 
+$30	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+
+UNI	; Set union
+	CALL	SETUP
+	CP	B		; decide what kind of union to do...
+	JP	C,$30 
+	LD	A,B		; Uniona. Union set_b into set_a.
+	TSTA
+	JP	Z,$20 
+$10	POP	DE		; Uniona loop.
+	LD	A,E
+	OR	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	OR	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$10 
+$20	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+$30	; Unionb. Szb>sza, so union set_a into set_b, then move set_b
+	;   up to newly created top of stack
+	LD	C,A		; C := sza
+	PUSH	BC		; push szb
+	EX	DE,HL		; DE := ^set_a
+	LD	HL,0002H	; HL := ^set_b
+	ADD	HL,SP
+	LD	B,C
+	LD	A,B
+	TSTA
+	JP	Z,$50 
+$40	LD	A,(DE)		; Unionb loop.
+	OR	(HL)
+	LD	(HL),A
+	INC	DE
+	INC	HL
+	LD	A,(DE)
+	OR	(HL)
+	LD	(HL),A
+	INC	DE
+	INC	HL
+	DJNZM	$40 
+$50	; DE = ^just past set_a
+	LD	HL,(NEWSP)	; HL := ^just past set_b
+	POP	BC		; szb is number of words to move
+	LD	C,B		; C := result_set size
+$60	DEC	HL		; move loop.
+	DEC	DE
+	LD	A,(HL)
+	LD	(DE),A
+	DEC	HL
+	DEC	DE
+	LD	A,(HL)
+	LD	(DE),A
+	DJNZM	$60 
+	; DE = ^result_set
+	EX	DE,HL
+	LD	SP,HL
+	PUSH	BC
+	JP	BACK1
+
+
+
+  
+POWRC	; set compares. very gross.  
+	;   (see SETUP below for picture of two sets on a stack)
+ALEQB	.EQU	BYTE1		; boolean filled by PCSETUP
+	POP	HL		; junk return address - each comparison will
+				; push a result
+	; find what rel_op to do
+	DEC	BC		; A := p-machine op that got us here
+	DEC	BC
+	LD	A,(BC)
+	ADD	A,A		; A := index into PCTBL
+	SUB	5EH
+	LD	E,A		; HL := ^jump address
+	LD	D,00H
+	LD	HL,PCTBL
+	ADD	HL,DE
+	LD	E,(HL)		; HL := jump address
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	JP	(HL)
+
+PCTBL	.WORD	 PCEQL
+	.WORD	 PCGEQ
+	.BLOCK	 6
+	.WORD	 PCLEQ
+	.BLOCK	 4
+	.WORD	 PCNEQ
+
+; Routines used in comparisons of sets...
+PCSETUP		; return HL = ^set_a, SP = ^set_b
+	; B = min(sza,szb), C = szb-sza, Zero flag set if B = 0
+	POP	HL		; return_address
+	EX	(SP),HL		; B := HL := szb
+	LD	B,L
+	INC	HL		; HL := ^sza
+	ADD	HL,HL
+	ADD	HL,SP
+	LD	C,(HL)		; C := sza
+	INC	HL		; HL := ^set_a
+	INC	HL
+	PUSH	HL
+	LD	E,C		; HL := newsp
+	LD	D,00H
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	(NEWSP),HL
+	POP	HL		; HL := ^set_a again
+	LD	E,0		; aleqb := false
+	LD	A,B		; A := szb-sza
+	SUB	C
+	JP	C,$10		; B := min(sza, szb)
+	INC	E		; aleqb := true
+	LD	B,C
+$10	LD	C,A		; C := szb-sza
+	LD	A,E		; Store aleqb
+	LD	(ALEQB),A
+	LD	A,B		; Zero flag := (B = 0)
+	TSTA
+	RET
+
+ZERCHKA ; insure rest of set_a is zeroes
+	POP	DE		; return_address
+	LD	SP,HL
+	CLRA			; negate C, cause it tells how much set_b is
+	SUB	C		; bigger than set_a
+	LD	C,A
+	EX	DE,HL
+	JP	ZER0
+ZERCHKB ; insure rest of set_b is zeroes
+	; SP = ^place to start, C = # of words to check
+	; return C = 1 (yep, only zeroes), or 0 (nope)
+RETADR2 .EQU	 WORD1
+	POP	HL
+ZER0	LD	(RETADR2),HL
+	LD	A,C		; need to check anything ?
+	TSTA
+	JP	Z,$20 
+	; yep...
+	LD	B,C		; ...set up loop control...
+	LD	C,00H		; ...and assume we're not going to make it
+	CLRA
+$10	POP	DE
+	OR	E
+	OR	D
+	JP	NZ,$30 
+	DJNZM	$10 
+$20	LD	C,01H		; we did make it...set is zero filled
+$30	LD	HL,(RETADR2)
+	JP	(HL)
+
+PCEQSN	; return c = 1 if set_a = set_b, C = 0 otherwise
+	POP	HL
+	LD	(RETADR),HL
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,E
+	CP	(HL)
+	JP	NZ,$40
+  	INC	HL
+	LD	A,D
+	CP	(HL)
+	JP	NZ,$40
+  	INC	HL
+	DJNZM	$10   $20	; so far sets are equal. make sure larger has zeroes from here on.
+	LD	A,(ALEQB)
+	TSTA
+	JP	NZ,$30
+	; set_a is larger
+	CALL	ZERCHKA
+	JP	$50    
+$30	; set_b is larger
+	CALL	ZERCHKB
+	JP	$50    
+$40	LD	C,00H
+$50	LD	HL,(RETADR)
+	JP	(HL)
+
+; At last, the comparison operators reached via PCTBL
+PCEQL	CALL	PCEQSN
+	JP	PCRSLT
+
+PCNEQ	CALL	PCEQSN
+	LD	A,01H		; want NOT C as result
+	XOR	C
+	LD	C,A
+PCRSLT	LD	HL,(NEWSP)
+	LD	SP,HL
+	LD	B,00H
+	PUSH	BC
+	JP	BACK1
+
+PCLEQ	; see if set_a subset_of set_b, ie., (set_a - set_b) = null_set
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,E
+	CPL
+	AND	(HL)
+	JP	NZ,PCFALSE
+	INC	HL
+	LD	A,D
+	CPL
+	AND	(HL)
+	JP	NZ,PCFALSE
+	INC	HL
+	DJNZM	$10   
+$20	; so far nothing is amiss
+	LD	A,(ALEQB)		; if set_a is bigger, zerocheck it
+	TSTA
+	CALL	Z,ZERCHKA
+	JP	PCRSLT
+PCFALSE	LD	C,00H
+	JP	PCRSLT
+
+PCGEQ	; see if set_a superset_of set_b, ie., (set_b - set_a) = null set
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,(HL)
+	CPL
+	AND	E
+	JP	NZ,PCFALSE
+	INC	HL
+	LD	A,(HL)
+	CPL
+	AND	D
+	JP	NZ,PCFALSE
+	INC	HL
+	DJNZM	$10   
+$20	; everything's alright so far. check zeroes
+	LD	A,(ALEQB)		; If set_b is bigger, zerocheck it
+	TSTA
+	CALL	NZ,ZERCHKB
+	JP	PCRSLT
+	
+; End-of-File SET1
+</div>

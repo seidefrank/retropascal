@@ -1,0 +1,94 @@
+                         Volume 13 of the USUS library
+                        RUNON, FIT, and some small stuff
+                        
+DECLARE.TEXT      22    include files of RUNON  
+INITC.TEXT        26      ditto
+DOPAGE.TEXT       34      ditto
+READNU.TEXT       30      ditto
+READLN.TEXT       16      ditto
+MAIN.TEXT         22    RUNON main program.  A nice fast text formatter.
+SYSGEN.TEXT        4    Compile this file to make RUNON.
+RUNON_DOC.TEXT     4    RUNON documentation in un-formatted form.
+INTRO_DOC.TEXT    10      an include file of the documentation.
+HOWTO_DOC.TEXT    12      ditto
+DOT_DOC.TEXT      26      ditto
+DEFALT_DOC.TEXT    4      ditto
+SPEC_DOC.TEXT     10      ditto
+ERR_DOC.TEXT      12      ditto
+TECH_DOC.TEXT     16      ditto
+TAXNAMES.TEXT     18    Generates form line names for FIT.
+TAXTABLE.TEXT     24    Generates an out-of-date tax table for FIT.  
+TAXCALC.TEXT      20    an include file for FIT. The Federal Income Tax Program
+TAXSTART.TEXT      8      ditto
+TAXRW.TEXT        10      ditto
+TAXPRINT.TEXT     16      ditto
+TAXEDIT.TEXT      22      ditto
+FIT.TEXT          20    The main program of FIT, hand typed by yours truly.
+STARTUP.TEXT      22    A version II.0 startup program with date and prefix set
+PDATE.TEXT         4      a unit for STARTUP
+ERRORDATA          1    This data file should have been on Volume 8.
+SCREDIT.TEXT      36    A screen form generator, simple but it works.
+SCRGEN.TEXT       18    Converts output of SCREDIT to Pascal soruce
+TYPES.TEXT         6      an include file for SCREDIT and SCRGEN
+VOL13.DOC.TEXT     6    You're reading it.
+30/30 files<listed/in-dir>, 491 blocks used, 3 unused, 3 in largest
+
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 13 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+                                     RUNON
+
+     This is a fairly nice imbedded command type text formatter submitted by
+Wynn Newhouse and Herb Jellinek.  It is several times faster than PROSE which  
+was on volume 3 and RUNON does just as many things.  It could use a little 
+improvement in the user interface, it seems to reject some legal filename 
+constructs such as *FARB but after it gets going it works fine.
+
+                                      FIT
+
+     This is my hand typed version of FIT from a past issue of BYTE.  I never 
+got my version working (I left out a critical line) until Edward Heyman sent 
+me a disk with the original on it and I went through the thing line by line.  
+However in the process of trying to find my one bug, I found several rough 
+edges which got fixed, so instead of using the original, I used my version. I
+found some problems with the data in TAXTABLE and I have changed it.  Also
+be aware that the tables are for a past tax year and will have to be updated
+with current information before you try to do your taxes on it!
+
+                                    STARTUP
+
+     I got tired of always having to go back to the F(iler to reset my prefix 
+after hard crashing the system, so I wrote a startup program to do it for me.  
+I also had a tendency to forget to set the date so I made the startup program 
+force me to enter a date (or simply <return> if it is not to be changed).  It 
+also displays a banner message to identify itself.  This program uses the II.0 
+globals in a separate unit to access the system data and will not work in 
+IV.0. There is IV.0 version on volume 12.
+
+                               SCREDIT and SCRGEN
+
+     These programs, by Lee Meador, allow you to define a screen form and then
+convert the definition to Pascal source.  The documentation is sort of lacking
+but after some fumbling, I got the hang of it. 
+
+                                   ERRORDATA
+
+     This is a data file for the SCREENUNIT which is on Volume 8.  It got 
+replaced by an older version of the file by accident.
+
+     regards - george schreyer
+

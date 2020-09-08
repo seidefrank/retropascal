@@ -1,0 +1,87 @@
+
+{ FASTREAD - fast text file string read for UCSD pascal. }
+{            dhd - PCD Systems, Inc.                     }
+
+unit fastread;
+  interface
+
+{ file control block }
+  
+const
+  bufsiz = 1024;
+  linemax = 255;
+
+type
+  lineindex =   0..linemax;
+  longstring =  string[linemax];
+  ffile =       file;
+  fcb = 
+    record
+      inlfn:    string[30];     { input file name }
+      line:     longstring;     { current text line }
+      bpos:     integer;        { buffer position }
+      endfile:  boolean;        { true when end of file }
+      buf:      packed array[0..bufsiz] of char;
+      blknr:    integer;
+    end;
+  
+  procedure getstring(var phyle: fcb; var infile: ffile; var s: longstring);
+  procedure openfile(var phyle: fcb; var infile: ffile; var lfn: string);
+    
+implementation
+  const
+    cr = 13;
+  
+  procedure openfile{var phyle: fcb; var infile: ffile; var lfn: string};
+  begin { openfile }
+    with phyle do
+      begin
+        reset(infile, lfn);
+        inlfn := lfn;
+        line := '';
+        bpos := bufsiz + 1;
+        endfile := false;
+        blknr := 2;
+      end;
+  end;  { openfile }
+  
+  procedure getstring{var phyle: fcb; var infile: ffile; var s: longstring};
+    const
+      dle = 16;
+    var bcnt, chg: integer;
+  begin { getstring } {$R- disable string range checks }
+    with phyle do
+      repeat
+        if bpos >= bufsiz then { time for next buffer }
+          begin bcnt := blockread(infile, buf[0], 2, blknr);
+            bpos := 0; blknr := blknr + bcnt;
+            if bcnt < 2 then { eof }
+              begin endfile := true; EXIT(getstring) end;
+          end;
+        chg := scan(bufsiz-bpos, =chr(cr), buf[bpos]);
+        if (bpos + chg) < bufsiz then { found a carriage return }
+          begin moveleft(buf[bpos], S[1], chg);    { copy string except CR }
+            S[0] := chr(chg); bpos := bpos + chg + 1;
+          end
+        else
+          begin chg := scan(bufsiz-bpos, =chr(0), buf[bpos]); { look for null }
+            if (bpos + chg) < bufsiz then
+              begin moveleft(buf[bpos], S[1], chg-1); 
+                S[0] := chr(chg); bpos := bufsiz;
+              end;
+          end;
+      until chg > 0;
+    if length(s) > 2 then
+      if s[1] = chr(dle) then { insert leading blanks }
+        begin chg := ord(s[2])-32;
+          if chg > 2 then
+            moveright(s[3], s[chg+1], length(s)-2)
+          else
+            moveleft (s[3], s[chg+1], length(s)-2);
+          fillchar(s[1], chg, ' ');
+          s[0] := chr(length(s)+chg-2);
+        end;
+  end;  { getstring } {$R+}
+  
+end. { of unit }
+  

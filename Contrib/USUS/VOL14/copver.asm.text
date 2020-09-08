@@ -1,0 +1,102 @@
+        
+SELDSK  .EQU     1BH
+SETTRK  .EQU     1EH
+SETSEC  .EQU     21H
+SETDMA  .EQU     24H
+READ    .EQU     27H
+WRITE   .EQU     2AH
+
+
+        .FUNC READSECTOR,4
+        POP     IX              ;return address
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        
+        POP     BC              ;memory write address
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETDMA
+        LD      DE,TAG1
+        PUSH    DE
+        JP      (HL)            ;CALL SETDMA
+        
+TAG1    POP     BC              ;disk number
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SELDSK
+        LD      DE,TAG2
+        PUSH    DE
+        JP      (HL)            ;CALL SELDSK
+                
+TAG2    POP     BC              ;track number 
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETTRK
+        LD      DE,TAG3
+        PUSH    DE
+        JP      (HL)            ;CALL SETTRK
+        
+TAG3    POP     BC              ;sector number
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETSEC
+        LD      DE,TAG4
+        PUSH    DE
+        JP      (HL)            ;CALL SETSEC
+        
+TAG4    LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,READ
+        LD      DE,TAG5
+        PUSH    DE
+        JP      (HL)            ;CALL READ
+        
+TAG5    LD      BC,0FFFFH
+        JP      NZ,TAG6
+        LD      BC,00000H
+TAG6    PUSH    BC              ;FUNCTION RETURN VALUE
+        JP      (IX)            ;restore return address
+        
+        .FUNC WRITESECTOR,4
+        POP     IX              ;return address
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        
+        POP     BC              ;memory write address
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETDMA
+        LD      DE,TAG1
+        PUSH    DE
+        JP      (HL)            ;CALL SETDMA
+        
+TAG1    POP     BC              ;disk number
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SELDSK
+        LD      DE,TAG2
+        PUSH    DE
+        JP      (HL)            ;CALL SELDSK
+                
+TAG2    POP     BC              ;track number 
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETTRK
+        LD      DE,TAG3
+        PUSH    DE
+        JP      (HL)            ;CALL SETTRK
+        
+TAG3    POP     BC              ;sector number
+        LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,SETSEC
+        LD      DE,TAG4
+        PUSH    DE
+        JP      (HL)            ;CALL SETSEC
+        
+TAG4    LD      HL,(0001H)      ;PICK UP MS-BYTE OF BIOS ADDRESS
+        LD      L,WRITE
+        LD      DE,TAG5
+        PUSH    DE
+        JP      (HL)            ;CALL WRITE
+        
+TAG5    LD      BC,0FFFFH
+        JP      NZ,TAG6
+        LD      BC,00000H
+TAG6    PUSH    BC              ;FUNCTION RETURN VALUE
+        JP      (IX)            ;restore return address
+        
+        .END
+                                ; FILE IS COPVER.ASM.TEXT
+

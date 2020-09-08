@@ -1,0 +1,399 @@
+(*$L PRINTER:*)
+(*$D+*)
+(*$R-*)
+(**************************************************************)
+(* This program is an adaptation for UCSD pascal of a program *)
+(* that appears in the Byte Book Of Pascal. The changes made  *)
+(* were very small, so it is still fairly inefficient.        *)
+(* There are still probably a few typos in it as well as      *)
+(* common or garden bugs.                                     *)
+(* The APL subset that has been implemented so far is fairly  *)
+(* small and limiting, such as no character strings, plus     *)
+(* things like restictions on where generalised matrices may  *)
+(* be used (bracketing them sometimes helps).                 *)
+(* If you find any bugs or write any enhancements I would be  *)
+(* grateful if you could forward them on to me either via     *)
+(* USUS or Inmos Ltd.,                                        *)
+(*           Whitefriars,                                     *)
+(*             Lewins Mead,                                   *)
+(*               Bristol BS1 2NP,                             *)
+(*                 England.                                   *)
+(* Greg Nunan 10/10/80.                                       *)
+(**************************************************************)
+program scanner(infile, outfile, cherfile);
+
+const
+  maxvarnamelength = 10;
+  maxinputline = 80;
+  maxoutputline = 80;
+  inputarraysize = 82;
+  numberofmessages = 75;
+  messagelength = 50;
+  spectablength = 6;
+  doptablength = 16;
+  chartablength = 12;
+  redtablength = 16;
+  moptablength = 12;
+  numofopspertable = 16;
+  norminfile = 'console:';
+  normoutfile = 'console:';
+  indent = '      ';
+  extrabytes = 2;                                               (* heap *)
+  blocksize = 64;                                               (* heap *)
+  blockbytes = 128;                                             (* heap *)
+  endofstore = 0;                                               (* heap *)
+  used = 1;                                                     (* heap *)
+  unused = 0;                                                   (* heap *)
+  
+type
+  packedstring = packed array[1..maxvarnamelength] of char;
+  tokennoun = (formres, formarg, globvar, monadoper, reductoper,
+               dyadoper, specoper, constant, statend);
+  values = record
+             realval: real;
+             nextvalue: ^values
+           end;
+  vartab = record
+             varname: packedstring;       (* v1 *)
+             functabptr: ^functab;        (* v2 - ftab *)
+             valtabptr: ^valtab;          (* v3 - vtab *)
+             deferedvaltabptr: ^fparmtab;
+             nextvartabptr: ^vartab
+           end;
+  valtab = record
+             intermedresult: boolean;
+             dimensions: integer;
+             firstdimen: ^dimeninfo;
+             forwardorder: boolean;
+             firstvalue: ^values;
+             nextvaltablink: ^valtab
+           end;
+  tokentable = record
+                 nextoken: ^tokentable;
+                 case noun: tokennoun of          (* p *)
+                   formres,
+                   formarg,
+                   globvar: (vartabptr: ^vartab); (* vtab *)
+                   monadoper: (monindx: integer);
+                   reductoper: (redindx: integer);
+                   dyadoper: (dopindx: integer);
+                   specoper: (charindx: integer);
+                   constant: (valtabptr: ^valtab);
+                   statend: (endadj: integer)
+               end;
+  vfunc = record
+            nextstmnt: ^tokentable;
+            nextvfuncptr: ^vfunc;
+            statlabel: packedstring
+          end;
+  functab = record
+              funcname: packedstring;             (* f1 *)
+              arity: (niladic, monadic, dyadic);  (* f2 *)
+              result: boolean; (* true = explicit    f3 *)
+              resultname: packedstring;           (* f4 *)
+              leftarg: packedstring;              (* f5 *)
+              rightarg: packedstring;             (* f6 *)
+              firstatement: ^vfunc;
+              nextfunctabptr: ^functab;
+              numofstatements: integer
+            end;
+  fparmtab = record
+               ptrval: ^valtab;     (* sd1 and sd2 *)
+               lastparm: ^fparmtab  (* link to last sd1 or sd2 *)
+             end;
+  dimeninfo = record
+                nextdimen: ^dimeninfo;
+                dimenlength: integer
+              end;
+  oprecord = record
+               opindex: integer;
+               opsymbol : char
+             end;
+  operandtab = record
+                 operptr: ^valtab;        (* sval *)
+                 lastoper: ^operandtab    (* link to last sval *)
+               end;
+  subrtab = record                                (* sf *)
+              calledsubr: ^functab;               (* s1 *)
+              tokencallingsubr: ^tokentable;      (* s2 *)
+              statemcallingsubr: ^vfunc;          (* s3 *)
+              lastsubrptr: ^subrtab       (* link to last sf *)
+            end;
+  optable = array[1..numofopspertable] of oprecord;
+  vartabptrtype = ^vartab;
+  typevaltabptr = ^valtab;
+  tokenptr = ^tokentable;
+  ptrfunctab = ^functab;
+  typevaluesptr = ^values;
+  typevfuncptr = ^vfunc;                                        (* heap *)
+  fparmptr = ^fparmtab;                                         (* heap *)
+  dimenptr = ^dimeninfo;                                        (* heap *)
+  operandptr = ^operandtab;                                     (* heap *)
+  typesubrtabptr = ^subrtab;                                    (* heap *)
+  aplcharset = (asymbol, bsymbol, csymbol, dsymbol, esymbol,
+                fsymbol, gsymbol, hsymbol, isymbol, jsymbol,
+                ksymbol, lsymbol, msymbol, nsymbol, osymbol,
+                psymbol, qsymbol, rsymbol, ssymbol, tsymbol,
+                usymbol, vsymbol, wsymbol, xsymbol, ysymbol,
+                zsymbol,
+                onesymbol, twosymbol, threesymbol, foursymbol,
+                fivesymbol, sixsymbol, sevensymbol, eightsymbol,
+                ninesymbol, zerosymbol,
+                colon, rightarrow, leftarrow, smallcircle,
+                period, leftparen, rightparen, leftbracket,
+                rightbracket, semicolon, quadrangle, space,
+                plus, minus, times, divide, asterisk, iota,
+                rho, comma, tilde, equals, notequal, lessthan,
+                lessorequal, greaterorequal, greaterthan,
+                andsymbol, orsymbol, ceiling, floor, largecircle,
+                forwardslash, doublequote, negative,
+                questionmark, omega, epsilon, uparrow, downarrow,
+                alpha, underscore, del, delta, singlequote,
+                eastcap, westcap, southcap, northcap, ibeam,
+                tbeam, verticalstroke, backwardslash);
+  block = array[1..blocksize] of integer;                       (* heap *)
+  pointer = ^integer;                                           (* heap *)
+  storeptr = record                                             (* heap *)
+               case integer of                                  (* heap *)
+                 0: (ptr: ^integer);                            (* heap *)
+                 1: (int: integer)                              (* heap *)
+             end;                                               (* heap *)
+  xxx = record                                                  (* heap *)
+          case integer of                                       (* heap *)
+            0: (ptr: ^integer);                                 (* heap *)
+            1: (valus: typevaluesptr);                          (* heap *)
+            2: (ops: operandptr);                               (* heap *)
+            3: (tokens: tokenptr);                              (* heap *)
+            4: (funcs: ptrfunctab);                             (* heap *)
+            5: (subrs: typesubrtabptr);                         (* heap *)
+            6: (fparms: fparmptr);                              (* heap *)
+            7: (vars: vartabptrtype);                           (* heap *)
+            8: (valts: typevaltabptr);                          (* heap *)
+            9: (vfuncs: typevfuncptr);                          (* heap *)
+           10: (dims: dimenptr);                                (* heap *)
+           11: (int: integer)                                   (* heap *)
+        end;                                                    (* heap *)
+                
+var
+  xcolonsym, xrightarrow, xleftarrow, xlittlecircle,
+  xperiod, xleftpar, xrightpar, xleftbracket,
+  xrightbracket, xsemicolsym, xquadsym: integer;
+  character: array[aplcharset] of char;
+  aplstatement: packed array[1..inputarraysize] of char;
+  digits: array[onesymbol..zerosymbol] of integer;
+  errormsgs: packed array[1..numberofmessages] of string[messagelength];
+  infile, outfile: interactive;
+  cherfile: text;
+  moptab, doptab, redtab, chartab, spectab: optable;
+  savelabel: packedstring;
+  name: packedstring;
+  newtokenptr, oldtokenptr, holdtokenptr, savetokenptr: ^tokentable;
+  testfuncptr, newfunctabptr, oldfunctabptr: ^functab;
+  newvartabptr, oldvartabptr: ^vartab;
+  leftvalptr, rightvalptr, valptr: ^values;
+  newvalues, newvalptr: ^values;
+  newdim: ^dimeninfo;
+  dimptr, newptr, leftdimptr, rightdimptr: ^dimeninfo;
+  varpointer: ^vartab;
+  oldvfuncptr, newvfuncptr: ^vfunc;
+  newvaltablink, oldvaltablink: ^valtab;
+  position: integer;
+  linelength: integer;
+  code, colcnt: integer;
+  funcstatements: integer;
+  tokenerror, firstfunction: boolean;
+  linetoolong, haslabel: boolean;
+  switch, funcmode, tokenswitch, itsanidentifier: boolean;
+  opertabptr: ^operandtab;        (* sv *)
+  ptrlastoper: ^operandtab;
+  subrtabptr: ^subrtab;
+  rparmptr: ^fparmtab;            (* p1 *)
+  lparmptr: ^fparmtab;            (* p2 *)
+  vfuncptr: ^vfunc;               (* nl *)
+  hold: ^tokentable;      (* holds last symbol *)
+  totaldigs, afterdigs: integer;
+  realsperline: integer;
+  rollnum: integer;
+  freestore: storeptr;                                          (* heap *)
+  areasize: integer;                                            (* heap *)
+        
+procedure setupheap; forward;                                   (* heap *)
+
+procedure getvalu(var valu: typevaluesptr); forward;            (* heap *)
+
+procedure getoper(var oper: operandptr); forward;               (* heap *)
+
+procedure gettoken(var token: tokenptr); forward;               (* heap *)
+
+procedure getfunc(var func: ptrfunctab); forward;               (* heap *)
+
+procedure getsubr(var subr: typesubrtabptr); forward;           (* heap *)
+
+procedure getfparm(var fparm: fparmptr); forward;               (* heap *)
+
+procedure getvarr(var varr: vartabptrtype); forward;            (* heap *)
+
+procedure getvalt(var valt: typevaltabptr); forward;            (* heap *)
+
+procedure getvfunc(var vfunk: typevfuncptr); forward;           (* heap *)
+
+procedure getdim(var dim: dimenptr); forward;                   (* heap *)
+
+procedure ridvalu(var valu: typevaluesptr); forward;            (* heap *)
+
+procedure ridoper(var oper: operandptr); forward;               (* heap *)
+
+procedure ridtoken(var token: tokenptr); forward;               (* heap *)
+
+procedure ridfunc(var func: ptrfunctab); forward;               (* heap *)
+
+procedure ridsubr(var subr: typesubrtabptr); forward;           (* heap *)
+
+procedure ridfparm(var fparm: fparmptr); forward;               (* heap *)
+
+procedure skipspaces; forward;
+
+procedure getaplstatement; forward;
+
+function namesmatch(nameone, nametwo: packedstring): boolean; forward;
+
+procedure makeanumber(var realnumber: real; var itsanumber: boolean); forward;
+
+
+procedure reverselinklist(var argptr: typevaltabptr); forward;
+
+function nameinvartable(name: packedstring;
+                        var varpointer: vartabptrtype;
+                        testfuncptr: ptrfunctab): boolean; forward;
+
+function funcalreadydefined(var newfuname: packedstring;
+                            var funcindex: ptrfunctab): boolean; forward;
+
+(*$I aplinit.text*)
+(*$I aplparse0.text*)
+(*$I aplparse1.text*)
+(*$I aplparse2.text*)
+(*$I aplparse3.text*)
+(*$I aplprocs.text*)
+(*$I aplheap.text*)
+
+begin {scanner}
+aplinit;
+write(outfile, areasize/(memavail*2): 4: 2, ': ');
+getaplstatement;
+while (aplstatement[1] <> character[forwardslash]) or
+      (aplstatement[2] <> character[asterisk])  (* /* ends program *) do
+  begin
+    skipspaces;
+    tokenswitch := true;
+    while (position <= linelength) and (not tokenerror) 
+          and (not linetoolong) do
+      begin (* scanning *)
+        if aplstatement[position] = character[del] (* function delimiter *)
+        then (* del encountered !!!! *)
+          if funcmode
+          then
+            begin (* end of current function *)
+              if newfunctabptr <> nil
+              then newfunctabptr^.numofstatements := funcstatements;
+              if funcstatements > 0
+              then
+                begin
+                  newfunctabptr^.nextfunctabptr := oldfunctabptr;
+                  oldfunctabptr := newfunctabptr;
+                  newvfuncptr^.nextvfuncptr := nil
+                end
+              else serror(75); (* function defined with no statements *)
+              funcmode := false;
+              position := position + 1
+            end
+          else processfunctionheader (* start of a new function *)
+        else (* not a del encountered *)
+          begin
+            if tokenswitch = true
+            then
+              begin (* this is start of a new statement *)
+                tokenswitch := false;
+                holdtokenptr := oldtokenptr; (* save starting position *)
+                maketokenlink;
+                newtokenptr^.noun := statend;
+                newtokenptr^.endadj := 0;
+                haslabel := false
+              end;
+            maketokenlink;
+            identifier(name, itsanidentifier);
+            if not itsanidentifier
+            then trytogetanumber
+            else
+              begin (* process identifier *)
+                skipspaces;
+                if (aplstatement[position] = character[colon]) and
+                   (newtokenptr^.nextoken^.noun = statend)
+                then
+                  begin (* process statement label *)
+                    savelabel := name;
+                    haslabel := true;
+                    position := position + 1
+                  end
+                else
+                  begin (* process variable name *)
+                    if not funcmode
+                    then newtokenptr^.noun := globvar
+                    else
+                      if namesmatch(name, newfunctabptr^.resultname)
+                      then newtokenptr^.noun := formres
+                      else
+                        if (namesmatch(name, newfunctabptr^.leftarg))
+                           or (namesmatch(name, newfunctabptr^.rightarg))
+                        then newtokenptr^.noun := formarg
+                        else newtokenptr^.noun := globvar;
+                    if newtokenptr^.noun <> globvar
+                    then testfuncptr := newfunctabptr
+                    else testfuncptr := nil;
+                    if not nameinvartable(name, varpointer, testfuncptr)
+                    then
+                      begin
+                        addnametovartable(name);
+                        newtokenptr^.vartabptr := newvartabptr
+                      end
+                    else newtokenptr^.vartabptr := varpointer
+                  end
+              end
+          end;
+        skipspaces
+      end;
+    if newtokenptr <> nil
+    then
+      if (tokenerror) or (newtokenptr^.noun = statend)
+      then destroystatement
+      else
+        if funcmode
+        then
+          begin
+            funcstatements := funcstatements + 1;
+            if funcstatements > 0
+            then
+              begin (* calatogue function statement *)
+                getvfunc(newvfuncptr);
+                if funcstatements = 1
+                then newfunctabptr^.firstatement := newvfuncptr
+                else oldvfuncptr^.nextvfuncptr := newvfuncptr;
+                oldvfuncptr := newvfuncptr;
+                if haslabel
+                then newvfuncptr^.statlabel := savelabel;
+                newvfuncptr^.nextstmnt := newtokenptr
+              end
+          end
+        else
+          if aplstatement[1] <> character[del]
+          then
+            begin
+              parser(newtokenptr, newvaltablink);
+              destroystatement
+            end;
+    tokenerror := false;
+    write(outfile, areasize/(memavail*2): 4: 2, ': ');
+    getaplstatement
+  end
+end.
+

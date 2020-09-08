@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/2010/manifest">
+  <Identity Name="48380FrankSeide.RetroPascal" Publisher="CN=894BF5EB-83BF-47CB-A42A-DA701D087FFB" Version="1.0.0.812" />
+  <Properties>
+    <DisplayName>Retro Pascal ][</DisplayName>
+    <PublisherDisplayName>Frank Seide</PublisherDisplayName>
+    <Logo>Assets\ProgramBegin 50 x 50.png</Logo>
+  </Properties>
+  <Prerequisites>
+    <OSMinVersion>6.2.1</OSMinVersion>
+    <OSMaxVersionTested>6.2.1</OSMaxVersionTested>
+  </Prerequisites>
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="WinRT_First_Steps.App">
+      <VisualElements DisplayName="Retro Pascal ][" Logo="Assets\ProgramBegin 150 x 150.png" SmallLogo="Assets\ProgramBegin 30 x 30.png" Description="Retro Pascal--a faithful implementation of UCSD's Pascal II for Windows RT and Windows 8." ForegroundText="light" BackgroundColor="#613a03" ToastCapable="false">
+        <DefaultTile ShowName="allLogos" />
+        <SplashScreen Image="Assets\ProgramBegin 620 x 300.png" />
+        <InitialRotationPreference>
+          <Rotation Preference="landscape" />
+        </InitialRotationPreference>
+      </VisualElements>
+    </Application>
+  </Applications>
+</Package>

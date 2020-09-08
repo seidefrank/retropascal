@@ -1,0 +1,326 @@
+PROGRAM Telephone;                                                                      
+ TYPE Telrec = RECORD  
+                date : STRING[6];
+                time : STRING[4];
+                wfrom: STRING[15]; 
+                whoto: STRING[15];
+                who  : STRING[5];  
+                mins : INTEGER;
+                cost : REAL;
+                mode : STRING[1];
+                END;
+                
+ VAR telfile : FILE OF Telrec;
+     numrecs : INTEGER; 
+     ch      : CHAR; 
+     
+ PROCEDURE Clear;    FORWARD;
+ PROCEDURE Wnewnrecs; FORWARD;
+ 
+ 
+ SEGMENT PROCEDURE Initfile; 
+  BEGIN
+   Clear;
+   WRITE('are you sure you wish to initialize the file?');
+   READ(ch);
+   IF ch IN ['Y','y'] THEN
+    BEGIN
+     telfile^.whoto := '#2:';
+     telfile^.mins := 0;
+     SEEK(telfile,0); 
+     PUT(telfile);
+     numrecs := 0;
+    END;  
+  END; 
+  
+ SEGMENT PROCEDURE Sortfile;
+  VAR temp1,temp2 : INTEGER;
+      trec1,trec2 : telrec; 
+  
+  FUNCTION Necessary: BOOLEAN;
+   BEGIN
+    IF (trec2.date>trec1.date) OR  
+      
+      ((trec2.date=trec1.date) AND (trec2.time>trec1.time)) OR   
+      
+      ((trec2.date=trec1.date) AND (trec2.time=trec1.time) AND  
+                  (trec2.wfrom>trec1.wfrom)) OR                 
+      
+      ((trec2.date=trec1.date) AND (trec2.time=trec1.time) AND 
+      (trec2.wfrom=trec1.wfrom) AND (trec2.whoto>trec1.whoto)) 
+      
+      THEN Necessary := TRUE ELSE Necessary := FALSE;  
+   END;
+   
+   
+  BEGIN        
+   WRITELN;
+   WRITE('Sorting '); 
+   FOR temp1 := 2 TO numrecs DO 
+    BEGIN
+     WRITE('.');
+     SEEK(telfile,temp1);
+     GET(telfile);
+     trec1 := telfile^;
+     
+     temp2 := temp1 - 1; 
+     SEEK(telfile,temp2);
+     GET(telfile);
+     trec2 := telfile^; 
+     
+     WHILE Necessary and (temp2>0) DO      
+      BEGIN
+       telfile^ := trec2;
+       SEEK(telfile,temp2 + 1);
+       PUT(telfile);
+       temp2 := temp2 - 1;
+       IF temp2 > 0 THEN 
+        BEGIN
+         SEEK(telfile,temp2);
+         GET(telfile);
+         trec2 := telfile^; 
+        END
+      END; 
+     
+     telfile^ := trec1;
+     SEEK(telfile,temp2 + 1);
+     PUT(telfile);
+    END;         
+  END; 
+     
+ 
+ SEGMENT PROCEDURE Add; 
+  BEGIN
+   WITH telfile^ DO  
+    BEGIN
+     Clear; 
+     {$I-}
+     WRITELN('date (mmddyy) --->      <'); 
+     WRITELN('time (hh:mm)  --->    <'); 
+     WRITELN('who from      --->               <');  
+     WRITELN('who to        --->               <');
+     WRITELN('who           --->     <'); 
+     WRITELN('number of mins -->');   
+     WRITELN('cost          --->');
+     WRITELN('mode          ---> <');
+     GOTOXY(18,0);  
+     READLN(date);
+     GOTOXY(18,1);
+     READLN(time);
+     GOTOXY(18,2);
+     READLN(wfrom); 
+     GOTOXY(18,3); 
+     READLN(whoto);
+     GOTOXY(18,4);
+     READLN(who);
+     GOTOXY(18,5); 
+     READLN(mins); 
+     GOTOXY(18,6); 
+     READLN(cost); 
+     GOTOXY(18,7);
+     READLN(mode); 
+     {$I+}
+    END; 
+   numrecs := numrecs + 1;
+   SEEK(telfile,numrecs);
+   PUT(telfile);
+   Wnewnrecs;
+  END;   
+  
+ SEGMENT PROCEDURE Report;
+  VAR ofname      : STRING; 
+      ofile       : TEXT; 
+      temp        : INTEGER; 
+      mwild       : STRING[1];
+      wwild       : STRING[5];
+      dwild       : STRING[6];   
+      fwild,twild : STRING[15];
+      rmode       : CHAR;
+      total       : REAL;
+  
+  PROCEDURE Getwilds;
+   BEGIN
+    Clear;
+    WRITE('enter date wildcard --->');
+    READLN(dwild);
+    WRITE('enter from# wildcard --->');
+    READLN(fwild);
+    WRITE('enter to# wildcard  --->');           
+    READLN(twild);
+    WRITE('enter initials wildcard --->'); 
+    READLN(wwild);
+    WRITE('enter mode --->'); 
+    READLN(mwild);
+   END; 
+   
+  FUNCTION Wildok : BOOLEAN;
+   VAR intb : BOOLEAN;
+       temp : INTEGER;
+   
+   FUNCTION Min(a,b : INTEGER): INTEGER;  
+    BEGIN
+     IF a<b THEN Min := a ELSE Min := b;
+    END;
+   
+   BEGIN 
+    intb := TRUE; 
+    WITH telfile^ DO
+     BEGIN
+      IF (LENGTH(fwild)>LENGTH(wfrom)) OR  
+         (LENGTH(twild)>LENGTH(whoto)) OR
+         (LENGTH(dwild)>LENGTH(date )) OR
+         (LENGTH(wwild)>LENGTH(who  )) OR
+         (LENGTH(mwild)>LENGTH(mode )) THEN intb := FALSE;
+      
+      FOR temp := 1 TO Min(LENGTH(fwild),LENGTH(wfrom)) DO    
+       IF (fwild[temp]<>'?') AND (fwild[temp]<>wfrom[temp]) THEN intb := FALSE;
+       
+      FOR temp := 1 TO Min(LENGTH(twild),LENGTH(whoto)) DO  
+       IF (twild[temp]<>'?') AND (twild[temp]<>whoto[temp]) THEN intb := FALSE;
+       
+      FOR temp := 1 TO Min(LENGTH(dwild),LENGTH(date)) DO  
+       IF (dwild[temp]<>'?') AND (dwild[temp]<>date[temp]) THEN intb := FALSE;                 
+       
+      FOR temp := 1 TO Min(LENGTH(wwild),LENGTH(who)) DO
+       IF (wwild[temp]<>'?') AND (wwild[temp]<>who[temp]) THEN intb := FALSE;      
+        
+      IF (LENGTH(mwild)<>0) AND   
+         (mwild<>'?') AND (mwild<>mode) THEN intb := FALSE;  
+      END; 
+    Wildok := intb;
+   END; 
+   
+  BEGIN
+   REPEAT
+    Clear; 
+    WRITE('Report :: W)ildcard, A)ll, C)hangeoutputdevice  ::');
+    READ(rmode);
+    WRITELN;
+    WRITELN;
+    IF rmode IN ['C','c'] THEN
+     BEGIN
+      WRITE('enter new output device --->');
+      READLN(ofname);
+      SEEK(telfile,0);
+      GET(telfile);
+      telfile^.whoto := ofname;
+      SEEK(telfile,0);
+      PUT(telfile);
+     END;
+   UNTIL NOT (rmode IN ['C','c']);  
+   SEEK(telfile,0);
+   GET(telfile);
+   ofname := telfile^.whoto;
+   REWRITE(ofile,ofname);     
+   WRITELN;
+   WRITELN;
+   IF rmode IN ['W','w'] THEN 
+    BEGIN
+     Getwilds;
+     rmode := 'W'; 
+    END;
+   total := 0;
+   WRITE(ofile,  '   #   date time        who from ');       
+   WRITELN(ofile,'         who to chgto   mins      cost m');      
+   WRITE(ofile,  '----------------------------------------');           
+   WRITELN(ofile,'---------------------------------');  
+   {$I-}
+   FOR temp := 1 TO numrecs DO
+    BEGIN
+     SEEK(telfile,temp);
+     GET(telfile);
+     IF ((rmode='W') AND Wildok) OR (rmode<>'W') THEN 
+     WITH telfile^ DO  
+      BEGIN
+       WRITE(ofile,temp:4,' ');
+       WRITE(ofile,date:6,' ');
+       WRITE(ofile,time:4,' ');             
+       WRITE(ofile,wfrom:15,' '); 
+       WRITE(ofile,whoto:15,' ');
+       WRITE(ofile,who  :5,' ');  
+       WRITE(ofile,mins:6,' ');      
+       total := total + cost;
+       WRITE(ofile,'$',cost:8:2,' '); 
+       WRITELN(ofile,mode);
+      END; 
+    END;
+   {$I+}
+  WRITE(ofile,'                                 ');  
+  WRITELN(ofile,'                 total cost - ',total:8:2);      
+  CLOSE(ofile,lock);  
+  IF ofname = '#2:' THEN 
+   BEGIN
+    WRITE('<cr> to continue --->');
+    READLN(keyboard);
+   END;
+  END; 
+  
+ PROCEDURE Delete;
+  VAR todelete,recat : INTEGER;
+  BEGIN
+   Clear;
+   WRITE('enter record number to be deleted --->');
+   READLN(todelete);
+   WRITE('are you sure you want to delete record #',todelete,'? ');
+   READ(ch);
+   IF (ch IN ['Y','y']) AND (todelete>0) AND (todelete<=numrecs) THEN  
+    BEGIN
+     FOR recat := todelete TO numrecs-1 DO
+      BEGIN
+       SEEK(telfile,recat+1);
+       GET(telfile);
+       SEEK(telfile,recat);
+       PUT(telfile);
+      END;
+     numrecs := numrecs - 1;
+     Wnewnrecs;
+    END;
+  END;  
+ 
+ PROCEDURE Initprog;
+  BEGIN
+   {$I-}
+   RESET(telfile,'Tele.data');
+   {$I+}
+   IF IORESULT <> 0 THEN 
+    BEGIN
+     REWRITE(telfile,'Tele.data');
+     Initfile; 
+    END;
+   SEEK(telfile,0);
+   GET(telfile); 
+   numrecs := telfile^.mins;
+  END; 
+  
+ PROCEDURE Clear; 
+  BEGIN
+   gotoxy ( 0, 0 );
+   WRITE(CHR(27),chr ( 69 ));   {H-19 specific}
+  END;
+  
+ PROCEDURE Wnewnrecs;
+  BEGIN
+   SEEK(telfile,0);
+   GET(telfile);
+   telfile^.mins := numrecs;   
+   SEEK(telfile,0);
+   PUT(telfile);
+  END;
+   
+ BEGIN 
+  Initprog;
+  REPEAT
+   Clear; 
+   WRITE('Telephone :: I)nit, A)dd, D)elete, S)ort, R)eport, Q)uit ::');  
+   READ(ch);
+   CASE ch OF
+    'I','i' : Initfile;  
+    'A','a' : Add;    
+    'S','s' : Sortfile;
+    'R','r' : Report;
+    'D','d' : Delete;
+    END;
+  UNTIL ch IN ['Q','q'];
+  CLOSE(telfile,lock);
+ END.
+

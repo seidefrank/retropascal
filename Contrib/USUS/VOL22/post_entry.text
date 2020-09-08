@@ -1,0 +1,534 @@
+{$I-}{$R-}
+
+{Note that there is one terminal dependent line of code, marked (*****).
+ This line should be replaced by whatever will provide a reverse line feed on
+ your terminal.  If this unit is not to be used with the Grundler programs,
+ this line should be deleted and that section of the unit revised for maximum
+ generality, leaving the terminal-handling code to the main program or other
+ units.---heb
+
+       PROCEDURE GET_FUNCTION asks for an entry of a three variable
+  function.  If only one or two variables are needed, the extra variables
+  are ignored.  The variables must be X,Y and Z.  The procedure
+  recognizes the standard PASCAL functions.  PI, ASIN, ACOS, TAN and ^
+  for EXPONENTIATION are also recognized.
+
+       PROCEDURE REPLACE_FUNCTION enables one to replace a string-variable
+  expression for use as F(X,Y,Z). This is done as follows:
+             ENTERED_FUNCTION:= string var
+             REPLACE FUNCTION
+            
+
+       FUNCTION F(X,Y,Z:REAL):REAL evaluates the function entered in
+  GET_FUNCTION.  If all of the variables are not used, set the other
+  variables to ZERO.  For example: ANSWER:=F(0,Y,0).
+
+       If an error is encountered in GET_FUNCTION, control is passed back
+  to the calling program with ERROR set to TRUE and ERROR_CODE set as
+  follows:
+
+          1  UNBALANCED PARENTHESES
+          2  UNRECOGNIZED SYMBOL
+          3  MULTIPLE DECIMAL POINTS IN A CONSTANT
+         15  FUNCTION ARGUMENT NOT IN PARENTHESES
+
+       If an error is encountered in F(X,Y,Z), control is passed back to
+  the calling program with the function undefined, ERROR set to TRUE and
+  ERROR_CODE set as follows:
+
+          4  ATTEMPT TO UNROLL THE STACK PAST ITS ORIGIN
+          5  ATTEMPT TO DIVIDE BY ZERO
+          6  ATTEMPT TO EXPONENTIATE A NEGATIVE NUMBER (*USES LN EVALUATION*)
+          7  ATTEMPT TO EVALUATE THE TANGENT WITH THE COSINE EQUAL TO ZERO
+          8  ATTEMPT TO TRUNC OR ROUND AN ABSOLUTE VALUE > 32767
+          9  ATTEMPT TO TAKE LOG OR LN OF A ZERO OR NEGATIVE NUMBER
+         10  ATTEMPT TO TAKE THE SQUARE ROOT OF A NEGATIVE NUMBER
+         11  STACK POINTER NOT AT BOTTOM OF THE STACK AT END OF THE EVALUATION
+         12  ATTEMPT TO TAKE ARCSIN WITH ABS(argument) > 1
+         13  ATTEMPT TO TAKE ARCCOS WITH ABS(argument) > 1
+         14  ATTEMPT TO EXPONENTIATE WOULD CAUSE OVERFLOW
+
+
+       The function that is entered is available to the calling program
+  in ENTERED_FUNCTION.
+  
+       Changes made by reviewer:
+           Changed one line intended to a cause a reverse line feed at the
+  terminal to be compatible with the Terak in the Terak emulator mode.
+           Added the procedure VERIFY, which requires that the arguments of
+  the standard and additional functions be surrounded by parentheses.  Otherwise
+  the unit will accept COSH(X) (a function not present in this unit) but will
+  tranform it into the equivalent of ARCSIN(X), a result that can be confusing
+  to the unwary.
+           Changed STR to STRG.
+           Insert missing index [I] in line marked (**) and removed a duplicate
+  line of code (no longer necessary after the insertion) in procedure
+  SCAN_STRING.
+                                          ---Henry E. Baumgarten
+}
+
+UNIT POST_ENTRY_OF_FUNCTION;
+
+INTERFACE
+
+{
+                                                     unit by:  EDWARD J GRUNDLER
+}
+
+VAR ERROR:BOOLEAN;
+    ERROR_CODE:INTEGER;
+    ENTERED_FUNCTION:STRING;
+
+PROCEDURE GET_FUNCTION;
+PROCEDURE REPLACE_FUNCTION;
+FUNCTION F(X,Y,Z:REAL):REAL;
+
+IMPLEMENTATION
+
+VAR V:ARRAY[1..20]OF REAL;
+    FUNC:STRING;
+    J:INTEGER;
+
+PROCEDURE GET_F(READIN:BOOLEAN);
+VAR CH:CHAR;
+    CH_STR:STRING;
+    STR_2:STRING[1];
+    I:INTEGER;
+  
+  PROCEDURE MISTAKE(I:INTEGER);
+  BEGIN {MISTAKE}
+    ERROR_CODE:=I;
+    ERROR:=TRUE;
+    EXIT(GET_FUNCTION)
+  END; {MISTAKE}
+  
+  PROCEDURE VERIFY;
+    VAR  K,LEN : INTEGER;
+    BEGIN
+      LEN := LENGTH(CH_STR);
+      FOR K := 1 TO LEN DO
+        IF NOT(CH_STR[K] IN ['('..'+','-'..'9','A'..'I','L','N','P'..'V',
+          'X'..'Z']) THEN MISTAKE(2);
+      IF (LEN>1) THEN FOR K := 2 TO LEN DO
+        IF ((CH_STR[K-1] IN ['A'..'I','L','Q'..'U']) AND
+          (NOT(CH_STR[K] = '('))) THEN MISTAKE(15)
+    END;
+  
+  PROCEDURE SCAN_STRING;
+  VAR I,J:INTEGER;
+  BEGIN{SCAN_STRING}
+    J:=0;
+    FOR I:=1 TO LENGTH(CH_STR) DO
+      BEGIN
+        IF CH_STR[I] IN ['a'..'z'] THEN CH_STR[I]:=CHR(ORD(CH_STR[I])-32);
+        IF CH_STR[I]='(' THEN J:=J+1 ELSE IF CH_STR[I]=')' THEN J:=J-1
+      END;
+    IF J<>0 THEN MISTAKE(1);
+    REPEAT                                { CODES USED }
+      I:=POS('ASIN',CH_STR);              { A  ATAN    }
+      IF I>0 THEN                         { B  SQR     }
+        BEGIN                             { C  COS     }
+          DELETE(CH_STR,I,4);             { D  ABS     }
+          INSERT('H',CH_STR,I)            { E  EXP     }
+        END                               { F  PI      }
+    UNTIL I=0;                            { G  LOG     }
+    REPEAT                                { H  ASIN    }
+      I:=POS('SIN',CH_STR);               { I  TRUNC   }
+      IF I>0 THEN DELETE(CH_STR,I+1,2)    { J          }
+    UNTIL I=0;                            { K          }
+    REPEAT                                { L  LN      }
+      I:=POS('ACOS',CH_STR);              { M          }
+      IF I>0 THEN                         { N  NEGATE  }
+        BEGIN                             { O          }
+          DELETE(CH_STR,I,4);             { P  + UNARY }
+          INSERT('U',CH_STR,I)            { Q  SQRT    }
+        END                               { R  ROUND   }
+    UNTIL I = 0;                          { S  SIN     }
+    REPEAT                                { T  TAN     }
+      I:=POS('COS',CH_STR);               { U  ACOS    }
+      IF I>0 THEN DELETE(CH_STR,I+1,2)    { V  VALUE   }
+    UNTIL I=0;                            { W          }
+    REPEAT                                { X  X ARG   }
+      I:=POS('ATAN',CH_STR);              { Y  Y ARG   }
+      IF I>0 THEN DELETE(CH_STR,I+1,3)    { Z  Z ARG   }
+    UNTIL I=0;
+    REPEAT
+      I := POS('TANH', CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I,4);
+          INSERT('M',CH_STR,I)
+        END
+    UNTIL I = 0;
+    REPEAT
+      I:=POS('TAN',CH_STR);
+      IF I>0 THEN DELETE(CH_STR,I+1,2)
+    UNTIL I=0;
+    REPEAT
+      I:=POS('TRUNC',CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I,5);
+          INSERT('I',CH_STR,I)
+        END
+    UNTIL I=0;
+    REPEAT
+      I:=POS('ROUND',CH_STR);
+      IF I>0 THEN DELETE(CH_STR,I+1,4)
+    UNTIL I=0;
+    REPEAT
+      I:=POS('LN',CH_STR);
+      IF I>0 THEN DELETE(CH_STR,I+1,1)
+    UNTIL I=0;
+    REPEAT
+      I:=POS('LOG',CH_STR);
+      IF I>0 THEN DELETE(CH_STR,I,2)
+    UNTIL I=0;
+    REPEAT
+      I:=POS('EXP',CH_STR);
+      IF I>0 THEN DELETE(CH_STR,I+1,2)
+    UNTIL I=0;
+    REPEAT
+      I:=POS('SQRT',CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I+2,2);
+          DELETE(CH_STR,I,1)
+        END
+    UNTIL I=0;
+    REPEAT
+      I:=POS('ABS',CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I,3);
+          INSERT('D',CH_STR,I)
+        END
+    UNTIL I=0;
+    REPEAT
+      I:=POS('SQR',CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I,3);
+          INSERT('B',CH_STR,I)
+        END
+    UNTIL I=0;
+    REPEAT
+      I:=POS('PI',CH_STR);
+      IF I>0 THEN
+        BEGIN
+          DELETE(CH_STR,I,2);
+          INSERT('F',CH_STR,I)
+        END
+    UNTIL I=0;
+    I:=2;
+    WHILE I<=LENGTH(CH_STR) DO
+      BEGIN
+        IF (CH_STR[I] IN ['(','X'..'Z']) AND
+           (CH_STR[I-1] IN ['F','X'..'Z','0'..'9','.']) THEN
+          INSERT('*',CH_STR,I)
+        ELSE
+          IF (CH_STR[I-1] IN ['X'..'Z',')']) AND
+             (CH_STR[I] IN ['F','X'..'Z','0'..'9','.']) THEN
+            INSERT('*',CH_STR,I)
+          ELSE
+            IF (CH_STR[I-1] IN ['0'..'9','.','X'..'Z']) AND
+               NOT(CH_STR[I] IN ['0'..'9','.','+','-','*','/','^',')']) THEN
+              INSERT('*',CH_STR,I);
+        I:=I+1
+      END;
+    VERIFY
+  END; {SCAN_STRING}
+  
+  PROCEDURE FIND;
+  BEGIN {FIND}
+    I:=I+1;
+    IF I>LENGTH(CH_STR) THEN STR_2:=',' ELSE STR_2:=COPY(CH_STR,I,1);
+    CH:=STR_2[1]
+  END; {FIND}
+  
+  PROCEDURE EXPRESSION;
+  VAR OP:STRING[1];
+    
+    PROCEDURE TERM;
+    VAR OP1:STRING[1];
+      
+      PROCEDURE EXPONENT;
+      VAR OP2:STRING[1];
+        
+        PROCEDURE FACTOR;
+        VAR UNARY:BOOLEAN;
+            PREFIX:STRING[1];
+          
+          PROCEDURE GET_UNARY;
+          VAR SAVE:CHAR;
+          BEGIN {GET_UNARY}
+            UNARY:=TRUE;
+            IF NOT (CH IN ['+','-','A'..'E','Q'..'U','L','G'..'I']) THEN
+              MISTAKE(2);
+            IF CH='+' THEN PREFIX:='P'
+            ELSE IF CH='-' THEN PREFIX:='N' ELSE PREFIX:=STR_2;
+            FIND;
+            IF NOT (CH IN ['F','X'..'Z','0'..'9','(','.']) THEN
+              BEGIN
+                SAVE:=PREFIX[1];
+                GET_UNARY;
+                IF SAVE='N' THEN PREFIX[1]:=CHR(ORD(PREFIX[1])+32)
+              END
+          END; {GET_UNARY}
+          
+          PROCEDURE GET_VALUE;
+          VAR STR:STRING;
+              X:REAL;
+            
+            FUNCTION IN_VALUE(INP:STRING):REAL;
+            VAR I:INTEGER;
+                DEC,OK:BOOLEAN;
+                J,X:REAL;
+            BEGIN {IN_VALUE}
+              DEC:=FALSE;
+              OK:=TRUE;
+              FOR I:=1 TO LENGTH(INP) DO
+                BEGIN
+                  OK:=OK AND NOT(DEC AND(INP[I]='.'));
+                  IF NOT DEC THEN DEC:=(INP[I]='.');
+                END;
+              IF NOT OK THEN MISTAKE(3);
+              X:=0;
+              DEC:=FALSE;
+              J:=1;
+              FOR I:=1 TO LENGTH(INP) DO
+                BEGIN
+                  IF NOT DEC THEN DEC:=(INP[I]='.');
+                  IF DEC THEN
+                    BEGIN
+                      IF INP[I]<>'.' THEN
+                        BEGIN
+                          J:=J/10;
+                          X:=X+(ORD(INP[I])-ORD('0'))*J
+                        END
+                      ELSE {NOTHING}
+                    END
+                  ELSE X:=X*10+ORD(INP[I])-ORD('0')
+                END;
+              IN_VALUE:=X
+            END; {IN_VALUE}
+          
+          BEGIN {GET_VALUE}
+            STR:='';
+            WHILE CH IN ['.','0'..'9'] DO
+              BEGIN
+                STR:=CONCAT(STR,STR_2);
+                FIND
+              END;
+            X:=IN_VALUE(STR);
+            J:=J+1;
+            V[J]:=X;
+            FUNC:=CONCAT(FUNC,'V');
+            I:=I-2;
+            FIND
+          END; {GET_VALUE}
+        
+        BEGIN {FACTOR}
+          UNARY:=FALSE;
+          IF NOT (CH IN ['F','X'..'Z','.','0'..'9','(']) THEN GET_UNARY;
+          IF CH = '(' THEN
+            BEGIN
+              FIND;
+              EXPRESSION;
+            END
+          ELSE
+            IF CH IN ['0'..'9','.'] THEN GET_VALUE
+            ELSE FUNC:=CONCAT(FUNC,STR_2);
+          IF UNARY THEN
+            BEGIN
+              FUNC:=CONCAT(FUNC,PREFIX);
+              UNARY:=FALSE
+            END;
+          FIND
+        END; {FACTOR}
+      
+      BEGIN {EXPONENT}
+        FACTOR;
+        WHILE CH = '^' DO
+          BEGIN
+            OP2:=STR_2;
+            FIND;
+            FACTOR;
+            FUNC:=CONCAT(FUNC,OP2)
+          END
+      END; {EXPONENT}
+    
+    BEGIN {TERM}
+      EXPONENT;
+      WHILE CH IN ['*','/'] DO
+        BEGIN
+          OP1:=STR_2;
+          FIND;
+          EXPONENT;
+          FUNC:=CONCAT(FUNC,OP1)
+        END
+    END; {TERM}
+  
+  BEGIN {EXPRESSION}
+    TERM;
+    WHILE CH IN ['+','-'] DO
+      BEGIN
+        OP:=STR_2;
+        FIND;
+        TERM;
+        FUNC:=CONCAT(FUNC,OP)
+      END
+  END; {EXPRESSION}
+
+BEGIN {GET_F}
+  J:=0;
+  FUNC:='';
+  ERROR:=FALSE;
+  ERROR_CODE:=0;
+  REPEAT
+    IF READIN THEN READLN(ENTERED_FUNCTION);
+    CH_STR:=ENTERED_FUNCTION;
+(**) FOR I:=LENGTH(CH_STR) DOWNTO 1 DO IF CH_STR[I]=' ' THEN DELETE(CH_STR,I,1);
+    {WRITE(CHR(27),'I');  Reverse Line Feed for H19}  (*****)
+    WRITE(CHR(11));   {Reverse Line Feed for Terak in Terak emulator mode}
+  UNTIL LENGTH(CH_STR)>0;
+  SCAN_STRING;
+  I:=0;
+  FIND;
+  EXPRESSION;
+END; {GET_F}
+
+PROCEDURE GET_FUNCTION;
+  BEGIN
+    GET_F(TRUE)
+  END;
+
+PROCEDURE REPLACE_FUNCTION;
+  BEGIN
+    GET_F(FALSE)
+  END;
+
+FUNCTION F;
+VAR I,J,K:INTEGER;
+    STACK:ARRAY[1..20] OF REAL;
+    OP:CHAR;
+
+  PROCEDURE PUSH;
+  BEGIN {PUSH}
+    J:=J+1;
+    CASE OP OF
+    'X':STACK[J]:=X;
+    'Y':STACK[J]:=Y;
+    'Z':STACK[J]:=Z;
+    'F':STACK[J]:=4*ATAN(1);
+    'V':
+      BEGIN
+        K:=K+1;
+        STACK[J]:=V[K]
+      END
+    END {OF CASE}
+  END; {PUSH}
+  
+  PROCEDURE WRONG(I:INTEGER);
+  BEGIN {WRONG}
+    ERROR_CODE:=I;
+    ERROR:=TRUE;
+    EXIT(F)
+  END; {WRONG}
+  
+  PROCEDURE CHECK_EXPONENT(X:REAL);
+  BEGIN {CHECK_EXPONENT}
+    IF X>87.498233 THEN WRONG(14)
+  END; {CHECK_EXPONENT}
+  
+  PROCEDURE ALGEBRA;
+  BEGIN {ALGEBRA}
+    IF J<2 THEN WRONG(4);
+    CASE OP OF
+    '+':STACK[J-1]:=STACK[J-1]+STACK[J];
+    '-':STACK[J-1]:=STACK[J-1]-STACK[J];
+    '*':STACK[J-1]:=STACK[J-1]*STACK[J];
+    '/':IF STACK[J]=0 THEN WRONG(5) ELSE STACK[J-1]:=STACK[J-1]/STACK[J];
+    '^':IF STACK[J-1]<=0 THEN WRONG(6)
+      ELSE
+        BEGIN
+          CHECK_EXPONENT(LN(STACK[J-1])*STACK[J]);
+          STACK[J-1]:=EXP(LN(STACK[J-1])*STACK[J])
+        END
+    END; {OF CASE}
+    J:=J-1
+  END; {ALGEBRA}
+  
+PROCEDURE ARCCOSINE;
+VAR AC,HPI,PI_IF_AC_NEG:REAL;
+begin
+  HPI:=2*ATAN(1);
+  AC:=STACK[J];
+  IF AC<>0 THEN PI_IF_AC_NEG:=HPI*(1-AC/ABS(AC));
+  IF ABS(AC)>1
+     THEN WRONG(13)
+     ELSE IF (ABS(AC)=1) OR (AC=0)
+             THEN STACK[J]:=HPI*(1-AC)
+             ELSE STACK[J]:=ATAN(SQRT(1-AC*AC)/AC)+PI_IF_AC_NEG
+end; { of procedure ARCCOSINE }
+
+BEGIN {F(X,Y,Z)}
+  ERROR:=FALSE;
+  ERROR_CODE:=0;
+  J:=0;
+  K:=0;
+  FOR I:=1 TO LENGTH(FUNC) DO
+    BEGIN
+      OP:=FUNC[I];
+      CASE OP OF
+      'X','Y','Z','F','V':PUSH;
+      '+','-','*','/','^':ALGEBRA;
+      'S','s':STACK[J]:=SIN(STACK[J]);
+      'C','c':STACK[J]:=COS(STACK[J]);
+      'T','t':IF COS(STACK[J])=0 THEN WRONG(7)
+        ELSE STACK[J]:=SIN(STACK[J])/COS(STACK[J]);
+      'I','i','R','r':
+        BEGIN
+          IF ABS(STACK[J])>32767 THEN WRONG(8)
+          ELSE
+            CASE OP OF
+            'I','i':STACK[J]:=TRUNC(STACK[J]);
+            'R','r':STACK[J]:=ROUND(STACK[J]);
+            END {OF CASE}
+        END;
+      'L','l','G','g':
+        BEGIN
+          IF STACK[J]<=0 THEN WRONG(9)
+          ELSE
+            CASE OP OF
+            'L','l':STACK[J]:=LN(STACK[J]);
+            'G','g':STACK[J]:=LOG(STACK[J]);
+            END {OF CASE}
+        END;
+      'H','h':
+        BEGIN
+          IF ABS(STACK[J])>1 THEN WRONG(12)
+          ELSE
+            IF ABS(STACK[J])=1 THEN STACK[J]:=2*ATAN(STACK[J])
+            ELSE STACK[J]:=ATAN(STACK[J]/SQRT(1-SQR(STACK[J])))
+        END;
+      'U','u':ARCCOSINE;
+      'D','d':STACK[J]:=ABS(STACK[J]);
+      'A','a':STACK[J]:=ATAN(STACK[J]);
+      'E','e':
+        BEGIN
+          CHECK_EXPONENT(STACK[J]);
+          STACK[J]:=EXP(STACK[J])
+        END;
+      'Q','q':IF STACK[J]<0 THEN WRONG(10) ELSE STACK[J]:=SQRT(STACK[J]);
+      'B','b':STACK[J]:=SQR(STACK[J]);
+      'P':;
+      'N':STACK[J]:=-STACK[J];
+      END; {OF CASE}
+      IF OP IN ['a'..'z'] THEN STACK[J]:=-STACK[J]
+    END;
+  IF NOT (J=1) THEN WRONG(11);
+  F:=STACK[1]
+END {F(X,Y,Z)}
+
+END {END OF UNIT POST_ENTRY_OF_FUNCTION}.

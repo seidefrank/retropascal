@@ -1,0 +1,390 @@
+PROCEDURE INSERTIT;
+CONST
+  FUDGEFACTOR=10;
+VAR
+  THEREST,LEFTPART,SAVEBUFCOUNT: PTRTYPE;
+  CLEARED,WARNED,OK,NOTEXTYET,EXITPROMPT,FIRSTLINE: BOOLEAN;
+  SPACES,LMOVE,X,LINE,EOLDIST,RJUST: INTEGER;
+  CONTEXT: PACKED ARRAY [0..MAXSTRING] OF CHAR;
+
+PROCEDURE SLAMRIGHT;
+(* Move (slam) the portion of the EBUF^ to the right of (and including)
+   the cursor so that the last NUL in the file (EBUF^[BUFCOUNT]) is now at
+   EBUF^[BUFSIZE].  THEREST points to the beginning of the right-justified
+   text. *)
+BEGIN
+  GETLEADING;
+  THEREST:=BUFSIZE-(BUFCOUNT-CURSOR);
+  LMOVE:=BUFCOUNT-CURSOR+1;
+  MOVERIGHT(EBUF^[CURSOR],EBUF^[THEREST],LMOVE);
+  GETLEADING; (* Set blanks *)
+  IF THEREST-CURSOR<MAXSTRING THEN
+    BEGIN
+      ERROR('No room to insert.',NONFATAL);
+      SHOWCURSOR;
+      NEXTCOMMAND;
+      EXIT(INSERTIT)
+    END;
+  (* Optional indentation *)
+  EBUF^[THEREST-2]:=CHR(DLE); EBUF^[THEREST-1]:=CHR(BLANKS+32);
+END;
+
+PROCEDURE WRAPUP;
+(* Given the new value of the cursor (one past the last valid character
+   inserted into the buffer), put back together the two halves of the 
+   buffer.  Then, to polish it off, update the screen so that the rest of
+   the editor can cope *)
+VAR PTR: PTRTYPE;
+    LNGTH: INTEGER;
+BEGIN
+  WITH PAGEZERO DO 
+    IF NOTEXTYET AND (NOT FIRSTLINE) AND 
+       ((NOT FILLING) OR AUTOINDENT) AND (CH<>CHR(ESC))
+    THEN (* We want the blanks before THEREST *)
+      BEGIN
+        BUFCOUNT:=BUFCOUNT+2;
+        THEREST:=THEREST-2; LMOVE:=LMOVE+2;
+        CURSOR:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[CURSOR-1])+CURSOR;
+      END;
+  MOVELEFT(EBUF^[THEREST],EBUF^[CURSOR],LMOVE);
+  READJUST(LEFTPART+1,CURSOR-(LEFTPART+1));
+  BUFCOUNT:=BUFCOUNT+CURSOR-(LEFTPART+1); 
+  WITH PAGEZERO DO
+    IF FILLING AND NOT AUTOINDENT AND (CH=CHR(ETX)) THEN
+      BEGIN THEFIXER(CURSOR,1,FALSE); FIRSTLINE:=FALSE END;
+  UPSCREEN(FIRSTLINE,EXITPROMPT OR (CH=CHR(ESC)),LINE);
+  GETLEADING;
+  CURSOR:=MAX(CURSOR,STUFFSTART);
+  LASTPAT:=LEFTPART+1;
+  COPYOK:=TRUE; COPYSTART:=LASTPAT; COPYLENGTH:=CURSOR-LASTPAT;
+  NEXTCOMMAND
+END;
+
+FUNCTION CHECK(VALUE:INTEGER): BOOLEAN;
+  (* VALUE is the potential value of the cursor.  If it is not in legal
+     range then CHECK is false.  This function also warns the user if
+     s/he is getting too close to overflowing the buffer *)
+BEGIN
+  CHECK:=TRUE;
+  IF VALUE<=LEFTPART THEN
+    BEGIN
+      OK:=FALSE;  CHECK:=FALSE;
+      ERROR('No insertion to back over.',NONFATAL); PROMPT;
+      GOTOXY(X,LINE)
+    END
+  ELSE
+    IF VALUE>=THEREST-MAXCHAR THEN
+      BEGIN
+        IF NOT WARNED THEN
+          BEGIN
+            ERROR('Please finish up the insertion',NONFATAL); PROMPT;
+            GOTOXY(X,LINE);
+            WARNED:=TRUE
+          END;
+        IF VALUE>THEREST-FUDGEFACTOR THEN
+          BEGIN
+            ERROR('Buffer Overflow!!!!',NONFATAL);
+            WRAPUP;
+            EXIT(INSERTIT);
+          END
+      END
+END;
+
+PROCEDURE SPACEOVER;
+(* This procedure handles spaces and tabs inserted into the buffer *)
+BEGIN
+  IF CH=CHR(HT) THEN SPACES:=8-X+ORD(ODD(X) AND ODD(248)) ELSE SPACES:=1;
+  IF CHECK(CURSOR+SPACES) THEN
+    BEGIN
+      FILLCHAR(EBUF^[CURSOR],SPACES,' ');
+      CURSOR:=CURSOR+SPACES
+    END
+END;
+
+PROCEDURE FIXUP; FORWARD;
+
+PROCEDURE ENDLINE;
+(* First, if there was no text inserted on the current line, then convert
+   all of the spaces to blank compression codes.  Then insert an <EOL> into
+   the buffer followed by the appropriate number of spaces for the
+   indentation. *)
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      IF NOTEXTYET THEN FIXUP;
+      EBUF^[CURSOR]:=CHR(EOL);
+      IF AUTOINDENT THEN GETLEADING
+      ELSE
+        IF FILLING THEN
+          BEGIN
+            GETLEADING;
+            IF EBUF^[STUFFSTART]=CHR(EOL) THEN (* Empty line *)
+              BLANKS:=PARAMARGIN
+            ELSE BLANKS:=LMARGIN
+          END
+        ELSE BLANKS:=0; 
+      IF CHECK(CURSOR+BLANKS+1) THEN
+        BEGIN
+          FILLCHAR(EBUF^[CURSOR+1],BLANKS,' ');
+          CURSOR:=CURSOR+BLANKS+1
+        END;
+      NOTEXTYET:=TRUE;
+    END;
+END;
+
+PROCEDURE BACKUP;
+(* If the CH is a backspace then decrement cursor by 1.  If this would
+   result in backing over an <EOL> or a blank compression code, then fall
+   into the code for a <DEL> (also changing the CH to <DEL> for communication
+   to the outer block)  *)
+VAR PTR: PTRTYPE;
+BEGIN
+  IF CH=CHR(DC1) THEN
+    BEGIN GETLEADING; IF CHECK(LINESTART) THEN CURSOR:=LINESTART END
+  ELSE
+    IF (CH=CHR(BS)) AND
+       NOT( (EBUF^[CURSOR-2]=CHR(DLE)) OR (EBUF^[CURSOR-1]=CHR(EOL)) ) THEN
+      BEGIN
+        IF CURSOR<LEFTPART+2 THEN OK:=FALSE ELSE CURSOR:=CURSOR-1;
+      END
+    ELSE
+      BEGIN (* A <DEL> or equivalent *)
+        CH:=CHR(DEL); (* Tell the CRT driver that the line has changed *)
+        GETLEADING;
+        IF CHECK(LINESTART-1) THEN CURSOR:=LINESTART-1;
+        NOTEXTYET:=FALSE; (* thank you shawn! *)
+      END
+END;
+
+PROCEDURE FIXUP;
+(* Convert the indentation spaces into blank compression codes, and move
+   the current line around accordingly *)
+BEGIN
+  (* First compress the current line *)
+  EBUF^[CURSOR]:=CHR(EOL); (* Fool Getleading *)
+  GETLEADING;
+  IF BYTES >= 2 THEN (* OK to put in <DLE> # as it stands *)
+    MOVELEFT(EBUF^[STUFFSTART],EBUF^[LINESTART+2],CURSOR-STUFFSTART)
+  ELSE
+    IF CHECK(CURSOR+2-BYTES) THEN
+      MOVERIGHT(EBUF^[STUFFSTART],EBUF^[STUFFSTART+2-BYTES],CURSOR-STUFFSTART)
+    ELSE BEGIN OK:=FALSE; EXIT(FIXUP) END;
+  CURSOR:=CURSOR-(BYTES-2);
+  EBUF^[LINESTART]:=CHR(DLE); EBUF^[LINESTART+1]:=CHR(32+BLANKS);
+END;
+
+PROCEDURE INSERTCH;
+  (* This procedure inserts a single character into the buffer. It also
+     handles all of the control codes (EOL,BS,DEL) and buffer over- and
+     under- flow conditions.  INSERTCH is called by the CRT handler *)
+BEGIN
+  REPEAT
+  OK:=TRUE; (* No errors that invalidate the current character have occured *)
+  CH:=GETCH;
+  IF MAPTOCOMMAND(CH)=LEFT THEN CH:=CHR(BS);
+  IF ORD(CH) IN [SP,HT,EOL,BS,DEL,ETX,ESC,DC1] THEN
+    BEGIN
+      (* <etx> and <esc> are handled in the body of insertit *)
+      IF ORD(CH) IN [SP,HT] THEN SPACEOVER
+      ELSE
+        IF ORD(CH)=EOL THEN ENDLINE
+        ELSE
+          IF ORD(CH) IN [DC1,BS,DEL] THEN BACKUP;
+    END
+  ELSE
+    BEGIN (* A character to insert! *)
+      IF (CH<'!') OR (CH>'~') THEN CH:='?'; (* No non-printing characters *)
+      IF NOTEXTYET THEN FIXUP;
+      IF CHECK(CURSOR+1) AND OK THEN
+        BEGIN
+          NOTEXTYET:=FALSE;
+          EBUF^[CURSOR]:=CH;
+          CURSOR:=CURSOR+1
+        END;
+    END;
+ UNTIL OK;
+END;
+
+PROCEDURE POPDOWN;
+(* Displays CONTEXT, doing an implied scrollup if nec. *)
+BEGIN
+  IF CLEARED THEN ERASETOEOL ELSE BEGIN CLEARED:=TRUE; CONTROL(ETOEOS) END;
+  GOTOXY(RJUST,LINE);
+  ERASETOEOL;
+  WRITE(CHR(LF));
+  IF LINE=SCREENHEIGHT THEN BEGIN EXITPROMPT:=TRUE; LINE:=SCREENHEIGHT-1 END;
+  WRITE(CONTEXT:EOLDIST);
+  FIRSTLINE:=FALSE; (* Says that the whole screen has been affected. *)
+END;
+
+PROCEDURE WRITESP(CH:CHAR;HOWMANY:INTEGER);
+BEGIN
+  IF X+HOWMANY<=SCREENWIDTH THEN WRITE(CH:HOWMANY);
+  IF X+HOWMANY>=SCREENWIDTH THEN
+    BEGIN
+      GOTOXY(SCREENWIDTH,LINE);
+      IF X+HOWMANY>SCREENWIDTH THEN
+        BEGIN WRITE('!'); GOTOXY(SCREENWIDTH,LINE) END
+    END;
+  X:=MIN(SCREENWIDTH,X+HOWMANY)
+END;
+
+PROCEDURE CLEANSCREEN;
+(* Code to, if possible, only erase the line, otherwise clear
+   the screen.  Then call popdown *)
+BEGIN
+  FIRSTLINE:=FALSE;
+  IF CLEARED THEN
+    BEGIN
+      IF X<SCREENWIDTH THEN ERASETOEOL
+    END
+  ELSE
+    BEGIN
+      CLEARED:=TRUE; CONTROL(ETOEOS);
+    END;
+  LINE:=LINE+1;
+  IF LINE>SCREENHEIGHT THEN
+    BEGIN
+      LINE:=LINE-1;
+      WRITELN;
+      EXITPROMPT:=TRUE
+    END;
+  IF EOLDIST<>0 THEN POPDOWN
+END;
+
+PROCEDURE POPOV;
+(* When in filling mode, this procedure is called when a line is overflowed
+   (X >= rightmargin).  The word is scanned off and "popped" down to the 
+   next line. *)
+VAR
+  WLENGTH: INTEGER;
+  SAVE,PTR: PTRTYPE;
+  WORD: PACKED ARRAY [0..MAXSW] OF CHAR;
+BEGIN
+  IF NOTEXTYET THEN FIXUP;
+  IF CH=' ' THEN
+    BEGIN PTR:=CURSOR-1; WLENGTH:=0 END
+  ELSE
+    BEGIN
+      PTR:=MAX(SCAN(-MAXCHAR,='-',EBUF^[CURSOR-1]),
+               SCAN(-MAXCHAR,=' ',EBUF^[CURSOR-1]))+CURSOR-1;
+      WLENGTH:=(CURSOR-PTR)-1;
+      WITH PAGEZERO DO IF WLENGTH>=RMARGIN-LMARGIN THEN
+        BEGIN
+          WRITESP(CH,1);
+          EXIT(POPOV)
+        END;
+      GOTOXY(X-WLENGTH+1,LINE); ERASETOEOL;
+      MOVERIGHT(EBUF^[PTR+1],EBUF^[PTR+3],WLENGTH);
+      MOVELEFT(EBUF^[PTR+3],WORD,WLENGTH)
+    END;
+  CURSOR:=CURSOR+2;
+  EBUF^[PTR]:=CHR(EOL);
+  EBUF^[PTR+1]:=CHR(DLE);
+  WITH PAGEZERO DO IF AUTOINDENT THEN
+    BEGIN
+      SAVE:=CURSOR; (* Set blanks to the indentation of the line above *)
+      CURSOR:=PTR;
+      GETLEADING;
+      CURSOR:=SAVE
+    END
+  ELSE
+    BLANKS:=LMARGIN;
+  EBUF^[PTR+2]:=CHR(BLANKS+32);
+  CLEANSCREEN;
+  X:=BLANKS;
+  GOTOXY(X,LINE); WRITE(WORD:WLENGTH);
+  X:=X+WLENGTH;
+  NOTEXTYET:=FALSE
+END;
+
+BEGIN (* INSERT *)
+  CLEARED:=FALSE;
+  EOLDIST:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR]);
+  MOVELEFT(EBUF^[CURSOR],CONTEXT[0],EOLDIST);
+  RJUST:=SCREENWIDTH-EOLDIST;
+  SLAMRIGHT;
+  SAVEBUFCOUNT:=BUFCOUNT;
+  PROMPTLINE:=
+' Insert: Text {<bs> a char,<del> a line}  [<etx> accepts, <esc> escapes]';
+  PROMPT;
+  EXITPROMPT:=FALSE;  NEEDPROMPT:=TRUE;
+  LEFTPART:=CURSOR-1;
+  NOTEXTYET:=FALSE;
+  FINDXY(X,LINE);  GOTOXY(X,LINE);
+  ERASETOEOL;
+  FIRSTLINE:=TRUE;
+  IF EOLDIST<>0 THEN (* A context needs to be displayed *)
+    IF RJUST>X THEN (* and it will fit on the current line ... *)
+      BEGIN
+        GOTOXY(RJUST,LINE); WRITE(CONTEXT:EOLDIST); GOTOXY(X,LINE)
+      END
+    ELSE (* and it won't fit on the current line *)
+      BEGIN 
+        FIRSTLINE:=FALSE;
+        CONTROL(ETOEOS);(* Clear the screen *)
+        WRITELN;
+        IF LINE=SCREENHEIGHT THEN
+          BEGIN LINE:=SCREENHEIGHT-1; EXITPROMPT:=TRUE END;
+        GOTOXY(RJUST,LINE+1); WRITE(CONTEXT:EOLDIST); GOTOXY(X,LINE)
+      END;
+  REPEAT
+    INSERTCH;
+    IF NOT (ORD(CH) IN [EOL,ETX,ESC,DEL,DC1]) THEN
+      BEGIN
+        IF TRANSLATE[CH]=LEFT THEN
+          BEGIN IF X<=SCREENWIDTH THEN WRITE(CHR(BS),' ',CHR(BS)); X:=X-1 END
+        ELSE
+          IF CH=CHR(HT) THEN WRITESP(' ',SPACES)
+          ELSE
+            IF PAGEZERO.FILLING AND (X+1>=PAGEZERO.RMARGIN) THEN POPOV
+            ELSE WRITESP(CH,1);
+        IF NOT PAGEZERO.FILLING AND (X=SCREENWIDTH-8) AND (CH<>CHR(BS))
+          THEN WRITE(CHR(BELL));
+        IF (EOLDIST<>0) AND
+           (X>=RJUST) AND FIRSTLINE THEN  (*ran into context *)
+          BEGIN
+            POPDOWN;
+            GOTOXY(X,LINE)
+          END;
+      END
+    ELSE (* ch in [eol,etx,esc,del,dc1] *)
+      BEGIN
+        IF CH=CHR(EOL) THEN
+          BEGIN
+            CLEANSCREEN;
+            X:=BLANKS;
+            GOTOXY(X,LINE);
+          END
+        ELSE
+          IF CH=CHR(DEL) THEN
+            BEGIN
+              IF LINE<=1 THEN  (* Rubbed out all of what was on the screen *)
+                BEGIN
+                  BUFCOUNT:=CURSOR+1;
+                  EBUF^[CURSOR]:=CHR(EOL);
+                  CENTERCURSOR(LINE,MIDDLE,TRUE);
+                  IF EOLDIST<>0 THEN POPDOWN;
+                  IF EXITPROMPT THEN BEGIN PROMPT; EXITPROMPT:=FALSE END
+                END
+              ELSE
+                BEGIN GOTOXY(0,LINE); CLEARED:=FALSE;
+                      ERASETOEOL; LINE:=LINE-1 END;
+              GETLEADING;
+              X:=BLANKS-BYTES+CURSOR-LINESTART;
+              GOTOXY(X,LINE)
+            END
+          ELSE
+            IF CH=CHR(DC1) THEN
+              BEGIN
+                X:=0; GOTOXY(X,LINE); ERASETOEOL
+              END;
+      END;
+  UNTIL CH IN [CHR(ETX),CHR(ESC)];
+  IF CH=CHR(ESC) THEN CURSOR:=LEFTPART+1;
+  BUFCOUNT:=SAVEBUFCOUNT;
+  WRAPUP;
+END;
+
+
+

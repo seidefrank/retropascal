@@ -1,0 +1,123 @@
+                                 USUS Volume 15
+                            
+                            Communications software
+                                        
+HSM.UROOT.TEXT    22  A RemoteUnit for the Hayes SmartModem (uses UNITSTATUS)
+HSM.UINC1.TEXT    16    an include file of HSM.UROOT.TEXT
+STD.UNIT.TEXT     24  A RemoteUnit for a dumb modem         (uses UNITSTATUS)
+TERM.MAIN.TEXT    20  Bob Peterson's terminal emulator program
+TERM.LOG.TEXT     14    an include file of TERM.MAIN.TEXT
+HSM.UINC2.TEXT    14      ditto
+TERM.EMUL.TEXT    10      ditto
+TERM.INIT.TEXT    22      ditto
+TERM.UTIL.TEXT    22      ditto
+CONTENTS.TEXT     14  Documentation for TERM.MAIN and Bob's RemoteUnits
+SMTREMV5.TEXT     26  A terminal emulator specific to the LSI-11
+IOUNIT.TEXT        8    a unit for SMTREMV5.TEXT
+TOMUS4.C2.TEXT    24  Mike Ikezawa's terminal emulator
+REMUNIT.L3.TEXT   28    Mike's RemoteUnit (specific to an LSI-11)
+SET_BREAK.TEXT     4    an external procedure for REMUNIT.L3.TEXT
+CLR_BREAK.TEXT     4      ditto
+TOMUS3.C1.TEXT    10    comments for TOMUS4.C2.TEXT
+TOMUS3.A.TEXT     22  Documentation for TOMUS4.C2.TEXT
+COMM.TEXT         24  Jon Bondy's terminal emulator     
+REMTALK.TEXT      24  A program to transfer files between two closely coupled
+                        UCSD computers at a reasonable rate.
+TELETALKER.TEXT   24  Randy Bush's Communications program.  Uses a RemoteUnit.
+A.///.REMU.TEXT   72  Arley Dealey's Remote Unit for the Apple ///
+VOL15.DOC.TEXT    14  You're reading it.
+-----------------------------------------------------------------------------
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 15 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+     This volume contains a whole bunch of communications software.  I put it
+all in one volume so that users interested in terminal emulators and such
+could get a lot for very little investment.
+
+     Several of the programs use Remote Units.  A Remote Unit is a pre-
+compiled module which contains the implementation and hardware specific
+interface for remote communications.  This unit follows a USUS standard, found
+in News Letter #5.  Once a user writes a remote unit for his particular
+processor, anybody else's terminal emulator will work (assuming that the
+terminal emulator follows the standard also).  In principle this should work,
+and lo and behold, it really does.  I have used Mike Ikezawa's remote unit to
+test the other emulators on this disk which also follow the standard, but
+which had never been used on a LSI-11 before.
+
+                                   TERM.MAIN
+
+     This is Bob Peterson's terminal emulator program.  It uses a standard
+remote unit.  He has provided two which work with his POLYMORPHIC (8080)
+computer.  One handles a Hayes SmartModem and the other is for a dumb modem.
+You will may have to modify the IMPLEMENTATION part of Bob's RemoteUnit to
+work with your computer but this about the most standard version of a remote
+unit possible.  It requires IV.0 to work.  If you have an LSI-11, you can use
+Mike's RemoteUnit instead.
+
+                                 TOMUS4.C2.TEXT
+
+     This is Mike Ikezawa's terminal emulator program.  It started life as an
+old version of Bob's TERMINAL program.  Mike has extensively reworked it and it
+doesn't even look the same.  Mike's REMUNIT.L3.TEXT is his remote unit.  I
+modified it slightly to conform to the published standard (USUS NL#5) and
+it can be used with Bob's program also.  I couldn't test Bob's unit with 
+Mike's program as Bob's unit won't work as is with my LSI-11.
+
+     Mike's unit uses two external procedures to set and clear the break bit. 
+Since it depends on UNITSTATUS, it will not work with version II.0 (where
+UNITSTATUS doesn't exist).  However it could be modified to use UNITBUSY (as it
+used to) if desired.
+
+                                      COMM
+
+     This is Jon Bondy's terminal emulator program.  I couldn't test it as it
+is specific to his Z-80 adaptable system.  You'll have to modify it and write
+some external procedures to use it.
+
+                              SMTREMV5 and IOUNIT
+
+     Way back on Volume 2A there is a program called SMTREMOTE.  It didn't
+work. Besides that it was extremely LSI-11 dependant.  It was also somewhat of
+a kludge.  However, since it was the closest thing that I had at that time to a
+terminal emulator for my LSI-11 on the p-system, I dug in and REALLY hacked it
+up.  It is still a kludge, and it is still VERY LSI-11 dependent, but at least
+it now works.  It is also dependent on an H-19 as it uses the status line and
+function keys.
+
+     It does some of its i/o in the strangest fashion, with trick records which
+allow direct access to the hardware buffers.  All this brouha is contained in a
+unit, IOUNIT.TEXT, which in no way is anything like a remote unit.
+
+                                    REMTALK
+
+     RemTalk is a program to allow two closely-coupled UCSD computers to
+transfer files back and forth.  It includes error checking and will work at
+9600 baud even with slow computers (like my H-89 for example, which is about as
+slow as they come).  However, even at 9600 baud, the actual data rate is much
+slower, about 5 seconds per block due to the handshaking and error checking,
+it would probably be painfully slow at 300 baud.
+
+                                   TELETALKER
+
+     This is Randy Bush's communication submission.  It also requires a remote
+unit (he supplied one for a MicroEngine which will appear on a future Volume).  
+I tested it with Mike's remote unit for the -11.  I think that TeleTalker could 
+use a little work.  By the way, in case that fire it up and can't figure how 
+to make it quit, try cntl-A.
+     
+                                                      regards - gws
+

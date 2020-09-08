@@ -1,0 +1,208 @@
+
+     
+             HIDDEN GOTCHA DOCUMENTATION FOR GETTING UP UCSD PASCAL
+
+     I bought the first UCSD system advertised for the Z-80 nearly two years 
+ago; it took me nearly six months to get it to run properly.  Many of the 
+difficulties with which I had to contend are now adequately documented, but I
+will present them here anyway for your edification.
+
+     Most of my difficulties were in getting the CRT to handle the demands of 
+the text editor.  I would recommend that you handle the maximum number of CRT 
+character manipulation within your BIOS in machine code, for purposes of 
+speed.  I had to contend with a memory-mapped video terminal, which did 
+nothing but what was programmed; others have had to work their way around a 
+"dumb" terminal, such as an ADM-3.  If you have one of the newer generation of 
+CRT terminals with cursor addressing, line and screen erasure, and line 
+insertion and deletion, then you should have no problem; just follow the 
+directions in SETUP.  Don't forget to ensure that you save your product from 
+your session with SETUP on the disk, and that this file is called
+"SYSTEM.MISCINFO".  This file is read in at boot time and is used by the
+editor.
+
+     There are two other items to which you with the better terminals will
+need to attend.  First, make sure that your screen is cleared if your BIOS
+receives an ASCII FORMFEED (12 decimal; 0C hex): change this to whatever your
+CRT actually requires within the BIOS.  Similarly, your printer driver should
+cause a formfeed (go to the top of the next page) upon receipt of the same
+character.  This way, your CRT and printer will respond appropriately if
+someone writes a "PAGE (output)" within a Pascal program, and the hideous 
+machination of having to rewrite a "ClearScreen" procedure for each program 
+can finally end.
+
+     Second, follow the directions in BINDER to set up a valid GOTOXY
+procedure and bind it into the system.  Since the normal SYSTEM.EDITOR will do
+<very> strange things until there is a valid GOTOXY within the SYSTEM.PASCAL,
+you will have to use YALOE, the line editor, to write this program (either
+temporarily rename this SYSTEM.EDITOR or get to it by typing "X" for X(ecute,
+while at the Command level, then type "YALOE <return>").  Note that once the 
+GOTOXY is present within your system, it can be used as a standard procedure 
+within your programs, as well.
+
+     However, there are several gotchas in writing the GOTOXY procedure: 1) it 
+must be written in Pascal; there is no way that BINDER will accept an assembly 
+language program.  2) The brute force way is to print a series of 
+"nondestructive forward spaces" for the horizontal dimension (X), and a series 
+of line feeds for Y.  While acceptable, this is too slow (the screen editor is 
+always going to XY), and you have to avoid the mistake of writing SPACES for 
+X, like I first did (and you can imagine that the guys at UCSD had NO idea 
+what was wrong), erasing the first part of the line you are on.  3)The best 
+way is to output a character or series of characters which toggle a GOTOXY
+sequence, followed by the X and the Y dimensions.  You MUST, however, be sure 
+to add 32 (20 hex) to both X and Y before sending them, and then remove this 
+when forcing the GOTOXY in the BIOS.  (Most intellegent terminals require that
+32 be added to both dimensions, so if you have one, don't you go stripping
+this off in advance.)  The reason for this requirement is that the interpreter 
+always adds a linefeed when it sees a 13 (hex 0D, ASCII carriage return), and 
+treats a 16 (10H) as a special code indicating that the next character is the 
+number of spaces to insert at this point.  Don't forget these two characters 
+when designing your BIOS control characters, either.
+
+     Once you have figured out the best way to set up a GOTOXY, write a Pascal 
+procedure that will call it.  Don't forget to include range-checking somewhere 
+in the system (IF x < 0 THEN x = 0;  IF x > MaxCharsPerLine THEN x = 
+MaxCharsPerLine (*whatever this is in your system - substitute the real 
+number*)).  When you type this in, call your procedure and your file "GOTOXY1"
+or some other name not identical with "GOTOXY", or you will confuse the
+system.  Further, the procedure must be part of a program or it will not
+compile; start your text file with a program declaration (like "PROGRAM
+DUMMY;") and end it with a dummy "BEGIN"-"END." pair (and don't forget the
+period).  Finally, compile the program; make up a disk with nothing on it but
+your program, SYSTEM.PASCAL and the BINDER.CODE (needs a lot of room); and
+then X(ecute BINDER, giving it the name of your CODE file.  When you're all 
+done, save the new SYSTEM.PASCAL on all your system disks;  make it the first 
+file on the disk and you won't have to reboot every time you K(runch a disk.
+
+     There is a table of reserved characters at the end of this file; be cer-
+tain your system can handle them.
+
+     
+For those souls with dumb terminals or memory-mapped CRT's.
+
+     First, if you skipped the above discussion, you'd better go back and read 
+it; it applies to you, too.
+
+     Next, it will be up to you to design a BIOS that will handle the demands 
+of Pascal.  As it turns out, this is also useful if you use WordStar or 
+certain other sophisticated CP/M text editors; your effort will net you many 
+gains.
+
+1.  Basic necessities.
+
+     Your BIOS-terminal (or BIOS-CRT) combination will have to support the 
+following basic commands:
+        a.  GOTOXY (see the previous discussion).
+        b.  One-character cursor movement in all 4 directions, without erasing
+underlying text.  This works out to a backspace, a nondestructive-forward-
+space, a line feed, and a reverse line feed.  Note that the horizontal 
+movement should NOT take you off a given line, and that the reverse line feed 
+need not bring you higher than the top of the screen (ie, no reverse scroll 
+required, although if you have it is OK).  However, it is expected that if a
+line feed occurs when the cursor is on the last line, the CRT will scroll and 
+display a blank last line.
+        c.  Automatic expansion of ASCII horizontal tabs (8) to the next eighth
+column. Make sure underlying text is not erased (write nondestructive spaces
+to the next eighth column).  Your PRINTER must handle this command, as well
+(note the difference from CP/M).
+        d.  Your system must either beep or do nothing upon receipt of an ASCII
+bell (7), and is expected to do nothing if it receives a NUL (00).  One
+recommendation: if your system makes a sound when it receives a bell
+character, make sure it is pleasant -- UCSD uses it a lot.
+        e. A home-cursor command (to the upper left corner).
+        f.  Erase-to-end-of-line and erase-to-end-of-screen commands.  Cursor
+location must not be disturbed.
+
+     Next, NOTHING should take you to another line but a line feed or
+vertical cursor movement.  In particular, horizontal cursor movement and text
+hanging over the end of a line should be gobbled.  Otherwise, especially with
+screen sizes smaller than 24x80, your displays will be very strange.
+
+2.  Features desirable but not essential.
+
+     The following commands are strongly advised.
+        a.  Clear screen and home cursor, driven by an ASCII formfeed (12., 0C 
+hex).
+        b.  If easily implemented on your system, insert-line and delete-line 
+commands.  These involve moving text below the line involved either down or
+up one line, to either make room for the insertion or cover up the deletion, 
+respectively.
+        c.  Some way of stopping a display as it's going by, useful while 
+examining files while in the F(iler.  For systems with an interrupt-driven 
+keyboard, this is easy -- your interrupt handler simply examines whatever 
+you've just typed; if it's your "freeze output" command, then the system hangs 
+up until the command is typed a second time.  Usually, this command is a 
+"control S" or 13 hex.  If you have a polled keyboard (the most common kind), 
+then the simplest way to freeze your CRT is to see if a keyboard character has 
+been typed at the time of each linefeed, and proceeding as for an interrupt-
+driven system if so.
+        d.  UCSD recommends a "dump output" command in addition to the "stop 
+output" command.  "Dumping" output is just that -- any characters going to 
+your CRT are ignored.  I haven't used this much, and I feel it would be much 
+more important if you have a slow terminal, such as one that writes on paper.  
+It is implemented in the same manner as noted above in c.
+        e.  At the time you set up stop and/or dump output commands, it is 
+simple to make the commands extend to the printer, as well.
+
+     Finally, here is a list of embellishments:
+        a.  I have an interrupt-driven keyboard, and I have found that a 
+keyboard queue is extremely useful.  It works like this:  any characters I 
+type, up to a maximum of 16, are accepted by the interrupt handler and stored 
+in a buffer.  The characters are removed in a first-in, first-out fashion when 
+the requesting program is ready to accept them by the console input routine. 
+The advantages of this setup are two: 1) my system never drops characters if
+it is in the middle of doing something while I am typing away, and 2) I can
+type a series of those UCSD one-letter commands, each of which produces action
+with the disk, and avoid slowing down the system performance which it is
+waiting for me to type something after doing something.  Normally, you can
+keep only one character ahead. 
+        b.  I think it's useful to have a control-character toggle that
+forces your printer to follow your CRT output.  This is helpful for recording
+program bugs during compilation, for instance. 
+        c.  My system has another toggle character which, together with a
+series of secondary commands, allows you to: 1) slow down the rate of
+scrolling as desired, and 2) switch to a page mode of text outputting, where
+the screen is filled with text and the system waits until a character is typed
+before erasing the screen and filling it up again.  In this mode, characters
+hanging over the end of a line are moved to the start of the next one, so I
+miss nothing.
+        d.  Since normally, every ASCII carriage return (13, 0D hex) is
+followed by an obligate line feed, I think it's useful to designate another
+control character as an alternate carriage return.  This way, my printer can 
+go over the same line of text to underline or retype for boldface.
+
+     
+     A TABLE OF RESERVED CONTROL CHARACTERS  -- UCSD PASCAL
+
+     Character  Meaning                         Must be recognized by:
+     (decimal)                                 CRT              PRINTER
+        
+        00      NUL (do nothing)                X                  X
+        07      BEL (beep! or nothing)          X                  X
+        08      HTAB (horizontal tab)           X                  X
+        09      BACKSPACE                       X               optional
+        10      LINEFEED                        X                  X
+        12      FORMFEED                    recommended       recommended
+        13      CARRIAGE RETURN                 X                  X
+        16      compressed blanks symbol        no (handled by in- no
+                        ** avoid **                  terpreter)
+     
+     
+Some final remarks.
+
+     Pascal uses a great deal of memory, and anything you can do to increase 
+the RAM available to the UCSD system will repay you handsomely.  If you aren't 
+doing much in the way of mathematics, reassemble the interpreter without the 
+transcendental mathematical functions; the 1K space saved is worth the hassle 
+of going to another disk with the complete system if you need it.  Because I 
+have a memory-mapped terminal and most of my console and printer driver 
+software on EPROM, taking up 8K of room, I am trying to get a bank switching 
+scheme going so I can replace that 8K with RAM and then switch to the console 
+drivers when needed, character by character.
+
+     I recognize that for a novice without much programming experience, the 
+above considerations must seem totally overwhelming.  You're probably better 
+off buying a system that someone has already set up and has running.  However,
+if you've had SOME assembly language experience, get the CP/M-compatible disk
+from us that has complete BIOS drivers already present, with a good deal of
+help on one of them (BOOTER) to assist you in reconfiguring the drivers to
+your system.

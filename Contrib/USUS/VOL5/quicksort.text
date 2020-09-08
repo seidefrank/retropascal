@@ -1,0 +1,36 @@
+
+{Benchmark program using the Quicksort algorithm.  Does nothing useful
+here except chew up CPU cycles, but the algorithm is useful in lots of
+sorting applications.}
+
+(*$R+*)
+PROGRAM QUICKSORT;
+  CONST N = 10000;
+  VAR I,Z: INTEGER;
+      A: ARRAY [1..N] OF INTEGER;
+  PROCEDURE SORT( L,R: INTEGER );
+    VAR I,J,X,W: INTEGER;
+  BEGIN
+  I := L; J := R; X := A[(I+J) DIV 2];
+  REPEAT
+    WHILE A[I] < X DO I := I+1;
+    WHILE A[J] > X DO J := J-1;
+    IF I <= J THEN 
+      BEGIN W := A[I]; A[I] := A[J]; A[J] := W;
+      I := I+1; J := J-1
+      END
+    UNTIL I > J;
+  IF L < J THEN SORT( L, J );
+  IF I < R THEN SORT( I, R )
+  END (* SORT *) ;
+
+BEGIN (* MAIN *)
+Z := 113;
+FOR I := 1 TO N DO
+  BEGIN
+  Z := (131*Z+1) MOD 221; A[I] := Z
+  END;
+WRITE('TYPE <CR> TO SORT...'); READLN;
+SORT( 1, N );
+WRITELN( CHR(7), 'ALL DONE AGAIN.' )
+END.

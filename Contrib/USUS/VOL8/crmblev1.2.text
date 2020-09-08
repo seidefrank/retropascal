@@ -1,0 +1,220 @@
+PROGRAM CRUMBLE;
+USES(*$U SCREENUNIT.CODE*) SCREENUNIT,
+    (*$U FILEUNIT.CODE*) FILEUNIT;
+
+{   by George Schreyer
+          
+               Program crumble will break a text file which is too
+          large for the editor to handle in bite sized chunks.  The
+          program will first ask for the base file (the too big one)
+          and then for a generic include file name, that is a name up
+          to seven characters onto which it will append the suffix
+          '.0 ... .N' where N is the number of the particular include
+          file into which your code is going.  The program will keep
+          track of the size of each include file so that it itself
+          won't get too large.  After the program has copied the
+          requested number of records (lines) it will display the
+          current (approx) size in bytes and then ask if you want too
+          stuff even more records into it or create a new include
+          file to take the new lines.  If you don't have a listing
+          with line numbers on it try transferring about 300 lines at
+          a time or eX)ecute WRITER and get a listing with
+          numbers.}
+ 
+          {Copyright 1980 by George Schreyer.  All rights reserved}
+          {Non commercial use is ok}
+ 
+CONST VERSION = 'crumble    version 1.2    30-Apr-81';
+ 
+VAR
+   REC_COUNT            : INTEGER;
+   STOP_RECORD          : INTEGER;
+   START_RECORD         : INTEGER;
+   NUM_BYTES            : INTEGER;
+   GOTFILE              : BOOLEAN;
+   BASE_FILENAME        : STRING;
+   NAME_OK              : BOOLEAN;
+   FILENUM              : INTEGER[2];
+   INCLUDE              : TEXT;
+   BASE                 : TEXT;
+   INCLUDE_FILENAME     : STRING;
+   FILENAME             : STRING;
+   MORE                 : BOOLEAN;
+   LAST_REC             : INTEGER;
+   STOP_NOW             : BOOLEAN;
+   REPLY                : CHAR;
+   MORE_DATA            : BOOLEAN;
+   POS_COLON            : INTEGER;
+   I                    : INTEGER;
+   I_TRIED              : BOOLEAN;
+   IORESLT              : INTEGER;
+
+PROCEDURE CLEAR_SCREEN;
+BEGIN
+  GOTOXY(0,0);
+  CRT(ERASEOS);
+END {CLEAR_SCREEN};
+
+PROCEDURE CLEAR_EOL(X,Y : INTEGER);
+BEGIN
+   GOTOXY(X,Y);
+   CRT(ERASEOL);
+END;  {clear_eol}
+
+
+PROCEDURE WARNING;
+VAR REPLY : CHAR;
+    RECS_LEFT : INTEGER;
+BEGIN
+   CLEAR_EOL(0,0);
+   RECS_LEFT:=STOP_RECORD-REC_COUNT;
+   WRITE('Your include file is 9/10 full and you have ',RECS_LEFT:4,
+         ' records left to copy.');
+   CLEAR_EOL(0,1);
+   WRITE('Are you sure that you wish to continue? (Y/N) ');
+   READ(REPLY);
+   IF REPLY <> 'Y' THEN
+      BEGIN
+         STOP_NOW:=TRUE;
+      END
+   ELSE MORE_DATA:=TRUE;
+END;  {warning}
+
+PROCEDURE COPY;
+   VAR LINE : STRING;
+
+BEGIN
+   NUM_BYTES:=0;
+   FOR REC_COUNT:=START_RECORD TO STOP_RECORD DO
+      BEGIN
+         LAST_REC:=REC_COUNT;
+         READLN(BASE,LINE);
+         IF EOF(BASE) THEN EXIT(COPY)
+         ELSE 
+            BEGIN
+               WRITELN(INCLUDE,LINE);
+               WRITELN(LINE);
+               NUM_BYTES:=LENGTH(LINE)+4+NUM_BYTES;
+               IF (NUM_BYTES>15000) AND (NOT MORE_DATA) THEN WARNING;
+               IF STOP_NOW THEN 
+                  BEGIN
+                     EXIT(COPY);
+                  END;
+            END;
+       WRITELN(INCLUDE);
+       END;
+ END; {copy}
+ 
+ PROCEDURE INITILIZE;
+ BEGIN
+    MORE:=FALSE;
+    INCLUDE_FILENAME:='';
+    MORE_DATA:=FALSE;
+    STOP_NOW:=FALSE;
+    FILENUM:=0;
+    START_RECORD:=1;
+    STOP_RECORD:=0;
+    FILENAME:='';
+    BASE_FILENAME:='';
+    NUM_BYTES:=0;
+ END;  {init}
+ 
+ PROCEDURE GETRECORDS;
+ BEGIN
+    CLEAR_SCREEN;
+    IF START_RECORD <> 1 THEN WRITELN('last record copied was ',LAST_REC);
+    WRITELN;
+    WRITE('please type in a');
+    IF START_RECORD >1 THEN WRITE(' new');
+    WRITELN(' record to copy up to ');
+    WRITELN;
+    WRITE('record number? ');
+    READLN(STOP_RECORD);
+END;   {getrecords}
+ 
+ 
+ PROCEDURE INSERT_FILENUM;
+ VAR FILENUM_STRING : STRING;
+     TEMP_FILENAME  : STRING;
+ 
+ BEGIN
+    TEMP_FILENAME:=FILENAME;
+    STR(FILENUM,FILENUM_STRING);
+    INSERT((CONCAT('.',FILENUM_STRING)),
+        TEMP_FILENAME,(POS('.TEXT',FILENAME)));
+    INCLUDE_FILENAME:=TEMP_FILENAME;
+ END;  {insert_filename}
+            
+ BEGIN  {main program}
+    GETCRTINFO;
+    CLEARSCREEN;
+    INITILIZE;
+    WRITELN('     ',VERSION);
+    VER_SCREENUNIT;
+    VER_FILEUNIT;
+    OPNDSKREAD(BASE,'file to be crumbled? ',BASE_FILENAME,0,13);
+    IF BASE_FILENAME = '' THEN EXIT(PROGRAM);
+       REPEAT  {until include file open ok}
+          REPEAT   {until name_ok}
+             CLEAR_SCREEN;
+             GOTOXY(0,9);
+             WRITE('Type the generic name of includes files.  (7 chars max)  ');
+             READLN(FILENAME);
+             IF LENGTH(FILENAME)=0 THEN EXIT(PROGRAM);
+             POS_COLON:=POS(':',FILENAME);
+             IF (POS('.TEXT',FILENAME)>8+POS_COLON) 
+                 OR ((POS('.TEXT',FILENAME)=0)
+                 AND (LENGTH(FILENAME)>7+POS_COLON)) THEN 
+                 NAME_OK:=FALSE ELSE NAME_OK:=TRUE;
+          UNTIL NAME_OK;
+          IF POS('.TEXT',FILENAME)=0 THEN FILENAME:=CONCAT(FILENAME,'.TEXT');
+          INSERT_FILENUM;
+          REWRT_DISK(INCLUDE,INCLUDE_FILENAME,IORESLT,I_TRIED);
+          IF (NOT I_TRIED) AND (IORESLT <> 0) THEN IO_ERROR(IORESLT,
+            INCLUDE_FILENAME);
+       UNTIL (I_TRIED AND (IORESLT=0));
+       CLOSE(INCLUDE);
+       REPEAT  {until eof(base)}
+          REWRITE(INCLUDE,INCLUDE_FILENAME);
+          REPEAT  {until more=false}
+                CLEAR_SCREEN;
+                GETRECORDS;
+                WRITELN; {don't delete this line}
+                COPY;
+                START_RECORD:=LAST_REC+1;
+                IF NOT EOF(BASE) THEN
+                    BEGIN
+                       FOR I:=1 TO 7 DO CLEAR_EOL(0,I);
+                       GOTOXY(0,0);
+                       WRITELN('number of bytes transferred = ',NUM_BYTES);
+                       WRITELN;
+                       WRITELN('do you wish to T)ransfer more data into ',
+                               INCLUDE_FILENAME,',');
+                       WRITELN;
+                       WRITE('C)ontinue, or Q)uit with files saved? ');
+                       READ(REPLY);
+                       CLEAR_SCREEN;
+                       IF REPLY = 'Q' THEN
+                          BEGIN
+                             CLOSE(INCLUDE,LOCK);
+                             EXIT(PROGRAM);
+                          END;
+                       IF (REPLY = 'T') THEN 
+                          BEGIN
+                             MORE:=TRUE;
+                          END
+                       ELSE
+                          BEGIN
+                             MORE:=FALSE;
+                             CLOSE(INCLUDE,LOCK);
+                             FILENUM:=FILENUM+1;
+                             INSERT_FILENUM;
+                          END;
+                    END  {eof(base)}
+                ELSE MORE:=FALSE;
+          UNTIL NOT MORE;
+    UNTIL EOF(BASE);
+CLOSE(BASE);
+CLOSE(INCLUDE,LOCK);
+END.
+

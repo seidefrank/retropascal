@@ -1,0 +1,423 @@
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+segment procedure edit;
+var     ln      : tline_num;  {index to array tlines}
+        int     : integer;
+        edit_char,
+        ch      : char;
+
+procedure edit_spec;
+{enter taxpayers name, the tax year, filing status, and the number of d
+ dependents}
+var     h, w    : integer;
+        int,
+        exemps  : integer;
+        ln      : tline_num;
+
+procedure filingstat;
+begin
+   with tlines [ 7 ] do
+      begin
+         gotoxy ( 0, 4 );
+         eeos;
+         writeln ( '   1) Single' );
+         writeln;
+         writeln ( '   2) Married filing Jointly' );
+         writeln;
+         writeln ( '   3) Married filing Separately' );
+         writeln;
+         writeln ( '   4) Head of Household' );
+         writeln;
+         writeln ( '   5) Widow(er)' );
+         writeln;
+         repeat
+            int := readint ( 1 );
+         until int in [ 1..5 ];
+         fs := int;
+         if fs in [ 2, 3 ] then single := false;
+      end;
+end;
+
+begin {edit_spec}
+   ln := 7;
+   clear;
+   gotoxy ( 0, 2 );
+   with tlines [ 7 ] do
+      begin
+         center ( titles [ 5 ], screen );
+         writeln;
+         namer ( 'name', tlines [ 6 ].name, 26 );
+         namer ( 'tax year', taxyear, 4 );
+         filingstat;
+         exem := 0;
+         clear;
+         gotoxy ( 0, 2 );
+         write ( 'enter correct letter' );
+         gotoxy ( 0, 4 );
+         center ( titles [ 7 ], screen );
+         writeln;
+         writeln ( '   Y(ourself' );
+         writeln;
+         writeln ( '   O(ver sixtyfive' );
+         writeln;
+         writeln ( '   B(lind' );
+         writeln;
+         writeln ( '   T( over 65 and blind' );
+         repeat
+            read ( keyboard , ch );
+         until ch in [ 'y','Y','o','O','b','B','t','T' ];
+         case ch of 
+           'Y','y' : h := 1;
+           'O','o' : h := 2;
+           'B','b' : h := 2;
+           'T','t' : h := 3;
+         end;
+         if not single then
+            begin
+               center ( titles [ ln ], screen );
+               writeln;
+               gotoxy ( 0, 6 );
+               eeos;
+               writeln ( '   S(pouse' );
+               writeln;
+               writeln ( '   O(ver sixtyfive' );
+               writeln;
+               writeln ( '   B(lind' );
+               writeln;
+               writeln ( '   T( over 65 and blind' );
+               repeat
+                  read ( keyboard, ch );
+               until ch in [ 's','S','o','O','b','B','t','T' ];
+               case ch of
+                 'S','s' : w := 1;
+                 'O','o' : w := 2;
+                 'B','b' : w := 2;
+                 'T','t' : w := 3;
+               end;
+             end
+          else w := 0;
+          clear;
+          gotoxy ( 0, 6 );
+          write ( 'enter number of dependents ' );
+          exemps := readint ( 2 );
+          exem := w + h + exemps;
+      end;
+end;
+               
+procedure edit_tline ( ln : tline_num );
+{main data input routine}
+var     hsum,
+        wsum,
+        dol     : integer [ 9 ];
+        nextptr,
+        ptr,
+        lastptr : pointer;
+        tl      : boolean;
+        ch      : char;
+
+procedure view;
+{displays contents of tlines[ln]}
+var     screen : boolean;
+        obj    : intstr;
+begin
+   obj := '';
+   screen := true;
+   gotoxy ( 0, 3 );
+   eeos;
+   if not single then
+      begin
+         gotoxy ( 0, 8 );
+         pdol ( tlines [ ln ].hus, obj );
+         write ( 'husband':20, obj:20 );
+         gotoxy ( 0, 10 );
+         pdol ( tlines [ ln ].wif, obj );
+         write ( 'wife':20, obj:20 );
+      end;
+   gotoxy ( 0, 12 );
+   pdol ( tlines [ ln ].tot, obj );
+   write ( 'total':20, obj:20 );
+end;
+
+procedure sums;
+{adds all items and place values in tlines [ ln ] }
+begin
+   with tlines [ ln ] do
+      begin
+         hus := 0;
+         wif := 0;
+         tot := 0;
+         if iptr <> nil then
+            begin
+               nextptr := iptr;
+               repeat 
+                  if nextptr^.whose = h_own then hus := hus + nextptr^.amt
+                   else wif := wif + nextptr^.amt;
+                  nextptr := nextptr^.nptr;
+               until nextptr = nil;
+               tot := hus + wif;
+            end;
+      end;
+end;
+
+procedure who ( ptr : pointer );
+{assign item to husband or wife}
+begin
+   with ptr^ do
+      begin
+         gotoxy ( 0, 12 );
+         write ( 'assign to H(usband or W(ife ' );
+         repeat
+            read ( keyboard, ch );
+         until ch in [ 'H','h','W','w' ];
+         if ch in [ 'H','h' ] then whose := h_own else whose := w_own;
+         gotoxy ( 0, 12 );
+         eeol;  {clean-up   gws}
+      end;
+end;
+
+function viewitem ( ptr : pointer ) : pointer;
+{display and edit an item then return pointer to next item}
+var     st      : string;
+        ch      : char;
+        obj     : intstr;
+begin
+   obj := '';  {got to initialize those strings!  gws}
+   clear;
+   write ( 'Command --> <space> to continue, ^D(elete,' );
+   write ( ' Change --> N(ame, A(mount' );
+   if not single then write ( ', W(hose' );
+   with ptr^ do
+      begin
+         viewitem := nptr;
+         gotoxy ( 0, 4 );
+         write ( 'line number ' );
+         if ln <= maxtline then write ( ln:2 )
+           else if ln <= maxaline then write ( ln - minaline + 1:2 )
+                                  else if ln <= maxbline then
+                                          write ( ln - minbline + 1:2 );
+         writeln ( '  ', titles [ ln ]:40 );
+         gotoxy ( 0, 6 );
+         write ( name );
+         eeos;
+         gotoxy ( 0, 8 );
+         case whose of
+           h_own : write ( 'husband' );
+           w_own : write ( 'wife' );
+           t_own : write ( 'total' );
+         end;
+         gotoxy ( 0, 10 );
+         pdol ( amt, obj );
+         write ( 'amount ', obj:12 );
+         repeat
+            repeat
+               gotoxy ( 77, 0 );
+               read ( keyboard, ch );
+               if ch = chr ( 4 ) then
+                  begin
+                     if tl then    {if pointer was from tlines [ ln ]}
+                        tlines [ ln ].iptr := nptr
+                        else lastptr^.nptr := nptr;
+                     exit ( viewitem );
+                  end;
+            until ( ch in [ 'N','n','W','w','A','a',' ' ] ) and
+                  ( not eoln ( keyboard ) );
+            if ch in [ 'N','n','W','w','A','a' ] then
+               begin   {change a value in item}
+                  with ptr^ do
+                     begin
+                        case ch of
+                          'N','n' : namer ( 'name', ptr^.name, 10 );
+                          'A','a' : begin
+                                       gotoxy ( 0, 10 );
+                                       readdol ( 9, amt );
+                                       writeln;
+                                    end;
+                          'W','w' : who ( ptr );
+                        end;
+                        gotoxy ( 77, 0 );
+                     end;
+                  end;
+         until ch = ' ';
+      end;
+   tl := false;  { parent of pointer is no longer tlines [ ln ]}
+   lastptr := ptr;
+end;
+
+begin {edit_tline}
+   hsum := 0;
+   wsum := 0;
+   with tlines [ ln ] do
+      begin
+         if iptr <> nil then   {if any items exist}
+            begin
+               tl := true;   {parent of pointer is tlines [ ln ]}
+               nextptr := viewitem ( iptr );  {get first item}
+               while ( nextptr <> nil ) do nextptr := viewitem ( nextptr );
+            end;
+         repeat    {add itmes or leave}
+            clear;
+            gotoxy ( 0, 2 );
+            write ( 'line number ' );
+            if ln <= maxtline then write ( ln:2 )
+            else if ln <= maxaline then write ( ln - minaline + 1:2 )
+                                   else if ln <= maxbline then
+                                      write ( ln - minbline + 1:2 );
+            writeln ( '  ',titles [ ln ]:40 );
+            write ( 'do you want to add an item  y/n' );
+            repeat
+               read ( keyboard, ch );
+            until ch in [ 'Y','y','N','n' ];
+            eline;
+            if ch in [ 'N','n' ] then
+               begin
+                  sums; {add the items and put in tlines [ ln ]}
+                  view; {display the contents of tlines [ ln ]}
+                  exit ( edit_tline );
+               end;
+            new ( ptr );
+            if iptr = nil then iptr := ptr 
+                                    {if its the first item of tlines [ln]}
+               else lastptr^.nptr := ptr;
+            lastptr := ptr;
+            with ptr^ do   {begin actual data entry}
+               begin
+                  nptr := nil;
+                  tlnum := ln;
+                  namer ( 'name', ptr^.name, 10 );
+                  gotoxy (0, 8 );
+                  write ( 'enter amount  ' );
+                  readdol ( 9, amt );
+                  if single then whose := h_own else who ( ptr );
+               end;
+           until ch = 'Q';
+   end;
+end;
+
+function edit_what : char;
+{select a schedule to edit}
+var     ch : char;
+begin
+   clear;
+   write ( 'Edit Command --> A(schedlue A, B(schedule B, Z(form 1040,' );
+   write ( ' F(iling status, Q(uit ');
+   repeat
+      read ( keyboard, ch );
+   until ch in [ 'A','a','B','b','Z','z','F','f','Q','q' ];
+   if ch in [ 'q','Q' ] then exit ( edit );
+   writeln;
+   edit_what := ch;
+end;
+
+procedure ed_sequent ( first, last : tline_num );
+{edit elines [ first ] to tlines [ last ] unless the line is a calculated 
+ line}
+var     ln      : tline_num;
+begin
+   for ln := first to last do if not ( ln in calcset ) then
+      begin
+         edit_tline ( ln );
+         gotoxy ( 10, 23 );
+         write ( 'enter <space> to continue  <Q> to quit' );
+         repeat
+            read ( keyboard, ch );
+         until ( ch in [ 'Q','q',chr ( 32 ) ] ) and ( not eoln ( keyboard ) );
+         if ch in [ 'Q','q' ] then exit ( ed_sequent );
+      end;
+end;
+
+procedure ed_individual;
+{select a single line to edit}
+var     ok      : boolean;
+begin
+   repeat
+      clear;
+      write ( 'enter line number to be changed  0) for help ' );
+      repeat
+        ok := false;
+        int := readint ( 2 );
+        if int = 0 then
+           begin
+              clear;
+              case edit_char of
+                'A','a' : for ln := minaline to maxaline do
+                            if not ( ln in calcset ) then
+                             write (( ln - minaline + 1):8,
+                                      titles [ ln ]:32);
+                'B','b' : for ln := minbline to maxbline do
+                            if not ( ln in calcset ) then
+                               write (( ln - minbline + 1):8,
+                                       titles [ ln ]:32 );
+                'Z','z' : for ln := 8 to maxtline do
+                            if not ( ln in calcset ) then
+                               write ( ln:8, titles [ ln ]:32 );
+              end;
+              writeln;
+           end;
+        case edit_char of
+          'A','a' : begin
+                       if ( int > 0 ) and ( int <= 41 ) then ok := true;
+                       ln := int + minaline - 1;
+                    end;
+          'B','b' : begin
+                       if ( int > 0 ) and ( int <= 8 ) then ok := true;
+                       ln := int + minbline - 1;
+                    end;
+          'Z','z' : begin
+                       if ( int > 7 ) and ( int <= maxtline ) then
+                          begin
+                             ok := true;
+                             ln := int;
+                          end;
+                    end;
+        end;
+     until ok;  {a valid line number has been requested}
+     if ( ln in calcset ) then
+        begin
+           clear;
+           writeln ( 'line ', int, ' is a calculated value and may not',
+                        ' be edited ' );
+           wait;
+        end
+     else edit_tline ( ln );
+     gotoxy ( 0, 0 );
+     eeol;
+     write ( '       do you want to -->  C(ontinue   Q(uit' );
+     repeat
+        read ( keyboard, ch );
+     until ch in [ 'C','c','Q','q' ];
+  until ch in [ 'Q','q' ];
+end;
+
+begin  {edit}
+   repeat
+      clear;
+      edit_char := edit_what;   {what form should be edited}
+      if edit_char in [ 'F','f' ] then edit_spec
+      else
+         begin
+            clear;
+            write ( ' Edit Command-->' );
+            write ( ' S(equentially, I(ndividual, Q(uit');
+            repeat
+               read ( keyboard, ch );
+            until ch in [ 'S','s','I','i','Q','q' ];
+            case ch of
+              'S','s' : begin
+                           case edit_char of
+                            'A','a' : ed_sequent ( minaline, maxaline );
+                            'B','b' : ed_sequent ( minbline, maxbline );
+                            'Z','z' : ed_sequent ( 8, maxtline );
+                           end;
+                        end;
+              'I','i' : ed_individual;
+            end;
+         end;
+   until ch in [ 'Q','q' ];
+end; {edit}
+

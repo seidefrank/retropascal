@@ -1,0 +1,154 @@
+{     
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+}
+
+{ISSUE.TEXT}                                          
+SEGMENT PROCEDURE Issue;
+ VAR ch,ch1 : CHAR;
+     found  : INTEGER; 
+     date   : STRING[6];
+ 
+ PROCEDURE Group;
+  VAR iflg : BOOLEAN;
+  BEGIN
+   iflg := FALSE;
+   Clear; 
+   WRITE('enter the group number ---->');
+   Rdata(28,0,16,arcfile^.code); 
+   REPEAT
+    Clrline(0,1);
+    WRITE('enter the date ------->'); 
+    READLN(date); 
+   UNTIL Chkdate(date); 
+   ptr := first;
+   WHILE ptr<>NIL DO 
+    BEGIN
+     IF ptr^.part1 = arcfile^.code THEN  
+      BEGIN
+       found := 0;
+       FOR temp := 1 TO nirecs DO
+        BEGIN
+         SEEK(invfile,temp);  
+         GET(invfile); 
+         IF invfile^.partnum = ptr^.part2 THEN
+          BEGIN
+           found := temp;
+           temp := nirecs;
+          END;
+        END;
+       IF found <> 0 THEN
+        BEGIN     
+         WRITELN;
+         WRITELN('--------------------------------------------------------');
+WRITELN('using ',ptr^.qty:8:2,' ',invfile^.units,' ',invfile^.descrip); 
+         WRITELN('old qty =',invfile^.qty:8:2,'  new qty =',
+                 invfile^.qty - ptr^.qty:8:2);
+         IF (invfile^.qty - ptr^.qty) < 0 THEN 
+          WRITELN('CAUTION: you are going to exceed the inventory !!',CHR(7));    
+         WRITE('<cr> to continue, <''s''> to skip,  <esc> to abort ');  
+         READ(ch);
+         IF ch = CHR(27) THEN
+          BEGIN  
+           Clear;    
+           EXIT(Group); 
+          END;
+         IF NOT (ch IN ['S','s']) THEN
+          BEGIN
+           IF NOT iflg THEN BEGIN ntrans := ntrans + 1; iflg := TRUE; END; 
+           Str(ntrans,arcfile^.trans); 
+           arcfile^.date := date;
+           arcfile^.qty := -ptr^.qty;    
+           invfile^.ldate := arcfile^.date;
+           arcfile^.partnum := ptr^.part2;  
+           invfile^.qty := invfile^.qty - ptr^.qty;      
+           narecs := narecs + 1;
+           SEEK(arcfile,narecs);
+           PUT(arcfile);
+           Wnarecs;
+           SEEK(invfile,found);
+           PUT(invfile);
+          END;
+        END; 
+      END;   
+     ptr := ptr^.link;  
+    END;
+   END;
+   
+ BEGIN
+  Clear; 
+  WRITE('Issue :: S)ingle, G)roup ::'); 
+  READ(ch);
+  CASE ch OF
+   'S','s' : BEGIN
+              Clear;
+              WRITE('enter partnumber to be issued ---->');
+              Rdata(35,0,16,arcfile^.partnum); 
+              found := 0;
+              FOR temp := 1 TO nirecs DO
+               BEGIN
+                SEEK(invfile,temp);
+                GET(invfile);
+                IF invfile^.partnum = arcfile^.partnum THEN  
+                 BEGIN
+                  found := temp;
+                  temp := nirecs;
+                 END;
+               END;
+              IF found <> 0 THEN
+               BEGIN
+                WRITELN;
+                WRITELN('there are currently ',
+                         invfile^.qty:8:2,' ',
+                         invfile^.units,' ',
+                         invfile^.descrip,' in the file');   
+                WRITE('how many do you wish to issue --->'); 
+                Getreal(0,0,arcfile^.qty);  
+                IF arcfile^.qty > invfile^.qty THEN 
+                 BEGIN
+                  WRITELN('Not enough parts to issue ',arcfile^.qty);
+                  FOR temp := 1 TO 15000 DO BEGIN END; 
+                  EXIT(Issue);
+                  Clear;
+                 END; 
+                WRITE('enter the transaction code ---->');
+                Rdata(0,0,10,arcfile^.code);  
+                REPEAT
+                 WRITE('enter the date (MMDDYY) ---->');   
+                 READLN(arcfile^.date);  
+                UNTIL Chkdate(arcfile^.date); 
+                invfile^.ldate := arcfile^.date;  
+                WRITELN;
+                WRITELN('old qty ',invfile^.qty:8:2,'  new qty ',
+                       invfile^.qty-arcfile^.qty:8:2);
+                WRITELN;
+                WRITE('O.K.?');
+                READ(ch1);
+                IF ch1 IN ['Y','y'] THEN 
+                 BEGIN
+                  ntrans := ntrans + 1;
+                  Str(ntrans,arcfile^.trans);
+                  narecs := narecs + 1;
+                  arcfile^.qty := -arcfile^.qty;
+                  SEEK(arcfile,narecs); 
+                  PUT(arcfile);
+                  Wnarecs;
+                  invfile^.qty := invfile^.qty + arcfile^.qty;
+                  SEEK(invfile,found);
+                  PUT(invfile);
+                 END;
+               END;
+             END;
+   'G','g' : Group;
+   END;
+ END;
+

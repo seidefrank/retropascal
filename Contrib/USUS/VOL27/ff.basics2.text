@@ -1,0 +1,378 @@
+SEGMENT PROCEDURE ACCEPTNUM { ARROW: BOOLEAN;  MAX_LENGTH: INTEGER;
+                                  VAR IS: STRING;  VAR CH: CHAR,
+                                  var which_key : sc_key_command  };(**gws*)
+VAR
+  ACHAR: STRING[1];
+  DONE, DECPT, PLUSMINUS: BOOLEAN;
+  
+PROCEDURE BAD;
+BEGIN
+  IS := 'INVALID';
+  WRITE(OUTPUT,THEBELL);
+END;
+
+PROCEDURE PUTIN;
+BEGIN
+  IF LENGTH(IS) < MAX_LENGTH THEN
+    BEGIN
+      ACHAR[1] := CH;
+      IS := CONCAT(IS, ACHAR);
+      WRITE(OUTPUT,CH);
+    END;
+END;
+
+PROCEDURE TAKEOUT;
+BEGIN
+  CASE IS[ LENGTH(IS) ] OF
+    '+','-': BEGIN
+               PLUSMINUS := FALSE;
+               MAX_LENGTH := MAX_LENGTH-1
+             END;
+    '.':     BEGIN
+               IF LENGTH(IS) = 1 THEN PLUSMINUS := FALSE;
+               DECPT := FALSE;
+             END;
+  END;
+  DELETE(IS,LENGTH(IS),1);
+  WRITE(OUTPUT,CRT_CURSOR_LEFT,SPACE,CRT_CURSOR_LEFT);  (* SDA 12/17/81 *)
+END;
+
+PROCEDURE HANDLEIT;
+BEGIN
+  CASE CH OF
+    '+','-': IF PLUSMINUS THEN BAD ELSE MAX_LENGTH := MAX_LENGTH + 1;
+    '.'    : IF DECPT THEN BAD ELSE DECPT := TRUE;
+  END;
+  IF IS <> 'INVALID' THEN
+    BEGIN  PUTIN;  PLUSMINUS := TRUE  END
+END;  (* handleit *)
+
+BEGIN   (* ACCEPTNUM *)
+  IS := '';
+  ACHAR := ' ';
+  PLUSMINUS := FALSE;
+  DECPT := FALSE;
+  DONE := FALSE;
+  
+  {
+  REPEAT
+    READ(KEYBOARD, CH);
+    IF EOF(KEYBOARD) OR EOLN(KEYBOARD) THEN
+      BEGIN RESET(KEYBOARD); CH := CURSOR_DOWN END;
+    IF CH = ABACKSPACE THEN CH := CURSOR_LEFT;        (* SDA 12/17/81 *)
+    IF CH IN (DIGITS + ['+','-','.']) THEN HANDLEIT ELSE
+    IF CH IN [' ',CURSOR_DOWN,CURSOR_RIGHT,CURSOR_UP,TAB,HOME,
+                              ENTER,ESCAPE] THEN DONE := TRUE ELSE
+    IF CH IN ['A','a','M','m'] THEN IF ARROW THEN DONE := TRUE ELSE BAD ELSE
+    IF CH = CURSOR_LEFT THEN
+      IF LENGTH(IS) > 0 THEN TAKEOUT ELSE DONE := ARROW ELSE
+    IF CH IN [ERASEINPUT,ERASEFIELD] THEN
+      WHILE LENGTH(IS) > 0 DO TAKEOUT ELSE BAD
+  UNTIL DONE OR (IS = 'INVALID');
+  }  (**taken out  gws*)
+    
+  REPEAT
+    READ(KEYBOARD, CH);
+    which_key := sc_map_crt_command ( ch );
+    IF EOF(KEYBOARD) OR EOLN(KEYBOARD) THEN
+      BEGIN RESET(KEYBOARD); which_key := sc_down_key; END;
+    IF CH IN (DIGITS + ['+','-','.']) THEN HANDLEIT 
+    ELSE if ( ch in [ ' ',tab ] ) or
+            ( which_key IN [sc_escape_key,
+                               sc_etx_key,
+                               sc_down_key,
+                               sc_right_key,
+                               sc_up_key] ) THEN DONE := TRUE 
+              ELSE IF CH IN ['A','a','M','m'] THEN 
+                      IF ARROW THEN DONE := TRUE 
+                      ELSE BAD 
+                   ELSE IF which_key in [ sc_backspace_key, sc_left_key ] then
+                           IF LENGTH(IS) > 0 THEN TAKEOUT ELSE DONE := ARROW 
+                           ELSE IF which_key = sc_del_key THEN
+                                   WHILE LENGTH(IS) > 0 DO TAKEOUT 
+                                ELSE BAD
+  UNTIL DONE OR (IS = 'INVALID');
+  
+  (* A minus sign ( a dash ) is now acceptable input sometimes.  SDA 11/13/80 *)
+  
+  IF (IS='+') OR ( (NOT ARROW) AND (IS='-') ) OR (IS='.') OR
+                                                (IS='+.') OR (IS='-.') THEN BAD;
+END;     (* of acceptnum *)
+
+
+SEGMENT PROCEDURE ACCEPTSTR { ANY: BOOLEAN;  MAX_LENGTH, X, Y: INTEGER;
+                                 DEFAULT: STRING;  VAR IS: STRING };
+VAR          
+     which_key : sc_key_command;
+     ULINE: STRING[1];
+     BOOL, INSMODE: BOOLEAN;
+     CH: CHAR;
+     PT: INTEGER;
+  
+PROCEDURE CHANGE;
+BEGIN
+  GOTOXY(X,Y);  WRITE(OUTPUT,IS);  GOTOXY(X+PT,Y)
+END;
+
+PROCEDURE INIT;
+BEGIN
+  ULINE := COPY(DASHES,1,1);        (* Set Uline to one dash *)
+  IS := COPY(DASHES,1,MAX_LENGTH);  (* fill IS with Dashes   *)
+  WHILE POS(' ',DEFAULT) <> 0 DO  (* Change spaces in default to dashes *)
+    DEFAULT[POS(' ',DEFAULT)] := ULINE[1];
+  IF DEFAULT <> '' THEN
+    MOVELEFT(DEFAULT[1],IS[1],LENGTH(DEFAULT)); (* overlay default *)
+  GOTOXY(X,Y);  WRITE(OUTPUT,IS);  GOTOXY(X,Y);
+  PT := 0;
+  INSMODE := FALSE;
+END;
+
+BEGIN   (* ACCEPTSTR *)
+  INIT;
+  REPEAT
+    READ(KEYBOARD, CH);
+    which_key := sc_map_crt_command ( ch );
+    IF EOF(KEYBOARD) OR EOLN(KEYBOARD) THEN
+      BEGIN RESET(KEYBOARD); which_key := sc_down_key; END;
+    IF (CH >= SPACE) AND (ORD(CH) <= 127) and
+       ( which_key = sc_not_legal ) then
+      IF NOT ANY AND (CH IN ['?','/']) THEN  (* got ? while getting form name *)
+        BEGIN  PT := 1;  IS := '?' END
+      ELSE
+      IF ANY OR (CH IN (['A'..'Z','a'..'z'] + DIGITS)) THEN
+        BEGIN
+          PT := PT + 1;
+          IF INSMODE THEN  (* put extra char to write over *)
+            IF PT < LENGTH(IS) THEN
+              BEGIN
+                DELETE(IS,LENGTH(IS),1);
+                INSERT(' ',IS,PT)
+              END;
+          IF CH = SPACE THEN CH := ULINE[1];  (* put Dash instead of a space  *)
+          IS[PT] := CH;
+          CHANGE;
+          IF (PT = LENGTH(IS)) AND (PT <> 1) THEN
+            BEGIN                      (* Don't put cursor past end of string *)
+              WRITE(OUTPUT,CRT_CURSOR_LEFT);  (* SDA  12/17/81  put in CRT_   *)
+              PT := PT - 1
+            END
+        END
+      ELSE WRITE(OUTPUT,THEBELL)
+    ELSE
+    IF which_key in [ sc_left_key, sc_backspace_key ] then   
+      BEGIN
+        INSMODE := FALSE;
+        IF PT > 0 THEN
+          BEGIN PT := PT - 1;  WRITE(OUTPUT,CRT_CURSOR_LEFT) END
+      END
+    ELSE
+    IF which_key = sc_right_key THEN
+      BEGIN
+        INSMODE := FALSE;
+        IF PT < (LENGTH(IS)-1) THEN
+          BEGIN PT := PT + 1;  WRITE(OUTPUT,crt_cursor_left ) END
+      END
+    ELSE
+    IF which_key in [ sc_down_key, sc_escape_key ] then
+      BEGIN
+        IF which_key = sc_escape_key THEN IS := 'ESCAPE';
+        PT := LENGTH(IS)
+      END
+    ELSE
+    IF which_key = sc_delete_key THEN
+      BEGIN
+        FILLCHAR(IS[PT+1],LENGTH(IS)-PT,DASHES[1]);
+        CHANGE
+      END
+    ELSE
+    {
+    IF CH = ERASEFIELD THEN INIT ELSE
+    IF CH = INSKEY THEN INSMODE := TRUE ELSE
+    IF CH = DELKEY THEN
+      BEGIN
+        DELETE(IS,PT+1,1);
+        IS := CONCAT(IS,ULINE);
+        CHANGE
+      END
+    ELSE }  (**this stuff not supported by screenops *)
+    WRITE(OUTPUT,THEBELL);
+  UNTIL PT >= LENGTH(IS);
+  
+  (* change all Ulines to Spaces *)
+  FOR PT := 1 TO LENGTH(IS) DO IF IS[ PT ] = ULINE[1] THEN IS[ PT ] := SPACE;
+  
+  (* delete trailing spaces *)
+  BOOL := TRUE;
+  WHILE (LENGTH(IS) > 0) AND BOOL DO
+    BEGIN
+      IF IS[ LENGTH(IS) ] = SPACE THEN DELETE(IS,LENGTH(IS),1)
+      ELSE BOOL := FALSE
+    END
+END;     (* of acceptstr *)
+
+(*$R- *)
+PROCEDURE NUMBER{ VAR DAT_FILE: AFILE;  VAR DAT_DESC: FILEDESC;
+                      PAGE, ROW, COL: INTEGER;  VAR NUM: NUMBERTYPE;
+                         WHAT: ACTIONTYPE;  VAR ERR: BOOLEAN )};
+VAR
+     PTR: LISTRANGE;
+     LOC: INTEGER;
+     MISSING: BOOLEAN;
+
+BEGIN
+  WITH DAT_DESC DO BEGIN
+    ERR := FALSE;
+    MISSING := TRUE;
+    PTR := LISTHEAD;  (* PTR will point to node in LIST with proper WINDOW *)
+    LOC := (ROW-1) *  DIRECTORY^.THEMAXCOL + COL;
+
+    (* Check in LIST for requested number *)
+    WHILE MISSING AND (PTR <> 0) DO          (* PTR = 0 means at end of LIST *)
+      WITH LIST[PTR] DO BEGIN
+        IF DPAGE = PAGE THEN
+          IF (START <= LOC) AND (LOC <= (START+WINDOWSIZE)) THEN
+            BEGIN
+              MISSING := FALSE;
+              IF PTR <> LISTHEAD THEN    (* Adjust links so node can be moved
+                                            to the top of the LIST *)
+                BEGIN
+                  IF PTR = LISTTAIL THEN (* Adj. Tail to point to prev. node *)
+                    LISTTAIL := BEFORE;
+                  LIST[ BEFORE ].AFTER  := AFTER;
+                  LIST[ AFTER  ].BEFORE := BEFORE
+                END
+            END;
+        IF MISSING THEN  PTR := AFTER    (* Go to the next node in LIST *)
+      END;
+
+    IF MISSING THEN  (* Number not in list so get it there *)
+      BEGIN
+        IF FREEHEAD <> 0 THEN  (* Empty nodes in LIST *)
+          BEGIN
+            PTR := FREEHEAD;
+            FREEHEAD := LIST[FREEHEAD].AFTER
+          END
+        ELSE     (* No Empty nodes in LIST so a node in use must be used *)
+          BEGIN
+            PTR := LISTTAIL;  (* Use the Least Recently Used node *)
+            LISTTAIL := LIST[LISTTAIL].BEFORE;
+            LIST[LISTTAIL].AFTER := 0;         (* Set link to null *)
+            WITH LIST[PTR] DO
+              IF CHANGED THEN  (* Write window to disk *)
+                ERR := BLOCKWRITE(DAT_FILE,WINDOW^,1,DBLOCK) <> 1
+          END;
+
+        WITH LIST[PTR] DO BEGIN
+          (* # of Block to be read in *)
+          DBLOCK := ( (PAGE-1) * BLKSPERPAGE ) + ( (LOC-1) DIV (WINDOWSIZE+1) );
+          DPAGE := PAGE;
+          START  := LOC - ( (LOC-1) MOD (WINDOWSIZE+1) );
+          CHANGED := FALSE;
+          ERR := BLOCKREAD(DAT_FILE,WINDOW^,1,DBLOCK) <> 1
+        END
+      END;  (* of If MISSING *)
+
+    IF PTR <> LISTHEAD THEN  (* Put node used at the head of LIST *)
+      BEGIN
+        LIST[PTR].AFTER := LISTHEAD;
+        LIST[LISTHEAD].BEFORE := PTR;
+        LISTHEAD := PTR;
+        LIST[LISTHEAD].BEFORE := 0;            (* Set link to null *)
+        IF LISTTAIL = 0 THEN LISTTAIL := LISTHEAD
+      END;
+
+    WITH LIST[PTR] DO
+      IF WHAT = ANDGET THEN
+        NUM := WINDOW^[ LOC - START ]
+      ELSE
+        BEGIN
+          WINDOW^[ LOC - START ] := NUM;
+          CHANGED := TRUE
+        END
+  END
+END   (* of number *);
+(*$R^ *)
+
+PROCEDURE VALUE{ RETURNINTEGER: BOOLEAN;  INSTRING: STRING;
+                 VAR  REALANS: NUMBERTYPE;  VAR INTANS: INTEGER };
+
+(* This routine was written by S. Dale Ander on Mar 26, 1981 to replace
+   the original Value routine in Freeform.  It takes a string assumed to
+   have a syntactically correct real number in it and puts the value into
+   Realans in the form of a Real Number and the value into Intans in the
+   form of an Integer.
+*)
+
+VAR
+     WSUM, FSUM: NUMBERTYPE;
+     NEGATIVE: BOOLEAN;
+     PTR: INTEGER;
+     CH:  CHAR;
+
+PROCEDURE GETCHAR;
+BEGIN
+  CH := INSTRING[ PTR ];
+  PTR := PTR + 1
+END;
+
+PROCEDURE SUM( VAR ANS: NUMBERTYPE;  NUMBERS: INTEGER );
+VAR
+     COUNT, ORDZERO: INTEGER;
+
+BEGIN
+  COUNT := 0;
+  ANS := 0;
+  ORDZERO := ORD('0');
+  WHILE (CH IN DIGITS) AND (COUNT < NUMBERS) DO
+    BEGIN
+      COUNT := COUNT + 1;
+      ANS := 10 * ANS + ORD(CH) - ORDZERO;
+      GETCHAR;
+    END;
+END;
+
+BEGIN
+  
+  (* A dash stands for EMPTY.  Added 11/13/80  SDA *)
+  
+  IF INSTRING = '-' THEN  (* this symbol stands for EMPTY *)
+    BEGIN  REALANS := EMPTY;  EXIT(VALUE)  END;
+    
+  NEGATIVE := FALSE;
+  FSUM := 0;
+  WSUM := 0;
+  INSTRING := CONCAT ( INSTRING, ' ' );
+  PTR := 1;
+  GETCHAR;
+
+  IF CH IN ['+','-'] THEN             (* Check for a signed number *)
+    BEGIN
+      NEGATIVE := CH = '-';
+      GETCHAR       (* Throw away sign *)
+    END;
+
+  SUM( WSUM, MAXWHOLE );              (* Get Whole part of number *)
+
+  IF CH = '.' THEN                    (* Get Fractional part      *)
+    BEGIN
+      (* Put trailing zeros on *)
+      INSERT( COPY( ZEROS, 1, MAXFRAC+1 ), INSTRING, LENGTH(INSTRING) );
+      GETCHAR;      (* Skip period *)
+      SUM( FSUM, MAXFRAC+1 )
+    END;
+
+  IF RETURNINTEGER THEN
+    BEGIN
+      
+      (* BUG fix by SDA 11/25/80 *)
+      IF WSUM > MAXINT THEN WSUM := MAXINT;
+      
+      INTANS  := TRUNC(WSUM);  REALANS := -77
+    END
+  ELSE
+    BEGIN  REALANS := WSUM + (FSUM / PWROFTEN(MAXFRAC+1));  INTANS := -77  END;
+  IF NEGATIVE THEN
+    BEGIN  INTANS := -INTANS;  REALANS := -REALANS  END;
+
+END  (* of value *);
+

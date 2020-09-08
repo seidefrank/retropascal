@@ -1,0 +1,120 @@
+program lowercase;  {Version 1.1, 26 Oct 81}
+
+var ch,reply : char;
+    sfin,sfout : string;
+    fin,fout : text;
+    i,rslt : integer;
+    skip : boolean;
+
+procedure clearscreen;
+  var lf : packed array [1..24] of char;
+       i : integer;
+  begin
+    gotoxy(0,23);
+    for i := 1 to 24 do lf[i] := chr(10);
+    unitwrite(1,lf,24);
+    gotoxy(0,0)
+  end;
+  
+procedure clearspace (x,y,n : integer);
+  var i : integer;
+      cs :packed array [1..160] of 0..255;
+  begin
+    gotoxy(x,y);
+    for i := 1 to n do cs[i] := 32;
+    for i := n+1 to n+n do cs[i] := 8;
+    unitwrite(1,cs[1],n);
+    unitwrite(1,cs[n+1],n)
+  end;
+  
+(*$I-*)
+procedure getinfile;
+  begin
+    repeat
+      begin
+        readln(sfin);
+        reset(fin,sfin);
+        rslt := ioresult;
+        if rslt <> 0 then
+          begin
+            if rslt = 10 then 
+              begin
+                sfin := concat(sfin,'.text');
+                reset(fin,sfin);
+                rslt := ioresult
+              end;
+            if rslt <> 0 then
+              begin
+                gotoxy(0,20);
+                write('IO error',rslt:3,'.  Correct and type <SP> to continue or Q(uit)');
+                repeat read (keyboard, reply) until reply in ['Q','q',' '];
+                clearspace(0,20,72);
+                if reply in ['Q','q'] then
+                  begin
+                    close(fout,lock);
+                    exit(program)
+                  end
+                  else clearspace(31,4,length(sfin))
+              end
+          end
+      end
+    until rslt = 0
+   end;
+(*$I+*)
+
+(*$I-*)
+procedure getoutfile;
+  begin
+    repeat
+      readln(sfout);
+      rewrite(fout,sfout);
+      rslt := ioresult;
+      if rslt <> 0 then
+        begin
+          gotoxy (0,20);
+          write('IO error',rslt:3,'. Correct and type <SP> to continue or Q(uit)');
+          repeat read(keyboard,reply) until reply in ['Q','q',' '];
+          clearspace(0,20,72);
+          if reply in ['Q','q'] then
+            begin
+              clearscreen;
+              exit(program)
+            end
+            else clearspace(32,2,length(sfout))
+        end
+      until rslt = 0
+  end;
+(*$I+*)
+
+begin
+  clearscreen;
+  writeln('This program copies files in lower case.');
+  writeln;
+  write('Enter output (lower case) file: ');
+  getoutfile;
+  writeln;
+  write('Enter input (upper case) file: ');
+  getinfile;
+  writeln;
+  writeln('Lines copied');
+  skip := false;
+  I := 1;
+  while (not eof(fin)) do
+    begin
+      while (not eoln(fin)) do
+        begin
+          read(fin,ch);
+          if (ch in ['''','{','}']) then skip := not skip;
+          if (ch >= 'A') and (ch <= 'Z') and not skip then
+            ch := chr(ord(ch) + 32);
+          write(fout,ch)
+        end;
+      readln(fin);
+      writeln(fout);
+      write('.');
+      if ((i mod 50) = 0) then writeln;
+      i := i+1
+    end;
+  close(fout,lock);
+  close(fin)
+end.

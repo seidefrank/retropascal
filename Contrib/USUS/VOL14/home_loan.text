@@ -1,0 +1,153 @@
+PROGRAM HOME_LOAN;
+VAR A,R,Y,RATE,P,R12,R1,NP,FR,CM,CM1: REAL;
+
+procedure clear_screen;
+begin
+   write ( chr ( 27 ) , chr ( 69 ) );  {H-19 specific}
+end;
+
+FUNCTION INPUT_VALUE:REAL;
+
+{
+                                                 function by:  EDWARD J GRUNDLER
+}
+
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+      OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+          OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(CHR(31),'READ ERROR, TRY AGAIN ',CHR(29))
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+        EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE GET_DATA;
+VAR CH: CHAR;
+BEGIN
+  clear_screen;
+  WRITE(' enter Q  to quit or SPACE-BAR to continue');
+  READ(KEYBOARD,CH);
+  IF CH='Q' THEN EXIT(HOME_LOAN);
+  WRITELN;
+  WRITE('Amt. of loan = '); A:=INPUT_VALUE;
+  WRITE('annual percent interest rate = '); RATE:=INPUT_VALLUE;
+  WRITE('Length of loan (years) = '); Y:=INPUT_VALUE;
+END; { procedure GET_DATA }
+  
+PROCEDURE PAYMENT;
+  FUNCTION POWER(A,B:REAL):REAL;
+  BEGIN POWER:=EXP(B*LN(A)) END;
+BEGIN
+  R:=RATE/100;
+  R12:=R/12;
+  P:=A*R12/(1-POWER(1+R12,-12*Y))
+END;
+
+PROCEDURE DISPLAY;
+VAR YR,MO,NEXTYR: INTEGER;
+    BEGBAL,PAYINT,PAYPRIN,ENDBAL,TOTINT,TOTPRIN: REAL;
+    CH: CHAR;
+BEGIN
+  clear_screen;
+  WRITELN(' AMT OF LOAN = ',A:12:2);
+  WRITELN(' INTEREST RATE = ',RATE:6:2,' PERCENT');
+  WRITELN(' LENGHT OF LOAN = ',Y:6:2,' YEARS');
+  WRITELN(' MONTHLY PAYMENT = ',P:8:2);
+  R1:=RATE/1200+1;
+  NP:=12*Y;
+  FR:=0.5;
+  CM:=NP+LN(1-FR*(1-EXP(-NP*LN(R1))))/LN(R1);
+  WRITELN('THE LOAN IS ',(1-FR)*100:5:2,' PERCENT PAID OFF AT ',TRUNC(CM/12)+1,
+               ' YEARS ',CM-12*TRUNC(CM/12):5:2,' MONTHS');
+  CM1:=NP+LN(0.5)/LN(R1)+1;
+  WRITELN('CROSS-OVER PAYMENT : ',TRUNC(CM1/12)+1,' YEARS ',
+                CM1-12*TRUNC(CM1/12):5:2,' MONTHS');
+  WRITELN('             BEGINNIG  PAYMENT APPLIED TO   ENDING');
+  WRITELN(' YEAR MONTH  BALANCE   INTEREST  PRINCIPLE  BALANCE');
+  YR:=1; MO:=1; BEGBAL:=A; 
+  TOTINT:=0; TOTPRIN:=0;
+  GOTOXY(0,8);
+  WHILE BEGBAL>0 DO
+    BEGIN
+      PAYINT:=BEGBAL*R12;
+      PAYPRIN:=P-PAYINT;
+      ENDBAL:=BEGBAL-PAYPRIN;
+      IF (YR=1) OR (YR=Y) OR (YR=NEXTYR) THEN
+        begin
+          WRITELN(YR:6,MO:6,BEGBAL:10:2,PAYINT:8:2,PAYPRIN:8:2,
+                  '    ',ENDBAL:8:2);
+          TOTINT:=TOTINT+PAYINT; TOTPRIN:=TOTPRIN+PAYPRIN;
+          IF MO=12 THEN
+            begin
+              WRITELN;
+              WRITELN('      TOTAL FOR YEAR  ',TOTINT:8:2,TOTPRIN:8:2);
+              WRITE('enter next year you want printed ');
+              NEXTYR:=TRUNC(INPUT_VALUE);
+              TOTINT:=0; TOTPRIN:=0;
+              GOTOXY(0,8)
+            end;
+        end;
+      BEGBAL:=ENDBAL;
+      IF MO<12 THEN MO:=MO+1
+               ELSE begin MO:=1; YR:=YR+1 END;
+    END;
+END;
+
+
+BEGIN { main program HOME_LOAN }
+  REPEAT
+    GET_DATA;
+    PAYMENT;
+    DISPLAY
+  UNTIL FALSE;
+END.
+

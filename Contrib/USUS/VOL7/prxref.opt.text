@@ -1,0 +1,272 @@
+(*********************************************)
+(* PRXREF.OPT -- for USUS -- 1980 July 14    *)
+(*********************************************)
+
+SEGMENT PROCEDURE OPTIONS;
+  (* solicits options from user *)
+
+CONST
+  NITEMSMAX= 20; (* max number of option items *)
+
+TYPE
+  PRRCD= RECORD (* describes an option *)
+    LETTER: CHAR; (* activating key hit *)
+    ROW: INTEGER  (* display row *)
+    END;
+  CHSET= SET OF CHAR;
+
+VAR
+  PRSTUFF: ARRAY[ 1..NITEMSMAX] OF PRRCD; (* info on options *)
+  CURROW, NITEMS, ITEM: INTEGER;
+  PROMPTLINE: STRING;
+  CH: CHAR;
+  FOUND: BOOLEAN; (* for option character search *)
+  OKTOGO: BOOLEAN; (* controls initiation of printing *)
+(************************************************************)
+
+PROCEDURE RINGBELL;
+BEGIN  WRITE( CHR( BELL))  END;
+(************************************************************)
+
+PROCEDURE ERRMSG( S: STRING); (* prints error messages for user options *)
+BEGIN
+  RINGBELL;  GOTOXY( PRCOLC, CURROW);  ERASEEOL; WRITE( S)
+  END;
+(************************************************************)
+
+FUNCTION SETOUTUNIT( VAR S: STRING): BOOLEAN;
+  (* Check and normalize output file/volume title. *)
+  (* Allow output to named file or units 1, 2, 6. *)
+  (* Set PRINTTITLE to file/vol title in any case. *)
+  (* Sets UNITOUT := TRUE and PRINTUNIT in case of unblked unit output. *)
+  (* Check to see if file/vol can be opened -- returns TRUE iff OK. *)
+VAR
+  DUMMYFILE: FILE;
+  UNITSET: SET OF CHAR;
+BEGIN
+  UNITSET:= [ '1', '2', '6'];
+  (* normalize numbers with # before and : after *)
+  IF ( LENGTH( S) = 1) THEN IF (S[ 1] IN UNITSET) THEN
+    S := CONCAT( '#', S, ':');
+  IF LENGTH( S) = 2 THEN IF (S[ 1] = '#') AND ( S[ 2] IN UNITSET) THEN
+    S := CONCAT( S, ':');
+  (* assume it's to be a blocked file, not a unit *)
+  PRINTUNIT := -1;  PRINTTITLE := S;
+  IF S[ LENGTH( S)] = ':' THEN BEGIN
+    IF      ( S = '#1:') OR ( S =  'CONSOLE:') THEN BEGIN
+      PRINTTITLE := 'CONSOLE:';  PRINTUNIT := 1  END
+    ELSE IF ( S = '#2:') OR ( S = 'SYSTERM:') THEN BEGIN
+      PRINTTITLE := 'SYSTERM:';  PRINTUNIT := 2 END
+    ELSE IF ( S = '#6:') OR ( S = 'PRINTER:') THEN BEGIN
+      PRINTTITLE := 'PRINTER:';  PRINTUNIT := 6  END
+    END;
+  (* indicate unit or blocked file *) UNITOUT := ( PRINTUNIT > 0);
+  (* see if file can be opened for output *)
+  (*$I-*) REWRITE( DUMMYFILE, PRINTTITLE); (*$I+*)
+  SETOUTUNIT := ( IORESULT = 0);  CLOSE( DUMMYFILE)
+  END;
+(************************************************************)
+
+FUNCTION READCH( OKSET: CHSET): CHAR; (* read opt char; transl to upper *)
+VAR
+  C: CHAR;
+BEGIN
+  READ( KEYBOARD, C);  UCFOLD( C);
+  WHILE NOT ( C IN OKSET) DO BEGIN
+    RINGBELL;  READ( KEYBOARD, C);  UCFOLD( C)  END;
+  WRITE( C); READCH := C
+  END;
+(************************************************************)
+
+FUNCTION READINT: INTEGER;
+  (* interactive integer read *)
+  (* more robust than the one in the UCSD operating system *)
+  (* Accepts up to 4 digits; end with <cr> or <space> *)
+  (* bad digits rejected; <backspace> is effective *)
+VAR
+  CBS, CH: CHAR;
+  RESULT, DIGITS, I: INTEGER;
+  DIGSET: SET OF CHAR;
+  DONE: BOOLEAN;
+BEGIN
+  CBS := CHR( BS);  DIGSET := ['0'..'9', ' ', CBS];
+  RESULT := 0;  DIGITS := 0; DONE := FALSE;
+  REPEAT
+    READ( KEYBOARD, CH);
+    WHILE NOT( CH IN DIGSET) DO BEGIN
+      RINGBELL;  READ( KEYBOARD, CH)  END;
+    IF CH = CBS THEN BEGIN (* backspace hit *)
+      IF DIGITS > 0 THEN BEGIN (* erase last char; undo conversion *)
+        WRITE( CBS,' ',CBS);  RESULT := RESULT DIV 10;  DIGITS := DIGITS-1
+        END
+      END
+    ELSE IF CH = ' ' THEN (* he  wants to quit; shall we let him? *) BEGIN
+      IF DIGITS > 0 THEN (* sure *) DONE := TRUE
+      ELSE (* no digits; no way *) RINGBELL
+      END
+    ELSE (* its a numeral *) BEGIN
+      IF DIGITS < 4  THEN BEGIN  (* accept and convert digit *)
+        WRITE( CH);   DIGITS := DIGITS + 1;
+        RESULT := RESULT * 10 + ORD( CH) - ORD( '0');
+        END
+      ELSE RINGBELL
+      END
+    UNTIL DONE;
+  READINT := RESULT
+  END; (* readint *)
+(************************************************************)
+
+PROCEDURE POENTER( S: STRING);
+  (* enter an option in the table;  place on display *)
+BEGIN
+  NITEMS := NITEMS + 1; (* count a new item *)
+  WITH PRSTUFF[ NITEMS] DO BEGIN
+    (* enter letter and row in table *)
+    LETTER := S[ 1];  ROW := NITEMS + PRROWA - 3;
+    MSGLINE := ROW + PRGAP + 1; (* further messages go here on screen *)
+    (* display it *)
+    GOTOXY( PRCOLA, ROW);  ERASEEOL;  WRITE( S);
+    GOTOXY( PRCOLB, ROW);  WRITE( ':')
+    END
+  END;
+(************************************************************)
+
+PROCEDURE POINIT;
+  (* initialize option table *)
+BEGIN
+  NITEMS := 2;  (* account for Q and <etx> *)
+  MSGLINE := 2;
+  PRSTUFF[ 1].LETTER := 'Q';        PRSTUFF[ 1].ROW := PRROWA - 1;
+  PRSTUFF[ 2].LETTER := CHR( ETX);  PRSTUFF[ 1].ROW := PRROWA - 1;
+  GOTOXY( PRCOL, PRROW);  ERASEEOS;
+  PROMPTLINE:= CONCAT( 'Print/Xref: <etx> to start; Q(uit          ', TODAY)
+  END;
+(************************************************************)
+
+(* routines to display options and receive user responses *)
+(* types of responses are: *)
+(*   YESNO:  Y or N giving TRUE or FALSE to the BOOLEAN variable *)
+(*   STRNG:  character string *)
+(*   INTEG:  integer (non-negative; <= 4 digits) *)
+(*   CHARR:  single character *)
+(* POxxxxx routines display option of type xxxxx and place info in table *)
+(* PIxxxxx routines receive user response for option of type xxxxx *)
+(* PSxxxxx routines display option value ( YESNO only) *)
+
+PROCEDURE PSYESNO( VB: BOOLEAN);
+BEGIN
+  IF VB THEN WRITE( 'Yes')  ELSE WRITE( 'No')
+  END;
+
+PROCEDURE POYESNO( S: STRING; VB: BOOLEAN);
+BEGIN  POENTER( S);  PSYESNO( VB)  END;
+
+PROCEDURE PIYESNO( VAR VB: BOOLEAN);
+BEGIN
+   VB := (READCH( [ 'Y', 'N']) = 'Y');
+   WRITE( CHR( BS)); PSYESNO( VB)
+   END;
+
+PROCEDURE POINTEG( S: STRING; VI: INTEGER);
+BEGIN  POENTER( S);  WRITE( VI)  END;
+
+PROCEDURE PIINTEG( VAR VI: INTEGER);
+BEGIN  VI := READINT END;
+
+PROCEDURE POSTRNG( S: STRING; VS: STRING);
+BEGIN  POENTER( S);  WRITE( VS) END;
+
+PROCEDURE PISTRNG( VAR VS: STRING);
+BEGIN  READLN( VS);  IF VS = '' THEN VS := ' '  END;
+
+PROCEDURE POCHARR( S: STRING; VC: CHAR);
+BEGIN  POENTER( S);  WRITE( VC)  END;
+
+PROCEDURE PICHARR( VAR VC: CHAR);
+BEGIN  READ( VC) END;
+
+PROCEDURE PROMPT;  (* show prompt line *)
+BEGIN GOTOXY( PRCOL, PRROW);  ERASEEOL;  WRITE( PROMPTLINE)  END;
+(************************************************************)
+
+PROCEDURE SHOWOPTIONS; (* show options to user as entering in table *)
+BEGIN
+  POINIT; (* intitialize display screen and table *)
+  POSTRNG( 'F(ilename'       ,MAINNAME);
+  POSTRNG( 'O(utput file'    ,PRINTTITLE);
+  POYESNO( 'X(ref'           ,XREFFING);
+  POYESNO( 'P(rint'          ,PRINTING);
+  POYESNO( 'I(nclude'        ,INCLU);
+  POYESNO( 'V(ert format'    ,VFORMATTING);
+  POCHARR( 'C(ommand char'   ,CMDCHAR);
+  POYESNO( 'S(kip Pages'     ,PAGESKIP);
+  POYESNO( 'N(umbering'      ,NUMBERING);
+  POINTEG( 'L(ine spacing'   ,SPACING);
+  POYESNO( 'E(ject on incl'  ,INCLSKIPPING);
+  POINTEG( '#( of copies'    ,TIMES)
+  END (* showoptions *);
+  (************************************************************)
+
+BEGIN (* OPTIONS *)
+  TIMES := 1; (* always set to one repetition initially *)
+  IF NOT SETOUTUNIT( PRINTTITLE) THEN PRINTTITLE := ' ';
+  SHOWOPTIONS;  OKTOGO := FALSE; (* not ready to go just yet *)
+  REPEAT  (* sequence of user options *)
+    REPEAT  (* option solicitation until valid *)
+      PROMPT;  READ( KEYBOARD, CH); UCFOLD( CH);
+      (* initialize for option search *)
+      ITEM := 1;  FOUND := FALSE;
+      REPEAT (* looking for character in option table *)
+        IF PRSTUFF[ ITEM].LETTER = CH THEN FOUND := TRUE
+        ELSE ITEM := ITEM + 1
+        UNTIL FOUND OR ( ITEM > NITEMS);
+      UNTIL (* the option is *) FOUND;
+    IF CH = CHR( ETX) THEN (* asking to go *) BEGIN
+      (* but there must be valid input and output files *)
+      IF ( MAINNAME <> ' ') AND ( PRINTTITLE <> ' ') THEN OKTOGO := TRUE
+      ELSE (* a file title missing; complain *) RINGBELL
+      END
+    ELSE IF CH = 'Q' THEN (* goodbye chahlie *) EXIT( PRXREF)
+    ELSE (* ordinary option character; process it *) BEGIN
+      (* move cursor to selected option *)
+      CURROW := PRSTUFF[ ITEM].ROW;  GOTOXY( PRCOLB+1, CURROW);  ERASEEOL;
+      (* read user's response appropriately *)
+      CASE CH OF
+        'I' :  PIYESNO( INCLU);
+        'V' :  PIYESNO( VFORMATTING);
+        'S' :  PIYESNO( PAGESKIP);
+        'F' :  BEGIN (* input file; verify right now *)
+                 PISTRNG( MAINNAME);
+                 IF NOT FILECHECK( MAINNAME) THEN BEGIN
+                   ERRMSG( 'Bad input file title');  MAINNAME := ' '
+                   END
+                 END;
+        'P' :  PIYESNO( PRINTING);
+        'O' :  BEGIN (* output file/vol; verify now *)
+                 PISTRNG( PRINTTITLE);
+                 IF NOT SETOUTUNIT( PRINTTITLE) THEN BEGIN
+                   ERRMSG( 'Bad output file/vol title');  PRINTTITLE := ' '
+                   END
+                 END;
+        'N' :  PIYESNO( NUMBERING);
+        'X' :  PIYESNO( XREFFING);
+        'L' :  BEGIN
+                 PIINTEG( SPACING);
+                 IF SPACING < 1 THEN SPACING := 1
+                 ELSE IF SPACING > 8 THEN SPACING := 8
+                 END;
+        'C' :  BEGIN
+                 PICHARR( CMDCHAR);
+                 IF CMDCHAR = '$' THEN
+                   ERRMSG( 'That''s asking for trouble')
+                 END;
+        'E' :  PIYESNO( INCLSKIPPING);
+        '#' :  PIINTEG( TIMES)
+        END
+      END
+    UNTIL OKTOGO;
+  MSG( 'Let''s go...', 0);
+  REWRITE( OUTFILE, PRINTTITLE) (* ok to open output for real *)
+  END; {OPTIONS}
+(**************************************************************************)
+

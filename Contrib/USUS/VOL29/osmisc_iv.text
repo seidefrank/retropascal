@@ -1,0 +1,226 @@
+PROGRAM aunit;
+{$S+}
+
+UNIT osmisc;
+
+{                       UNIT  OSMISC                                           }
+
+{                      P-System Version IV.03                           }
+
+{  This unit provides various utility functions that may be system-dependent.  }
+
+    {$C   Copyright 1981, 1982, 1984 by John Dykstra.  All rights reserved.  }
+
+
+INTERFACE
+
+TYPE
+
+  os_timer = RECORD
+               hitime:  INTEGER;
+               lotime:  INTEGER;
+             END;
+
+  os_prog_name = STRING [ 25 ];
+  
+  os_prog_param = STRING [ 255 ];
+  
+  
+PROCEDURE os_start_timer ( VAR user_timer:  os_timer );
+
+FUNCTION os_elapsed_time ( VAR user_timer:  os_timer ):  INTEGER;
+
+PROCEDURE os_get_param_string ( VAR param_string:  os_prog_param );
+
+PROCEDURE os_store_command ( prog_name:  os_prog_name;
+                             param_string:  os_prog_param );
+
+PROCEDURE os_clear_commands;
+
+PROCEDURE os_exit_to_next;
+
+PROCEDURE os_chain_to_program ( prog_name:  os_prog_name );
+
+
+
+IMPLEMENTATION
+
+USES commandio;
+
+CONST
+  
+  {  The following constants define special control characters for 
+  {  keyboard input within GET_PARAM_STRING.                            }
+  
+  ch_bs = 8;                    {  character to delete one character  }
+  ch_can = 24;                  {  character to delete entire field  }
+  
+  {  The following constant is used in OS_ELAPSED_TIME to approximate the
+  {  operation of a real-time clock.  The value supplied is more or less
+  {  right for a 4Mhz Z80 running II.0 or IV.03.                           }
+  
+  kludge_constant = 2;
+  
+  {  Other miscellaneous constant definitions.  }
+  
+  cmd_file_name = '*CMDLINE.TEXT';
+  codefile_suffix = '.CODE';
+      
+
+PROCEDURE os_start_timer;
+
+  BEGIN
+  user_timer.hitime := 0;
+  END;
+  
+  
+FUNCTION os_elapsed_time;
+
+  BEGIN
+  user_timer.hitime := user_timer.hitime + kludge_constant;
+  os_elapsed_time := user_timer.hitime;
+  END;
+  
+  
+PROCEDURE os_get_param_string;
+
+  CONST
+    console = 2;
+    ch_esc = 27;
+    ch_cr = 13;
+    
+  VAR
+    bs_string:  STRING [ 3 ];
+    str:  STRING [ 1 ];
+    cmd_file:  TEXT;
+    index:  INTEGER;
+    got_command:  BOOLEAN;
+    
+  BEGIN         {  PROCEDURE os_get_param_string  }
+  bs_string := '   ';
+  bs_string [ 1 ] := CHR ( ch_bs );
+  bs_string [ 2 ] := ' ';
+  bs_string [ 3 ] := CHR ( ch_bs );
+  
+  param_string := '';
+  got_command := FALSE;
+  
+  {$I-  Disable implicit I/O checking  }
+  RESET ( cmd_file, cmd_file_name );
+  {$I+  Re-enable implicit I/O checking  }
+  
+  IF IORESULT = 0 THEN
+    IF NOT EOF ( cmd_file ) THEN
+      BEGIN
+      READLN ( cmd_file, param_string );
+      CLOSE ( cmd_file, PURGE );
+      got_command := LENGTH ( param_string ) > 0;
+      END;      {  ifend  }
+  
+  IF NOT got_command THEN
+    BEGIN
+    GOTOXY ( 0, 22 );
+    WRITE( 'What is the parameter line?  ' );
+    str := 'x';
+    REPEAT
+      BEGIN
+      UNITREAD ( console, str [ 1 ], 1, , 4 + 2 );
+      IF str [ 1 ] >= ' ' THEN
+        BEGIN
+        param_string := CONCAT ( param_string, str );
+        UNITWRITE ( console, str [ 1 ], 1 );
+        END
+      ELSE
+        IF ( str [ 1 ] = CHR ( ch_bs ) ) AND ( LENGTH ( param_string ) > 0) THEN
+          BEGIN
+          DELETE ( param_string, LENGTH ( param_string ), 1 );
+          UNITWRITE ( console, bs_string [ 1 ], 3 );
+          END
+        ELSE
+          IF str [ 1 ] = CHR ( ch_can ) THEN
+            WHILE LENGTH ( param_string ) > 0 DO
+              BEGIN
+              DELETE ( param_string, LENGTH ( param_string ), 1 );
+              UNITWRITE ( console, bs_string [ 1 ], 3 );
+              END;
+      END;      {  REPEATEND  }
+    UNTIL ( str [ 1 ] = CHR ( ch_esc ) ) OR ( str [ 1 ] = CHR ( ch_cr ) );
+    
+    IF str [ 1 ] = CHR ( ch_esc ) THEN
+    
+      {  The following code is temporarily deleted due to a bug in IV.03's
+      {  implementation of the EXIT statement from UNIT's.  It is up to the
+      {  caller to check for a null command.                                }
+    
+      (*  
+      EXIT ( PROGRAM );
+        *)
+      param_string := '';
+    
+      
+    END;        {  ifend  }
+
+  END;          {  PROCEDURE os_get_param_string  }
+  
+{$P}
+
+PROCEDURE os_store_command;
+
+  VAR
+    cmd_file:  TEXT;
+  
+  BEGIN         {  PROCEDURE os_store_command  }
+  CHAIN ( prog_name );
+  REWRITE ( cmd_file, cmd_file_name );
+  WRITELN ( cmd_file, param_string );
+  CLOSE ( cmd_file, LOCK );
+  END;          {  PROCEDURE os_store_command  }
+  
+  
+  
+PROCEDURE os_clear_commands;
+
+
+  VAR
+    cmd_file:  TEXT;
+
+  BEGIN         {  PROCEDURE os_clear_commands  }
+  
+  CHAIN ( '' );
+  
+  {$I-  Disable implicit I/O checking  }
+  RESET ( cmd_file, cmd_file_name );
+  {$I+  Re-enable implicit I/O checking  }
+  
+  IF IORESULT = 0 THEN
+    CLOSE ( cmd_file, PURGE );
+  
+  END;          {  PROCEDURE os_clear_commands  }
+  
+  
+  PROCEDURE os_exit_to_next;
+  
+    BEGIN       {  PROCEDURE os_exit_to_next  }
+    
+    {  The following code is temporarily deleted due to a bug in IV.03's
+    {  implementation of the EXIT statement from UNIT's.  It is up to the
+    {  caller to exit after calling this noop procedure.                  }
+    
+    (*
+    EXIT ( PROGRAM );
+      *)
+      
+    END;        {  PROCEDURE os_exit_to_next  }
+    
+  
+  
+PROCEDURE os_chain_to_program {  ( prog_name:  STRING )  };
+
+  BEGIN         {  PROCEDURE os_chain_to_program  }
+  chain ( prog_name );
+  END;          {  PROCEDURE os_chain_to_program  }
+
+    
+ END.
+
+

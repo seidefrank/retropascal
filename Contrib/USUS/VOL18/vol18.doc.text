@@ -1,0 +1,108 @@
+                                 USUS Volume 18
+
+SEGMAP.1.TEXT     34  Arley Dealey's version independant segment mapper
+SEGMAP.2.TEXT     28    an include file of segmap
+ODMSCU.TEXT       10  One Damn More Screen Control Unit (for Segmap)
+LIFE.TEXT         32  The game of LIFE
+LIFE.INC.TEXT      8    an include file for LIFE
+BLACKBOX.TEXT     38  A guessing game based on particle physics
+BLACK.DOC1.TEXT    6     a help file for BLACKBOX
+BLACK.DOC2.TEXT    6     ditto
+TELE.TEXT         18  Keeps a data base of telephone traffic
+SORTUNIT.TEXT     18  A three-way key sort unit
+SORT2.TEXT        12  A sort program
+DEBUG.A.TEXT      22  The UCSD I.3 debugger
+DEBUG.B.TEXT      44    an include file of the debugger
+BENCHMARKS.TEXT   10  An overview of the benchmarks on this disk
+PWROF2.TEXT        8  A Pascal benchmark program
+8QUEENS.TEXT       6    ditto
+NUMBERIO.TEXT      8    ditto
+ANCEST.S.TEXT      6    ditto
+PRIMES.TEXT        6    ditto
+QUICKSORT.TEXT     6    ditto
+QUR.TEXT           6  A simple benchmark to measure "system" speed
+STARS.TEXT         6  A simple I/O benchmark
+COMPKILLER.TEXT    6  A benchmark designed especially to crash your compiler
+WHETSTONE.TEXT    12  The famous WHETSTONE benchmark
+WHET.DOC.TEXT     16  Some notes on WHETSTONE, taken from MUSUS
+SIEVE.TEXT         8  The infamous Byte Benchmark, as standard as possible
+LONG_INT.TEXT     12  Tests long integer operations
+INTRINSICS.TEXT   18  Tests system intrinsics
+SEGMASHER.TEXT     8  A segment swap speed tester
+REPORT.DOC.TEXT    6  Some simple instructions for running the benchmarks
+REPORTFORM.TEXT    8  A form for recording the results of the benchmarks.
+BENCH.USUS.TEXT   26  Jon Bondy's benchmark ( again ) 
+BONDY_FORM.TEXT    8  A form for recording the results of BENCH.USUS 
+VOL18.DOC.TEXT    12  You're reading it
+-----------------------------------------------------------------------------
+
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 18 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+
+
+                                      LIFE
+
+     This is the game of LIFE submitted by Pat Horton.  It will require some
+form of KEY_PRESS routine.  There is one in there which should work on many
+IV.0 systems.  I haven't as yet figured out the meaning of this game, but
+after one watches it for a while, one wonders what life is all about.
+
+
+                                      TELE
+
+     TELE, submitted by Pat Horton, keeps a database of telephone
+transactions.  It probably takes longer to enter the data than to complete
+the conversion, but it is fun.
+
+                                    SORTUNIT
+
+     This is a three-key sort, submitted by Pat Horton.  I haven't used it,
+but it compiles and seems to be alive.
+
+                                     SORT2
+                                        
+     A program version of SORTUNIT.
+
+                                     DEBUG
+
+     This is the UCSD Pascal version I.3 debugger.  It is reputed to have 
+problems, but is is also reputed to work.  Although I haven't tried it, I am 
+willing to bet that it will be fairly easy to convert it to run as a separate
+program under any version of the p-system.
+
+                                    BLACKBOX
+
+     Blackbox is a game that simulates the work of a nuclear physicist.  The 
+player fires rays into an unknown 8 * 8 grid.  The resultant interaction of 
+the rays with the contents of the 8 * 8 grid allows deduction of its contents.
+
+
+                                     SEGMAP
+                             
+     Segmap displays a report the the contents of ANY UCSD segment from ANY
+version of the p-system.  If you are having troubles and want to determine
+what's REALLY in that questionable segment, this will tell you.
+                             
+                             THE BENCHMARK PACKAGE
+
+     There are several benchmark programs on this disk.  These are intended to 
+determine how fast a particular computer/software combo is in relation to 
+others for reasonable "real-life" type computer tasks.  Refer to the file
+BENCHMARKS.TEXT for more info.
+
+

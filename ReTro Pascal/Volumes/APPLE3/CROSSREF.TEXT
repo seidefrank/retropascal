@@ -1,0 +1,131 @@
+PROGRAM CROSSREF;
+(********************************************************)
+(*                                                      *)
+(*  CROSS REFERENCE GENERATOR USING BINARY TREE.        *)
+(*  FROM WIRTH,ALGORITHMS+DATA STRUCTURES=PROGRAMS,P206 *)
+(*                                                      *)
+(********************************************************)
+
+CONST C1=10;      (* LENGTH OF WORDS *)
+      C2=10;      (* NUMBERS PER LINE *)
+      C3= 6;      (* DIGITS PER NUMBER *)
+      C4=9999;    (* MAX LINE NUMBER *)
+      
+TYPE ALPHA=PACKED ARRAY[1..C1] OF CHAR;
+     WORDREF=^WORD;
+     ITEMREF=^ITEM;
+     WORD=RECORD 
+            KEY: ALPHA;
+            FIRST,LAST: ITEMREF;
+            LEFT,RIGHT: WORDREF;
+          END;
+     ITEM=PACKED RECORD
+                   LNO: 0..C4;
+                   NEXT: ITEMREF;
+                 END;
+                 
+ VAR ROOT: WORDREF;
+     K,K1: INTEGER;
+     N: INTEGER;  (* CURRENT LINE NUMBER *)
+     ID: ALPHA;
+     F,G: TEXT;
+     A: PACKED ARRAY[1..C1] OF CHAR;
+     CH: CHAR;
+     SOURCE,DEST: STRING[20];
+     
+PROCEDURE SEARCH(VAR W1: WORDREF);
+VAR W: WORDREF; X: ITEMREF;
+BEGIN W:=W1;
+  IF W=NIL THEN 
+    BEGIN 
+      NEW(W); 
+      NEW(X);
+      WITH W^ DO
+        BEGIN 
+          KEY:=ID; LEFT:=NIL; RIGHT:=NIL;
+          FIRST:=X;  LAST:=X;
+        END;
+      X^.LNO:=N; X^.NEXT:=NIL; W1:=W;
+    END 
+  ELSE
+    IF ID<W^.KEY THEN SEARCH(W^.LEFT) ELSE
+    IF ID>W^.KEY THEN SEARCH(W^.RIGHT) ELSE
+    BEGIN NEW(X); X^.LNO:=N; X^.NEXT:=NIL; 
+          W^.LAST^.NEXT:=X; W^.LAST:=X;
+    END;
+END; (* SEARCH *)
+
+PROCEDURE PRINTTREE(W: WORDREF);
+  PROCEDURE PRINTWORD(W: WORD);
+  VAR L: INTEGER;  X: ITEMREF;
+  BEGIN 
+    WRITE(G,' ',W.KEY);
+    X:=W.FIRST; L:=0;
+    REPEAT 
+      IF L=C2 THEN 
+        BEGIN 
+          WRITELN(G);
+          L:=0; WRITE(G,' ':C1+1)
+        END;
+        L:=L+1; WRITE(G,X^.LNO:C3); X:=X^.NEXT;
+    UNTIL X=NIL;
+    WRITELN(G);
+  END; (* PRINTWORD *)
+BEGIN (* PRINTTREE *)
+  IF W<> NIL THEN 
+    BEGIN 
+      PRINTTREE(W^.LEFT);
+      PRINTWORD(W^);
+      PRINTTREE(W^.RIGHT);
+    END;
+END; (* PRINTTREE *)
+
+
+BEGIN (* MAIN *)
+  ROOT:=NIL; N:=0; K1:=C1;
+  WRITE('INPUT FILE? '); 
+  READLN(SOURCE);
+  IF POS('.',SOURCE)=0 THEN SOURCE:=CONCAT(SOURCE,'.TEXT');
+  RESET(F,SOURCE);
+  WRITE('DESTINATION FILE? '); 
+  READLN(DEST);
+  REWRITE(G,DEST);  
+  WHILE NOT EOF(F) DO
+  BEGIN IF N=C4 THEN N:=0;
+    N:=N+1; WRITE(G,N:C3);
+    WRITE(G,': ');
+    WHILE NOT EOLN(F) DO
+    BEGIN (* SCAN NON-EMPTY LINE *)
+      CH:=F^;
+      IF CH IN ['A'..'Z','a'..'z'] THEN 
+        BEGIN 
+          K:=0;
+          REPEAT 
+            IF K<C1 THEN 
+              BEGIN 
+                K:=K+1; 
+                A[K]:=CH; 
+              END;
+            WRITE(G,CH); GET(F); CH:=F^;
+          UNTIL NOT(CH IN ['A'..'Z','a'..'z','0'..'9']);
+          IF K>=K1 THEN K1:=K 
+          ELSE
+            REPEAT 
+              A[K1]:=' '; 
+              K1:=K1-1;
+            UNTIL K1=K;
+          ID:=A;  SEARCH(ROOT);
+        END 
+      ELSE
+        BEGIN
+          CH:=F^; WRITE(G,CH); GET(F);
+        END;
+    END; (* WHILE NOT EOLN *)
+    WRITELN(G); GET(F);
+  END; (* WHILE NOT EOF *)
+  PAGE(G);  PRINTTREE(ROOT);
+  PAGE(G); PAGE(G);
+  CLOSE(G,LOCK);
+  CLOSE(F)
+END.
+

@@ -1,0 +1,73 @@
+PROGRAM RECOVER;
+
+USES (*$U screenunit.code*)SCREENUNIT,
+     (*$U fileunit.code*)FILEUNIT;
+
+{by George Schreyer}
+
+VAR NUM,I,P,J,K,X,Y : INTEGER;
+    NUM_BLOCKS : INTEGER;
+    DISK : FILE;
+    VOLNAME  :STRING;
+    DATA : PACKED ARRAY[0..511] OF CHAR;
+    PR : TEXT;
+
+procedure instructions;
+   begin
+     writeln;
+     writeln('Recover scans all the blocks on the specified volume for');
+     writeln('programs.  It looks for the reserved word ''PROGRAM'' in the');
+     writeln('first 30 bytes of each block and prints the program name and');
+     writeln('number of the start of where the header block should be if it');
+     writeln('finds the reserved word.  As it is, it won''t find units but');
+     writeln('that is easily changed if necessary.');
+     writeln('Use PERUSE or PATCH to examine the data at each potential');
+     writeln('location to find the most recent version');
+   end;
+   
+BEGIN
+   GETCRTINFO;
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   WRITELN('     recover    version 1.0    13-Jun-81');
+   ver_screenunit;
+   ver_fileunit;
+   instructions;
+   REWRITE(PR,'PRINTER:');
+   OPNDSKREAD(DISK,'Volume to scan for programs ? ',VOLNAME,0,16);
+   IF VOLNAME='' THEN EXIT(PROGRAM);
+   PAGE(PR);
+   gotoxy(0,0);
+   crt(eraseos);
+   writeln('searching  ...  ');
+   i:=0;
+   while not eof(disk) do
+      BEGIN
+         K:=BLOCKREAD(DISK,DATA,1,I);
+         P:=SCAN(30,='P',DATA[0]);
+         IF P < 31 THEN
+           IF (DATA[P+1] = 'R') AND
+              (DATA[P+2] = 'O') AND
+              (DATA[P+3] = 'G') AND
+              (DATA[P+4] = 'R') AND
+              (DATA[P+5] = 'A') AND
+              (DATA[P+6] = 'M') THEN
+                 BEGIN
+                    X:=1;
+                    WRITE('Program ');
+                    WRITE(PR,'Program ');
+                    REPEAT
+                       IF DATA[P+6+X] <> ';' THEN 
+                          begin
+                            WRITE(PR,DATA[P+6+X]);
+                            WRITE(DATA[P+6+X]);
+                          end;
+                       X:=X+1;
+                    UNTIL (DATA[P+6+X] = ';') OR (X > 20);
+                    WRITELN(PR,' exists at block ',I-2);
+                    WRITELN(' exists at block ',I-2);
+                 END;
+          i:=i+1;
+       END;
+END.
+         

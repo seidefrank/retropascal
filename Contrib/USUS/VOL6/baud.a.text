@@ -1,0 +1,34 @@
+        .PROC   BAUD,0
+        .PRIVATE OUTC,RETADDR
+        .PUBLIC BAUDRATE
+TPORT   .EQU    0C0H            ;UART CNTRL 
+RPORT   .EQU    TPORT+2         ;RATE GENERATOR TIMER
+CPORT   .EQU    TPORT+3         ;MODEM CONTROL
+
+TODTR3  .EQU    07FH            ;NORMAL OP - DTR ON, <300 BAUD
+TODTR6  .EQU    05FH            ;NORMAL OP - DTR ON, >300 BAUD
+B300    .EQU    52              ;TIMER RATE FOR 300 BAUD
+UART    .EQU    5CH             ;8 BITS, NO PARITY, 2 STOP BITS
+ANSMODE .EQU    2H              ;RI BIT SETS ANS MODE
+ORGMODE .EQU    1H              ;SH BIT SETS ORIG MODE
+
+        POP     HL
+        LD      (RETADDR),HL
+;  TURN OFF SH AND RI BITS, SET UART MODES
+NXT     LD      A,UART
+        OUT     (TPORT),A
+; SET BAUD RATE
+        LD      A,(BAUDRATE)    ; GET RATE
+        OUT     (RPORT),A       ;SET NEW RATE
+; IF RATE IS ABOVE 300 BAUD CHANGE MODEM RATE BIT
+        LD      A,TODTR3        ;FIRST SET IT TO 300 BAUD OR LOWER
+        OUT     (CPORT),A
+        LD      A,(BAUDRATE)    ;GET RATE
+        CP      B300            ;COMPARE TO 300B
+        JP      NC,CONT         ;DON'T CHANGE        
+        LD      A,TODTR6        ;ABOVE 300
+        OUT     (CPORT),A       ; CHANGE RATE BIT
+CONT    LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

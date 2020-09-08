@@ -1,0 +1,689 @@
+PROGRAM CASTLES;                        
+{A WARGAME}
+
+CONST CLEARSCREEN = 89; 
+      CSPREFIX = 27;
+TYPE    GAME = RECORD
+                PLACE   : ARRAY[1..7,1..7] OF CHAR;
+                POP     : ARRAY[1..7,1..7] OF INTEGER;
+                OWN     : ARRAY[1..7,1..7] OF INTEGER;
+                TROOPS  : ARRAY[1..7,1..7] OF INTEGER;
+                NAME    : ARRAY[1..4] OF STRING[12];
+                MONEY   : ARRAY[1..4] OF REAL;
+                ARMY    : ARRAY[1..4] OF INTEGER;
+                SEQ     : ARRAY[1..4] OF INTEGER;
+                TAX     : ARRAY[1..4] OF REAL;
+                TAXBASE : ARRAY[1..4] OF INTEGER;
+                CAS     : ARRAY[1..4] OF INTEGER;
+                PAY     : ARRAY[1..4] OF REAL;
+                NUMP    : INTEGER;
+                TURN    : INTEGER;
+                ROUND   : INTEGER;
+                PTURN   : INTEGER;
+                ROUNDSINTURN    : INTEGER;
+               END; {RECORD - GAME}
+                
+VAR     SEED : REAL;
+        DATA : GAME;
+        GAMEDATA : FILE OF GAME;
+        I,J,K,POSITION : INTEGER; 
+        RESTART : BOOLEAN;
+        VALID : SET OF 11..77;
+        ANS,S,PD : STRING;
+        AN : CHAR;
+        ATLEASTONEPLAYERIN,ALLBUTONEPLAYEROUT : BOOLEAN; 
+        
+        
+                
+FUNCTION RANDOM : REAL;
+BEGIN
+        SEED := SEED * 27.182813 + 31.415917; 
+        SEED := SEED - TRUNC(SEED);                    
+        RANDOM := SEED;    
+END; {RANDOM}
+
+FUNCTION RND(LOW, HIGH : INTEGER):INTEGER;       
+VAR RANGE : INTEGER;           
+BEGIN
+        RANGE := HIGH - LOW + 1;
+        RND := TRUNC(RANDOM * RANGE + LOW);
+END; {RND}
+
+PROCEDURE SEQIT;
+VAR I, J, SWAP : INTEGER;
+BEGIN WITH DATA DO BEGIN
+        FOR I := 1 TO NUMP-1 DO
+        BEGIN
+               J := RND(I,NUMP);
+               SWAP := SEQ[I];
+               SEQ[I] := SEQ[J];
+               SEQ[J] := SWAP;
+        END;
+END; END; {SEQIT}
+
+PROCEDURE SPLIT(VAR ST : STRING);
+BEGIN {SPLIT}
+     IF POSITION < LENGTH(ANS) THEN IF NOT(ANS[POSITION] IN ['0'..'9']) THEN
+     REPEAT 
+        POSITION := POSITION + 1;
+     UNTIL (POSITION = LENGTH(ANS)) OR (ANS[POSITION] IN ['0'..'9']);
+     
+     IF POSITION < LENGTH(ANS) THEN IF ANS[POSITION] IN ['0'..'9'] THEN
+     REPEAT 
+        ST := CONCAT(ST,COPY(ANS,POSITION,1)); 
+        POSITION := POSITION+1;
+     UNTIL (NOT(ANS[POSITION] IN ['0'..'9'])) OR (POSITION = LENGTH(ANS));
+     
+     IF POSITION <= LENGTH(ANS) THEN
+     BEGIN 
+        IF ANS[POSITION] IN ['0'..'9'] THEN ST := CONCAT(ST,COPY(ANS,POSITION,1));                     
+        POSITION := POSITION + 1;    
+     END;
+END; {SPLIT}      
+
+PROCEDURE CONVERT(VAR STR : STRING; VAR INT : INTEGER);   
+VAR     I,L,M : INTEGER;
+BEGIN {CONVERT}      
+   L := 2; {MAXIMUM NUMBER OF DIGITS TO CONVERT - FROM LEFT}
+   L := LENGTH(STR) - L + 1;
+   IF L < 1 THEN L := 1;
+   M := 1;
+   INT := 0;
+   FOR I := LENGTH(STR) DOWNTO L DO   
+   BEGIN
+           INT := INT + (ORD(STR[I])-48) * M;
+           M := M * 10;
+   END;
+END;{CONVERT}
+
+PROCEDURE CLEARTHESCREEN;
+BEGIN
+        GOTOXY(0,0);
+        WRITELN(CHR(CSPREFIX),CHR(CLEARSCREEN)); 
+END; {CLEARTHESCREEN}
+
+PROCEDURE OUTMSG;    
+ BEGIN WITH DATA DO
+ BEGIN 
+  CLEARTHESCREEN;
+  WRITELN('THE GAME IS OVER ...........');
+  FOR I := 1 TO NUMP DO
+   BEGIN
+    IF ARMY[I] > 0 THEN BEGIN
+     WRITELN;
+     WRITELN;
+     WRITELN('WARLORD ',NAME[I],',');
+     WRITELN;
+     WRITELN('THE WAR IS OVER, BUT THE GAME HAS JUST BEGUN........');
+     FOR J := 1 TO 10000 DO BEGIN END;
+     WRITELN;
+     WRITELN; 
+     WRITELN('YOU HAVE CONQUERED THE WHOLE OF THE LAND ... ');
+     WRITELN;
+     FOR J := 1 TO 10000 DO BEGIN END;
+     WRITE('WARLORD'); 
+     IF NUMP > 2 THEN WRITE('S');
+     FOR J := 1 TO NUMP DO  
+      BEGIN
+       IF J<>I THEN 
+        BEGIN
+         WRITE(' ');
+         IF (NUMP>2) AND ((J=NUMP) OR ((J=NUMP-1) AND (I=NUMP))) THEN  
+          WRITE('AND '); 
+         WRITE(NAME[J]);
+         IF NUMP>3 THEN WRITE(',');
+        END;
+       END;
+       IF NUMP > 2 THEN WRITE(' HAVE') ELSE WRITE(' HAS');   
+       WRITELN(' BEEN');
+       WRITELN('SUBJIGATED TO YOUR WILL AND COMMAND .............');  
+       FOR J := 1 TO 10000 DO BEGIN END;
+       WRITELN;
+       WRITELN;
+       WRITELN('IT IS UP TO YOU NOW TO THINK OF A JUST AND LASTING');
+       WRITE('REWARD FOR THE PERSON');
+       IF NUMP>2 THEN WRITE('S');
+       WRITE(' WHO '); 
+       IF NUMP>2 THEN WRITE('HAVE ') ELSE WRITE('HAS ');
+       WRITELN('CAUSED YOU SO MMUCH GRIEF ......');
+       FOR J := 1 TO 10000 DO BEGIN END;
+       WRITELN;
+       WRITELN;
+       WRITELN;
+       WRITELN('I HOPE YOU HAVE FUN.................................');
+       WRITELN;
+       EXIT(CASTLES);    
+ END;
+ END;
+ END; 
+ END;
+  
+  
+PROCEDURE WAIT;      
+BEGIN
+        GOTOXY(39,15);
+        WRITE('PRESS RETURN TO CONTINUE');  
+        GOTOXY(55,13);
+        READ(ANS);
+        RESET(INPUT);
+END;{WAIT}
+        
+PROCEDURE NEWGAME;
+VAR    A,I,J,K,R : INTEGER;
+       X  :  REAL;
+       ANS : STRING[20];
+        
+        PROCEDURE CASTLE(IL, IH, JL, JH, P : INTEGER);
+        BEGIN WITH DATA DO BEGIN
+                I := RND(IL,IH); J := RND(JL,JH);
+                P := SEQ[P];
+                CAS[P] := I*10+J; PLACE[I,J] := 'C';        
+                TROOPS[I,J] := ARMY[P]; OWN[I,J] := P;  
+                POP[I,J] := TRUNC(RANDOM * 3.6 + 6);
+        END; {WITH DATA}                
+        END; {CASTLE PROCEDURE}        
+
+        PROCEDURE RAND;
+        BEGIN I := RND(1,7); J := RND(1,7);
+        END; {RAND}
+        
+BEGIN {NEWGAME} WITH DATA DO BEGIN
+   CLEARTHESCREEN;
+   GOTOXY(20,5);
+   WRITE('Do you want to restart an old game? ');
+   READ(AN); 
+   RESET(INPUT);
+   IF (AN = 'Y') OR (AN = 'y') THEN
+   BEGIN
+      RESET(GAMEDATA,'CASTLES.DATA');
+      GET(GAMEDATA);
+      DATA := GAMEDATA^;
+      CLOSE(GAMEDATA,LOCK);
+      RESTART := TRUE;
+   END
+   ELSE
+   BEGIN    
+        REPEAT GOTOXY(20,7); 
+               WRITE('How many players? ');   
+               READ(AN);   
+               IF EOF THEN RESET(INPUT);
+               A := ORD(AN) - 48;
+               IF NOT (A IN [2..4]) THEN 
+               BEGIN
+                  GOTOXY(0,15);
+                  WRITE('2, 3, or 4 players only please.');
+                  WAIT;
+                  CLEARTHESCREEN;
+               END; 
+        UNTIL A IN [2..4];    
+        NUMP := A;
+        GOTOXY(20,9);
+        WRITE('Enter any character. ');    
+        READ(AN);
+        RESET(INPUT);
+        FOR A := 0 TO ORD(AN) DO X :=  RANDOM;   
+        FOR  I := 1 TO NUMP DO      
+        BEGIN
+            REPEAT
+                GOTOXY(20,9+I*2);
+                WRITE('What is player ',PD[I],'''s name? ');   
+                RESET(INPUT);
+                READLN(ANS);
+                IF EOF THEN RESET(INPUT);                
+            UNTIL ANS <> '';        
+                NAME[I] := ANS;
+                FOR A := 0 TO LENGTH(ANS) DO X := RANDOM;
+                ARMY[I] := RND(7,11); 
+                MONEY[I] := 0;
+        END;
+        FOR I := 1 TO 7 DO FOR J:= 1 TO 7 DO
+        BEGIN
+                POP[I,J] := 0; TROOPS[I,J] := 0;     
+                PLACE[I,J] := '*'; OWN[I,J] := 0;
+        END;
+        SEQIT;
+        CASTLE(1,2,3,5,1); CASTLE(6,7,3,5,2);
+        IF NUMP > 2 THEN CASTLE(3,5,1,2,3);
+        IF NUMP > 3 THEN CASTLE(3,5,6,7,4);
+        POP[4,4] := 9; PLACE[4,4] := 'X';
+        K := 1;  
+        REPEAT  RAND;
+                IF PLACE[I,J] <> '*' THEN K :=1      
+                ELSE BEGIN   K := K+1;
+                        PLACE[I,J] := 'T';
+                        POP[I,J] := TRUNC(RANDOM *3.5 + 4);
+                END; {ELSE}
+        UNTIL K > NUMP;  
+        FOR K := 1 TO 9 DO      
+        BEGIN
+                IF K < 5 THEN
+                BEGIN
+                        REPEAT RAND UNTIL PLACE[I,J] = '*';
+                        PLACE[I,J] := 'L';
+                        REPEAT RAND UNTIL PLACE[I,J] = '*';
+                        PLACE[I,J] := 'S';
+                END; {WHILE K < 5}  
+                REPEAT RAND UNTIL PLACE[I,J] = '*';
+                PLACE[I,J] := 'F';
+       END;
+       FOR I := 1 TO 7 DO FOR J := 1 TO 7 DO  
+       IF PLACE[I,J] = '*' THEN POP[I,J] := RND(1,3);  
+       TURN := 1;
+       RESTART := FALSE;        
+    END;         
+END; {WITH DATA}        
+END; {NEWGAME}
+
+
+PROCEDURE BOARD;
+
+VAR     ROW, COL, I, J : INTEGER;  PLAYER : ARRAY[1..4] OF 'A'..'D';
+
+BEGIN WITH DATA DO BEGIN
+        CLEARTHESCREEN;
+        FOR J := 1 TO 7 DO  
+        BEGIN
+                GOTOXY(J*7,0);
+                WRITE(J);
+        END;
+        FOR I := 1 TO 7 DO
+        BEGIN
+                GOTOXY(0,I*2);
+                WRITE(I);
+        END;
+        FOR I := 1 TO 7 DO FOR J := 1 TO 7 DO
+        BEGIN
+                GOTOXY(J*7-2,I*2);
+                WRITE(PLACE[I,J]);    
+                IF OWN[I,J] <> 0 
+                   THEN WRITE(POP[I,J],PD[OWN[I,J]],TROOPS[I,J])      
+                   ELSE WRITE('    ');
+        END;
+END;{WITH DATA} END; {BOARD}
+
+PROCEDURE PLAY;
+VAR STILLPLAYING,MOVEOK : BOOLEAN;    
+    FROM,TX,NUMBER,PL,FI,FJ,TI,TJ,R,PT,DL,AL : INTEGER;
+    DF : REAL;
+
+        PROCEDURE INTEST;
+        VAR F,T,N :STRING;
+                    
+        BEGIN {INTEST}
+                        REPEAT
+                             GOTOXY(55,14);
+                             READLN(ANS); 
+                             IF EOF THEN RESET(INPUT);
+                        UNTIL ANS <> '';   
+                        POSITION := 1;
+                        F := ''; T := ''; N := '';
+                        SPLIT(F); SPLIT(T); SPLIT(N);
+                        CONVERT(F,FROM);
+                        CONVERT(T,TX);        
+                        CONVERT(N,NUMBER);
+        END;{INTEST}              
+        
+        PROCEDURE MERROR(ERROR : INTEGER);  
+        VAR     E : STRING[40];
+        
+        BEGIN
+           MOVEOK := FALSE;
+           E := 'Unidentified error.                    '; 
+           CASE ERROR OF
+              1: E := 'INVALID FROM POSITION                  '; 
+              2: E := 'INVALID TO POSITION                    '; 
+              3: E := 'You have no army there.                '; 
+              4: E := 'One move at a time please.             '; 
+              5: E := 'You can''t march into a lake!          ';   
+              6: E := 'You don''t have that many troops there!';      
+              7: E := 'You don''t have enough money.?         ';
+              8: E := 'Invalid position.                      ';
+              9: E := 'You don''t own that place.             ';
+             10: E := 'You can''t place troops in the capital.';
+             11: E := 'For no move enter a ''0'' from position. ';
+             12: E := 'NOW you MUST take at least one.        '        
+           END; 
+               GOTOXY(0,15);
+               WRITE(E);
+               WAIT;
+        END; {MERROR}
+
+        PROCEDURE COMBAT;
+                PROCEDURE RESULTS; 
+                BEGIN WITH DATA DO BEGIN    
+                    CLEARTHESCREEN;
+                    WRITE('COMBAT RESULTS BETWEEN WARLORDS ');      
+                    WRITELN(NAME[PL],' AND ',NAME[OWN[TI,TJ]]);          
+                    WRITELN();
+                    WRITE('ATTACKING WARLORD ',NAME[PL]);  
+                    WRITELN(' LOST ',AL,' ARMIES');
+                    WRITELN();
+                    WRITE('DEFENDING WARLORD ');
+                    WRITE(NAME[OWN[TI,TJ]],' LOST ');
+                    WRITELN(DL,' ARMIES ');  
+                END;{WITH DATA} END;{RESULTS} 
+        BEGIN {COMBAT} WITH DATA DO BEGIN     
+            CASE PLACE[TI,TJ] OF
+                '*':    DF := 1;  
+                'C':    DF := 4;
+                'X':    DF := 3;
+                'F':    DF := 1.75;
+                'S':    DF := 2;
+                'T':    DF := 1.5
+            END;
+            DL := 
+            TRUNC((NUMBER * (RANDOM * 0.5 +
+            0.5))/DF);
+            AL :=
+            TRUNC(TROOPS[TI,TJ] * (RANDOM * 0.5 + 
+            0.5) * DF);
+            IF AL > NUMBER THEN AL := NUMBER;
+            IF DL > TROOPS[TI,TJ] THEN DL :=
+            TROOPS[TI,TJ];
+            RESULTS;
+            TROOPS[TI,TJ] := TROOPS[TI,TJ] - DL;
+            ARMY[OWN[TI,TJ]] := ARMY[OWN[TI,TJ]] - DL;        
+            NUMBER := NUMBER - AL;
+            ARMY[PL] := ARMY[PL] - AL;
+            WRITE('ATTACK WAS ');
+            IF TROOPS[TI,TJ] > 0 THEN
+            BEGIN {UNSUCCESSFUL}
+                    WRITELN('UNSUCCESSFUL');    
+                    TROOPS[FI,FJ] := TROOPS[FI,FJ] +    
+                    NUMBER;
+                    IF TROOPS[FI,FJ] > 0 THEN
+                    OWN[FI,FJ] := PL;
+            END {UNSUCCESSFUL}
+            ELSE
+            BEGIN {SUCCESSFUL}
+              WRITELN('SUCCESSFUL');    
+              IF PLACE[TI,TJ] = 'C' THEN
+              BEGIN {TAKE CAS}
+                CAS[OWN[TI,TJ]] := 0;
+                MONEY[PL] :=
+                MONEY[PL] + MONEY[OWN[TI,TJ]];
+                IF CAS[PL] = 0 THEN
+                CAS[PL] := TI * 10 + TJ;  
+              END; {TAKE CAS} 
+              TROOPS[TI,TJ] := NUMBER;
+              OWN[TI,TJ] := PL;
+            END; {SUCCESSFUL}  
+        WAIT;
+        END;{WITH DATA} END;{COMBAT}
+        
+        PROCEDURE MOVE;      
+        BEGIN WITH DATA DO BEGIN 
+            IF (PLACE[TI,TJ] = 'C') AND (OWN[TI,TJ] = 0) THEN
+            CAS[PL] := TX;
+            IF ((PLACE[TI,TJ] = 'F') OR (PLACE[TI,TJ] = 'S')) AND
+            (RANDOM <= 0.7) THEN
+            BEGIN
+                AL := TRUNC(RANDOM * NUMBER +1);
+                NUMBER := NUMBER -AL;
+                ARMY[PL] := ARMY[PL] - AL;
+                IF PLACE[TI,TJ] = 'F'
+                THEN WRITE(AL,' TROOPS LOST IN FOREST       ')        
+                ELSE WRITE(AL,' TROOPS DROWNED IN SWAMP     ');
+                WAIT;
+            END;
+            TROOPS[TI,TJ] := TROOPS[TI,TJ] + NUMBER;
+            IF NUMBER > 0 THEN OWN[TI,TJ] := PL;
+        END;{WITH DATA} END;{MOVE}     
+        
+   PROCEDURE ECONOMIC;    
+   CONST   TAXRATE = 675.0;    
+           PAYRATE = 325.0;
+   VAR     N : STRING;    
+           A, LINE : INTEGER; 
+           
+      PROCEDURE INEW;
+      BEGIN 
+         WRITELN();
+         WRITE('How many? '); 
+         READ(ANS);
+         RESET(INPUT);
+         POSITION := 1;
+         N := '';
+         SPLIT(N);
+         CONVERT(N,A);
+         MOVEOK := TRUE;
+      END;
+      
+      PROCEDURE FIELDTROOPS; 
+         BEGIN WITH DATA DO BEGIN {FT1} 
+            REPEAT
+               GOTOXY(0,7);
+               WRITELN();  
+               GOTOXY(0,7);    
+               WRITE('Do you wish to rase field troops? ');        
+               READ(AN); 
+               RESET(INPUT);
+            UNTIL (AN = 'Y') OR (AN = 'N')
+               OR (AN = 'y') OR (AN = 'n'); 
+            WRITELN();
+            IF (AN = 'Y') OR (AN = 'y') THEN   
+            BEGIN {FT2}
+               REPEAT
+                  INEW; 
+                  MOVEOK := TRUE;
+                  IF (A * 2000.0) > MONEY[I] THEN MERROR(7);
+                  IF A = 0 THEN MERROR(12);
+               UNTIL MOVEOK = TRUE;
+               MONEY[I] := MONEY[I] - A * 2000.0;        
+               ARMY[I] := ARMY[I] + A;
+               PL := I;
+               REPEAT
+                  MOVEOK := TRUE;
+                  BOARD; 
+                  GOTOXY(0,15);
+                  WRITE('Where do you want them? ');
+                  INTEST;
+                  IF NOT(FROM IN VALID) THEN MERROR(8) ELSE
+                  BEGIN
+                     J := FROM DIV 10; K := FROM MOD 10;        
+                     IF OWN[J,K] <> I THEN MERROR(9);
+                     IF PLACE[J,K] = 'X' THEN MERROR(10);
+                     IF MOVEOK THEN
+                     TROOPS[J,K] := TROOPS[J,K] + A;
+                  END;
+               UNTIL MOVEOK = TRUE;        
+               BOARD;
+               WAIT;
+               CLEARTHESCREEN;
+            END; {FT2}  
+         END; {WITH DATA} END; {FT1}
+         
+         PROCEDURE CASTLETROOPS;
+         BEGIN WITH DATA DO BEGIN {CASTLESTROOPS}
+            REPEAT    
+               GOTOXY(0,11);
+               WRITELN();
+               GOTOXY(0,11);    
+               WRITE('Do you wish to raise castle troops? ');    
+               READ(AN); 
+               RESET(INPUT);
+            UNTIL (AN = 'Y') OR (AN = 'y')  
+               OR (AN = 'N') OR (AN = 'n');
+            IF (AN = 'Y') OR (AN = 'y') THEN
+            BEGIN
+               REPEAT 
+                  INEW; 
+                  MOVEOK := TRUE;
+                  IF (A * 2000.0) > MONEY[I] THEN MERROR(7);
+                  IF A = 0 THEN MERROR(12);
+               UNTIL MOVEOK = TRUE;
+               J := CAS[I] DIV 10; K := CAS[I] MOD 10;
+               TROOPS[J,K] := TROOPS[J,K] + A;
+               MONEY[I] := MONEY[I] - A * 2000.0;
+               ARMY[I] := ARMY[I] + A;
+               WRITELN('TROOPS IN CASTLE NOW =        ',TROOPS[J,K]); 
+            END;
+            WAIT;
+         END; {WITH DATA} END; {CASTLETROOPS}  
+           
+   BEGIN WITH DATA DO BEGIN {ECONOMICS}     
+      ATLEASTONEPLAYERIN := FALSE;
+      ALLBUTONEPLAYEROUT := TRUE ;
+      FOR I := 1 TO NUMP DO        
+      BEGIN  
+         TAX[I] := 0;
+         TAXBASE[I] := 0;
+         ARMY[I] := 0;
+      END;     
+      FOR I:= 1 TO 7 DO FOR J := 1 TO 7 DO          
+      BEGIN
+         PL := OWN[I,J];
+         IF PL <> 0 THEN
+         BEGIN
+            TAXBASE[PL] := TAXBASE[PL] + POP[I,J];
+            IF PLACE[I,J] = 'T' THEN TAXBASE[PL] := TAXBASE[PL] + 1;
+            ARMY[PL] := ARMY[PL] + TROOPS[I,J];        
+         END;
+      END;
+      FOR I := 1 TO NUMP DO
+      BEGIN
+         TAX[I] := TAXBASE[I] * (TAXRATE + RANDOM * TAXRATE/4);   
+         PAY[I] := ARMY[I] * (PAYRATE + RANDOM * PAYRATE/4);   
+         IF CAS[I] <> 0 THEN
+         BEGIN
+            MONEY[I] := MONEY[I] - PAY[I];
+            IF MONEY[I] < 0 THEN
+            BEGIN
+               TAX[I] := TAX[I] + MONEY[I];
+               MONEY[I] := 0; 
+            END;
+            CLEARTHESCREEN;
+            WRITELN('WARLORD ',PD[I],' ',NAME[I]);
+            WRITELN('TREASURY BALANCE: ',MONEY[I] : 6 : 2);
+            WRITELN('ARMIES: ',ARMY[I]);        
+            WRITELN('TAXES COLLECTED: ',TAX[I]:6:2);
+            WRITELN('POPULATION: ',TAXBASE[I]);
+            IF ARMY[I] > 0 THEN 
+             BEGIN
+              IF ATLEASTONEPLAYERIN THEN ALLBUTONEPLAYEROUT := FALSE;
+              ATLEASTONEPLAYERIN := TRUE; 
+             END;
+            IF MONEY[I] >= 2000 THEN FIELDTROOPS;
+            MONEY[I] := MONEY[I] + TAX[I];
+            GOTOXY(0,9);
+            WRITE('TREASURY NOW EQUALS ',MONEY[I] : 6 : 2);
+            IF MONEY[I] >= 2000 THEN CASTLETROOPS ELSE WAIT;            
+         END;  
+      END;
+   END;{WITH  DATA} END;{ECONOMIC}
+                   
+   PROCEDURE SAVEGAME;
+   BEGIN
+      CLEARTHESCREEN;
+      GOTOXY(20,8);         
+      WRITE('Do you want to stop now? ');        
+      READ(AN); 
+      RESET(INPUT);
+      IF (AN = 'Y') OR (AN = 'y') THEN STILLPLAYING :=FALSE;
+      GOTOXY(20,10);   
+      WRITE('Do you want to save this game? ');
+      READ(AN);
+      RESET(INPUT);
+      IF (AN = 'Y') OR (AN = 'y') THEN
+      BEGIN 
+         REWRITE(GAMEDATA,'CASTLES.DATA');
+         GAMEDATA^ := DATA;
+         PUT(GAMEDATA);
+         CLOSE(GAMEDATA,LOCK);
+         WRITElN('Game saved.');
+      END;
+   END;{SAVEGAME}
+
+
+BEGIN {PLAY} WITH DATA DO BEGIN
+
+STILLPLAYING := TRUE;
+WHILE STILLPLAYING DO
+BEGIN {TURN}
+   IF RESTART = FALSE THEN        
+   BEGIN {CAMPAIGN}  
+      ROUNDSINTURN := RND(1,4);          
+      IF (TURN < 6) AND (ROUNDSINTURN > 2) THEN
+              ROUNDSINTURN := ROUNDSINTURN - 1;
+      FOR R := 1 TO ROUNDSINTURN DO
+      BEGIN {ROUND}
+         ROUND := R;
+         SEQIT;  
+         FOR PT := 1 TO NUMP DO  
+         BEGIN {PTURN}
+            PTURN := PT;  
+            PL := SEQ[PTURN];
+            IF ARMY[PL] > 0 THEN
+            BEGIN {PLAYER}
+               REPEAT {UNTIL MOVOK} 
+                  BOARD;
+                  GOTOXY(54,4);
+                  WRITE('CAMPAGIN ',TURN);
+                  GOTOXY(55,5);    
+                  WRITE('ROUND ',ROUND);        
+                  GOTOXY(55,6);
+                  WRITE('WARLORD ',PD[PL]);
+                  GOTOXY(55,7);
+                  WRITE(NAME[PL]);
+                  GOTOXY(0,15);
+                  WRITE('  MOVE? (FROM TO NUMBER)');    
+                  INTEST;
+                  MOVEOK := TRUE; 
+                  IF NOT(FROM = 0) THEN
+                  BEGIN {CHECK MOVE1}
+                     IF NOT (FROM IN VALID) THEN MERROR(1);        
+                     IF NOT (TX IN VALID) THEN MERROR(2);
+                     IF MOVEOK THEN
+                     BEGIN {CHECK MOVE2}
+                        FI := FROM DIV 10; FJ := FROM MOD 10;
+                        TI := TX DIV 10 ; TJ:= TX MOD 10;
+                        IF OWN[FI,FJ] <> PL THEN MERROR(3);
+                        IF (ABS(TI-FI) > 1) 
+                        OR (ABS(TJ-FJ) > 1) THEN MERROR(4); 
+                        IF PLACE[TI,TJ] = 'L' THEN MERROR(5);   
+                        IF (NUMBER > TROOPS[FI,FJ]) AND 
+                           (OWN[FI,FJ] = PL) THEN MERROR(6);
+                        IF NUMBER = 0 THEN MERROR(11);
+                     END;{CHECK MOVE2} 
+                  END;{CHECK MOVE1}
+               UNTIL MOVEOK;
+               IF NOT(FROM = 0) THEN
+               BEGIN {DO MOVE}
+                  TROOPS[FI,FJ] := TROOPS[FI,FJ] - NUMBER; 
+                  IF TROOPS[FI,FJ] = 0 THEN OWN[FI,FJ] := 0; 
+                  IF (OWN[TI,TJ] <> PL) AND (OWN[TI,TJ] <> 0)
+                  THEN COMBAT
+                  ELSE MOVE;
+               END; {DO MOVE}
+            END; {PLAYER}
+         END; {PTURN}
+      END; {ROUND}  
+   END; {CAMPAIGN}  
+   BOARD;
+   GOTOXY(0,15);
+   WRITE('END OF CAMPAIGN                        ');
+   WAIT;
+   RESTART := FALSE;
+   SAVEGAME;
+   IF STILLPLAYING THEN  
+   BEGIN
+      ECONOMIC;
+      IF ALLBUTONEPLAYEROUT THEN OUTMSG;
+      TURN := TURN + 1; 
+   END;
+END; {TURN}
+END; {DATA} END; {PLAY}
+
+        
+BEGIN {DUMMY MAIN PROGRAM}    
+WITH DATA DO BEGIN
+SEED := 1.23456789;
+VALID := [11..17,21..27,31..37,41..47,51..57,61..67,71..77];
+RESTART := FALSE;
+PD := 'ABCD';
+FOR I := 1 TO 4 DO SEQ[I] := I;
+NEWGAME;
+PLAY;
+END;{WITH DATA}
+END.
+

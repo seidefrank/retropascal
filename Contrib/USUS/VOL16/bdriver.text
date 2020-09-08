@@ -1,0 +1,208 @@
+ {$S+}
+ PROGRAM btreetest;
+ (*      B-tree creation  and update routines
+                 Marvin White
+                 Kyle Goldman
+                 Michael Adams
+                 Robert Sims
+                 Applications Mathematics Research Staff
+                 U.S. Census Bureau
+                 Washington, D.C.
+                                         *)
+ USES {$U bunit.code} BUNIT;
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE seqsearch(VAR f: btree; VAR entrynbr : bpagesize;
+                     VAR pagenbr : btpointer);
+ 
+ (*      Driver for interactive sequential search of a btree (f) starting at
+         pagenbr,entrynbr. These are modified by seqsearch.*)
+ VAR code : CHAR;
+ 
+ BEGIN
+ 
+ code := 'z';
+ 
+ showit (f,pagenbr, entrynbr);
+ 
+ WHILE NOT (code IN ['Q','q']) DO BEGIN
+    WRITE('F(orward, R(everse, B(eginning, E(nd, Q(uit ?   ');
+    READ (code);
+    WRITELN;
+    CASE code OF
+         'F','f' : IF nextentry(f,pagenbr,entrynbr,pagenbr,entrynbr) THEN 
+                    showit(f,pagenbr,entrynbr)
+                   ELSE WRITELN('Cant"t go forward, already at last entry.');
+         'R','r' : IF preventry(f,pagenbr,entrynbr,pagenbr,entrynbr) THEN
+                     showit(f,pagenbr,entrynbr)
+                    ELSE WRITELN('Can"t go back, already at first entry.');
+         'B','b' : BEGIN firstentry(f,pagenbr,entrynbr); 
+                         showit(f,pagenbr,entrynbr); END;
+         'e','E' : BEGIN lastentry(f,pagenbr,entrynbr);
+                         showit(f,pagenbr,entrynbr); END;
+         'Q','q' : ;
+    END; (*Case*)
+ END;(*While*)
+ END;(*PROCEDURE seqsearch*)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE driver;
+ (*      Interactive driver for  btree testring and debugging*)
+ VAR
+         code: CHAR;
+         name:STRING;
+         f:btree;
+         pages:btpointer;
+         key:bkey;
+         i:INTEGER;
+         entry:btentry;
+         letter: CHAR;    
+ 
+         pagenbr : btpointer;
+         entrynbr : bpagesize;
+ 
+ (*--------------------------------*)
+   PROCEDURE driver1;
+ 
+   BEGIN
+         WRITE(' O)pen,');
+         WRITE(' C)lose,');
+         WRITE(' N)ew,');
+         WRITE(' L)ist,');
+         WRITE(' S)earch,');
+         WRITE(' I)nsert,');
+         WRITE(' D)elete,');
+         WRITE(' Z(earch,');
+         WRITE(' Q)uit ?  ');
+   END; (*PROCEDURE driver1*)
+ 
+ 
+ (*--------------------------------*)
+   PROCEDURE driver2;
+ 
+    procedure delete_it;
+    BEGIN
+      WRITE('Key to delete?');
+      READLN(entry.key);
+      
+      IF bsearch(f,pagenbr,entrynbr,entry.key) THEN
+            bdelete(f,pagenbr,entrynbr)
+      ELSE WRITELN('KEY ',entry.key,'IS NOT IN TREE');
+      
+      END; (*case bdelete*)
+
+   BEGIN
+ 
+         READ(code);
+         WRITELN;
+         CASE code OF
+ 
+                 'o','O' : BEGIN
+ 
+                          WRITE('Name of btree ?     ');
+                          READLN(name);
+                          IF bopen(f,name) THEN BEGIN
+                            pagenbr := broot(f);
+                            entrynbr := 1;
+                            WRITELN('Btree ',name,' has been opened.');
+                          END
+                          
+                          ELSE WRITELN('Can''t open ',name);
+ 
+                          END; (* case bopen *)
+                 'c','C' : BEGIN
+ 
+                          bclose(f);
+                         WRITELN('Btree ',name,' is closed.');
+ 
+                          END; (* case bclose *)
+ 
+                 'n','N' : BEGIN
+ 
+                          WRITE('What is the name of your new tree ?     ');
+                          READLN(name);
+                          WRITE('How many pages maximum ?     ');
+                          READLN(pages);
+                          IF NOT bnew(name,pages) THEN 
+                                WRITELN('Can''t open ',name);
+                          END; (* case bnew *)
+ 
+                 'l','L' : BEGIN
+                          WRITE('Which page ?     ');
+                          READLN(pages);
+                          bread(f,pages);
+                          bdump(f^);
+                          END;(*case bdump*)
+                          
+                 's','S' : BEGIN
+                          WRITE('Key to look for?');
+                          READLN(key);
+                          
+                          IF bsearch(f,pagenbr,entrynbr,key) THEN BEGIN
+                                WRITELN('SUCCESS');
+                                showit(f,pagenbr,entrynbr);  END
+                                
+                          ELSE BEGIN
+                                WRITELN('FAILURE');
+                                bdump(f^); END;
+                                
+                          END; (*case bsearch*)
+                          
+                 'i','I' : BEGIN
+                          WRITE('Key to insert?');
+                          READLN(entry.key);
+                          
+                          WRITE('Data to insert?');
+                          READLN(entry.data);
+                          
+                          IF bsearch(f,pagenbr,entrynbr,entry.key) THEN
+                                WRITELN('KEY IS ALREADY THERE.')
+                                
+                          ELSE 
+                             binsert(f,entry,0,pagenbr,entrynbr);
+                             
+                          END; (*case binsert *)
+                          
+                 'd','D' : delete_it;
+                 'z','Z' : seqsearch(f,entrynbr,pagenbr);
+                 
+             END; (*Cases*)
+
+  END; (*PROCEDURE driver2*)
+  
+(*-----------------------------------*)
+
+BEGIN (*driver*)
+
+i:=1;
+
+code := 'o';
+
+WRITELN(chr(12));  (*clear screen with formfeed*)
+
+WRITELN('Driver program for BTREE development.');
+
+WRITELN;
+
+WHILE NOT (code IN ['q','Q']) DO BEGIN
+
+  driver1;
+  driver2;
+  
+END; (*While*)
+
+END; (*PROCEDURE driver*)
+
+
+(*----------------------------------------------------------------------*)
+
+BEGIN  (*PROGRAM btreetest*)
+
+driver;
+
+WRITELN('End of program btree.');
+
+END. (*PROGRAM btreetest*)
+
+
+

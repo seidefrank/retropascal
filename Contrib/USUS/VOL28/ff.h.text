@@ -1,0 +1,258 @@
+Roll, Copy and Delete Utilities 
+
+
+1.6 ROLL, COPY AND DELETE UTILITIES 
+ 
+1.6.1 How to Use the Roll, Copy and Delete Utilities 
+ 
+     The purpose of the roll utility is to allow the user to change, to some
+degree, the order in which rows and/or columns appear in a form.  The copy
+utility offers the user the capability of setting up duplicate Forms under
+different Form names without having to repeat Form definition.  Using Copy is
+also a way of expanding the limits set on the numbers of rows and columns of a
+Form which are set at Form definition time.  The delete utility will delete a
+Form from the 'directory' file and erase the control and data files associated
+with that Form. 
+ 
+*<Note> To avoid confusion review Standard Keyboard Procedures (1.1.3). 
+ 
+   To envoke the ROLL, COPY or DELETE procedures, select the proper menu
+option number. 
+ 
+        ********************************************************************
+
+             F R E E F O R M   The Electronic Worksheet  [F.4] 
+             ========================================== 
+                                           June 24, 1981
+
+
+             0. 
+             1. 
+             2. 
+             3. 
+             4. 
+             5. 
+             6.  Roll a FORM          <=====  ROLL procedure 
+             7.  Copy a FORM          <=====  COPY procedure 
+             8.  Delete a FORM        <=====  DELETE procedure 
+             9. 
+    
+    
+             Enter desired option # _      Press ESC to leave 
+
+        ********************************************************************
+ 
+    When the program has loaded, the screen will clear and a new title will be 
+displayed. 
+ 
+*<Note> If FREEFORM does not find a 'directory' file on its first try (FREEFORM
+searches on the prefix disk unless another drive was previously specified), it 
+displays an error message stating there is no directory.  If this happens, 
+FREEFORM will ask if you wish to try another disk.  If so, press <return> 
+otherwise type <N>.  If <return> is pressed the program will prompt for the 
+disk drive number to search for a directory file.  After receiving a valid disk
+drive number, the program will instruct the user to insert a disk into that 
+drive and press <return>. 
+ 
+1.6.2 Roll 
+ 
+*<Note> This option best applies to Forms used in trending information. 
+ 
+     As stated at the beginning of this module, the roll allows the user 
+change, to some degree, the order in which rows and columns appear in a Form.
+An easy way of seeing this is by example.  If a Form has the following column
+headings 
+ 
+JAN  FEB  MAR  APR  MAY  JUN  JUL  AUG  SEP  OCT  NOV  DEC 
+ 
+    By using the roll option one may change this to 
+ 
+APR  MAY  JUN  JUL  AUG  SEP  OCT  NOV  DEC  JAN  FEB  MAR 
+ 
+by 'rolling' 3 columns to the left.  Of course, whenever a heading is moved,
+the data associated with that heading is moved as well. 
+ 
+*<Note> Calculation strings are adjusted when they are moved. 
+ 
+    The program will respond to the user's request for a roll with the prompt: 
+ 
+*** Form name (8 alpha max.) __________    Press ESC to leave 
+ 
+If the requested Form is not found on the current diskette, a standard error 
+message will be displayed.  The user may try a different Form name, use the '?'
+option, or elect to return to the main menu.  If the Form is found, the process
+continues. 
+ 
+*** Roll rows or columns? (R/C)  C 
+ 
+To roll rows, type <R>.  If column rolls are desired, press <return> only. 
+ 
+    This prompt appears if the roll column option has been selected. 
+ 
+*** Roll columns left or right? (L/R)  L 
+ 
+The columns will move in the specified direction.  The program will then ask
+how many columns are to be rolled. 
+ 
+   For example, if prior to the roll the headings are: 
+ 
+JAN  FEB  MAR  APR  MAY  JUN  JUL  AUG  SEP  OCT  NOV  DEC 
+ 
+and the response to the above prompts is as follows: 
+ 
+*** Roll rows or columns? (R/C)  C 
+ 
+*** Roll columns left or right? (L/R)  L 
+ 
+*** Roll 03 columns left....(enter number) 
+ 
+    The result will be: 
+ 
+APR  MAY  JUN  JUL  AUG  SEP  OCT  NOV  DEC  JAN  FEB  MAR 
+ 
+     Row rolls are like column rolls, except that the user is asked to specify 
+how many rows are to be rolled and whether they are to be rolled up or down. 
+ 
+     When the roll has been completed, control will be returned to the FREEFORM 
+main menu. 
+ 
+1.6.3 Copy 
+ 
+     The Copy command is very powerful, and if the instructions provided by
+FREEFORM are followed, it is very simple to use.  Forms, pages of Forms,
+portions of Forms, and portions of pages of Forms, may be copied to Forms that
+already exist or used to create new Forms.  Form controls do not have to match
+to do these copies and Forms may be copied onto different disks. 
+ 
+     After the Copy command is given, the prompt: 
+ 
+*** Copy from one disk to another ? (Y/N) N 
+ 
+will be displayed.  Type <Y> if information is going to be transferred from one
+disk to another, otherwise press <return>.  If <Y> was pressed, then the 
+program will prompt to find out which drive the source and destination disks 
+will be placed in. 
+ 
+*<Note> The user should not do any disk swapping until instructed by FREEFORM
+to do so.  When swapping is done, it should be done very carefully so as not to
+confuse the source with the destination disks. 
+ 
+The program will prompt: 
+ 
+*** Copy a Form or just Pages ? (F/P) F 
+ 
+If only the pages from an existing Form are to be copied to another existing
+Form on the same or different disk type <P>, otherwise press <return> to create
+a new Form from an old one. 
+ 
+Then FREEFORM prompts: 
+ 
+*** Copy a Complete page or Portions of a page ? (C/P) C 
+ 
+A subset of one Form may be used to create a new Form or a subset of each page 
+of an existing form may be copied into an existing Form.  To copy portions of 
+pages type <P>, otherwise press <return> and whole page(s) will be copied. 
+ 
+     If information is being copied from one disk to another, the program will
+at this time instruct the user to insert the destination disk into the drive
+that was specified previously. 
+ 
+   FREEFORM now prompts: 
+ 
+*** Destination Form name 
+*** Form name (8 alpha max.) __________    Press ESC to leave 
+ 
+This Form is referred to as the Destination Form.  The name of an existing Form
+must be given if only a single page is being copied.  Note that a question mark
+may be typed and FREEFORM will supply a name of an existing Form on the 
+destination disk.  If a new Form is being created, the question mark option 
+does not work because FREEFORM expects to be given the name of a Form that does
+not exist.  If the Destination Form name already exists on the current 
+diskette, an error message will appear. 
+ 
+     If information is being copied from one disk to another, the program will 
+at this time instruct the user to insert the source disk into the drive that 
+was specified previously. 
+ 
+     Then FREEFORM prompts: 
+ 
+*** Source Form name 
+*** Form name (8 alpha max.) __________    Press ESC to leave 
+ 
+Respond with a valid, existing Form name (the question mark option may be used
+to find the proper Form name).  This Form is referred to as the Source Form. 
+If the requested Form is not found on the current diskette, a standard error
+message will be displayed.  The user may try a different Form name or elect to
+return to the main menu.  If the Form is found, the process continues with the
+prompt: 
+ 
+*** Searching for Source FORM files, one moment please... 
+ 
+      If the contents of one Form are being copied to another Form (the Just 
+Pages option) then Freeform will prompt for starting locations to put the 
+copied pages, rows, and columns.  For example to copy pages one through four of
+the source Form into pages two through five of the destination Form the answer
+to the place to start putting the pages would be two.  Later specify that pages
+one through four are to be copied. 
+ 
+     The sequences of pages, rows, and columns of the source form to copy will 
+be gathered as is done with the List command (1.3.9) during Data Entry. 
+ 
+*** Enter sequences of Pages (XX-XX,YY-YY) to copy below (there are XX) 
+*** _____________________________________ 
+ 
+*** Enter sequences of Rows (XX-XX,YY-YY) to copy below (there are XX) 
+***_____________________________________ 
+ 
+*** Enter sequences of Columns (XX-XX,YY-YY) to copy below (there are XX) 
+***_____________________________________ 
+ 
+For example to copy pages one through four, rows one through ten, row thirteen,
+and row 25, and columns seven through one enter 
+ 
+1-4 
+ 
+in response to the Pages prompt, and 
+ 
+1-10, 13, 25 
+ 
+in response to the Rows prompt, and 
+ 
+7-1 
+ 
+in response to the Columns prompt. 
+ 
+      If a new Form is being created, the program will now copy the Control
+files. 
+ 
+      The Page(s) are copied now by the program, but before doing so, the user
+is prompted: 
+ 
+*** Copy or Empty data fields? (C/E)  _ 
+ 
+     The C response will cause the data in the old Form to be duplicated in the
+new Form.  The E response will initialize all the data in the new Form to null. 
+ 
+     When the Copy has been completed, the user is instructed to return all 
+disks to their original drives, i.e., all disks should be back where they where
+before the Copy command was entered.  Then, the program returns to the FREEFORM
+main menu. 
+
+ 
+1.6.4 Delete 
+ 
+     When the Delete command is entered, the user is prompted for a Form name.
+When an existing Form has been specified the prompt 
+ 
+*** Delete <requested form>? (Y/N)  N 
+ 
+will be displayed on the console screen.  If the Form is not to be deleted,
+simply press <return>.  However, if the Form is to be deleted, respond with a
+<Y>.  At this point, the program will display an update message, the file will 
+be removed from the directory, and the associated control and data files will 
+be erased. 
+ 
+*<Note> Once a form has been deleted, it can not be restored. 
+ 
+
+

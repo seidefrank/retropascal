@@ -1,0 +1,218 @@
+{Mail - Main program}
+{
+22-Feb-82 AT
+}
+{     
+*** * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ***
+** * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **
+**                                                                         **
+** program    : MAIL - Text processing mailing label data manager.         **
+**                                                                         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+**                                                                         **
+** description: This program maintains a data file of name-address         **
+**              information. By combining this data with a word-           **
+**              processor form letters may be produced.                    **
+**                                                                         **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+**                                                                         **
+** * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **
+*** * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ***
+}
+ 
+(*$S+*) (* V- needed for Apple also*)                                  
+PROGRAM Mail;           
+
+ USES {$U ScreenOps.Code} SCREENOPS;
+ 
+ CONST Spaces30='                              ';
+ 
+ TYPE labelrec = RECORD    
+                  code    :STRING[6]; 
+                  lname   :STRING[15];   
+                  fname   :STRING[10];
+                  minit   :STRING[2];
+                  prefx   :STRING[5];
+                  suffx   :STRING[6];
+                  title   :STRING[15];
+                  coname  :STRING[30];
+                  phone   :STRING[15];   
+                  address :STRING[30];    
+                  city    :STRING[15];
+                  state   :STRING[2];
+                  country :STRING[15];
+                  zip     :STRING[8];  
+                  misc    :STRING[90];
+                  flags   :ARRAY[1..48] OF BOOLEAN; 
+                 END;   
+       linkedrec = RECORD
+                    recpart : labelrec;
+                    lpart   : ^linkedrec;
+                   END;
+       linkrec2 = RECORD
+                   intpart : INTEGER;
+                   lpart2  : ^linkrec2;
+                  END;
+       bstring = STRING[255]; 
+       justification = (left,center,right);
+ 
+ VAR odisk    : TEXT;     
+     infile   : TEXT; 
+     disk     : FILE OF labelrec;     
+     heaptr   : ^INTEGER;
+     ptr,first    : ^linkedrec; {lists of backup records kept on heap}
+     first2,ptr2  : ^linkrec2;
+     format   : FILE OF 
+      RECORD    
+       spacing                                : 1..3;        
+       infilename,ofilename                   : STRING[30];    
+       llmgin,lrmgin,
+       lspage,lpwid,lvtab, 
+       lpin,lchar,lpsiz,
+       mwide,mvtab,mmgin                      : INTEGER;
+       rolodex,poption,foption,loption,option : BOOLEAN;   
+       meanings                               : ARRAY[1..48] OF STRING[30];   
+       fflags                                 : ARRAY[1..48] OF BOOLEAN;
+       ffeed                                  : boolean;
+       LDirCh                                 : char;
+       joption                                : boolean;
+      END;    
+     mailarry : ARRAY[1..4] OF labelrec;     
+     wfield   : (p,f,n,l,u,c,t,h,a,i,s,y,z,m);
+     outmode  : (reg,ad); {regular display or display during add operation}
+     stdflg   : ARRAY[1..5] OF INTEGER;  
+     tmpstr   : STRING[100];
+     wildcard : STRING[90];  
+     ffilename,filename    : STRING;    
+     tname,field           : STRING[30];
+     tlname                : STRING[15];
+     
+     command:CHAR;
+     temp,temp1,temp2,columat,increment,
+     orignrecs,ladd,column,numrecs,recnumber  : INTEGER;      
+     firstflg,pflg,eflg,cnflg,otrecflg,orecflg: BOOLEAN;      
+     
+  
+FUNCTION Val(s : STRING):INTEGER;                   FORWARD;
+FUNCTION Chkfiles(s : STRING):BOOLEAN;              FORWARD; 
+FUNCTION Wildok : BOOLEAN;                          FORWARD;      
+FUNCTION Chkflgs : BOOLEAN;                         FORWARD;   
+PROCEDURE Uppercase(VAR s : STRING);                FORWARD; 
+PROCEDURE Rdata(a,x,y,l : INTEGER; VAR s :bstring); FORWARD;     
+PROCEDURE Getint(x,y : INTEGER; VAR t1 : INTEGER);  FORWARD; 
+PROCEDURE Wild1(wch:char);                          FORWARD; 
+PROCEDURE Wild2;                                    FORWARD; 
+PROCEDURE Str(i : INTEGER; VAR s:STRING);           FORWARD;
+Procedure Reporterr(st1,st2:string;res:integer);    FORWARD;
+Procedure MakeFile(s:string);                       forward;
+Procedure Gtstdflgs;                                forward;
+Procedure WNew0Rec;                                 forward;
+Procedure Step;                                     forward;
+Procedure Krunch;                                   forward;
+Procedure Outrec;                                   forward;
+
+(*$I  MAIL1.TEXT   *) {Init - holds version and date}
+(*$I  MAIL2a.TEXT  *) {2a and 2b are the LETTER segment}
+(*$I  MAIL2b.TEXT  *)
+(*$I  MAIL3.TEXT   *) {1 thru 6  contain segments}
+(*$I  MAIL4.TEXT   *)
+(*$I  MAIL5.TEXT   *)
+(*$I  MAIL6.TEXT   *) {on version II.0 remove segments}
+(*$I  MAIL7.TEXT   *) {first non segment procedures}
+
+(*$I  MAIL8.TEXT   *)
+(*$I  MAIL9.TEXT   *)
+
+PROCEDURE Str;
+ VAR startedstring : BOOLEAN;  
+     factor        : INTEGER;
+     numstr        : STRING[9];
+ BEGIN 
+  s := '';
+  IF i < 0 THEN
+   BEGIN
+    s := '-';
+    i := - i;
+   END;
+  numstr := '123456789';
+  startedstring := FALSE; 
+  factor := 10000;
+  WHILE factor<>0 DO    
+   BEGIN
+    IF i >= factor THEN   
+     BEGIN
+      s := CONCAT(s,COPY(numstr,i DIV factor,1));       
+      i := i - (i DIV factor)*factor;                 
+      startedstring := TRUE;
+     END
+    ELSE IF startedstring THEN s := CONCAT(s,'0');
+    factor := factor DIV 10;
+   END;  
+  IF LENGTH(s) = 0 THEN s := '0';
+ END;  
+
+BEGIN (* Mail *);                 
+ Firstflg := TRUE; {for Init}
+ Init;  {will leave recordnumber=0}
+ command := '$'; {initial dummy value}
+ REPEAT            
+  pflg := TRUE; 
+   REPEAT
+    IF (numrecs <> 0) AND (NOT(command IN ['?',',','.','<','>','+','-'])) THEN
+     BEGIN
+      if recnumber < 1 then recnumber := 1;
+      IF recnumber > numrecs THEN recnumber := numrecs;
+      recnumber:=recnumber-increment;
+      {set up so that step will move to next genuine record or current record}
+      Step; {if recnumber=1 will find first genuine record}
+      outmode := reg; 
+      Outrec;       
+     END;
+    SC_Clr_Line(0);
+    IF increment=1 THEN WRITE('>');      
+    IF increment=-1 THEN WRITE('<');                             
+    IF pflg  
+     THEN WRITE('Mail: A)dd, C)hange, D)elete, F)ind, 1)st, '' '')step, O)ptions, Q)uit ? ')   
+     ELSE WRITE('Mail: L)etter, M)labels, S)ort, I)nit, K)runch, R)estore, Z)ero ? ');
+    REPEAT
+      READ(KEYBOARD,command);         
+      if (command>='a') AND (command<='z') THEN command:=chr(ord(command)-32);
+    UNTIL command in ['A','C','D','F','1',' ','M','Q','I','K','L',
+                      'S','R','O','Z','?',',','.','<','>','+','-'];
+    write(command);
+    IF command = '?' THEN pflg := NOT pflg;
+    IF (numrecs=0) THEN
+     BEGIN
+      IF command='A' THEN Add;
+      IF command='O' THEN Options;
+     END
+    ELSE
+     CASE command OF    
+      'A' : Add;
+      'C' : Change;
+      'D' : Delte;
+      'F' : Find;
+      'I' : Initialize;
+      'K' : Krunch;
+      'L' : Letter;
+      'O' : Options;
+      'M' : Mlabels;
+      'R' : Restore;
+      ' ' : Step;
+      'S' : Sortit;
+      'Z' : Zero;
+      '1' : recnumber:=0;
+  '-','<',',' : increment := -1;
+  '+','>','.' : increment := 1;
+      END;
+   UNTIL command='Q';
+  UNTIL Quit;
+ END. (* Mail *)  
+
+
+

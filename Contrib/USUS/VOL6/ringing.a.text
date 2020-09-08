@@ -1,0 +1,18 @@
+        .FUNC   RINGING,0
+        .PRIVATE RETADDR
+STAT    .EQU    0C2H
+RING    .EQU    2H
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;CORRECT STACK
+        POP     HL
+        LD      HL,0            ;FALSE
+        IN      A,(STAT)        ;READ STATUS
+        AND     RING            ;CHECK FOR RINGING
+        JP      NZ,DONE          
+        LD      HL,1            ;TRUE 
+DONE    PUSH    HL
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

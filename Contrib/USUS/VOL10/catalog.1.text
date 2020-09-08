@@ -1,0 +1,441 @@
+(* included from catalog *)
+
+procedure SORT;  {sorts the directory file in alphebetical order}
+var   I:RECNUM;
+      BUF:CATALOG_RECORD;       {holds record during exchange}
+FLAG:boolean;             {FALSE if an exchange made during pass}
+begin
+  writeln('sorting ',DREC,' records   ');
+  repeat
+    FLAG:=true;
+    for I:=DREC downto 2 do
+      if (DCAT[I].FILE_NAME<DCAT[I-1].FILE_NAME) then begin
+        {exchange routine}
+        BUF:=DCAT[I];
+        DCAT[I]:=DCAT[I-1];
+        DCAT[I-1]:=BUF;
+        FLAG:=false;
+      end;{if}
+    write('.');
+  until FLAG;
+  writeln;
+  writeln('sorting complete  ');
+end;{SORT}
+
+procedure GETDIR;  {reads directory of update volume and puts it in DCAT}
+var   DIRX:DIRECTORY;
+      UNITNUM,I:integer;
+      CHBUF:char;
+      VOL:VOL_ID;
+      SPS:string[16];
+      BLOCKS_USED:0..{988}maxint; {allow for big disk - gws }
+begin
+  BLOCKS_USED:=10;  {assumes duplicate directories}
+  DREC:=0;
+  CLEARSCREEN;
+  {MEM('GETDIR');}
+  repeat 
+    write('Enter unit number for required directory:   ');
+    readln(UNITNUM);
+    writeln
+  until UNITNUM in [4..5, 9..12];
+  unitread(UNITNUM,DIRX[0],2048,2);
+  if IORESULT<>0 then begin
+    writeln('Unit not on line  ');
+    LEAVE:=true;
+    exit(UPDATE);
+  end;{if IORESULT<>0}
+  VOL:=DIRX[0].DIR_VOL_NAME;
+  SPS:=copy(BLANKS,1,7-length(VOL));  {put VOL in consistent format}
+  VOL:=concat(VOL,SPS);
+  for I:=1 to DIRX[0].NUM_OF_FILES do begin
+    with DIRX[I] do begin
+      if length(DIR_FILE_NAME)>0 then begin
+        DREC:=DREC+1;
+        with DCAT[DREC] do begin
+          VOL_NAME:=VOL;
+          FILE_NAME:=DIR_FILE_NAME;
+          SPS:=copy(BLANKS,1,15-length(FILE_NAME));
+          FILE_NAME:=concat(FILE_NAME,SPS);
+          FILE_KIND:=DIR_FILE_KIND;
+          FILE_DATE:=DIR_FILE_DATE;
+          FILE_SIZE:=LAST_BLOCK-FIRST_BLOCK;
+          BLOCKS_USED:=BLOCKS_USED+FILE_SIZE;
+        end {with DCAT[DREC]}
+      end {IF length}
+    end {with DIRX[I]}
+  end;{for I}
+  {next we create entry with name FREE.SPACE containing the unused space 
+   on the volume}
+  DREC:=DREC+1;
+  with DCAT[DREC] do begin
+    VOL_NAME:=VOL;
+    FILE_NAME:='FREE.SPACE';
+    SPS:=copy(BLANKS,1,15-length(FILE_NAME)); 
+    FILE_NAME:=concat(FILE_NAME,SPS);
+    FILE_KIND:=INFO;
+    FILE_DATE:=DIRX[0].LAST_BOOT; 
+    FILE_SIZE:=DIRX[0].TOTAL_BLOCKS-BLOCKS_USED;
+  end {with DCAT[DREC]}
+end;{GETDIR}
+
+procedure SETDEX;
+{if first occurance of file name with DEX as first letter then
+ put record number in DEXRAY and increment DEX}
+begin
+  if (NCAT[NREC].FILE_NAME[1]>=DEX)
+  {have we reached or exceeded the next index?}
+  then begin 
+    if (NCAT[NREC].FILE_NAME[1]>DEX) then 
+    {fill DEXRAY to the next valid index}
+      repeat
+        DEXRAY[DEX]:=0;
+        if DEX='Z' then exit(SETDEX);
+        DEX:=succ(DEX); 
+      until (NCAT[NREC].FILE_NAME[1]=DEX);
+      DEXRAY[DEX]:=NTOTREC+NREC;
+      if DEX='Z' then exit(SETDEX);
+      DEX:=succ(DEX);
+  end {if NCAT[NREC].FILE_NAME>=DEX}
+end;{SETDEX}
+
+procedure MERGE;  {merges DCAT with OCAT to form NCAT}
+var   X,Y,Z:1..33;
+      CONTINUE:boolean;
+      OO,O,D:RECNUM;
+begin
+  DEX:='A';  {set first match char for index at 'A'} 
+  O:=OREC; 
+  OREC:=1;
+  D:=1;
+  {REMOV is true if folume is to be deleted}
+  if (NOT REMOV) then VOL:=DCAT[1].VOL_NAME;
+  {DREC+1 is 1 more than the number of files in DCAT}
+  while (D<DREC+1) do begin
+    with DCAT[D] do begin
+      if (FILE_NAME<OCAT[OREC].FILE_NAME) then X:=10
+      else if (FILE_NAME=OCAT[OREC].FILE_NAME) then X:=20
+           else X:=30;
+      if (VOL_NAME<OCAT[OREC].VOL_NAME) then Y:=1
+      else if (VOL_NAME=OCAT[OREC].VOL_NAME) then Y:=2
+           else Y:=3;
+      Z:=X+Y;
+      if ((OREC=0) or (OREC>O)) then Z:=11;
+      
+      case Z of 
+      
+        11,12,13,21:begin  {add record to NCAT from DCAT} 
+                      NREC:=NREC+1;
+                      NCAT[NREC]:=DCAT[D];
+                      D:=D+1;  {increment D}
+                      write('add ',NCAT[NREC].FILE_NAME:18);
+                      writeln(NCAT[NREC].VOL_NAME:10)
+                    end;
+        
+        22         :begin  {add record to NCAT from DCAT}
+                      NREC:=NREC+1;
+                      NCAT[NREC]:=DCAT[D];
+                      OREC:=OREC+1;  {increment OREC}
+                      D:=D+1;  {increment D}
+                    end;
+                    
+        23,31,33   :begin  {add record to NCAT from OCAT}
+                      NREC:=NREC+1;
+                      NCAT[NREC]:=OCAT[OREC];
+                      OREC:=OREC+1;  {increment OREC}
+                    end;
+                    
+        32         :begin  {DO NOT add record to NCAT}
+                      write('DELETE ',OCAT[OREC].FILE_NAME:18);
+                      writeln(OCAT[OREC].VOL_NAME:10);
+                      OREC:=OREC+1;  {increment OREC}
+                    end;
+      end;{case Z}
+      SETDEX;   {check pointer index}
+    end;{with ?}
+    if NREC=NLREC then WRITECAT;  {NLREC is the max array size}
+    if ((OREC>OLREC) and (not OFILEEND)) then begin
+    {if you are out of OCAT then get some more}
+      READ_OLD_CAT;
+      O:=OREC;
+      OREC:=1;
+    end;{if ((OREC>OLREC) and (not OFILEEND))}
+  end;{while}    {DCAT is empty}
+  repeat  {gets whats left of OCAT}
+    CONTINUE:=false;
+    if OREC<=O then for OO:=OREC to O do
+      if OCAT[OO].VOL_NAME<>VOL then begin
+        NREC:=NREC+1;
+        NCAT[NREC]:=OCAT[OO];
+        if NREC=NLREC then WRITECAT;
+        SETDEX;
+      end {if OCAT[OO].VOL_NAME<>VOL} 
+      else begin
+        write('DELETE ',OCAT[OO].FILE_NAME:18);
+        writeln(OCAT[OO].VOL_NAME:10)
+      end;{else begin}
+    if not OFILEEND then begin {if you are out of OCAT get some more} 
+      READ_OLD_CAT;
+      O:=OREC;
+      OREC:=1;
+      CONTINUE:=true;
+    end;{if not OFILEEND}
+  until not CONTINUE;
+  {writeln('DEX=',DEX);
+  writeln('CH=',CH);}
+  if DEX<'Z' then for CH:=DEX to 'Z' do begin 
+                    {writeln('DEX=',DEX); 
+                    writeln('CH=',CH);}
+                    DEXRAY[CH]:=DEXRAY[PRED(DEX)];
+                  end;{for CH}
+  DONE:=true; 
+  WRITECAT;
+  WRITEDEX;
+end;{MERGE}
+
+begin  {update}
+  rewrite(P,'CONSOLE:');
+  CLEARSCREEN;
+  write('Searching for old CATALOG...'); 
+  if LOOKUP(OFILENAME) then begin 
+    writeln;
+    reset(OCATFILE,OFILENAME); 
+    close(OCATFILE,purge);
+  end;{if} 
+  RENAME;
+  if not REMOV then begin
+    GETDIR;
+    SORT;
+    CLEARSCREEN;
+    for RN:=1 to DREC do begin 
+      PRINT_RECORD(DCAT[RN]);
+      if (RN mod 20=0) then begin
+        CLEARSCREEN
+      end {if} 
+    end {for RN}
+  end;{if}
+  writeln;
+  write('Searching for old CATALOG...');
+  if LOOKUP(OFILENAME) then begin 
+    writeln;
+    reset(OCATFILE,OFILENAME); 
+    READ_OLD_CAT;
+  end {if}
+  else OREC:=0;
+  rewrite(NCATFILE,NFILENAME);
+  NREC:=0;
+  MERGE;
+  close(OCATFILE);
+  close(P);
+  writeln;
+  writeln;
+  writeln('BACKCAT contains ',OTOTREC,' records');
+  writeln('MASTCAT contains ',NTOTREC,' records');
+  writeln;
+  writeln;
+  close(NCATFILE,lock);
+  SPACEBAR;
+end;{UPDATE}
+
+procedure SEARCH;
+var   HARDCOPY,STOP,FOUND:boolean; 
+      TAR1,TAR2:char;
+      I,START:integer; 
+      WILDCARD:0..16;
+      CAT:CATALOG_RECORD;
+      TARGET,SPS:string;
+      
+procedure LONGSEARCH;  {used when alphebetical pointers can't be used}
+var   N:RECNUM;
+begin
+  delete(TARGET,1,1);
+  writeln(TARGET);
+  repeat
+    READ_NEW_CAT;
+    for N:=1 to NREC do if pos(TARGET,NCAT[N].FILE_NAME)<>0 then 
+                          PRINT_RECORD(NCAT[N]);
+  until NFILEEND;
+  close(NCATFILE);
+  SPACEBAR;
+  close(P);
+  exit(SEARCH)
+end;{LONGSEARCH}
+
+procedure SEARCH_FOR_VOLUME;
+var   BLKS,SPS:string[7];
+      N:RECNUM; 
+begin
+  BLKS:='       ';
+  delete(TARGET,pos(':',TARGET),1);
+  SPS:=copy(BLKS,1,7-length(TARGET));
+  TARGET:=concat(TARGET,SPS);
+  writeln(TARGET);
+  repeat
+    READ_NEW_CAT;
+    for N:=1 to NREC do
+      if (NCAT[N].VOL_NAME=TARGET) then PRINT_RECORD(NCAT[N]);
+  until NFILEEND;
+  close(NCATFILE);
+  SPACEBAR;
+  close(P);
+  exit(SEARCH)
+end;{SEARCH_FOR_VOLUME}
+
+begin  {SEARCH}
+  HARDCOPY:=false;
+  STOP:=false; 
+  FOUND:=false;
+  repeat
+    write('Enter name of file to be found:  ');
+    readln(TARGET);
+    if (length(TARGET)>16) then writeln('NAME TOO LONG...'); 
+  until (length(TARGET)<=16); 
+  make_upper ( target );
+  gotoxy(0,12);
+  write(chr(8),chr(27),chr(108));
+  write('Select desired option...',chr(27),chr(109));
+  writeln;
+  writeln;
+  writeln('1--> output to CRT');
+  writeln;
+  write('2--> output to PRINTER  ');
+  CH:=READKEY(['1','2']);
+  CLEARSCREEN; 
+  if CH='1' then rewrite(P,'CONSOLE:')
+  else begin
+      rewrite(P,'printer:');
+      CLEARSCREEN;
+      PRINTAT(0,12,'Sending search results to PRINTER...  ');
+      for I:=1 to 5 do writeln(P);
+      HARDCOPY:=true;
+  end;{else}
+  reset(NCATFILE,NFILENAME);
+  if pos(':',TARGET)<>0 then SEARCH_FOR_VOLUME; 
+  WILDCARD:=pos('=',TARGET);
+  if WILDCARD=1 then LONGSEARCH;
+  if WILDCARD>1 then TARGET:=copy(TARGET,1,WILDCARD-1);
+  TAR1:=TARGET[1];      {TAR1 used to get pointer from DEXRAY}
+     {TAR2 used to end search} 
+  if (length(TARGET)>1) and (WILDCARD <> 2) then TAR2:=TARGET[2] 
+  else TAR2:='z';
+  if TAR2<'A' then START:=0
+  else if TAR1>'Z' then START:=DEXRAY['Z']
+       else START:=DEXRAY[TAR1];
+  seek(NCATFILE,START);
+  get(NCATFILE);
+  repeat
+    CAT:=NCATFILE^;
+    if ((WILDCARD=0) and (pos(TARGET,CAT.FILE_NAME)=1)) then begin 
+      PRINT_RECORD(CAT);
+      FOUND:=true;
+    end;{if}
+    if ((WILDCARD>1) and (pos(TARGET,CAT.FILE_NAME)>=1)) then begin 
+      PRINT_RECORD(CAT);
+      FOUND:=true;
+    end;{if}
+if ((CAT.FILE_NAME[1]>TAR1) or (CAT.FILE_NAME[2]>TAR2)) then STOP:=true;
+    get(NCATFILE);
+  until (STOP or eof(NCATFILE));
+  if not FOUND then writeln('File ',TARGET,' not found...  ');
+  close(NCATFILE); 
+  close(P);
+  if not HARDCOPY then SPACEBAR; 
+end;{SEARCH}
+
+procedure CLEARSCREEN;  {for Heath H19}
+begin
+  gotoxy ( 0, 0 );
+  write(chr(27),chr(69));
+end;
+
+function READKEY;
+var CH:CHAR; 
+    GOOD:BOOLEAN;
+begin
+  repeat
+    read(KEYBOARD,CH); 
+    if eoln(KEYBOARD) then CH:=chr(13);
+    GOOD:=CH in OKSET;
+    if not GOOD then write(chr(7))
+      else if CH in [' '..'}'] then write(CH); 
+  until GOOD;
+  READKEY:=CH;
+end;{READKEY}
+
+procedure PRINTAT;
+begin
+  gotoxy(X,Y);
+  write(S);
+end;{PRINTAT}
+
+function YES; 
+begin
+  YES:=READKEY(['Y','y','N','n']) in ['Y','y'];
+end;{YES}
+
+procedure SPACEBAR;  { a technique to hold data/display on CRT }
+var CH:CHAR;
+begin
+  gotoxy(22,23); 
+  write('Hit "SPACE-BAR" to continue   <---');
+  CH:=READKEY([' ']);
+end;{SPACEBAR}
+
+procedure QUIT;  {exit program}
+begin
+  CLEARSCREEN;
+  exit(program);
+end;{QUIT}
+
+function LOOKUP;  {returns TRUE if filename present -- FALSE if not} 
+var   IOR:0..15;
+begin
+  {$I-}
+  reset(CATFILE,FN);
+  IOR:=IORESULT;
+  CLOSE(CATFILE);
+  {$I+}
+  if IOR=0 then LOOKUP:=true
+  else begin
+    LOOKUP:=false;
+    if IOR<>10 then writeln('IORESULT for ',FN,' is ',IOR) 
+  end {else begin} 
+end;{LOOKUP}
+
+procedure MEM;
+begin 
+  writeln('MEMORY AVAILABLE AT PROCEDURE ',PN,' = ',MEMAVAIL);
+end;{MEM}
+
+procedure READDEX; 
+{*********************************************************************** 
+*                                                                       *
+*  This procedure reads the file of pointers to the first occurrence    *
+*  of each letter in the alphabet.                                      * 
+*                                                                       * 
+************************************************************************}
+var   DEXFILE:file of INDEXARRAY;
+begin
+  reset(DEXFILE,PFILENAME);
+  DEXRAY:=DEXFILE^;
+  get(DEXFILE);
+  close(DEXFILE)
+end;{READDEX} 
+
+procedure ENTER_VOL_NAME;
+var   SPS:VOL_ID;
+begin
+  VOL:='       ';
+  repeat
+    CLEARSCREEN;
+    PRINTAT(0,12,'Enter name of volume to be removed -->  ');
+    readln(VOL);
+  until (length(VOL)<=8);
+  make_upper ( vol );
+  if (pos(':',VOL)<>0) then delete(VOL,pos(':',VOL),1);
+  SPS:=copy(BLANKS,1,7-length(VOL));
+  VOL:=concat(VOL,SPS);
+  writeln(VOL,':');
+  DREC:=0
+end;{ENTER_VOL_NAME}
+

@@ -1,0 +1,544 @@
+(*$S++*)
+(*$R-*)
+
+(* ERCC UCSD p-System II.0-IV.0 SORT/MERGE Package Version 1.3 23-Aug-82 *)
+
+(* Please forward any comments, suggestions, bugs etc. to the author:
+
+      Morton Ogilvie,
+      Training Unit Manager,
+      Edinburgh Regional Computing Centre,
+      59 George Square,
+      Edinburgh EH14 5AW,
+      Scotland                                                      *)
+
+
+PROGRAM SORTMERGE(INPUT,OUTPUT,F0,F1,F2,F3,F4,F5,F6,F7,F8);
+
+(* SORT, MERGE and CHECK for TEXT or DATA FILES *)
+
+USES (*$U COMMANDIO.CODE*) COMMANDIO, (*$U SORT.SPEC.CODE*) SORTSPEC;
+
+     (* Remove the references to COMMANDIO above for Version II or
+        if Filer entry not required under Version IV.
+
+        SORTSPEC is Unit supplied by user to define file and record
+        structures and sorting keys, etc. *)
+
+TYPE DATAARRAY=ARRAY[1..RUNLENGTH] OF SORTTYPE;
+     INCHAN=0..5;
+     OUTCHAN=6..8;
+     FILETYPE=(TXT,INT,OUT);
+
+VAR  F0,F1:TEXT;
+     F2,F3:FILE OF INPUTTYPE;
+     F4,F5,F6:FILE OF SORTTYPE;
+     F7:FILE OF OUTPUTTYPE;
+     F8:TEXT;
+     SORTIN,SORTOUT,SINKFILE,TEMP1,TEMP2,TEMP:STRING[30];
+     REC1,REC2:SORTTYPE;
+     BLOCK:DATAARRAY;
+     RECSLEFT:ARRAY[4..5] OF INTEGER;
+     MAXL,NODOTS,NORECS,NOOUT,BLOCKSIZE,SBLOCKS,MBLOCKS,MPASS:INTEGER;
+     SOURCE,PSOURCE,SSOURCE:INCHAN;
+     SINK:OUTCHAN;
+     QUIT,TEXTIN,TEXTOUT,EXISTP,EXISTS,OK,GOTONE,GOTOTHER:BOOLEAN;
+     BUFFER:RECORD
+               CASE TIO:FILETYPE OF
+                  TXT: (LINE: STRING[255]);
+                  INT: (RECI: INPUTTYPE);
+                  OUT: (RECO:OUTPUTTYPE)
+            END;
+     COMMAND,CH:CHAR;
+
+PROCEDURE MONITOR(CH: CHAR);
+   BEGIN
+      IF NODOTS=0 THEN WRITELN;
+      IF CH<>'.' THEN WRITE(CHR(7));
+      WRITE(CH);
+      NODOTS:=NODOTS+1;
+      IF NODOTS=80 THEN NODOTS:=0
+   END;
+
+PROCEDURE CONNECT(CHAN: INTEGER; FILENAME: STRING; VAR EXISTS: BOOLEAN);
+   VAR MODE: STRING[4];
+   BEGIN
+      IF CHAN IN [0..5] THEN MODE:='find' ELSE MODE:='make';
+      IF FILENAME='' THEN EXISTS:=FALSE ELSE BEGIN
+         (*$I-*)
+         CASE CHAN OF
+         0: RESET(F0,FILENAME);
+         1: RESET(F1,FILENAME);
+         2: RESET(F2,FILENAME);
+         3: RESET(F3,FILENAME);
+         4: RESET(F4,FILENAME);
+         5: RESET(F5,FILENAME);
+         6: REWRITE(F6,FILENAME);
+         7: REWRITE(F7,FILENAME);
+         8: REWRITE(F8,FILENAME)
+         END;
+         EXISTS:=IORESULT=0;
+         (*$I+*)
+      END;
+      IF EXISTS THEN
+         IF (CHAN>5) THEN SINKFILE:=FILENAME ELSE
+      ELSE WRITELN('Sorry, cannot ',MODE,' your file ',FILENAME)
+   END;
+
+PROCEDURE DISCONNECT(CHAN: OUTCHAN; VAR OK: BOOLEAN);
+   BEGIN
+      (*$I-*)
+      CASE CHAN OF
+      6: CLOSE(F6,LOCK);
+      7: CLOSE(F7,LOCK);
+      8: CLOSE(F8,LOCK);
+      END;
+      OK:=IORESULT=0;
+      (*$I+*)
+      IF NOT OK THEN WRITELN('Sorry, cannot close file ',SINKFILE);
+   END;
+
+FUNCTION ENDOF(SOURCE:INCHAN): BOOLEAN;
+   BEGIN
+      CASE SOURCE OF
+         0: ENDOF:=EOF(F0);
+         1: ENDOF:=EOF(F1);
+         2: ENDOF:=EOF(F2);
+         3: ENDOF:=EOF(F3);
+         4: ENDOF:=(RECSLEFT[4]=0) OR EOF(F4);
+         5: ENDOF:=(RECSLEFT[5]=0) OR EOF(F5);
+      END
+   END;
+
+PROCEDURE TAKE;
+   BEGIN
+      IF ENDOF(SOURCE) THEN GOTONE:=FALSE ELSE
+      CASE SOURCE OF
+      0: BEGIN
+            WHILE EOLN(F0) AND NOT EOF(F0) DO READLN(F0);
+            IF EOF(F0) THEN GOTONE:=FALSE ELSE BEGIN
+               READLN(F0,BUFFER.LINE);
+               IF LENGTH(BUFFER.LINE)>MAXL THEN
+                  BUFFER.LINE:=COPY(BUFFER.LINE,1,MAXL);
+               USERIN(BUFFER.RECI,REC1)
+            END
+         END;
+      1: BEGIN
+            WHILE EOLN(F1) AND NOT EOF(F1) DO READLN(F1);
+            IF EOF(F1) THEN GOTONE:=FALSE ELSE BEGIN
+               READLN(F1,BUFFER.LINE);
+               IF LENGTH(BUFFER.LINE)>MAXL THEN
+                  BUFFER.LINE:=COPY(BUFFER.LINE,1,MAXL);
+               USERIN(BUFFER.RECI,REC2)
+            END
+         END;
+      2: BEGIN
+            USERIN(F2^,REC1);
+            GET(F2)
+         END;
+      3: BEGIN
+            USERIN(F3^,REC2);
+            GET(F3)
+         END;
+      4,5: 
+      END
+   END;
+
+PROCEDURE GIVE;
+   BEGIN
+      CASE SINK OF
+      6: BEGIN
+            CASE SOURCE OF
+            0,2: F6^:=REC1;
+            1,3: F6^:=REC2;
+            4: BEGIN
+                  F6^:=F4^;
+                  GET(F4);
+               END;
+            5: BEGIN
+                  F6^:=F5^;
+                  GET(F5);
+               END
+            END;
+            PUT(F6)
+         END;
+      7: BEGIN
+            CASE SOURCE OF
+            0,2: USEROUT(REC1,F7^);
+            1,3: USEROUT(REC2,F7^);
+            4: BEGIN
+                  USEROUT(F4^,F7^);
+                  GET(F4);
+               END;
+            5: BEGIN
+                  USEROUT(F5^,F7^);
+                  GET(F5);
+               END
+            END;
+            PUT(F7)
+         END;
+      8: BEGIN
+            CASE SOURCE OF
+            0,2: USEROUT(REC1,BUFFER.RECO);
+            1,3: USEROUT(REC2,BUFFER.RECO);
+            4: BEGIN
+                  USEROUT(F4^,BUFFER.RECO);
+                  GET(F4)
+               END;
+            5: BEGIN
+                  USEROUT(F5^,BUFFER.RECO);
+                  GET(F5)
+               END
+            END;
+            WRITELN(F8,BUFFER.LINE)
+         END
+      END;
+      MONITOR('.')
+   END;
+
+PROCEDURE SHSORT(VAR BLOCK:DATAARRAY;NORECS:INTEGER);
+   VAR I,J,K,M:INTEGER;
+       T:SORTTYPE;
+   BEGIN
+      M:=1;
+      WHILE M<=NORECS DO M:=M+M;
+      M:=M-1;
+      WHILE M>1 DO
+      BEGIN
+         M:=M DIV 2;
+         FOR I:= M+1 TO NORECS DO
+         BEGIN
+            K:=I;
+            J:=K-M;
+            T:=BLOCK[K];
+            WHILE J>0 DO
+               IF COMPARE(BLOCK[J],T) THEN J:=0
+               ELSE BEGIN
+                  BLOCK[K]:=BLOCK[J];
+                  K:=J;
+                  J:=K-M
+               END;
+            BLOCK[K]:=T
+         END
+      END
+   END;
+   
+PROCEDURE SORTPHASE;
+   BEGIN
+      IF TEXTIN THEN SOURCE:=0 ELSE SOURCE:=2;
+      CONNECT(SOURCE,SORTIN,OK);
+      IF OK THEN BEGIN
+         BLOCKSIZE:=RUNLENGTH;
+         SBLOCKS:=0;
+         GOTONE:=TRUE;
+         WHILE OK AND NOT ENDOF(SOURCE) DO
+         BEGIN
+            SBLOCKS:=SBLOCKS+1;
+            WRITE(CHR(7),'Sort',SBLOCKS,' starts');
+            NORECS:=0;
+            REPEAT
+               TAKE;
+               IF GOTONE THEN BEGIN
+                  NORECS:=NORECS+1;
+                  BLOCK[NORECS]:=REC1
+               END;
+            UNTIL (NORECS=BLOCKSIZE) OR (NOT GOTONE);
+            WRITE(CHR(7));
+            IF NORECS>0 THEN BEGIN
+               SHSORT(BLOCK,NORECS);
+               WRITE(CHR(7));
+               IF SBLOCKS=1 THEN
+                  IF ENDOF(SOURCE) THEN BEGIN
+                     IF TEXTOUT THEN SINK:=8 ELSE SINK:=7;
+                     CONNECT(SINK,SORTOUT,OK)
+                  END ELSE BEGIN
+                     SINK:=6;
+                     CONNECT(SINK,TEMP1,OK);
+                  END;
+               NODOTS:=0;
+               IF OK THEN FOR NOOUT:=1 TO NORECS DO
+               BEGIN
+                  REC1:=BLOCK[NOOUT];
+                  GIVE
+               END;
+               WRITELN
+            END
+         END;
+         IF TEXTIN THEN CLOSE(F0) ELSE CLOSE(F2);
+         IF OK THEN DISCONNECT(SINK,OK)
+      END
+   END;
+      
+PROCEDURE MERGEBLOCKS;
+   BEGIN
+      SOURCE:=PSOURCE;
+      GOTOTHER:=NOT ENDOF(SOURCE);
+      SOURCE:=SSOURCE;
+      NODOTS:=0;
+      REPEAT
+         GOTONE:=NOT ENDOF(SOURCE);
+         IF GOTOTHER THEN BEGIN
+            IF GOTONE THEN
+               IF COMPARE(F4^,F5^) THEN SOURCE:=PSOURCE ELSE SOURCE:=SSOURCE
+            ELSE SOURCE:=PSOURCE+SSOURCE-SOURCE;
+            GOTOTHER:=GOTONE;
+            GOTONE:=TRUE
+         END;
+         IF GOTONE THEN BEGIN
+            GIVE;
+            RECSLEFT[SOURCE]:=RECSLEFT[SOURCE]-1
+         END
+      UNTIL NOT GOTONE;
+      WRITELN
+   END;
+   
+PROCEDURE MERGEPHASE;
+   BEGIN
+      MPASS:=0;
+      PSOURCE:=4;
+      SSOURCE:=5;
+      REPEAT
+         MPASS:=MPASS+1;
+         WRITE(CHR(7),'Merge',MPASS,' starts');
+         TEMP:=TEMP1;
+         RESET(F4,TEMP1);
+         RESET(F5,TEMP1);
+         IF SBLOCKS>2 THEN BEGIN
+            SINK:=6;
+            CONNECT(SINK,TEMP2,OK)
+         END ELSE BEGIN
+            IF TEXTOUT THEN SINK:=8 ELSE SINK:=7;
+            CONNECT(SINK,SORTOUT,OK)
+         END;
+         IF OK THEN BEGIN
+            MBLOCKS:=0;
+            REPEAT
+               NORECS:=0;
+               WHILE (NOT EOF(F5)) AND (NORECS<BLOCKSIZE) DO BEGIN
+                  GET(F5);
+                  NORECS:=NORECS+1
+               END;
+               RECSLEFT[4]:=NORECS;
+               IF NORECS<BLOCKSIZE THEN RECSLEFT[5]:=0
+               ELSE RECSLEFT[5]:=BLOCKSIZE;
+               MERGEBLOCKS;
+               IF NOT EOF(F5) THEN BEGIN
+                  NORECS:=0;
+                  WHILE (NOT EOF(F4)) AND (NORECS<BLOCKSIZE) DO BEGIN
+                     GET(F4);
+                     NORECS:=NORECS+1
+                  END
+               END;
+               SBLOCKS:=SBLOCKS-2;
+               MBLOCKS:=MBLOCKS+1;
+            UNTIL SBLOCKS<=0;
+            TEMP1:=TEMP2;
+            TEMP2:=TEMP;
+            IF OK THEN DISCONNECT(SINK,OK);
+            BLOCKSIZE:=BLOCKSIZE+BLOCKSIZE;
+            SBLOCKS:=MBLOCKS
+         END;
+         CLOSE(F4);
+         CLOSE(F5);
+         RESET(F4,TEMP);
+         CLOSE(F4,PURGE);
+      UNTIL (SBLOCKS=1) OR NOT OK
+   END;
+      
+PROCEDURE SORTFILE;
+   BEGIN
+      WRITELN('Sortfile entered');
+      WRITELN;
+      REPEAT
+         WRITE('Sort which file?');
+         READLN(SORTIN)
+      UNTIL SORTIN<>'';
+      REPEAT
+         WRITE('Into which file?');
+         READLN(SORTOUT)
+      UNTIL SORTOUT<>'';
+      WRITE('Which work disk?'); READLN(TEMP);
+      WRITELN('Press SPACE or RETURN when ready, ESC to abort');
+      REPEAT READ(KEYBOARD,CH) UNTIL CH IN [' ',CHR(27)];
+      IF CH<>CHR(27) THEN BEGIN
+         IF TEMP<>'' THEN BEGIN
+            IF TEMP[1] IN ['0'..'9'] THEN TEMP:=CONCAT('#',TEMP);
+            IF TEMP[LENGTH(TEMP)]<>':' THEN TEMP:=CONCAT(TEMP,':')
+         END;
+         TEMP1:=CONCAT(TEMP,'SORTTEMP1.DATA');
+         TEMP2:=CONCAT(TEMP,'SORTTEMP2.DATA');
+         TEMP:='';
+         IF LENGTH(SORTIN)>5 THEN TEMP:=COPY(SORTIN,LENGTH(SORTIN)-4,5);
+         TEXTIN:=(TEMP='.TEXT') OR (TEMP='.text');
+         TEMP:='';
+         IF LENGTH(SORTOUT)>5 THEN TEMP:=COPY(SORTOUT,LENGTH(SORTOUT)-4,5);
+         TEXTOUT:=(TEMP='.TEXT') OR (TEMP='.text');
+         IF TEXTIN THEN SOURCE:=0 ELSE SOURCE:=2;
+         SORTPHASE;
+         IF OK THEN IF SINK=6 THEN MERGEPHASE;
+      END;
+      WRITELN(CHR(7),'Sortfile ends')
+   END;
+
+PROCEDURE MERGE;
+   BEGIN
+      SOURCE:=PSOURCE;
+      GOTONE:=TRUE;
+      TAKE;
+      GOTOTHER:=GOTONE;
+      SOURCE:=SSOURCE;
+      NODOTS:=0;
+      REPEAT
+         TAKE;
+         IF GOTOTHER THEN BEGIN
+            IF GOTONE THEN
+               IF COMPARE(REC1,REC2) THEN SOURCE:=PSOURCE ELSE SOURCE:=SSOURCE
+            ELSE SOURCE:=PSOURCE+SSOURCE-SOURCE;
+            GOTOTHER:=GOTONE;
+            GOTONE:=TRUE
+         END;
+         IF GOTONE THEN GIVE
+      UNTIL NOT GOTONE;
+      WRITELN
+   END;
+   
+PROCEDURE MERGEFILES;
+   VAR MERGIN1,MERGIN2,MERGOUT:STRING[30];
+   BEGIN
+      WRITELN('Mergefiles entered');
+      WRITELN;
+      REPEAT
+         WRITE('Merge which file?');
+         READLN(MERGIN1)
+      UNTIL MERGIN1<>'';
+      REPEAT
+         WRITE('With which file?');
+         READLN(MERGIN2)
+      UNTIL MERGIN2<>'';
+      REPEAT
+         WRITE('Into which file?');
+         READLN(MERGOUT)
+      UNTIL MERGOUT<>'';
+      TEMP:='';
+      IF LENGTH(MERGIN1)>5 THEN TEMP:=COPY(MERGIN1,LENGTH(MERGIN1)-4,5);
+      TEXTIN:=(TEMP='.TEXT') OR (TEMP='.text');
+      TEMP:='';
+      IF LENGTH(MERGIN2)>5 THEN TEMP:=COPY(MERGIN1,LENGTH(MERGIN2)-4,5);
+      IF TEXTIN<>((TEMP='.TEXT') OR (TEMP='.text')) THEN
+         WRITELN('Sorry, your input files must be of same TYPE')
+      ELSE BEGIN
+         TEMP:='';
+         IF LENGTH(MERGOUT)>5 THEN TEMP:=COPY(MERGOUT,LENGTH(MERGOUT)-4,5);
+         TEXTOUT:=(TEMP='.TEXT') OR (TEMP='.text');
+         IF TEXTIN THEN BEGIN
+            PSOURCE:=0;
+            SSOURCE:=1;
+         END ELSE BEGIN
+            PSOURCE:=2;
+            SSOURCE:=3;
+         END;
+         CONNECT(PSOURCE,MERGIN1,EXISTP);
+         CONNECT(SSOURCE,MERGIN2,EXISTS);
+         IF EXISTP AND EXISTS THEN BEGIN
+            IF TEXTOUT THEN SINK:=8 ELSE SINK:=7;
+            CONNECT(SINK,MERGOUT,OK);
+            IF OK THEN BEGIN
+               MERGE;
+               DISCONNECT(SINK,OK)
+            END;
+            IF TEXTIN THEN BEGIN
+               CLOSE(F0); CLOSE(F1)
+            END ELSE BEGIN
+               CLOSE(F2); CLOSE(F3)
+            END
+         END
+      END;
+      WRITELN(CHR(7),'Mergefiles ends')
+   END;
+   
+PROCEDURE CHECKFILE;
+   VAR CHECKIN:STRING[30];
+       CH:CHAR;
+   BEGIN
+      WRITELN('Checkfile entered');
+      WRITELN;
+      REPEAT
+         WRITE('Check which file?');
+         READLN(CHECKIN)
+      UNTIL CHECKIN<>'';
+      TEMP:='';
+      IF LENGTH(CHECKIN)>5 THEN TEMP:=COPY(CHECKIN,LENGTH(CHECKIN)-4,5);
+      TEXTIN:=(TEMP='.TEXT') OR (TEMP='.text');
+      IF TEXTIN THEN SOURCE:=1 ELSE SOURCE:=3;
+      CONNECT(SOURCE,CHECKIN,EXISTS);
+      IF EXISTS THEN BEGIN
+         GOTOTHER:=FALSE;
+         GOTONE:=TRUE;
+         NORECS:=0;
+         NOOUT:=0;
+         NODOTS:=0;
+         REPEAT
+            TAKE;
+            IF GOTONE THEN BEGIN
+               CH:='.';
+               IF GOTOTHER THEN
+                  IF NOT COMPARE(REC1,REC2) THEN
+                  BEGIN
+                     NOOUT:=NOOUT+1;
+                     CH:='*'
+                  END;
+               NORECS:=NORECS+1;
+               MONITOR(CH);
+               REC1:=REC2
+            END;
+            GOTOTHER:=GOTONE
+         UNTIL NOT GOTONE;
+         WRITELN;
+         IF TEXTIN THEN CLOSE(F1) ELSE CLOSE(F3);
+         WRITELN('File ',CHECKIN,' holds ',NORECS,' records: ',
+            NOOUT,' are out of order');
+      END;
+      WRITELN(CHR(7),'Checkfile ends')
+   END;
+   
+PROCEDURE ENTERFILER;
+   BEGIN
+       CHAIN('I="F"'); CHAIN('*SORTMERGE'); QUIT:=TRUE
+
+       (* Remove the above three statements for Version II or if Filer entry
+          not required under Version IV.   Substitute the following:
+
+          WRITELN('Filer entry not implemented.'); WRITELN('Sorry!')       *)
+
+   END;
+   
+BEGIN
+   WRITELN; WRITELN;
+   WRITELN('-----------------------------------------------------------------');
+   WRITELN('ERCC UCSD p-System II-IV Sort/Merge Package Version 1.3 23-Aug-82');
+   WRITELN('-----------------------------------------------------------------');
+   WRITELN;
+   QUIT:=FALSE;
+   REPEAT
+      MAXL:=SIZEOF(INPUTTYPE)-2;
+      WRITELN;
+      WRITE('I(nit S(ort M(erge C(heck T(erm F(iler Q(uit: ');
+      READ(KEYBOARD,COMMAND);
+      IF COMMAND IN ['I','S','M','C','T','F','Q','i','s','m','c','t','f','q']
+      THEN CASE COMMAND OF
+         'I','i': INITIALISE;
+         'S','s': SORTFILE;
+         'M','m': MERGEFILES;
+         'C','c': CHECKFILE;
+         'T','t': TERMINATE;
+         'F','f': ENTERFILER;
+         'Q','q': QUIT:=TRUE
+         END
+      ELSE BEGIN
+         WRITE(COMMAND);
+         READLN;
+         WRITELN('Pardon me?')
+      END
+   UNTIL QUIT
+END.
+

@@ -1,0 +1,306 @@
+{************************************************************************
+*                                                                       *
+*  This is filed as BTREE.DEL2.TEXT         revised 31-May-82           *
+*                                                                       *
+************************************************************************}
+
+procedure DEL(P:integer);
+{************************************************************************
+*                                                                       *
+*  This procedure finds the terminal, successor node to node A in       *
+*  DELETE.  Its recursive nature also ensures that the path from A      *
+*  to that terminal node is kept in memory so that any merging or       *
+*  transfer of a "person" from a successor node to a superior node      *
+*  can be accomplished.                                                 *
+*                                                                       *
+************************************************************************}
+var   Q:integer;  {global A,K}
+      Z,W:PERSON_NODE;  {temporary nodes while seeking}
+begin
+  seek(PERSONS,P);              {set the file window to P node}
+  write('.');                   {show user something is happening}
+  get(PERSONS);                 {load file buffer}
+  Q:=PERSONS^.DATA[PERSONS^.NODESIZE].SUCC_NODE;
+  if Q<>-1 then begin           {P is not a terminal node}
+    DEL(Q);                     {continue looking for terminal node}
+    seek(PERSONS,P);            {reset the file window to P node}
+    write('.');                 {show user something is happening}
+    get(PERSONS);               {load file buffer}
+    if NEW_HEIGHT then begin
+      UNDERFLOW(P,Q,PERSONS^.NODESIZE);  {correct the underflow}
+      seek(PERSONS,P);          {reset the file window to P node}
+    write('.');                 {show user something is happening}
+      get(PERSONS)              {load the file buffer}
+    end  {if NEW_HEIGHT}
+  end {if Q<>-1}
+  else begin
+    Z:=PERSONS^;                {hold while seeking}
+    seek(PERSONS,A);            {set the file window to A node}
+    write('.');                 {show user something is happening}
+    get(PERSONS);               {load the file buffer}
+    W:=PERSONS^;                {hold while seeking}
+    Z.DATA[Z.NODESIZE].SUCC_NODE:=W.DATA[K].SUCC_NODE;
+      {set correct successor node to correct record number}
+    W.DATA[K]:=Z.DATA[Z.NODESIZE];
+      {transfer person}
+    Z.NODESIZE:=Z.NODESIZE-1;
+      {adjust for deletion}
+    if DUPLICATE then NEW_HEIGHT:=Z.NODESIZE<1  {not required?}
+      {if Z.NODESIZE<1 then b-tree is shrinking horizontally}
+    else NEW_HEIGHT:=Z.NODESIZE<MIN_NODE_SIZE;
+      {if Z.NODESIZE<MIN_NODE_SIZE then b-tree is shrinking vertically}
+    seek(PERSONS,A);            {set the file window to A node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=W;                {assign to a "disk variable"}
+    put(PERSONS);               {write revised A node to disk}
+    seek(PERSONS,P);            {set the file window to P node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=Z;                {assign to a "disk variable"}
+    put(PERSONS)                {write revised P node to disk}
+  end {else begin}
+end; {DEL}
+
+function PERSON_FOUND(U:PERSON;K:integer):boolean;
+{************************************************************************
+*                                                                       *
+*  This procedure displays a record with the correct key and ask if     *
+*  the record/person is the correct one.  If so then it asks if the     *
+*  record/person should be deleted.                                     *
+*                                                                       *
+************************************************************************}
+begin
+  if FOUND then begin
+    if U=PERSONPTR then PERSON_FOUND:=true
+    else PERSON_FOUND:=false;
+    exit(PERSON_FOUND)
+  end; {if FOUND}
+  PRINT_PERSON(U);      {display record in question}
+  writeln;
+  writeln;
+  write('IS THIS THE CORRECT PERSON?  (y/n)  ');
+  if YES then begin
+    NEW_HEIGHT:=false;  {make sure nothing strange happens if flag set
+                         accidently}
+    DUPLICATE:=false;   {reset flag/control variable}
+    WRONG:=false;       {key was correct}
+    writeln;
+    writeln;
+    write('Delete this record?  ');
+    if YES then PERSON_FOUND:=true      {set deletion flag}
+    else PERSON_FOUND:=false            {don't delete it}
+  end  {if YES}
+  else PERSON_FOUND:=false              {wrong person}
+end; {PERSON_FOUND}
+
+procedure KRUNCH(B:integer;     {pointer to location of node in file buffer}
+                 J:integer      {pointer to slot in node last transfered});
+{************************************************************************
+*                                                                       *
+*  This procedure maintains the linked list structure of the nodes      *
+*  which contain duplicate keys.  When ever a duplicate key is deleted, *
+*  the lisk is krunched to reduce disk storage requirements.   For      *
+*  the rationale of using this structure, see introductory notes.       *
+*                                                                       *
+************************************************************************}
+var   I,M:integer;              {loop control and node location variables}
+      Y,W:PERSON_NODE;          {hold nodes while seeking}
+begin
+  with PERSONS^ do begin
+    NODESIZE:=NODESIZE-1;       {set NODESIZE  to correct value}
+    if NODESIZE>0 then begin    {we must krunch node}
+      for I:=J to NODESIZE do DATA[I]:=DATA[I+1];       {krunch node}
+      if P0>-1 then begin       {there are additional duplicate nodes}
+        W:=PERSONS^;            {hold while seeking}
+        seek(PERSONS,P0);       {set file window to next duplicate node}
+        write('.');             {show user something is happening}
+        get(PERSONS);           {load file buffer}
+        M:=1;                   {initialize to slot to transfer from}
+        I:=W.NODESIZE+1;        {initialize to slot to transfer into}
+        repeat
+          W.DATA[I]:=DATA[M];   {transfer}
+          I:=I+1;               {increment}
+          M:=M+1;               {increment}
+        until (I>MAX_NODE_SIZE) or (M>NODESIZE);
+          {I should >MAX_NODE_SIZE at the same time as M>NODESIZE.
+           This allows for successful krunching of two records
+           which some how require the transfer of more than one data slot}
+        W.NODESIZE:=I-1;        {set to correct value}
+        Y:=PERSONS^;            {hold while seeking}
+        seek(PERSONS,B);        {reset file window to location of "W" node}
+        write('.');             {show user something is happening}
+        I:=W.P0;                {save location of "Y" node}
+        if Y.NODESIZE=1 then begin      {"Y" node must be deleted}
+          W.P0:=-1;             {set flag to indicate no more duplicate nodes}
+          DUPLICATE:=false      {reset flag/control variable}
+        end;  {if Y.NODESIZE}
+        PERSONS^:=W;            {load file buffer}
+        put(PERSONS);           {write buffer to disk}
+        PERSONS^:=Y;            {load file buffer}
+        KRUNCH(I,M-1);          {continue KRUNCH process}
+        NEW_HEIGHT:=false       {prevent action upon return to DELETE}
+      end  {if P0>-1}
+      else begin        {there are no additional duplicate nodes}
+        W:=PERSONS^;            {hold whild seeking}
+        seek(PERSONS,B);        {reset file window to "W" node}
+        write('.');             {show user something is happening}
+        PERSONS^:=W;            {load file buffer}
+        put(PERSONS);           {write buffer to disk}
+      end  {else begin}
+    end  {if NODESIZE>0}
+    else begin          {delete node number B}
+      LEAVE:=true;
+      NEW_HEIGHT:=true;         {set flag for action in DELETE}
+      Y:=PERSONS^;              {save buffer while seeking}
+      Y.P0:=FILE_LEN.PERSON_AVAIL;
+        {link node number B into available node list}
+      FILE_LEN.PERSON_AVAIL:=B; {reset pointer to new head node}
+      FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED+1;
+        {correct total of empty or unused nodes}
+      seek(PERSONS,B);          {reset file window to node number B}
+      write('.');               {show user something is happening}
+      PERSONS^:=Y;              {load file buffer}
+      put(PERSONS);             {write file buffer to disk}
+    end  {else begin}
+  end  {with PERSONS^}
+end; {KRUNCH}
+
+begin  {DELETE}
+{We search for key INPUTKEY in the record number "A"...NEW_HEIGHT=false}
+  if A=-1 then begin {person is not in b-tree}
+    NEW_HEIGHT:=false;  {nothing to delete so b-tree can not shrink}
+    CLEARSCREEN;
+    gotoxy(0,8);
+    writeln(OUTFILE,'Person <',FAKE_KEY,'> not found.');
+    writeln;
+    write('Is the key correct?  (y/n)  ');
+    if not YES then WRONG:=true;        {set flag to get new key}
+    LEAVE:=true                         {set flag to exit delete}
+  end  {if A=-1}
+  else begin
+    seek(PERSONS,A);            {set the file window to the record to search}
+    write('.');                 {show user something is happening}
+    get(PERSONS);               {load the file buffer}
+    with PERSONS^ do begin
+      if DUPLICATE then begin   {search duplicate node for match}
+        for J:=1 to NODESIZE do if PERSON_FOUND(DATA[J],J) then begin
+          KRUNCH(A,J);          {delete person}
+          if LEAVE then exit(DELETE);
+            {exit to prevent last four lines of DELETE from executing}
+        end; {if PERSON_FOUND};
+        DELETE(INPUTKEY,P0,FOUND,WRONG); {continue searching duplicate nodes}
+        if LEAVE then exit(DELETE)
+          {prevent the last four lines from executing}
+      end  {if DUPLICATE}
+      else begin
+        L:=1;                   {set left pointer for binary search}
+        R:=NODESIZE;            {set right pointer for binary search}
+        repeat   {binary array search}
+          K:=(L+R) div 2;       {compute mid point}
+          if INPUTKEY<=DATA[K].KEY then R:=K-1; {set right limit}
+          if INPUTKEY>=DATA[K].KEY then L:=K+1; {set left limit}
+        until L>R;
+        {next 2 lines determine which node to search next to find either
+         INPUTKEY or the successor terminal node to the node where INPUTKEY
+         was found}
+        if R=0 then Q:=P0
+        else Q:=DATA[R].SUCC_NODE;
+        if L-R>1 then begin {we found a candidate for deletion}
+          if PERSON_FOUND(DATA[K],K) then begin {delete it!!}
+            if DATA[K].DUPE=-1 then begin       {there are no duplicate keys}
+              if Q=-1 then begin {A is a terminal node}
+                NODESIZE:=NODESIZE-1;   {correct nodesize}
+                NEW_HEIGHT:=NODESIZE<MIN_NODE_SIZE;
+                  {determine if underflow contition exists}
+                for I:=K to NODESIZE do DATA[I]:=DATA[I+1];
+                  {delete by krunching node}
+              end {if Q=-1}
+              else begin
+                DEL(Q);       {find A's terminal, successor node}
+                seek(PERSONS,A);      {reset the file window to the A node}
+                write('.');           {show user something is happening}
+                get(PERSONS);         {load the file buffer}
+                if NEW_HEIGHT then begin        {underflow condition exists}
+                  UNDERFLOW(A,Q,R);             {correct it}
+                  seek(PERSONS,A);    {reset the file window to the A node}
+                  write('.');         {show user something is happening}
+                  get(PERSONS)        {load the file buffer}
+                end  {if NEW_HEIGHT}
+              end {else begin}
+            end  {if DATA[K].DUPE=-1}
+            else begin                  {duplicate nodes exist}
+              Z:=PERSONS^;              {hold while seeking}
+              M:=DATA[K].DUPE;          {save duplicate node location}
+              seek(PERSONS,M);          {set file window to duplicate node}
+              write('.');               {show user something is happening}
+              get(PERSONS);             {load file buffer}
+              Z.DATA[K]:=DATA[1];
+                {replace original key with duplicate}
+              if NODESIZE>1 then Z.DATA[K].DUPE:=M
+                {more duplicates exist so set pointer to correct value}
+              else Z.DATA[K].DUPE:=-1;
+                {no other duplicates exist so set pointer to nul or nil}
+              KRUNCH(M,1); {KRUNCH the duplicate node}
+              seek(PERSONS,A);          {reset file window to node number "A"}
+              write('.');               {show user something is happening}
+              PERSONS^:=Z;              {load file buffer}
+              put(PERSONS);             {write file buffer to disk}
+              if LEAVE then exit(DELETE);
+                {prevent last four lines from executing}
+            end  {else begin}
+          end  {if PERSON_FOUND}
+          else begin    {not found}
+            if DATA[K].DUPE>-1 then begin       {duplicate keys exist}
+              DUPLICATE:=true;
+                {set flag to initiate search for duplicate keys}
+              DELETE(INPUTKEY,DATA[K].DUPE,FOUND,WRONG);
+                {search for duplicate keys}
+              if NEW_HEIGHT then begin   {set node "A" duplicate link to nil}
+                seek(PERSONS,A);      {reset file window to node "A"}
+                write('.');           {show user something is happening}
+                get(PERSONS);         {load file buffer}
+                DATA[K].DUPE:=-1;     {set duplicate link to nul or nil}
+                Z:=PERSONS^;          {hold while seeking}
+                seek(PERSONS,A);      {reset file window to node "A"}
+                write('.');           {show user something is happening}
+                put(PERSONS);         {write file buffer to disk}
+                NEW_HEIGHT:=false     {reset flag}
+              end; {if NEW_HEIGHT}
+              if LEAVE then exit(DELETE)
+{************************************************************************
+*                                                                       *
+*  If LEAVE=true then either the deletion was successful and the exit   *
+*  is to prevent the last four lines of this procedure from executing,  *
+*  or the user decided not to delete the record, or the key the user    *
+*  inputed was incorrect.                                               *
+*                                                                       *
+************************************************************************}
+            end  {if DATA[K].DUPE>-1}
+          end  {else begin}
+        end {if L-R>1}
+        else begin        {haven't found INPUTKEY so must keep searching}
+          DELETE(INPUTKEY,Q,FOUND,WRONG);
+          if LEAVE then exit(DELETE);
+          seek(PERSONS,A);        {reset the file window to the A node}
+          write('.');             {show user something is happening}
+          get(PERSONS);           {load the file buffer}
+          if NEW_HEIGHT then begin  {underflow condition exists}
+            UNDERFLOW(A,Q,R);     {correct it}
+            seek(PERSONS,A);      {reset the file window to the A node}
+            write('.');           {show user something is happening}
+            get(PERSONS)          {load the file buffer}
+          end  {if NEW_HEIGHT}
+        end {else begin}
+      end  {else begin}
+    end; {with PERSONS^ do}
+    TEMP:=PERSONS^;             {hold while seeking}
+    seek(PERSONS,A);            {reset the file window to the A node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=TEMP;             {assign to a "disk variable"}
+    put(PERSONS)                {write revised A node to the disk}
+  end  {else begin}
+end; {DELETE}
+
+
+
+
+

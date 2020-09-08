@@ -1,0 +1,413 @@
+(*included from othello.text*)
+
+PROCEDURE findlegalmoves(VAR status: gamestatus; VAR legallist: movelist);
+VAR
+   x,y:                   coordinate;
+   sq:                    squareloc;
+   flips,direcflips:      INTEGER;
+   borderflips:           INTEGER;
+   stopdirec:             BOOLEAN;
+   oppcolor:              color;
+   direc:                 direction;
+   trydirs,gooddirs:      SET OF direction;
+   possible:              BOOLEAN;
+   sqstatus:              squarestatus;
+BEGIN
+WITH status, legallist DO BEGIN
+   oppcolor := flipof(nextmover);
+   movecount := 0;
+   FOR x := 1 TO 8 DO  FOR y := 1 TO 8 DO BEGIN
+      possible := FALSE;
+      WITH boardstatus[x,y] DO
+         IF NOT occupied THEN
+            IF adjacentpieces[oppcolor] <> [] THEN BEGIN
+               possible := TRUE;
+               trydirs := adjacentpieces[oppcolor];
+               END;
+      IF possible THEN BEGIN
+         gooddirs := [];
+         flips := 0;
+         borderflips := 0;
+         FOR direc := north TO nw DO
+            IF direc IN trydirs THEN BEGIN
+               sq := board[x,y].adjacentsq[direc];
+               sq := board[sq.row,sq.col].adjacentsq[direc];
+               IF sq.onboard THEN BEGIN
+                  direcflips := 1;
+                  stopdirec := FALSE;
+                  REPEAT
+                     sqstatus := boardstatus[sq.row,sq.col];
+                     IF sqstatus.occupied THEN
+                        IF sqstatus.occupier = oppcolor THEN BEGIN
+                           direcflips := direcflips + 1;
+                           sq := board[sq.row,sq.col].adjacentsq[direc];
+                           END
+                        ELSE
+                           stopdirec := TRUE
+                     ELSE BEGIN
+                        direcflips := 0;
+                        stopdirec := TRUE;
+                        END;
+                     UNTIL ( stopdirec OR (NOT sq.onboard) );
+                  IF (stopdirec AND (direcflips>0)) THEN BEGIN
+                     flips := flips + direcflips;
+                     gooddirs := gooddirs + [direc];
+                     IF board[x,y].border AND board[sq.row,sq.col].border THEN
+                        borderflips := borderflips + direcflips;
+                     END;
+                  END; (*IF sq.onboard...*)
+               END; (*IF direc IN...*)
+         IF flips > 0 THEN BEGIN
+            movecount := movecount + 1;
+            WITH okmove[movecount] DO BEGIN
+               moveloc.onboard := TRUE;
+               moveloc.row := x;
+               moveloc.col := y;
+               points := flips;
+               dirsflipped := gooddirs;
+               bordrsqsflipped := borderflips;
+               END;
+            END;
+         END; (*IF possible...*)
+      END; (*FOR x :=...FOR y :=...*)
+   END; (*WITH status, legallist...*)
+END; (*findlegalmoves*)
+
+PROCEDURE inputmove(mover: color; legallist: movelist; VAR move: movedesc);
+VAR
+   x,y:                 coordinate;
+   xch,ych:             CHAR;
+   i,listindex:         INTEGER;
+   c:                   CHAR;
+BEGIN
+listindex := 0;
+REPEAT
+   REPEAT
+      GOTOXY(0,23);
+      WRITE('Enter move for ',colorword[mover],':        ');
+      GOTOXY(22,23);
+      READ(xch,ych);
+      IF ych IN ['1'..'8'] THEN BEGIN (*Want xy but we'll accept yx*)
+         c := ych;
+         ych := xch;
+         xch := c;
+         END;
+      IF ych IN ['a'..'h'] THEN
+         ych := CHR(ORD(ych)-32);
+      UNTIL ((xch IN ['1'..'8']) AND (ych IN ['A'..'H']));
+   x := ORD(xch) - ORD('1') + 1;
+   y := ORD(ych) - ORD('A') + 1;
+   i := 1;
+   REPEAT
+      IF legallist.okmove[i].moveloc.row = x THEN
+         IF legallist.okmove[i].moveloc.col = y THEN
+            listindex := i;
+      i := i+1;
+      UNTIL ((i>legallist.movecount) OR (listindex <> 0));
+   UNTIL listindex <> 0;
+move := legallist.okmove[listindex];
+END; (*inputmove*)
+
+PROCEDURE makemove(*VAR status: gamestatus; VAR move: movedesc; updateadjacent:
+                                                                BOOLEAN*);
+VAR
+   direc,direc2:       direction;
+   sq,sq2:             squareloc;
+   oppcolor:           color;
+   flips:              INTEGER;
+   emptyneighbors:     SET of direction;
+BEGIN
+WITH status, move DO BEGIN
+   lastmoveloc := moveloc;
+   WITH boardstatus[moveloc.row,moveloc.col] DO BEGIN
+      emptyneighbors := [north..nw] - adjacentpieces[white]
+                                    - adjacentpieces[black];
+      occupied := TRUE;
+      occupier := nextmover;
+      END;
+   oppcolor := flipof(nextmover);
+   flips := 0;
+   FOR direc := north TO nw DO
+      IF direc IN dirsflipped THEN BEGIN
+         sq := board[moveloc.row,moveloc.col].adjacentsq[direc];
+         REPEAT
+            IF updateadjacent THEN
+               FOR direc2 := north TO nw DO
+                  IF NOT (direc2 IN [direc,opposdir[direc]]) THEN BEGIN
+                     sq2 := board[sq.row,sq.col].adjacentsq[direc2];
+                     IF sq2.onboard THEN WITH boardstatus[sq2.row,sq2.col] DO
+                        IF NOT occupied THEN BEGIN
+                           adjacentpieces[nextmover]:=adjacentpieces[nextmover]
+                                                        + [opposdir[direc2]];
+                           adjacentpieces[oppcolor]:=adjacentpieces[oppcolor]
+                                                        - [opposdir[direc2]];
+                           END;
+                     END;
+            boardstatus[sq.row,sq.col].occupier := nextmover;
+            flips := flips + 1;
+            sq := board[sq.row,sq.col].adjacentsq[direc];
+            UNTIL boardstatus[sq.row,sq.col].occupier = nextmover;
+         END
+      ELSE
+         IF updateadjacent THEN
+            IF direc IN emptyneighbors THEN BEGIN
+               sq := board[moveloc.row,moveloc.col].adjacentsq[direc];
+               IF sq.onboard THEN
+                  WITH boardstatus[sq.row,sq.col] DO
+                     adjacentpieces[nextmover] := adjacentpieces[nextmover] + 
+                                                  [opposdir[direc]];
+               END;
+   score[nextmover] := score[nextmover] + flips + 1;
+   score[oppcolor]  := score[oppcolor] - flips;
+   nextmover := oppcolor;
+   END;
+END; (*makemove*)
+
+
+PROCEDURE calcmove( mover: color; VAR status: gamestatus;
+                   VAR legallist: movelist; VAR bestmove: movedesc);
+TYPE
+   movearray = ARRAY[1..30] OF movedesc;
+VAR
+   bestsofar,cornmoves,m,respcornmoves:         INTEGER;
+   move,movetemp:                               movedesc;
+   aftermove:                                   gamestatus;
+   responses:                                   movelist;
+
+PROCEDURE checkposition(VAR legallist: movelist; VAR cornmoves: INTEGER);
+   VAR
+      m,bestm,bestyet:  INTEGER;
+   BEGIN
+   bestyet := -MAXINT;
+   cornmoves := 0;
+   FOR m := 1 TO legallist.movecount DO WITH legallist.okmove[m],
+                                             board[moveloc.row,moveloc.col] DO
+      BEGIN
+      bordnoncorn := FALSE;
+      IF incenter4by4 THEN
+         points := points + 10
+      ELSE BEGIN
+         IF corner THEN BEGIN
+            points := points + 60;
+            cornmoves := cornmoves + 1;
+            END
+         ELSE IF border THEN BEGIN
+                 bordnoncorn := TRUE;
+                 points := points + 25;
+                 END
+              ELSE IF diagnexttocorner THEN
+                      points := points - 50;
+         END;
+      IF points > bestyet THEN BEGIN
+         bestyet := points;
+         bestm := m;
+         end;
+      END; (*FOR m := 1 TO legallist.movecount...*)
+   movetemp := legallist.okmove[1];
+   legallist.okmove[1] := legallist.okmove[bestm];
+   legallist.okmove[bestm] := movetemp;
+   END; (*checkposition*)
+
+PROCEDURE sortmoves(VAR okmove: movearray;
+                    l,r: INTEGER) (*into descending order by points*) ;
+   VAR
+      i,j,baseval:      INTEGER;
+   BEGIN
+   i := l;
+   j := r;
+   baseval := okmove[(i+j) DIV 2].points;
+   REPEAT
+      WHILE okmove[i].points > baseval DO
+         i := i+1;
+      WHILE okmove[j].points < baseval DO
+         j := j-1;
+      IF i <= j THEN BEGIN
+         movetemp := okmove[i];
+         okmove[i] := okmove[j];
+         okmove[j] := movetemp;
+         i := i+1;
+         j := j-1;
+         END;
+      UNTIL i > j;
+   IF l < j THEN sortmoves(okmove, l, j );
+   IF i < r THEN sortmoves(okmove, i, r )
+   END (* sortmoves *) ;
+
+PROCEDURE checkresponses(mover: color; VAR move: movedesc;
+                         VAR responses: movelist; bestsofar: INTEGER);
+(*$G+*)
+   LABEL 0;
+   VAR
+      contingent,c,r:                   INTEGER;
+      x,y:                              coordinate;
+      sq:                               squareloc;
+      direc:                            direction;
+      oppcolor:                         color;
+      afterresp:                        gamestatus;
+      cornercounter:                    BOOLEAN;
+      respondmove:                      movedesc;
+      counterresp:                      movelist;
+   BEGIN
+   oppcolor := flipof(mover);
+   WITH move DO BEGIN
+      contingent := 0;
+      r := 1;
+      REPEAT
+         respondmove := responses.okmove[r];
+         IF NOT board[moveloc.row,moveloc.col].incenter4by4 THEN
+            FOR direc := north TO nw DO  WITH respondmove DO
+               IF direc IN dirsflipped THEN  WITH moveloc DO
+                  IF board[row,col].adjacentsq[direc] = move.moveloc THEN BEGIN
+                      move.points := move.points - 5;
+                      IF move.points <= bestsofar THEN
+                         EXIT(checkresponses);
+                      END;
+         afterresp := aftermove;
+         makemove(afterresp,respondmove,FALSE);
+         IF bordnoncorn THEN  WITH moveloc DO
+            IF afterresp.boardstatus[row,col].occupier = oppcolor THEN BEGIN
+               bordnoncorn := FALSE;
+               points := points - 65; (*40, plus the 25 given in checkposition*)
+               IF points <= bestsofar THEN
+                  EXIT(checkresponses);
+               END
+            ELSE
+               contingent := contingent + 8*respondmove.bordrsqsflipped;
+         WITH respondmove.moveloc DO
+            IF board[row,col].corner THEN BEGIN
+               points := points - 55;
+               IF cornmoves > 1 THEN
+                  IF board[moveloc.row,moveloc.col].corner THEN
+                     points := points -20;
+               IF points <= bestsofar THEN
+                  EXIT(checkresponses);
+               END;
+         FOR x:=1 TO 8 DO FOR y:=1 TO 8 DO WITH afterresp.boardstatus[x,y] DO
+            IF occupied THEN
+               IF occupier = mover THEN
+                  FOR direc := north TO nw DO WITH afterresp DO BEGIN
+                     sq.row := x;
+                     sq.col := y;
+                     REPEAT
+                        sq := board[sq.row,sq.col].adjacentsq[direc];
+                        IF NOT sq.onboard THEN
+                           GOTO 0;
+                        IF NOT boardstatus[sq.row,sq.col].occupied THEN
+                           GOTO 0
+                        UNTIL boardstatus[sq.row,sq.col].occupier = oppcolor;
+                     END;
+         makemove(afterresp,respondmove,TRUE);
+         findlegalmoves(afterresp,counterresp);
+         cornercounter := FALSE;
+         c := 1;
+         WITH counterresp DO
+            WHILE ( (c <= movecount) AND (NOT cornercounter) ) DO BEGIN
+               WITH okmove[c].moveloc DO
+                  IF board[row,col].corner THEN
+                     cornercounter := TRUE;
+               c := c + 1;
+               END;
+         IF NOT cornercounter THEN BEGIN
+            points := points -190;
+            IF points <= bestsofar THEN
+               EXIT(checkresponses);
+            END;
+0:
+         IF afterresp.score[mover] = 0 THEN BEGIN
+            points := -MAXINT+1; (*might be our only choice, so +1*)
+            EXIT(checkresponses);
+            END;
+         r := r + 1;
+         UNTIL r > responses.movecount;
+      IF bordnoncorn THEN BEGIN
+         points := points - contingent;
+         WITH board[moveloc.row,moveloc.col] DO
+            IF specialbordersq THEN WITH otherofpair,
+                                         status.boardstatus[row,col] DO
+               IF occupied THEN
+                  IF occupier = mover THEN
+                     WITH status.boardstatus[between.row,between.col] DO
+                        IF NOT occupied THEN
+                           points := points - 90;
+         END;
+      END; (*WITH move...*)
+   END; (*checkresponses*)
+   
+BEGIN (*calcmove*)
+GOTOXY(0,23);
+WRITE('Calculating move for ',colorword[mover],'...');
+checkposition(legallist,cornmoves);
+IF legallist.movecount > 2 THEN
+   sortmoves(legallist.okmove,2,legallist.movecount);
+bestsofar := -MAXINT;
+FOR m := 1 TO legallist.movecount DO BEGIN
+   move := legallist.okmove[m];
+   aftermove := status;
+   makemove(aftermove,move,TRUE);
+   findlegalmoves(aftermove,responses);
+   WITH move DO BEGIN
+      IF responses.movecount = 0 THEN
+         points := points + 100
+      ELSE
+         IF points > bestsofar THEN BEGIN
+            checkposition(responses,respcornmoves);
+            checkresponses(mover,move,responses,bestsofar);
+            END;
+      IF points > bestsofar THEN BEGIN
+         bestsofar := points;
+         bestmove := move;
+         END;
+      END; (*WITH move...*)
+   END; (*FOR m := 1 TO legallist.movecount...*)
+END; (*calcmove*)
+
+PROCEDURE play(mover: color);
+BEGIN
+GOTOXY(0,20+ORD(mover));
+IF legalmoves[mover] > 0 THEN BEGIN
+   WRITE(spaces);
+   IF mover = usercolor THEN
+      inputmove(mover,legallist,move)
+   ELSE
+      calcmove(mover,status,legallist,move);
+   makemove(status,move,TRUE);
+   updatecrt(crtstatus,status);
+   crtstatus := status;
+   END
+ELSE BEGIN
+   WRITE('(No legal moves for ',colorword[mover],')');
+   status.nextmover := flipof(mover);
+   END;
+END; (*play*)
+
+FUNCTION userquits: BOOLEAN;
+VAR
+   playagain:        CHAR;
+BEGIN
+GOTOXY(0,20);
+WRITELN(spaces); WRITELN(spaces); WRITELN; WRITE(spaces);
+GOTOXY(0,23);
+WRITE('Start a new game? (y/n): ');
+READ(playagain);
+userquits := NOT (playagain IN ['Y','y']);
+END; (*userquits*)
+
+
+
+BEGIN (*PROGRAM OTHELLO*)
+REPEAT
+   initgame;
+   findlegalmoves(status,legallist);
+   legalmoves[white] := legallist.movecount;
+   REPEAT
+      play(white);
+      findlegalmoves(status,legallist);
+      legalmoves[black] := legallist.movecount;
+      play(black);
+      findlegalmoves(status,legallist);
+      legalmoves[white] := legallist.movecount;
+      UNTIL (legalmoves[white]=0) and (legalmoves[black]=0);
+   UNTIL userquits;
+END.
+
+

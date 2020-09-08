@@ -1,0 +1,85 @@
+program roman;
+{ Enter year and get the roman numeral equivalent back.
+  CEF   Exobiology Labs. Univ. HI   Feb 1982            } 
+{ For an interesting historical discussion of Roman Numerals } 
+{ as well as a rational for the algorithm behind this program } 
+{ see "The World of Mathematics", Volume One, edited by } 
+{ James R. Newman, published by Simon and Schuster, New York } 
+     type digit = 0..9; 
+     var n : integer; 
+     
+procedure write_digit( d: digit;  units, fives, tens : char); 
+{ write digit d in roman numerals using the characters 
+  units, fives, and tens} 
+  var i : integer; 
+  begin
+     if d = 9
+       then write(units, tens)
+     else if d = 4
+             then write(units, fives)
+          else
+             begin
+               if d >= 5
+                  then write(fives);
+                  for i := 1 to d mod 5 do
+                  write(units);
+             end;
+  end; { write digit } 
+  
+procedure write_date( date : integer ); 
+{write date in roman numerals - dates not in the range 1..3999
+  are printed as *** } 
+  { NOTE-won't happen now due to changes by} 
+  {Gene Gingerich--see main program write statements } 
+  begin
+        if ( date <= 0 ) or ( date >= 4000 )
+          then write('***')
+        else
+          begin
+                write_digit(date div 1000,'M','*','*');
+                write_digit((date div 100) mod 10,'C','D','M');
+                write_digit((date div  10) mod 10,'X','L','C');
+                write_digit(date mod 10,'I','V','X');
+          end; 
+  end; {write_date} 
+  
+procedure do_it; { do_it repeatedly asks for input and produces } 
+{ output until the user terminates the program }
+     begin
+        repeat
+           writeln;writeln;writeln;
+           writeln('Enter a year between 1 and 3999  Any other');
+           write('year will cause the the program to terminate -->  ');
+           (*$I-*)
+           repeat
+              readln(n);
+           until ioresult = 0;
+           (*$I+*)
+           if ((n > 0) and (n < 4000)) then
+             begin
+               writeln;
+               write('In Rome it would be -->  ');
+               write_date(n);
+             end;
+        until((n <= 0) or (n > 3999));
+     end; {do_it} 
+     
+begin {main}
+     writeln;writeln;
+     writeln('This program is generated from an example in the book:');
+     writeln(' ');
+     writeln('"The UCSD Pascal Handbook" by Randy Clark and Stephen Koehler');
+     writeln('from Softech Microsystems, San Diego, Calif.  The book is');
+     writeln('directed toward the Implementation of UCSD Pascal provided');
+     writeln('by Softech Microsystems and is an excellent reference for');
+     writeln('users of that system.  The book is published by Prentice-');
+     writeln('Hall. This display has been added to the program by ');
+     writeln('Gene Gingerich of GINGER BRED SOFTWARE, a happy user of');
+     writeln('the Softech UCSD Pascal System, Version II.0.  Some minor'); 
+     writeln('changes have been made to warn the user about limits,');
+     writeln('valid year entries and how to terminate the program during');
+     writeln('execution.   Comments have also been added by Professor');
+     writeln('C. E. Folsome, of the Univ. Hawaii, who generated the program');
+     writeln('for me.  No criticsm of this fine book is meant');
+     do_it; { go do it until termination } 
+end. 

@@ -1,0 +1,429 @@
+{$P+}
+SEGMENT PROCEDURE INITIALIZE ;
+VAR
+  AUTOLOGON    : BOOLEAN ;
+  B            : BOOLEAN ;
+  C            : CHAR ;
+  HAVEDIAL     : BOOLEAN ;
+  HAVEREM      : BOOLEAN ;
+  RESULT       : CR_BAUD_RESULT ;
+
+SEGMENT PROCEDURE SETLOGON ;
+CONST
+{ Nine (9) is the max allowed, due to the way its coded. }
+   DEFINED_LOGONS        = 5 ;
+VAR
+  C             : CHAR ;
+  INDEX         : 1 .. DEFINED_LOGONS ;
+  RESULT        : INTEGER ;
+  VALID_LOGONS  : INTEGER ;
+  
+  LOGON_LIST    : PACKED ARRAY [1..DEFINED_LOGONS] OF RECORD
+    SERVICE     : STRING[29] ;
+    USER_ID     : STRING[21] ;
+    PASSWORD    : STRING[21] ;
+    PROMPT      : CHAR ;
+    PHONE_NUM   : STRING[21] ;
+    SWITCHES    : PACKED RECORD
+      FILTERCONTROL     : BOOLEAN ;
+      LOGTEXT           : BOOLEAN ;
+      ECHO              : BOOLEAN ;
+      VIDEOTEXT         : BOOLEAN ;
+      END ; { SWITCHES }
+    END ;
+
+PROCEDURE SETUP_LIST ;
+TYPE
+  STRING7       = STRING[7] ;
+VAR
+  LINE          : STRING ;
+  TRUE_SET      : SET OF CHAR ;
+  
+  IN_FILE       : TEXT ;
+
+PROCEDURE CHECKIT ;
+BEGIN
+  RESULT := IORESULT ;
+  IF RESULT <> 0
+    THEN
+      EXIT( SETUP_LIST ) ;
+  IF EOF( IN_FILE )
+    THEN
+      EXIT( SETUP_LIST ) ;
+  {  WRITELN( LINE ) ;  }{ Debugging only }
+END ;
+
+FUNCTION TRY_FILE( PREFIX : STRING7 ) : BOOLEAN ;
+BEGIN
+{$I-}
+  RESET( IN_FILE, CONCAT( PREFIX, LOGON_FILENAME ) ) ;
+  TRY_FILE := IORESULT = 0 ;
+{$I+}
+END ; { TRY_FILE }
+
+
+BEGIN
+{$I-}
+  VALID_LOGONS := 0 ;
+  IF NOT TRY_FILE( '' )         { Prefix first }
+    THEN IF NOT TRY_FILE( '*' ) {  then root }
+    THEN IF NOT TRY_FILE( '#4') {  then the world . . . }
+    THEN IF NOT TRY_FILE( '#5')
+    THEN IF NOT TRY_FILE( '#9')
+    THEN IF NOT TRY_FILE( '#10')
+    THEN IF NOT TRY_FILE( '#11')
+    THEN IF NOT TRY_FILE( '#12')
+    THEN IF NOT TRY_FILE( '#13')
+    THEN IF NOT TRY_FILE( '#14')
+    THEN IF NOT TRY_FILE( '#15')
+    THEN IF NOT TRY_FILE( '#16')
+    THEN IF NOT TRY_FILE( '#17')
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN( 'Cannot find ', LOGON_FILENAME,
+               ' on any drive.  Predefined logon aborted.' ) ;
+      EXIT( SETUP_LIST ) ;
+      END ;
+  TRUE_SET := ['t', 'T', 'y', 'Y'] ;
+  WHILE (NOT EOF( IN_FILE )) AND (VALID_LOGONS < DEFINED_LOGONS) DO
+    WITH LOGON_LIST[ VALID_LOGONS + 1 ] DO
+      BEGIN
+      REPEAT                    { Skip blank lines. }
+        READLN( IN_FILE, LINE ) ;
+        CHECKIT ;
+      UNTIL LENGTH( LINE ) > 0 ;
+      { This IF will guarantee we don't get a string overflow. }
+      IF SIZEOF( SERVICE ) - 1 >= LENGTH( LINE )
+        THEN
+          SERVICE := LINE
+        ELSE
+          SERVICE := COPY( LINE, 1, SIZEOF( SERVICE ) - 1 ) ;
+      READLN( IN_FILE, LINE ) ;
+      CHECKIT ;
+      IF SIZEOF( USER_ID ) - 1 >= LENGTH( LINE )
+        THEN
+          USER_ID := LINE
+        ELSE
+          USER_ID := COPY( LINE, 1, SIZEOF( USER_ID ) - 1 ) ;
+      READLN( IN_FILE, LINE ) ;
+      CHECKIT ;
+      IF SIZEOF( PASSWORD ) - 1 >= LENGTH( LINE )
+        THEN
+          PASSWORD := LINE
+        ELSE
+          PASSWORD := COPY( LINE, 1, SIZEOF( PASSWORD ) - 1 ) ;
+      READLN( IN_FILE, LINE ) ;
+      CHECKIT ;
+      IF LENGTH( LINE ) > 0
+        THEN
+          PROMPT := LINE[1]
+        ELSE
+          PROMPT := '?' ;
+      READLN( IN_FILE, LINE ) ;
+      CHECKIT ;
+      IF SIZEOF( PHONE_NUM ) - 1 >= LENGTH( LINE )
+        THEN
+          PHONE_NUM := LINE
+        ELSE
+          PHONE_NUM := COPY( LINE, 1, SIZEOF( PHONE_NUM ) - 1 ) ;
+      WITH SWITCHES DO
+        BEGIN
+        READLN( IN_FILE, LINE ) ;
+        CHECKIT ;
+        IF LENGTH( LINE ) > 0
+          THEN
+            FILTERCONTROL := LINE[1] IN TRUE_SET 
+          ELSE
+            FILTERCONTROL := FALSE ;
+        READLN( IN_FILE, LINE ) ;
+        CHECKIT ;
+        IF LENGTH( LINE ) > 0
+          THEN
+            LOGTEXT := LINE[1] IN TRUE_SET 
+          ELSE
+            LOGTEXT := FALSE ;
+        READLN( IN_FILE, LINE ) ;
+        CHECKIT ;
+        IF LENGTH( LINE ) > 0
+          THEN
+            ECHO := LINE[1] IN TRUE_SET 
+          ELSE
+            ECHO := FALSE ;
+        READLN( IN_FILE, LINE ) ;
+        CHECKIT ;
+        IF LENGTH( LINE ) > 0
+          THEN
+            VIDEOTEXT := LINE[1] IN TRUE_SET 
+          ELSE
+            VIDEOTEXT := FALSE ;
+        END ; { WITH SWITCHES }
+      VALID_LOGONS := VALID_LOGONS + 1 ;
+      END ; { WITH LOGON_LIST }
+  CLOSE( IN_FILE, LOCK ) ;
+{$I-}
+END ;
+
+BEGIN
+  LOGON_DEFINED := FALSE ;
+  LOGON1        := '' ;
+  LOGON2        := LOGON1 ;
+  LOGPROMPT     := ' ' ;
+  NUMBER        := LOGON1 ;
+  TIMESHARE_SERVICE := LOGON1 ;
+  IF QUESTION( 'Auto-Logon ' )
+    THEN
+      BEGIN
+      IF QUESTION( 'Predefined ' )
+        THEN
+          BEGIN
+          WRITELN ;
+          WRITELN( 'One moment please . . .' ) ;
+          SETUP_LIST ;
+          IF VALID_LOGONS > 0
+            THEN
+              BEGIN
+              CLEAR_THE_SCREEN ;
+              WRITELN( 'Predefined logons are' ) ;
+              FOR INDEX := 1 TO VALID_LOGONS DO
+                WITH LOGON_LIST[INDEX] DO
+                  WRITELN( INDEX:2,
+                           ' ', 
+                           SERVICE, 
+                           ' [', USER_ID, ']',
+                           ' Phone ', PHONE_NUM ) ;
+              WRITELN ;
+              WRITE( 'Select a digit (Q to select none):' ) ;
+              REPEAT
+                READ( KEYBOARD, C ) ;
+              UNTIL ((ORD( C ) - ORD( '0' )) IN [1..VALID_LOGONS])
+                 OR (C IN ['Q', 'q']) ;
+              WRITE( C ) ;
+              IF C IN ['Q', 'q']
+                THEN
+                  LOGON_DEFINED := FALSE
+                ELSE
+                  WITH LOGON_LIST[ORD(C)-ORD('0')] DO
+                    BEGIN
+                    LOGON_DEFINED     := TRUE ;
+                    LOGON1            := USER_ID ;
+                    LOGON2            := PASSWORD ;
+                    LOGPROMPT         := PROMPT ;
+                    NUMBER            := PHONE_NUM ;
+                    TIMESHARE_SERVICE := SERVICE ;
+                    FILTERCONTROL     := SWITCHES.FILTERCONTROL ;
+                    LOGTEXT           := SWITCHES.LOGTEXT ;
+                    ECHO              := SWITCHES.ECHO ;
+                    VIDEOTEXT         := SWITCHES.VIDEOTEXT ;
+                    END ;
+              END ;
+          END ;
+      IF NOT LOGON_DEFINED
+        THEN
+          IF QUESTION( 'Specify logon manually' )
+            THEN
+              BEGIN
+              TIMESHARE_SERVICE := 'Manually specified' ;
+              WRITELN ;
+              REPEAT
+                WRITE('What is the first line?' ) ;
+                READLN( LOGON1 ) ;
+              UNTIL QUESTION( 'OK ' ) ;
+              WRITELN ;
+              REPEAT
+                WRITE('What is the last line?' ) ;
+                READLN( LOGON2 ) ;
+              UNTIL QUESTION( 'OK ' ) ;
+              WRITELN ;
+              REPEAT
+                WRITE(
+                      'What is the last character of the password prompt?' );
+                READ( LOGPROMPT ) ;
+              UNTIL QUESTION( 'OK ' ) ;
+              WRITELN ;
+              REPEAT
+                WRITE( 'What is the associated phone number?' ) ;
+                READLN( NUMBER ) ;
+              UNTIL QUESTION( CONCAT( 'Is ', NUMBER, ' correct' )) ;
+              OPTIONS ;
+              LOGON_DEFINED := TRUE ;
+              END ;
+      END ;
+END ; { SETLOGON }
+
+
+SEGMENT PROCEDURE DIAL ;
+VAR
+  DIAL_RESULT   : CR_DIALRESULT ;
+  TEMP          : STRING ;
+BEGIN
+  IF QUESTION( 'Dial' )
+    THEN
+      REPEAT
+        WRITELN ;
+        WRITE( 'What number (<cr>=', NUMBER, ') :' ) ;
+        READLN( TEMP ) ;
+        IF LENGTH( TEMP ) > 0
+          THEN
+            IF TEMP[1] = CHR( 27 )  { Watch for <escape>. }
+              THEN
+                BEGIN
+                PROCEED ;
+                EXIT( DIAL ) ;
+                END
+              ELSE
+                NUMBER := TEMP ;
+        IF LENGTH( NUMBER ) > 0
+          THEN
+            BEGIN
+            CR_DIAL( NUMBER, ',', DIAL_RESULT ) ;
+            IF DIAL_RESULT <> CR_OFF_HOOK
+              THEN
+                WRITELN( 'Dial failed.  Response was ',
+                         ORD( DIAL_RESULT ) ) ;
+            END ;
+      UNTIL (LENGTH( NUMBER ) = 0)
+         OR (DIAL_RESULT = CR_OFF_HOOK)
+    ELSE
+      PROCEED ;
+END ; { DIAL }
+
+BEGIN
+
+  WRITELN ;
+  WRITELN( 'TERMINAL PROGRAM.', VERSION ) ;
+  WRITELN( 'COPYRIGHT 1980, 1981, 1982 BY ROBERT W. PETERSON' ) ;
+  WRITELN( 'ALL RIGHTS RESERVED' ) ;
+  WRITELN( 'Bytes available = ', MEMAVAIL * 2 ) ;
+  WRITELN( 'Log buffer size = ', LOGLIMIT ) ;
+  
+  DONE      := FALSE ;
+  FILTERSET := [ CHR( 0 ) .. CHR( BACKSPACE-1 ), 
+                 CHR( BACKSPACE+1 ) .. CHR( CR-1 ), 
+                 CHR( CR+1 ) .. CHR( 31 ) ] ;
+  NEARLY    := (LOGLIMIT DIV 100) * 80 ;
+  
+  WRITELN ;
+  {  The "attention character" is used in several places to
+     allow the user to cancel an activity.  For example, while
+     the program is transmitting a file to the other system,
+     the keyboard is monitored.  If the "attention character" is
+     read, the transmission is aborted.
+     
+     The "attention character" is constrained to be a non-printing
+     character if it is entered by the user.
+   }
+  IF QUESTION('Is <control E> a suitable attention character ')
+    THEN
+      C := CHR( 5 )
+    ELSE
+      REPEAT
+        WRITELN ;
+        B := FALSE ;
+        REPEAT
+          WRITE( 'What character will be used? ' ) ;
+          WHILE NOT CR_KBSTAT DO ;
+          C := CR_GETKB ;
+          WRITELN( '<', ORD( C ), '>' ) ;
+          IF C IN [' '..'~']
+            THEN
+              WRITELN( 
+                      'You cannot use a displayable character')
+            ELSE
+              B := QUESTION( 'Is this correct ' ) ;
+        UNTIL B ;
+      UNTIL NOT (C IN [' '..'~']) ;
+  WRITELN ;
+  
+  CR_COMMINIT( CR_ORIG, C, HAVEREM, HAVEDIAL ) ;
+  IF NOT HAVEREM
+    THEN
+      BEGIN
+      WRITELN( ' REMOTE not supported in current environment.' ) ;
+      WRITELN( ' Program is terminating.' ) ;
+      EXIT( TERMINAL ) ;
+      END ;
+  
+  { RESULT is set good so that if none of the suggested models
+    are available the program will not call CR_SETCOMMUNICATIONS. }
+  RESULT := CR_SET_OK ;
+  IF QUESTION( 'Is this a 990/5 or Model 2? ' )
+    THEN
+      IF QUESTION( '1200 BAUD' )
+        THEN
+          CR_SETCOMMUNICATIONS( 
+                        FALSE,
+                        TRUE,
+                        1200,
+                        8,
+                        1,
+                        CR_ORIG,
+                        '990/5',
+                        RESULT )
+        ELSE
+          CR_SETCOMMUNICATIONS( 
+                        TRUE,
+                        TRUE,
+                        300,
+                        7,
+                        1,
+                        CR_ORIG,
+                        '990/5',
+                        RESULT )
+    ELSE
+      IF QUESTION( 'Polymorphic' )
+        THEN
+          CR_SETCOMMUNICATIONS( 
+                        TRUE,
+                        TRUE,
+                        300,
+                        7,
+                        1,
+                        CR_ORIG,
+                        'POLYMORPHIC',
+                        RESULT )
+        ELSE
+          IF QUESTION( 'IBMPC' )
+            THEN
+              CR_SETCOMMUNICATIONS( 
+                            FALSE,
+                            TRUE,
+                            300,
+                            8,
+                            1,
+                            CR_ORIG,
+                            'IBMPC',
+                            RESULT ) ;
+      
+  IF RESULT <> CR_SET_OK
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN ;
+      WRITELN( 'Setting of baud rate failed!  Program is exiting.' ) ;
+      EXIT( PROGRAM ) ;
+      END ;
+      
+  SETLOGON ;
+  
+  { The options are normally set by selecting one of the predefined
+    logons, or by manually specifying a logon.  If a logon
+    was not specified, set the options here.             }
+  IF NOT LOGON_DEFINED
+    THEN
+      OPTIONS ;
+  
+  { If CR_COMMINIT said dial support is available, try to dial
+    the number.  Otherwise simply tell the unit to go off-hook.  }
+  IF HAVEDIAL
+    THEN
+      DIAL
+    ELSE
+      PROCEED ;
+  
+  WRITELN ;
+  WRITELN ;
+  
+END ;
+
+

@@ -1,0 +1,751 @@
+^pn 1
+^he 'EE&CS 63 - Database Homework Project'
+^h2 '12 February, 1980'
+
+
+
+{EE&CS 63 Database Homework Project}
+
+12 February, 1980
+K.L.Bowles
+
+
+Assigned homework for the remainder of the quarter will consist of 
+carrying out one, two, or three program design/implementation 
+projects depending upon whether you plan to earn a course grade of
+'C', 'B', or 'A' respectively. All of the projects will involve 
+making changes in a starter program of medium complexity. The 
+starter program is a partially completed database manager, the 
+design of which has been discussed in EE&CS 63 lectures for the last 
+week, and will be the principal topic of the remaining lectures for 
+the course. 
+
+
+^pb 5
+1. {Objectives}
+
+^pb 3
+Practical use of databases typically requires more extensive
+programming than can reasonably be required for homework from a
+class at the level of EE&CS 63. Nevertheless, one important
+objective of the course is to prepare students for the kind of
+working environment they may encounter upon taking jobs as (non-
+numerical) programmers after leaving UCSD. Work with the database
+starter program provided with this course will help to prepare you
+in several ways:
+
+a) The best way to develop a large program is to proceed in easy 
+   stages, adding facilities and debugging them at each stage. This 
+   method is often called "step-wise refinement". The starter
+   program will give you a realistic base from which to start work,
+   and will allow getting significant results without going through
+   the more difficult first step of establishing the overall design
+   of an eventual program system. 
+   
+b) In working with large programs, the style used in writing the
+   programs becomes increasingly important. The style issues are
+   difficult to teach using short quizzes and homework assignments
+   as in EE&CS 61. You should spend enough time reading and studying
+   the starter program, and associated libraries of routines,
+   provided to you that you have a good understanding of how they
+   work. As you do this, notice the treatment given to style issues
+   such as indentation (as a substitute for structure diagrams),
+   relative brevity of procedures and functions, use of CONST and
+   TYPE declarations, and handling of error conditions. Experienced
+   programmers often learn more about how to use a new programming
+   language or computer system from reading large programs written
+   by others than from extensive amounts of written text or
+   lectures. 
+   
+c) A database program is generally used over an extended period of
+   time, and usually evolves from its initial performance 
+   specifications into a changed or expanded whole as time goes on. 
+   In many cases, the initial program is large enough to require 
+   several programmers to be employed to complete separate parts of 
+   the program. For both of these reasons, it is very important that 
+   methods be used to simplify the problems of a programmer assigned 
+   to modify or {maintain} a program previously created by others. 
+   This requires that good specification and maintenance documents 
+   be written to go with the program, and that a reasonable number 
+   of comments be embedded in the program to assist one programmer 
+   to read and understand the work of another. Work with the EE&CS 
+   63 database program by the class will require that different 
+   teams of students exchange documentation and programs which 
+   refine the starter program in differing ways. This should provide 
+   a moderately realistic simulation of the real world of work with 
+   large programs outside the University. 
+   
+
+^pb 5
+2. {Organization}
+   
+The complexity of the work needed to complete the design and
+implementation in any of the topic areas described here is too
+great to expect any homework team in EE&CS 63 to carry the work in
+a topic area to completion. However, it will be possible to make
+significant performance improvements in the program within roughly
+the amount of time a team should expect to spend on homework in a
+two-week period. 
+
+The method of operation will require that a homework team write
+specifications on a proposed change to the starter program. These
+specifications will be discussed with Prof. Bowles, Richard
+Kaufmann, or in some cases with a proctor, before proceeding to
+write and debug the program changes themselves. Students who carry
+out the programming changes before writing the specifications should
+be aware that those changes will only be regarded as {experimental}
+and useful for writing the specification. In general, the
+specifications will have to be approved first, as the first step in
+completing a homework set. You should expect to be requested to
+change your specifications in significant ways before proceeding to
+implement your program changes. Thus it is possible that program
+changes made in the course of deciding how to write the
+specifications will serve only as a learning experience, and may not
+be acceptable in completion of a homework set. 
+
+Each set of specifications should contain at least the following 
+parts:
+
+a) A statement of the objectives of the work you plan to undertake.
+   
+b) A statement of the method you plan to use in reaching your 
+   objectives. A diagram or two may prove useful in explaining your 
+   method. 
+   
+c) A rough description of the additions or changes you plan to make
+   to the starter program. This may include headings and parameter
+   declarations of some of the procedures and/or functions you
+   propose to use. It would typically include a brief description of
+   the role each important procedure or function is expected to
+   play. 
+   
+d) A listing of the parameters you expect to use, along with maximum 
+   and minimum values or other statement of the special or limiting 
+   values each parameter may take on. 
+   
+e) A statement of how you plan to test your program changes to 
+   verify that they in fact operate as planned once written and 
+   compiled. 
+
+For the typical homework problem, the length of the specifications 
+may run from one to about three pages. To have a set of 
+specifications accepted for grading purposes, be prepared to defend 
+the design choices you propose to use. Each member of a homework 
+team must be familiar with all aspects of the work that the team 
+proposes to take on. If you split up the work to be handled 
+separately by different team members, you should defend your own 
+work to the other team members before submitting your work for 
+formal acceptance. Otherwise there is no purpose in working as a 
+team, and you should be defending your individual work separately 
+for grading. 
+
+For formal grading, neatness will be important (but you don't need 
+to get carried away and spend a large part of your time just in 
+making your work neat). If the written specification is an
+unreadable mess, you will be asked to re-do it before it can be
+considered for acceptance. 
+
+To be accepted for grading purposes, each specification document or 
+program submitted must contain the names of all persons who worked 
+on it, and the approximate date on which the work was carried out. 
+In programs, these should be in the form of comments at the head of 
+a listing, or in standardized initials such as (*KLB*) embedded in 
+a program where you make changes. The initials can be used with the 
+Editor's F(ind command to locate changes made by each of several 
+individuals. 
+
+
+^pb 5
+3. {General Description of the Starter Program}
+
+^pb 3
+The package of program listings passed out to the class on 11 
+February contains four sections, as follows:
+
+a) Program DBTEST - pages 1 .. 4
+   
+b) Unit DBUNIT - begins on page 5
+   
+c) Unit SCUNIT - begins on page 41
+   
+d) Unit STARTER - begins on page 46
+   
+All three units are used by the DBTEST program, which has only a 
+main program body running from line 215 to line 234 on page 4. The 
+USES statement on line 213 of the listing occurs in the program 
+source file immediately after the PROGRAM heading line (line 3 in 
+the listing). All of the intervening lines in the DBTEST listing are 
+from the INTERFACE parts of the units named in the USES statement.
+
+In UCSD Pascal, a Unit has the following form:
+
+  UNIT XYZ;
+  INTERFACE
+    CONST
+      ...
+    TYPE
+      ...
+    VAR
+      ...
+    PROCEDURE & FUNCTION headings
+    
+  IMPLEMENTATION
+    CONST
+      ...
+    TYPE
+      ...
+    VAR
+      ...
+    PROCEDURE & FUNCTION declarations
+    
+All of the declared objects are similar in purpose to those in an 
+ordinary Pascal program. Objects declared in the INTERFACE part are 
+intended to be used by programs or other units which use the Unit 
+XYZ (or whatever name you choose). Objects declared in the 
+IMPLEMENTATION part generally may not be used directly by using 
+program or units. However the procedure and function headings in the 
+INTERFACE part serve as the equivalent of FORWARD declarations 
+matched by completed procedure or function declarations in the 
+IMPLEMENTATION part. Procedures and functions declared only in the 
+IMPLEMENTATION part may be called only by other procedures and 
+functions, not by a using program. 
+
+The program listing for the DBTEST program duplicates the INTERFACE 
+parts of all three of the Units that it uses. Lines 5 through 126 
+are the interface for the DBUNIT, lines 130 through 147 are for the 
+SCUNIT, and lines 150 through 212 are for the STARTER unit. The 
+STARTER unit encompasses the bulk of the original content of the 
+DBTEST program itself, and it represents only an approximation to 
+the library of primitive routines that might be used for a fully 
+developed database system. By placing functioning parts of the 
+DBTEST program in the STARTER unit, it has been possible to reduce 
+the size of a typical program compilation for the class to a small 
+and readily manageable size.
+
+As may be seen from lines 215 through 234 on page 4, the DBTEST 
+program is basically quite simple. First, the procedure STINITIALIZE 
+is called. Details on STINITIALIZE may be found in the listing for 
+the STARTER unit on page 48, lines 276 through 305. For most 
+purposes, the procedure operates just as it would have had it been 
+had it been declared in full within the DBTEST program. 
+
+Continuing in DBTEST (page 4), the program loops in the REPEAT 
+statement until DONE is set. DONE is a Boolean variable declared in 
+the INTERFACE part of STARTER, as may be seen at line 192 on page 4, 
+or line 192 on page 46. GOTOXY (line 218 on page 4) is a built-in 
+procedure provided by the UCSD Pascal system. It causes the cursor 
+to jump to the (column, row) location indicated by the parameter 
+expressions (type Integer). The functions GETCOMMAND and CHANGEREC, 
+and the procedures SAVEREC, FINDREC, GETREC, and NEWREC are all 
+declared in the STARTER unit. The procedure DBSHOWERR is declared in 
+the DBUNIT. In general, you can identify routines declared in the 
+database support unit DBUNIT by the prefix "DB", and those in the
+screen control unit SCUNIT by the prefix "SC". 
+
+For lack of time, it will not be possible to distribute a full set 
+of written descriptions of the routines in the programs distributed. 
+While it was planned to provide you with a more comprehensive 
+written description, the level of documentation provided here is 
+probably typical of documentation you may have to cope with in real 
+world programming assignments. In general, most important routines
+have brief comments on what they do immediately following their
+heading lines. Virtually all routines have been given names which
+directly suggest what they do. After a brief description of the
+data structure used by the system, we will walk you through one of
+the STARTER procedures to assist in reading the programs. 
+
+^pb 5
+4. {The Data Structure and DataBase Support Module DBUNIT}
+
+^pb 3
+The general concept of software tools is described briefly in the 
+Beginners Manual for the UCSD Pascal System, chapter 9. DBUNIT has 
+been designed with the intent to provide a library of primitive 
+software tools to simplify writing database handler programs for a 
+variety of purposes. The data structure is intended to overcome two 
+bothersome limitations of the Pascal language, and typical small 
+operating systems, for these purposes:
+
+a) The Pascal requirement to use records of fixed size leads to 
+   inefficient use of storage space if all records are stored in 
+   conventional Pascal files. To account for names or other variable 
+   size objects of maximum length, most records contain wasted 
+   space. On average, a typical file might contain from 50 to 75 
+   percent wasted space. The data structure implemented in the 
+   DBUNIT overcomes this by providing random access to variable size 
+   objects. The cost is a small amount of access overhead.
+   
+b) A typical database contains several related but distinct files, 
+   each with its own distinct record format(s). Maintenance of these 
+   files, and the space each file occupies, can become very awkward. 
+   The DBUNIT based system overcomes this by intermingling all of 
+   the logical data sequences, that otherwise would be in separate 
+   files, in one UCSD Pascal file.
+   
+The data structure provides packing of variable size data objects by 
+using linked lists. It provides reasonably rapid random access to 
+those objects by breaking the database file into "pages". In this 
+system, a page is treated as a medium size physical record large 
+enough to hold many logical records of variable size. A CONSTant in 
+the DBUNIT establishes the page size as 4096 bytes, the equivalent 
+of 8 blocks of 512 bytes each. This could be changed if one wished 
+by recompiling the unit. 
+
+The DBUNIT allows for manipulating the content of a page by loading 
+it into any of several "workareas" which can be "opened" for use by 
+primitive routines provided with the unit. Data can be extracted in 
+one workarea and moved to another workarea or to the using program. 
+Data can be edited (by procedure and function calls) within a 
+workarea, and later inserted into another workarea. When the 
+contents of a full-page workarea is ready to be saved again on the 
+disk, that can be done using the DBPUTPAGE function. When opened, a 
+workarea may be as large as a full page, or smaller depending upon 
+the programmers requirements for temporary working storage in 
+memory.
+
+Within a page, the data structure can be described with the help of 
+figures 1, 2 and 3. Figure 1 shows a page containing several 
+"groups". In this system, a group is equivalent to a "repeating 
+group", as often referred to in the database industry. It is a 
+structure which contains a variable number of records. Records are
+similar in concept to Pascal records, except that the fields in a
+record in this system may be of variable size. 
+
+The relationships among groups, records, and fields are shown in 
+Figure 2. A group starts with a link pointing to the beginning of 
+the following group, or to the end of the list (indicated by a link 
+value of 0). Within a group, there are several records, each of 
+which starts with a link pointing to the next record. Within a 
+record, there are several fields. All variable fields start with a 
+link pointing to the next field. A record may contain one or more 
+unlinked fields of fixed size. All fixed size fields are lumped into 
+a single linked pseudo-field at the beginning of the record. The 
+fixed fields are accessed relative to the position of the link which 
+makes the pseudo-field appear similar to other fields within the 
+linked list structure. A field may be defined to contain a group. 
+Thus the structure is recursive, and may contain many levels of 
+nested groups, records, and fields in applications where that makes 
+sense.
+
+The format of all groups, records, and fields is under the control 
+of "descriptor" records stored in three groups at the beginning of 
+the database file. In the file TESTDB that you will be using, all 
+three lists of descriptors are contained in Page # 0. Groups are in 
+predefined descriptor group #1, records in group #2, and fields in 
+group #3. A group descriptor refers to one or more numbered 
+descriptors for the records it contains. A record descriptor 
+contains a simple (unlinked) list of field-descriptor numbers. A 
+field descriptor referring to a nested group contains the descriptor 
+number of that group, rather than a specification of the type of 
+information contained in the field. 
+
+Figure 3 shows a close approximation to the relationships among the 
+descriptors in the TESTDB file which you will be using for this 
+course. As may be seen, Group #0 (the "People_Group") refers to just 
+one record descriptor for Record #0 (the "Person_Rec"). Record #0, 
+in turn, refers to field descriptors numbered 0 through 10. Fields 
+0, 1, and 2 are fixed size integer fields, and each is 2 bytes wide. 
+Fields 4 through 9 are string type fields, with maximum widths 
+ranging from 15 to 40 characters. Field #10 refers to Group #2 (the 
+"TransGroup"), which in turn contains records with three fixed size 
+fields each. The notation "SW" refers to a byte stored with each 
+descriptor containing control bits. Most of the control bits are 
+left undefined for possible use in a user's program. For fields, bit 
+#1 (corresponding to the value 2) indicates a fixed width field. The 
+notations "Row", "Lcol", and "Dcol" are for controlling the screen 
+location and format of data display. Both the "label" and the data 
+content of a field are to be displayed in the same row on the screen 
+(numbering 0 at the top to 23 at the bottom). "Lcol" indicates the 
+column number in which the field's label is to be started. "Dcol" 
+indicates the column in which the left-most data character should 
+appear.
+
+The descriptors are stored in the TESTDB file as linked lists 
+similar in concept to those in the lists they describe. The 
+descriptors are stored in the file, and edited, using the same 
+primitive operations that apply to the data they describe. However, 
+access to the descriptors is accomplished with the global Boolean 
+DBTYPECHECK (line 44 on page 1 of the listing) set to FALSE. This 
+suppresses references to descriptors when moving around in the 
+groups, records, and fields. Instead the descriptors are considered 
+by DBUNIT itself as made up of simple linked strings. These are 
+passed to the data structure editor program. The data structure 
+editor program currently available is quite primitive, and supplied 
+to the class as part of the program DBUILDER. DBUILDER is basically 
+an experimental laboratory designed to allow step-by-step debugging 
+of the DBUNIT. You are welcome to use it (at your own peril), but no 
+documentation will be provided. Eventually, a more friendly data 
+structure editor will be provided. (Any class group that feels 
+really ambitious might consider writing a data structure editor for 
+the second and third homework projects in this course.) With an 
+understanding of the relationship between the data structure and the 
+primitive operations of the DBUNIT, you should be able to read a 
+listing of the DBUILDER program with relatively little problem, and 
+then should be able to use it for step-by-step viewing of the data 
+contained in the file.
+
+As may be seen from page 2 of the listing, the DBUNIT routines are 
+broken into several functional groupings. The traversal primitives 
+are used for moving around in the data structure within a page (as 
+contained in a workarea). The transfer primitives move data between 
+workareas, and between a workarea and a using program. The workarea 
+primitives are used to establish workareas of appropriate sizes. The 
+file primitives maintain tables for the one or more database files 
+needed by a user program. You will probably restrict your attention 
+to just one database file in this course. Notice also the debugging 
+primitives at the top of page 3 of the listing. 
+
+When you load a page into a workarea using DBGETPAGE, the workarea's 
+location pointer is initialized at the head of the first group 
+(group #0). To get to the next group in the list use DBNEXT. To get 
+to the first record in a group, use DBDESCEND. In other words, you 
+descend one level in the tree structured list to move from the 
+GROUPT level to the RECORDT level (see line 20 on page 1 of the 
+listing). To get to record N within that group, you can use DBSEEK, 
+or call DBNEXT N times. To get to the end of the list in order to 
+link yet another record there, use DBTAIL. To access individual 
+fields within a record, use DBDESCEND again. To return from the 
+FIELDT level to the head of the enclosing record, use DBASCEND. 
+DBHEAD takes you to the location of the first item in the list at 
+the current level. DBHOME returns you to the head of the outermost 
+group level in the page. DBFINDREC is used to scan through records 
+in a single group, searching for a match with a string in the KEY 
+parameter. 
+
+Once you have located a desired record, you may wish to move 
+information from the fields of that record to your calling program, 
+or you may wish to replace information in the record with new 
+information. This is done by passing the information through the 
+DBUNIT's "mailbox" variable (declared starting in line 48 on page 1 
+of the listing). The DBMAIL record passes one item of any type of 
+information supported by the system using the transfer primitives 
+DBGET and DBPUT which are similar in concept to Pascal's GET and PUT 
+used with files. Your program accesses a value from the data 
+structure by using DBGET, once the location pointer has been moved 
+to the desired item. DBGET loads a copy of the item into DBMAIL. You 
+can then access the value within DBMAIL (just as you can use FID^ 
+for a file), or you can assign the value in DBMAIL to a variable in 
+your program. DBPUT takes the value in the DBMAIL variable and 
+uses it to replace the value currently stored in the data structure 
+at the location of the workarea's location pointer. The DBMAILTYPE 
+tag field of DBMAIL must be used to identify what type of 
+information is being passed via the mailbox (otherwise you will get 
+bizarre and unpredictable results!). At present, only the STRINGF 
+and INTEGERF options are implemented. (If you are even more 
+ambitious, you might try adding one of the other types for the 
+second and third homework tasks.)
+
+All the other transfer primitives operate within the data
+structure, and do not refer to DBMAIL. Comments in the headings of 
+these primitives describe what they do in the DBUNIT listing.
+
+^pb 5
+5. {Walk-thru of a STARTER procedure}
+
+^pb 3
+If you execute the program DBPROG (shown in the listing as DBTEST),
+and answer the prompt by asking for the database file TESTDB
+(transfer it with the Filer to your #4: or #5: disk), then the
+operation of the several procedures can be summarized as follows:
+
+a) F(indrec will ask for an approximate index "key". After you press 
+   <return>, a portion of the index will be displayed with selection 
+   letters. Pick a letter, and the corresponding record will be 
+   displayed.
+   
+b) C(hangerec allows altering the contents of the displayed record. 
+   Select the field to alter by pressing its selector letter, or by 
+   using <return> to get to the next field. The old value of the 
+   field can be edited or a new value substituted. See page 43 of 
+   the listing for details on the SCREADSTRG procedure used to 
+   handle this editing. On the Apple, use the ASCII character "CAN" 
+   (Control-X) to get the effect of DEL described in the procedure.
+   Save the new value of the field using <return>. <escape> returns 
+   you to the C(hangerec control level and redisplays the original 
+   value of the field. From the C(hangerec control level, <ETX> 
+   saves the new record value, <ESC> returns to the program with no 
+   change in the record.
+   
+c) N(ewrec is used to create a new record, and store it and its 
+   index entries in the file.
+   
+d) G(etrec is a debugging procedure used to allow you to refer 
+   explicitly to a page, group, and record number location. Data 
+   records in TESTDB are on pages 2 and up. Page 1 contains the 
+   currently implemented single level index. Page 0 contains mainly 
+   the descriptor groups.
+   
+e) Q(uit as it implies gets you out of the program.
+   
+f) T(race allows manipulating the controls used to trigger detailed 
+   "dumps" of the data structure by the DBUNIT procedure TRACEWA. 
+   The T(race display will prompt for trace "sites", which are 
+   numbers associated with specific traversal and transfer 
+   primitives. For example, if you set tracing for site #9, a dump 
+   will be triggered the next time the DBSEEK routine is entered 
+   (See line 906 on page 20 of the listing.) A table of all trace 
+   sites will be provided to the class in a supplementary handout.
+   
+Now refer to the STARTER procedure SAVEINDEXITEM which starts on 
+line 420 of page 50 in the listing. The array SELECT is assumed to 
+have been previously loaded with itemnumbers and descriptor numbers
+by the SHOWREC procedure. ZEROWORKAREA(WA2) is a DBUNIT procedure 
+used here to initialize workarea #2 (see CONST in line 154 page 46). 
+The following list of calls to DBEMPTYITEM, DBHOME, DBDESCEND all 
+set a dummy integer variable. Most of the DBUNIT routines are 
+functions which may return a non-zero error value in a manner 
+similar to an error IORESULT. In the lines shown here, we have 
+assumed that these routines will run correctly, and make no 
+provision for error handling. 
+
+As you will find, it is probably preferable for you to control all
+of your calls to these routines using DBSHOWERR, as illustrated on
+line 464 of page 51. In that case, we copy the item currently
+pointed at in WA2 (workarea #2) into the current position pointed
+at in WA0. If DBCOPY fails (returns a non zero value) then the
+message given by the string parameter 'SAVEINDEXITEM - copy WA2 to
+WA0' will be displayed, and you will be asked how to proceed. We 
+eliminate the space and time consuming use of DBSHOWERR only after 
+enough testing has been done to show that errors are very unlikely. 
+You will probably find that our confidence in using DUMMY:=... has 
+been misplaced in some of its uses in the STARTER unit. 
+
+In line 460 on page 51, we set the local variable RSLT to the value 
+returned by DBDESCEND. This allows the program to take evasive 
+action if the DBDESCEND routine fails for a predictable reason. In 
+this case DBDESCEND might fail if WA0 is completely empty.
+
+
+^pb 5
+6. {Homework Problem Topics}
+
+^pb 3
+Due to shortage of time, this section will generally provide only a 
+brief recounting of the areas in which teams of students may propose 
+homework topics. An additional handout providing more details will 
+be available in a few days. A point of caution is that there are 
+probably several bugs in the program materials provided to you - a 
+touch of what you will also find in working in the real world after 
+leaving UCSD.
+
+For the first homework project, all but the more ambitious groups 
+may wish to attack problem 6.1b, c, or d.
+
+
+^pb 5
+6.1 {ISAM Index}
+
+^pb 3
+The index facility in the starter program is incomplete in many 
+ways. Any of the following would be suitable project tasks:
+
+a) The starter program provides only a coarse index. Extend it by 
+   adding fine index handling. Since the index file handling may 
+   make this time-consuming, put "Updating ... " on the screen to 
+   show that work is in progress. 
+   
+b) The STARTER unit's SAVEINDEXITEM procedure makes no provision to 
+   replace an index entry with an edited entry. If the new entry 
+   differs in any way from the old, then the new entry is added to 
+   the index, but the old remains. Repair this problem by arranging 
+   to replace the old entry with the new when appropriate. This 
+   should not prevent adding new index items when NEWREC is called.
+   
+c) The STARTER unit's index handling makes no provision for storing 
+   multiple references to a single index key value. For example, 
+   there are two references in the TESTDB file for Texas 
+   Instruments, but only one can be reached via that key in the 
+   index. This should be fixed.
+   
+d) Relative to the F(ind command's display of Key values, provide a
+   capability to use the UP and DOWN arrow keys to get the next data
+   record, or the previous one, in the index (alphabetic) sequence.
+   
+e) Build a complete index from a pre-existing DFID file, for example 
+   to provide a new combination of fields that are indexed. 
+   
+f) Re-build an existing ISAM index in order to balance the occupancy 
+   of the several pages.
+
+
+
+^pb 5
+6.3 {Transaction File}
+
+^pb 3
+The starter program currently contains only primitive hooks to 
+implement the transaction file.
+
+a) Implement the transaction file initializer/maintainer.
+   
+b) Collect transaction data from the keyboard and display it.
+   
+c) Display recent transaction records associated with the current 
+   data record. Implement a "next" capability to scroll the 
+   transaction records so that earlier ones may be seen.
+   
+
+^pb 5
+6.4 {Batch Search}
+
+^pb 3
+Implement a general purpose means of going through the entire data 
+records file, allowing specified processing on selected records.
+
+
+^pb 5
+6.5 {Summary Report Generator}
+
+^pb 3
+Based on a batch strategy, summarize numeric data fields in the data 
+records, and provide a formatted output report which may be either 
+displayed or printed.
+
+
+^pb 5
+6.6 {Reformat a Data Records File}
+
+^pb 3
+Provide a general capability to create a new database file with a
+newly defined layout of fields in the records, based on input from
+an old pre-existing file with a different layout.
+
+
+^pb 5
+6.7 {Sort/Merge Utility}
+
+^pb 3
+Write a utility program to Sort and/or Merge records in a database.
+This includes a substantial amount of disk handling, and is a fairly
+major project. 
+
+
+^pb 5
+6.8 {Garbage Collection}
+
+^pb 3
+After substantial amounts of use, the Data Records file may become 
+"checkerboarded" with unused record locations. Rebuild the file to 
+eliminate unused record links embedded within the file. This
+may require updating the transaction groups associated with the main
+data records, and it requires re-building the indexes. 
+
+
+^pb 5
+6.9 {Error Recovery}
+
+^pb 3
+Various utility programs will be needed to ease the problems of 
+error recovery and maintenance of backup files. An example would be 
+the maintenance of an audit trail containing details on all updates 
+to the previous master file. Combination of the previous master with 
+the audit trail file should allow re-generating the current files. 
+
+
+^pb 5
+7. {List of Trace Sites}
+
+^pb 3
+Location #      Procedure or Function Traced
+
+   0            DBEMPTYITEM - before
+   1            DBEMPTYITEM - after
+   2            MOVETAIL - before
+   3            MOVETAIL - after
+   4            LINKDELTA - before
+   
+   5            LINKDELTA -after
+   6            DBHOME - end
+   7            DBNEXT - begin
+   8            DBNEXT - end
+   9            DBSEEK - begin
+   
+   10           DBSEEK - end
+   11           DBDESCEND - begin
+   12           DBDESCEND - end
+   13           DBGET - begin
+   14           DBPUT - begin
+   
+   15           DBPUT - end
+   16           FIXLINKS - end
+   17           DBDELETE - begin
+   18           DBDELETE - end
+   19           DBBLANK - begin
+   
+   20           DBBLANK - end
+   21           DBREPLACE - begin source
+   22           DBREPLACE - begin destination
+   23           DBREPLACE - end destination
+   24           DBCOPY - begin source
+   
+   25           DBCOPY - begin destination
+   26           DBCOPY - end destination
+   27           DBFINDREC - begin
+   28           DBFINDREC - end
+   29           DBTAIL - end
+   
+   30           DBHEAD - end
+   31           DBASCEND - end
+   32           DBRESERVE - begin
+   33           DBRESERVE - end (dummy proc temporarily)
+           
+
+^pb 5
+8. {List of DBUNIT Error Return Codes}
+
+^pb 3
+Code #          Meaning
+
+0               No error
+1               Insufficient memory to complete function
+2               Workarea size request out of allowed range
+3               Workarea already open
+4               File of same title already exists
+
+5               File already open (and in use)
+6               File requires non-nul title string
+7               Rewrite failure on attempt to create new file
+8               Workarea not open
+9               Insufficient space on disk
+
+10              Unable to lock file
+11              Unable to open file with reset
+12              Facility not yet implemented
+13              Workarea pointer at an undefined level
+14              Insufficient space for insertion in workarea
+
+15              Improper data level
+16              Attempted link value outside workarea
+17              Attempted negative offset in workarea
+18              Attempted link value greater than 4079
+19              Reached end of list (link = 0)
+
+20              Level = NONET, cannot continue
+21              Cannot assign string - too long
+22              Unable to remove file
+23              Unable to open file
+24              DBPUTPAGE error - blockwrite failed
+
+25              DBGETPAGE error - blockread failed
+26              Cannot close the file
+27              DBSEEK,DBNEXt error - cannot find requested item
+28              DBWRITEFIELD error - item not a simple field
+29              NIL field pointer
+
+30              Cnnot write a structured field
+31              No such field has been initialized
+32              No such record has been initialized
+33              No such group has been initialized
+34              Cannot descend any further
+
+35              No more fields in the record
+36              Item in Mailbox does not match descriptor
+37              Must be a fixed-width item
+38              Item must be a field
+39              DBFINDREC works only at the RECORDT level
+
+40              DBFINDREC must refer to a string type field
+41              Must be a group or record item
+42              Source level must equal destination level
+
+

@@ -1,0 +1,502 @@
+
+PROGRAM SPELLER;
+
+{     (c) Copyright 1983 by Charles Rockwell.  All rights reserved. }
+{ Permission is granted only for not-for-profit use by USUS members.}
+{ Author:  Charles Rockwell, Microlog, Box 116, Guilford CT, 06437. }
+
+USES (*$U IOUNIT.CODE *) IOUNIT;
+{ This construct assumes IOUNIT.CODE resides in SYSTEM.LIBRARY }
+{ changed to look for IOUNIT in a code file called IOUNIT.CODE - gws }
+
+CONST 
+      MAXCHAR = 14;                (* CHARACTERS PER TOKEN *)
+      MAXDIGITS = 5;               (* DIGITS IN LINE NUMBER *)
+      MAXSTR = 132;                (* CHARACTERS IN STRING *)
+
+TYPE 
+     ALPHA = STRING[MAXCHAR];
+     FILENAME = STRING[20];
+     WORDREF = ^WORD;
+     WORD = RECORD
+              KEY: ALPHA;          (* A WORD *)
+              FIRST: INTEGER;      (* FIRST LINE NUMBER *)
+              COUNT: INTEGER;      (* OCCURRENCES *)
+              LEFT: WORDREF;       (* POINTERS TO LEFT AND     *)
+              RIGHT: WORDREF;      (*     RIGHT WORDS IN TREE  *)
+            END;
+
+VAR 
+    OUT:BOOLEAN;
+    FILEOK: BOOLEAN;               (* FILE IS OPEN *)
+    DOTS: BOOLEAN;                 (* WRITE DOTS TO SCREEN *)
+    LBUF: STRING[MAXSTR];          (* INPUT LINE BUFFER *)
+    LPTR: INTEGER;                 (* INPUT LINE POINTER *)
+    MARK: BOOLEAN;                 (* WRITING MARKED TEXT FILE *)
+    ROOT: WORDREF;                 (* START OF THE TREE *)
+    DICTWRITE: BOOLEAN;            (* ADDING ENTRIES TO DICT *)
+    LCOUNT: INTEGER;               (* RUNNING LINE COUNT *)
+    LINECOUNT: INTEGER;            (* LINES IN TEXT *)
+    WCOUNT: INTEGER;               (* RUNNING WORD COUNT *)
+    WORDCOUNT: INTEGER;            (* TOKENS IN TEXT *)
+    DICTCOUNT: INTEGER;            (* UNIQUE WORDS IN TEXT *)
+    FLAGCOUNT: INTEGER;            (* WORDS FLAGGED FOR OUTPUT *)
+    CORECOUNT: INTEGER;            (* MINIMUM WORDS OF MEMORY *)
+    TOKEN: ALPHA;                  (* A WORD *)
+    SPACES: ALPHA;                 (* A BLANK WORD *)
+    CH: CHAR;
+    SOURCE: FILENAME;              (* INPUT FILE NAME *)
+    DEST: FILENAME;                (* OUTPUT FILE NAME *)
+    TITLE: FILENAME;               (* FILE NAME FOR HEADER *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE REPORT;               (* SEND PROGRESS REPORT TO SCREEN *)
+BEGIN
+  IF DOTS THEN WRITE('.');
+  IF CORECOUNT>VARAVAIL('speller')  (* MEMAVAIL *)
+    THEN CORECOUNT := VARAVAIL('speller')
+END;
+
+PROCEDURE GETTOKEN;                              (* READ A WORD *)
+
+VAR 
+    K: INTEGER;
+    DONE: BOOLEAN;
+
+  PROCEDURE READCH(VAR C:CHAR);
+  BEGIN
+    IF LPTR>LENGTH(LBUF)
+      THEN
+        BEGIN
+          IF MARK
+            THEN
+              BEGIN
+                DELETE(LBUF,LENGTH(LBUF),1);
+                WRITELINE(LBUF)
+              END;
+          IF EOFFLAG THEN
+            BEGIN
+              OUT:=TRUE;
+              EXIT(GETTOKEN)
+            END;
+          READLINE(LBUF);
+          LBUF := CONCAT(LBUF,' ');
+          LPTR := 1;
+          IF LCOUNT MOD 10 = 0 THEN REPORT;
+          LCOUNT := LCOUNT+1
+        END;
+    C := LBUF[LPTR];
+    LPTR := LPTR+1;
+    IF C IN ['A'..'Z'] THEN C := CHR(ORD(C)+32)
+  END; (* READCH *)
+
+BEGIN (* GETTOKEN *)
+  REPEAT
+    DONE := TRUE;
+    K := 0;
+    TOKEN := SPACES;
+    REPEAT READCH(CH)
+      UNTIL CH IN ['a'..'z','0'..'9'];
+        (* A WORD STARTS WITH THESE *)
+(*$R- *)
+    REPEAT
+      K := K+1;
+      IF K<= MAXCHAR THEN TOKEN[K] := CH;
+      READCH(CH)
+    UNTIL NOT(CH IN ['a'..'z','0'..'9','''','/','-']);
+                     (* AND CONTINUES WITH THESE *)
+    IF (TOKEN[1] IN ['0'..'9'])
+      THEN (* COUNT AND IGNORE *)
+        BEGIN
+          WCOUNT := WCOUNT+1;
+          DONE := FALSE
+        END
+  UNTIL DONE;
+  IF K > MAXCHAR
+    THEN
+      BEGIN
+        TOKEN[MAXCHAR] := '-';
+        K := MAXCHAR
+      END;
+  TOKEN[0] := CHR(ORD(K))
+(*$R+ *)
+END; (* GETTOKEN *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE INIT;
+
+VAR 
+    K: INTEGER;
+BEGIN (* INIT *)
+  LBUF := ' ';
+  LPTR := LENGTH(LBUF)+1;
+  MARK := FALSE;
+  ROOT := NIL;
+  LCOUNT := 0;
+  WCOUNT := 0;
+  WORDCOUNT := 0;
+  DICTCOUNT := 0;
+  CORECOUNT := VARAVAIL('speller'); (* MEMAVAIL *)
+  SPACES := '';
+  FOR K:=1 TO MAXCHAR DO SPACES := CONCAT(SPACES,' ');
+  WRITELN('Speller');
+  WRITELN
+END; (* INIT *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE SORTTEXT;                            (* SORT THE TEXT *)
+
+  PROCEDURE SORTTREE(VAR W1:WORDREF);    (* TRAVERSE THE TREE *)
+  
+  VAR 
+      W: WORDREF;
+  BEGIN (* SORTTREE *)
+    W := W1;
+    IF W=NIL
+      THEN                     (* PLACE FOR NEW WORD FOUND *)
+        BEGIN
+          NEW(W);
+          WITH W^ DO
+            BEGIN
+              KEY := TOKEN;       (* ENTER THE WORD *)
+              COUNT := 1;
+              LEFT := NIL;
+              RIGHT := NIL;
+              FIRST := LCOUNT
+            END;
+          W1 := W;
+          WCOUNT := WCOUNT+1;
+          DICTCOUNT := DICTCOUNT+1
+        END
+      ELSE IF TOKEN<W^.KEY THEN SORTTREE(W^.LEFT)
+          ELSE IF TOKEN>W^.KEY THEN SORTTREE(W^.RIGHT)
+              ELSE
+                BEGIN                     (* OLD WORD FOUND *)
+                  W^.COUNT := W^.COUNT+1;
+                  WCOUNT := WCOUNT+1
+                END
+  END; (* SORTTREE *)
+
+BEGIN (* SORTTEXT *)
+  WRITELN;
+  WRITE('Input text file:    ');
+  READLN(SOURCE);
+  FILEOK := RESETFILE(SOURCE);
+  IF NOT FILEOK THEN EXIT(PROGRAM);
+  OUT:=FALSE;
+  TITLE := SOURCE;
+  WRITELN;
+  WRITE('Reading text ');
+  DOTS := TRUE;
+  GETTOKEN;
+  WHILE NOT OUT DO
+    BEGIN
+      SORTTREE(ROOT);
+      GETTOKEN
+    END;
+  WRITELN
+END; (* SORTTEXT *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE CHECKDICT;                     (* CHECK THE WORD LIST *)
+
+VAR 
+    ENTRY: ALPHA;
+
+  PROCEDURE GETENTRY;
+  BEGIN
+    IF DICTWRITE THEN WRITELINE(ENTRY);
+    READLINE(ENTRY);
+    IF LCOUNT MOD 100 = 0 THEN REPORT;
+    LCOUNT := LCOUNT+1
+  END;
+  
+  PROCEDURE CHECKTREE (W:WORDREF);       (* TRAVERSE THE TREE *)
+  
+    PROCEDURE CHECKWORD(VAR W:WORDREF);     (* LOOKUP THE WORD *)
+    BEGIN (* CHECKWORD *)
+      WHILE ENTRY < W^.KEY DO GETENTRY;
+      IF ENTRY = W^.KEY
+        THEN
+          BEGIN
+            W^.COUNT := 0;
+            FLAGCOUNT := FLAGCOUNT-1
+          END
+        ELSE (* ENTRY > W^.KEY *)
+          IF DICTWRITE
+            THEN
+              BEGIN
+                WRITELN;
+                WRITE('Line ',W^.FIRST:MAXDIGITS,
+                      ' : ',W^.KEY:14,
+                      ' not found.  Enter it (Y) ?');
+                READ(CH);
+                IF CH IN ['Y','y']
+                  THEN
+                    BEGIN
+                      WRITELN;
+                      IF DICTWRITE THEN WRITELINE(W^.KEY);
+                      W^.COUNT := 0;
+                      FLAGCOUNT := FLAGCOUNT-1
+                    END
+                  ELSE (* NOT CH IN Y,y *)
+                    BEGIN
+                      WRITE(' Flag for output (Y) ?');
+                      READ(CH);
+                      WRITELN;
+                      IF NOT (CH IN ['Y','y'])
+                        THEN
+                          BEGIN
+                            W^.COUNT := 0;
+                            FLAGCOUNT := FLAGCOUNT-1
+                          END
+                    END
+              END
+    END; (* CHECKWORD *)
+  
+  BEGIN (* CHECKTREE *)
+    IF W<>NIL
+      THEN
+        BEGIN
+          CHECKTREE(W^.LEFT);
+          CHECKWORD(W);
+          CHECKTREE(W^.RIGHT)
+        END
+  END; (* CHECKTREE *)
+
+BEGIN (* CHECKDICT *)
+  LINECOUNT := LCOUNT;
+  LCOUNT := 0;
+  WORDCOUNT := WCOUNT;
+  FLAGCOUNT := DICTCOUNT;
+  WRITELN;
+  WRITE('Input dict file:    ');
+  READLN(SOURCE);
+  FILEOK := RESETFILE(SOURCE);
+  WRITELN;
+  IF FILEOK
+    THEN
+      BEGIN
+        WRITE('New dict file:      ');
+        READLN(DEST);
+        DICTWRITE := REWRITEFILE(DEST);
+        DOTS := NOT DICTWRITE;
+        WRITELN;
+        WRITE('Checking text ');
+        IF DICTWRITE THEN WRITELN;
+        READLINE(ENTRY);
+        CHECKTREE(ROOT);
+        WHILE NOT EOFFLAG DO GETENTRY;
+        IF DICTWRITE
+          THEN
+            BEGIN
+              WRITELINE(ENTRY);
+              CLOSEOUTFILE
+            END;
+        IF DOTS THEN WRITELN
+      END
+END; (* CHECKDICT *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE PRINTLIST;                    (* WRITE THE ERROR FILE *)
+
+  PROCEDURE HEADER;           (* WRITE TOP OF OUTPUT FILE *)
+  BEGIN (* HEADER *)
+    WRITELINE('');
+    WRITELINE(CONCAT('Spelling check of file ',TITLE));
+    WRITELINE('');
+    WRITELINE('');
+    WRITELINE('Word               Count   Line');
+    WRITELINE('')
+  END; (* HEADER *)
+  
+  PROCEDURE PRINTTREE(W:WORDREF);        (* TRAVERSE THE TREE *)
+  
+    PROCEDURE WRITEIT;
+    
+    VAR 
+        S1: STRING;
+        S2:ALPHA;
+        K:INTEGER;
+      
+      PROCEDURE CONV(X:INTEGER; VAR S:ALPHA);
+        VAR
+            D:INTEGER;
+            J:INTEGER;
+            L:INTEGER;
+        BEGIN
+          (*$R- *)
+          L:=X;
+          FOR J:=1 TO MAXDIGITS DO S[J]:='0';
+          S[0]:=CHR(MAXDIGITS);
+          J:=1;
+          IF X > 9999 THEN
+            BEGIN
+              D := L DIV 10000;
+              L:=L-D*10000;
+              S[J]:=CHR(D+48);
+            END
+          ELSE S[J]:=' ';
+          J:=J+1;
+          IF X > 999 THEN
+            BEGIN
+              D := L DIV 1000;
+              L:=L-D*1000;
+              S[J]:=CHR(D+48);
+            END
+          ELSE S[J]:=' ';
+          J:=J+1;
+          IF X > 99 THEN
+            BEGIN
+              D := L DIV 100;
+              L:=L-D*100;
+              S[J]:=CHR(D+48);
+            END
+          ELSE S[J]:=' ';
+          J:=J+1;
+          IF X > 9 THEN
+            BEGIN
+              D := L DIV 10;
+              L:=L-D*10;
+              S[J]:=CHR(D+48);
+            END
+          ELSE S[J]:=' ';
+          J:=J+1;
+          S[J]:=CHR(L+48)
+      (*$R+ *)
+        END;
+    
+    BEGIN  (* CONVERT INTEGERS TO STRINGS FOR WRITELINE *)
+      S1 := W^.KEY;
+      (*$R- *)
+      FOR K:=(LENGTH(S1)+1) TO MAXCHAR DO S1[K]:=' ';
+      S1[0]:=CHR(MAXCHAR);
+      (*$R+ *)
+      CONV(W^.COUNT,S2);
+      S1:=CONCAT(S1,'   ',S2);
+      CONV(W^.FIRST,S2);
+      S1:=CONCAT(S1,'   ',S2);
+      WRITELINE(S1);
+      IF LCOUNT MOD 10 = 0 THEN REPORT;
+      LCOUNT := LCOUNT+1
+    END;
+  
+  BEGIN (*PRINTTREE*)
+    IF W<>NIL
+      THEN
+        BEGIN
+          PRINTTREE(W^.LEFT);
+          IF W^.COUNT<>0 THEN WRITEIT;
+          PRINTTREE(W^.RIGHT)
+        END
+  END; (* PRINTTREE *)
+
+BEGIN (*PRINTLIST*)
+  IF FLAGCOUNT>0
+    THEN
+      BEGIN
+        WRITELN;
+        WRITE('Output list file:   ');
+        READLN(DEST);
+        FILEOK := REWRITEFILE(DEST);
+        WRITELN;
+        IF FILEOK
+          THEN
+            BEGIN
+              DOTS := (POS(':',DEST)<>LENGTH(DEST));
+              WRITE('Writing output list ');
+              HEADER;
+              LCOUNT := 0;
+              PRINTTREE(ROOT);
+              CLOSEOUTFILE;
+              WRITELN
+            END
+      END
+END; (* PRINTLIST *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE MARKTREE(W:WORDREF);
+
+BEGIN
+  IF TOKEN<W^.KEY THEN MARKTREE(W^.LEFT)
+    ELSE IF TOKEN>W^.KEY THEN MARKTREE(W^.RIGHT)
+        ELSE
+          BEGIN (* FOUND A TOKEN *)
+            IF W^.COUNT<>0
+              THEN (* INSERT FLAG INTO LINE BUFFER *)
+                BEGIN
+                  LPTR := LPTR-1;
+                  INSERT('<',LBUF,LPTR);
+                  LPTR := LPTR+2
+                END
+          END
+END;
+
+PROCEDURE MARKTEXT;
+BEGIN
+  IF FLAGCOUNT>0
+    THEN
+      BEGIN
+        WRITELN;
+        FILEOK := RESETFILE(TITLE);
+        IF NOT FILEOK
+          THEN
+            BEGIN
+              WRITELN('Fatal error -- input file lost');
+              EXIT(PROGRAM)
+            END;
+        WRITE('Marked text file:   ');
+        READLN(DEST);
+        FILEOK := REWRITEFILE(DEST);
+        WRITELN;
+        IF FILEOK
+          THEN
+            BEGIN
+              WRITE('Marking text ');
+              OUT:=FALSE;
+              LCOUNT := 0;
+              DOTS := (POS(':',DEST)<>LENGTH(DEST));
+              READLINE(LBUF);
+              LBUF:=CONCAT(LBUF,' ');
+              LPTR:=1;
+              MARK := TRUE;
+              GETTOKEN;
+              WHILE NOT OUT DO
+                BEGIN
+                  MARKTREE(ROOT);
+                  GETTOKEN
+                END;
+              CLOSEOUTFILE;
+              WRITELN
+            END
+      END
+END; (* MARKTEXT *)
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE WRAPUP;
+BEGIN (* WRAPUP *)
+  WRITELN;
+  WRITELN('Input lines:  ',LINECOUNT:8);
+  WRITELN('Input words:  ',WORDCOUNT:8);
+  WRITELN('Unique words: ',DICTCOUNT:8);
+  WRITELN('Flagged words:',FLAGCOUNT:8);
+  WRITELN('Free memory:  ',CORECOUNT:8)
+END; (* WRAPUP *)
+
+(*---------------------------------------------------------------------*)
+
+BEGIN (* SPELLER *)
+  INIT;
+  SORTTEXT;
+  CHECKDICT;
+  PRINTLIST;
+  MARKTEXT;
+  WRAPUP
+END.

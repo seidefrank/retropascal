@@ -1,0 +1,149 @@
+(*$L-printer:*)
+program scanner;
+  {Scanner is by Jon Bondy  and slightly modified by George Schreyer.
+    Scanner read a whole disk and looks for a list of strings contained
+    in a data file called SCAN.DATA.TEXT.  Make this file with the editor
+    and put all of the strings you wish to find in it on separate lines.  
+    The original was sensitive
+    to null lines, I fixed it.  Also the original always started at block
+    10 (it assumes that you keep duplicate directories). I changed it so
+    that it will know where to start (block 6 or 10).
+    
+    This is a good program.  It is ESPECIALLY useful when you have deleted
+    a copy of an important file and you want to find where it is still on
+    the disk.   gws}
+  
+  CONST
+      { disk directory stuff }
+      MAXDIR = 77;           (*MAX NUMBER OF ENTRIES IN A DIRECTORY*)
+      MAXUNIT = 12;          (*MAX NUMBER OF UNITS *)
+      VIDLENG = 7;           (*NUMBER OF CHARS IN A VOLUME ID*)
+      TIDLENG = 15;          (*NUMBER OF CHARS IN TITLE ID*)
+      FBLKSIZE = 512;        (*STANDARD DISK BLOCK LENGTH*)
+      DIRBLK = 2;            (*DISK ADDR OF DIRECTORY*)
+
+      max_entries = 10;
+      read_unit = 5;         { unit where disk is read }
+      buffer_length = 16383; { starts at zero }
+   
+  TYPE
+      { disk directory stuff from UCSD GLOBALS.TEXT }
+      DATEREC = PACKED RECORD
+          MONTH: 0..12;        (*0 IMPLIES DATE NOT MEANINGFUL*)
+          DAY: 0..31;          (*DAY OF MONTH*)
+          YEAR: 0..100         (*100 IS TEMP DISK FLAG*)
+        END (*DATEREC*) ;
+      UNITNUM = 0..MAXUNIT;
+      VID = STRING[VIDLENG]; { volume name (I.D.) }
+      DIRRANGE = 0..MAXDIR; { number of entries (files) in a directory }
+      TID = STRING[TIDLENG]; { title (file name) I.D. }
+      FILEKIND = (UNTYPEDFILE,XDSKFILE,CODEFILE,TEXTFILE,
+                  INFOFILE,DATAFILE,GRAFFILE,FOTOFILE,SECUREDIR);
+      DIRENTRY = RECORD
+        DFIRSTBLK: INTEGER;          (*FIRST PHYSICAL DISK ADDR*)
+        DLASTBLK: INTEGER;           (*POINTS AT BLOCK FOLLOWING*)
+        CASE DFKIND: FILEKIND OF
+          SECUREDIR,
+          UNTYPEDFILE: (*ONLY IN DIR[0]...VOLUME INFO*)
+             (DVID: VID;              (*NAME OF DISK VOLUME*)
+              DEOVBLK: INTEGER;       (*LASTBLK OF VOLUME*)
+              DNUMFILES: DIRRANGE;    (*NUM FILES IN DIR*)
+              DLOADTIME: INTEGER;     (*TIME OF LAST ACCESS*)
+              DLASTBOOT: DATEREC);    (*MOST RECENT DATE SETTING*)
+          XDSKFILE,CODEFILE,TEXTFILE,INFOFILE,
+          DATAFILE,GRAFFILE,FOTOFILE:
+             (DTID: TID;              (*TITLE OF FILE*)
+              DLASTBYTE: 1..FBLKSIZE; (*NUM BYTES IN LAST BLOCK*)
+              DACCESS: DATEREC)       (*LAST MODIFICATION DATE*)
+      END (*DIRENTRY*) ;
+   var
+      DIRECTORY : ARRAY [DIRRANGE] OF DIRENTRY;
+      infile : text; { file from which search strings are read }
+      dict : array[1..max_entries] of string; { list of search strings }
+      num_entries : integer; { number of search strings }
+      buffer : packed array [0..buffer_length] of char;
+      i, j, k, l : integer;
+      start_char, start_block, num_blocks, chars_read, len : integer;
+      found, done : boolean;
+               
+   procedure tell_found;
+      var
+         i, block : integer;
+         found : boolean;
+      begin
+      block := start_block + (start_char div 512);
+      write('Block: ', block:3, ' ');
+      found := false;
+      for i := 1 to directory[0].dnumfiles do 
+         with directory[i] do 
+            if (block >= dfirstblk) and (block < dlastblk) then begin
+               write('File: ', dtid, ' ':(16-length(dtid))); 
+               found := true; end;
+      if not found then write('Not found in a file.  ');
+      writeln('   v');
+      { display context of text found }
+      for i := -35 to 35 do
+         if (start_char+i-2 >= 0) and 
+            (start_char+i-1 < chars_read) then
+            if (buffer[start_char+i-2] in [' '..'~']) then
+               write(buffer[start_char+i-2])
+            else write('*')
+         else write('*');
+      writeln; writeln;
+      end; { tell_found }
+
+   begin
+   writeln('Disk Scanner Program.  Jon Bondy.  Jan 1982.');
+   {$I-} reset(infile,'scan.data.text'); {$I+}
+   if (ioresult <> 0) then begin
+      writeln('Unable to locate SCAN.DATA.TEXT');
+      exit(scanner);
+      end;
+   num_entries := 1;
+   while not eof(infile) and (num_entries <= max_entries) do begin
+      readln(infile,dict[num_entries]);
+      if dict[num_entries] <> '' then 
+         begin
+            writeln(num_entries:2, ': "', dict[num_entries], '"');
+            num_entries := num_entries + 1;
+               {we don't want to search for null strings.  This blew up the 
+                 original.   gws }
+         end;
+      end;
+   num_entries := num_entries - 1;
+   write('Enter <CR> when disk is in Unit 5.'); readln;
+   unitread(read_unit,directory,sizeof(directory),dirblk,0);
+   with directory[0] do
+      writeln('Volume ', dvid, ': scanning ', deovblk - directory[0].dlastblk,
+         ' blocks.');
+   start_block := directory[0].dlastblk  {was 10   gws};
+   while (start_block <= directory[0].deovblk) do begin
+      num_blocks := directory[0].deovblk - start_block;
+      if (num_blocks > 32) then num_blocks := 32;
+      chars_read := num_blocks * 512;
+      unitread(read_unit, buffer, chars_read, start_block);
+      for j := 1 to num_entries do begin { scan for each entry }
+         start_char := 0; len := chars_read - 1; done := false;
+         repeat { until not found in buffer }
+            k := scan(len,=dict[j,1],buffer[start_char]);
+            start_char := start_char + k + 1;
+            if (k < len) then begin { found initial char }
+               l := 2; found := true;
+               while (l <= length(dict[j])) and found do begin{ finish compare }
+                  if (dict[j][l] <> buffer[start_char+l-2]) then
+                     found := false;
+                  l := l + 1;
+                  end; { while }
+               if found then tell_found;
+               end { if }
+            else done := true;
+            len := len - k - 1;
+            until done;
+         end; { for j }
+      { re-scan last block in case key word ran across block boundary }
+      start_block := start_block + 31;
+      end; { for i }
+   end.
+
+
+

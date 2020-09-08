@@ -1,0 +1,130 @@
+                         Volume 12 of the USUS Library
+                 Contributions from the UK and some other stuff
+         A lot of these programs require version IV.0 or timer support
+
+WINDOWS.TEXT      20  A screen window unit.  Slow but nice.  Needs IV.0. 
+W.SEGS.TEXT       28    an include file
+W.IO.TEXT         20    ditto
+W.IMPLN.TEXT      32    ditto
+WFILER.TEXT       26  A demonstration program for WINDOWS.  Acts like the Filer 
+W.DOC.TEXT        22  Documentation for WINDOWS.
+OFFLOAD.TEXT      24  A command line interpreter which replaces the USCD c
+                        command prompt.  Needs IV.0
+OFF.INFO.TEXT      4     an include file for OFFLOAD
+OFF.START.TEXT     8     ditto
+OFF.READ.TEXT      8     instructions for using OFFLOAD
+OFF.DOC.TEXT      26  Documentation for OFFLOAD
+HELP.DISK.TEXT     4  A help file for OFFLOAD
+HELP.KEYS.TEXT     4     ditto
+HELP.OFF.TEXT      4     ditto
+HELP.UTIL.TEXT     6     ditto
+NEW.PAGE.TEXT      4  A data file for OFFLOAD
+NEW.TEXT           4     ditto
+PARAM.INFO.TEXT    4     ditto 
+MAKE.PAGE.TEXT     4  A utility for OFFLOAD
+PRINT.MEM.TEXT     4  Part of the benchmarks.  Displays memory available.
+PRINT.HEAP.TEXT    6  Analyzes heap usage.  Needs IV.0 and timer support.
+BENCH.USUS.TEXT   22  Jon Bondy's benchmark with some added goodies.
+BENCH.PCW.TEXT    12  Personal Computer World benchmark.  Needs timer support.
+BENCH.SWAP.TEXT    4  Segment swap benchmark.  Needs IV.0 and timer support.
+BENCH.BYTE.TEXT    6  The infamous Byte benchmark
+CPROC.TEXT        16  Another command line interpreter.  Needs IV.0
+CONTENTS.TEXT     10  More info about the stuff from the UK
+VOLS.SMAC          4  Data for CPROC
+STARTUP.TEXT      20  A startup program which sets the prefix and date.
+AUGMENT.TEXT      42  A program which adds timing info to a Pascal source 
+                         file so that timing data can be obtained.  
+ANALYZE.TEXT      24  Analyzes the results of AUGMENT.  Needs timer support.
+R.ANALYZE.TEXT    24  Ditto except uses reals.
+DISK_COPY.TEXT     8  A disk copy and verification program.
+LMFORMAT.TEXT     18  A simple Pascal source formatter.
+VOL12.DOC.TEXT     8  You're reading it.
+35/35 files<listed/in-dir>, 492 blocks used, 2 unused, 2 in largest
+
+     
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 12 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+                                The WINDOW unit
+
+     Austin Tate of USUS(UK) sent us this window manager unit.  It is well 
+documented and it works pretty well if not a little slowly.  The demo program 
+which (sort of) acts like the F(iler has a few problems, but it gets the point 
+across.  You MUST have version IV.0 for this stuff to work.
+
+                                    OFFLOAD
+
+     Many business systems don't need the UCSD command prompt (after all, how 
+much A(ssembling does a retailer do anyway?).  OFFLOAD shows how the standard 
+prompt can be supressed and replaced by custom command prompts which do more 
+closely what is necessary in a given application.  I found the documentation
+on how to set up some of the cryptic data files somewhat lacking, but I got 
+most of it to work.
+
+                                   BENCHMARKS
+
+     There are copies of some benchmark programs on this disk.  It would be 
+nice if we could collect data taken from many systems to see how well each 
+works, but alas, even the benchmarks are not standardized.  The infamous Byte 
+benchmark is so prone to "tuning" that its data is almost meaningless.  This 
+version has range checking disabled.  Some of the other benchmarks require 
+IV.0 or timer support so that many systems cannot run them.  The "USUS" 
+benchmark (by Jon Bondy) has been augmented with several new tests and 
+requires only a stopwatch.
+
+                              AUGMENT and ANALYZE
+ 
+     These programs allow you to which part of your program is taking so much 
+time, as if you didn't know already.  AUGMENT processes your source and 
+inserts instructions at the beginning and end of each procedure to cause your 
+program to time itself.  ANALYZE then processes the timing information and 
+displays a report of how many times each procedure was accessed and how long 
+it took.  You need timer support.  The program has been extensively hacked
+by myself and Jim Gagne and still doesn't support units but at least now it 
+handles (ugh) GOTO's and EXIT's and include files.  To get valid timing data 
+you may find it necessary to separate user interface and data crunching into
+separate routines, which you really should do anyway.
+
+                                   DISK_COPY
+
+     I copy USUS disks with this program and it hasn't failed me yet.  It 
+reads a buffer full and then writes the buffer to disk.  It then re-reads the 
+destination disk to see if the data is correct.  It won't correct for a bad 
+master disk unless there is a CRC error nor will it discover some occurances 
+of bad memory but it catches almost all of the typical problems (new disks are 
+getting worse and worse, even "good" brands will have bad blocks right out of 
+the box).
+
+                                     CPROC
+
+     I couldn't get this to work, it immediatly crashes my system (trap to 
+location 4 on an LSI-11/23) when it is executed, but I suspect my IV.0 system 
+as it has a tendency to crash.
+
+                                    STARTUP
+
+     This is a startup program which allows the prefix and date to be set.  It 
+is IV.0 specific.  There is a II.0 version on volume 13.
+
+                                    LMFORMAT
+
+     This program processes a Pascal source file and translates everything to 
+lower case EXCEPT reserved words.  It makes things look a little nicer.
+
+     
+     regards - george schreyer
+

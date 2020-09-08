@@ -1,0 +1,645 @@
+PROCEDURE SETTRACESITES;
+CONST RET=13;
+VAR I:INTEGER;
+  CH:CHAR;
+BEGIN
+  WRITELN;
+  WRITELN('Enter trace site numbers (-1 terminates)');
+  REPEAT
+    WRITE('>');
+    READLN(I);
+    IF (I>=0) AND (I<=100) THEN
+      BEGIN
+        IF I IN DBTRACESET THEN WRITE(' ON')
+                           ELSE WRITE(' OFF');
+        WRITE('   S(et or R(eset ?');
+        REPEAT
+          READ(CH);
+        UNTIL CH IN ['R','S'];
+        IF CH='S' THEN
+          DBTRACESET:=DBTRACESET+[I]
+        ELSE
+          DBTRACESET:=DBTRACESET-[I];
+      END;
+    WRITELN;
+  UNTIL I<0;
+  REPEAT
+    WRITE('L(ower Bound=', TRACELB, '  U(pper Bound=', TRACEUB, '  <RET>');
+    READ(CH);
+    IF EOLN THEN CH:=CHR(RET) ELSE WRITELN;
+    IF CH = 'L' THEN
+      BEGIN
+        WRITE('  LB:');
+        READLN(TRACELB);
+      END
+    ELSE
+      IF CH = 'U' THEN
+        BEGIN
+          WRITE('  UB:');
+          READLN(TRACEUB);
+        END;
+  UNTIL CH = CHR(RET);
+END (*SETTRACESITES*);
+  
+PROCEDURE TRACEWA(TRACENUM:INTEGER; WI:DBWRKINDEX);
+VAR I,L,P:INTEGER;
+  DONE:BOOLEAN;
+  S:STRING[10];
+BEGIN
+  DONE:=FALSE;
+  WHILE (TRACENUM IN DBTRACESET) AND (NOT DONE) DO
+    BEGIN
+      WRITELN;
+      WITH WRKTABLE[WI] DO
+        BEGIN
+          WRITELN('TRACE # ', TRACENUM, '  WA:', WI,
+                  '  TOS:', TOS,
+                  '  WSIZE:', WSIZE,
+                  '  SPACEINUSE:', SPACEINUSE);
+          IF WIB = NIL THEN
+            WRITELN('  WIB = NIL ****')
+          ELSE
+            FOR L:=0 TO TOS DO
+              WITH WIB^[L] DO
+                BEGIN
+                  WRITE('  L:', L, ':  OFFSET:', OFFSET, '  LEVEL:');
+                  CASE LEVEL OF
+                    GROUPT: WRITE('GROUP');
+                    RECORDT: WRITE('RECORD');
+                    FIELDT: WRITE('FIELD');
+                    NONET: WRITE('NONE')
+                  END (*CASE*);
+                  WRITELN('  DESCR#:', DESCRIPTORNUM);
+(*$L #5:DBUXXX.LST.TEXT*)
+                  
+                END (*WITH WIB*);
+          P:=TRACELB;
+          IF WA = NIL THEN
+            WRITELN('    WA = NIL')
+          ELSE
+            WHILE P <= TRACEUB DO
+              BEGIN
+                WRITE('    ', P:3, ':');
+                FOR I:=0 TO 9 DO
+                  BEGIN
+(*$R-*)
+                    WRITE(WA^[P]:4);
+(*$R+*)
+                    P:=P+1;
+                  END;
+                WRITELN;
+              END;
+          WRITELN('<RET> CONTINUES; "D<RET>" TOGGLES DEBUGGING');
+          WRITE(' "T<RET>" TO CHANGE TRACE SITES:');
+          READLN(S);
+          DONE:=TRUE;
+          IF LENGTH(S) > 0 THEN
+            IF S[1] = 'T' THEN
+              BEGIN
+                SETTRACESITES;
+                WRITE('<RET> CONTINUES; R<RET> RE-DISPLAYS');
+                READLN(S);
+                IF LENGTH(S) > 0 THEN
+                  DONE:=(S[1] <> 'R');
+              END
+            ELSE
+              IF S[1] = 'D' THEN
+                DEBUGGING:=NOT DEBUGGING;
+        END (*WITH WRKTABLE*);
+    END (*DEBUGGING*);
+END (*TRACEWA*);
+
+PROCEDURE DBSHOWERROR(*S:STRING; ERRNUM: DBERRTYPE*);
+CONST
+  RET=13;
+  CAN=24;
+  ESC=27;
+VAR CH:CHAR;
+BEGIN
+  IF (ERRNUM<>0) OR DEBUGGING THEN
+    (*temporary substitute for display of actual message*)
+    BEGIN
+      WRITELN;
+      WRITELN('DBERROR # ', ERRNUM, ' IN ', S);
+      WRITELN(' <RET> CONTINUES, <ESC> ABORTS, <CAN> TERMINATES');
+      WRITELN(' "T" TO CHANGE TRACE SITES');
+      REPEAT
+        READ(CH);
+        IF EOLN THEN CH:=CHR(RET);
+      UNTIL CH IN [CHR(RET), CHR(CAN), CHR(ESC), 'T'];
+      IF CH = CHR(CAN) THEN
+        EXIT(PROGRAM);
+      IF CH = CHR(ESC) THEN
+        HALT;
+      IF CH = 'T' THEN SETTRACESITES;
+    END;
+END (*DBSHOWERROR*);
+
+PROCEDURE DBITEMINFO(*WI:DBWRKINDEX; VAR LEVEL:DBLEVELTYPE;
+            VAR ITEMNUM,OFFSET,DESCRIPTORNUM:INTEGER; VAR NAME:STRING*);
+TYPE
+  TRICKPTR =
+    RECORD CASE BOOLEAN OF
+      TRUE: (R:RECDESPTR);
+      FALSE:(G:GRPDESPTR)
+    END;
+VAR FP:FLDDESPTR;
+  TP:TRICKPTR;
+  NILMSG:STRING[25];
+  DPTR:INTEGER;
+  PAB:PACKED ARRAY[0..255] OF BYTE;
+  
+  PROCEDURE EXTRACTNAME(TP:TRICKPTR; DPTR:INTEGER);
+  BEGIN
+    (*get the name field length into PAB[DPTR]*)
+    MOVELEFT(TP.R^, PAB, DPTR+1);
+    (*this time transfer the name*)
+    MOVELEFT(TP.R^, PAB, DPTR+PAB[DPTR]);
+    MOVELEFT(PAB[DPTR], NAME, PAB[DPTR]);
+    (*convert to string*)
+    DELETE(NAME, LENGTH(NAME), 1);
+  END (*EXTRACTNAME*);
+  
+BEGIN (*DBITEMINFO*)
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      LEVEL:=WIB^[TOS].LEVEL;
+      ITEMNUM:=WIB^[TOS].ITEMNUM;
+      OFFSET:=WIB^[TOS].OFFSET;
+      DESCRIPTORNUM:=WIB^[TOS].DESCRIPTORNUM;
+      NILMSG:='NIL Descriptor Pointer';
+      WITH WIB^[TOS] DO
+        BEGIN
+          IF (DESCRIPTORNUM < 0) THEN
+            NAME:='Uninitialized Descriptor Number'
+          ELSE
+            CASE LEVEL OF
+              FIELDT:
+                BEGIN
+                  FP:=ACTIVEFIELDS[DESCRIPTORNUM];
+                  IF FP=NIL THEN
+                    NAME:=NILMSG
+                  ELSE
+                    NAME:=FP^.NAME;
+                END (*FIELDT:*);
+              RECORDT:
+                BEGIN
+                  TP.R:=ACTIVERECORDS[DESCRIPTORNUM];
+                  IF TP.R = NIL THEN
+                    NAME:=NILMSG
+                  ELSE
+                    BEGIN
+                      DPTR:=7 + TP.R^.LASTFLDLINK;
+                      EXTRACTNAME(TP,DPTR);
+                    END;
+                END (*RECORDT:*);
+              GROUPT:
+                BEGIN
+                  TP.G:=ACTIVEGROUPS[DESCRIPTORNUM];
+                  IF TP.G = NIL THEN
+                    NAME:=NILMSG
+                  ELSE
+                    BEGIN
+                      DPTR:=2 + TP.G^.RECLINK;
+                      EXTRACTNAME(TP,DPTR);
+                    END;
+                END (*GROUPT:*)
+            END (*CASES*);
+        END (*WITH WIB^*);
+    END (*WITH*);
+END (*DBITEMINFO*);
+  
+  (*$L-*)
+  
+FUNCTION CHECKHEAP(SIZE:INTEGER):BOOLEAN;
+VAR MA:INTEGER;
+BEGIN
+  MA:=MEMAVAIL + MEMAVAIL;
+  CHECKHEAP:=(MA<0) (* i.e. more than 32767 *)
+              OR (MA>SIZE);
+END (*CHECKHEAP*);
+
+FUNCTION MAX(X,Y:INTEGER):INTEGER;
+BEGIN
+  IF X>Y THEN MAX:=X ELSE MAX:=Y;
+END;
+
+FUNCTION CHECKWORKAREA(WI:DBWRKINDEX; SIZE:INTEGER):DBERRTYPE;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    IF (WA=NIL) OR (WIB=NIL) THEN
+      CHECKWORKAREA:=8 (*workarea not open*)
+    ELSE
+      IF WSIZE<>SIZE THEN
+        CHECKWORKAREA:=2
+      ELSE
+        CHECKWORKAREA:=0;
+END (*CHECKWORKAREA*);
+
+FUNCTION HEAPALLOCATE(SIZE:PAGEPTR):DBERRTYPE;
+VAR
+    P1:ONEWORDPTR;
+    P64:WAPTR;
+BEGIN
+  IF CHECKHEAP(SIZE) THEN
+    BEGIN
+      WHILE SIZE >= 64 DO
+        BEGIN
+          NEW(P64);
+          SIZE:=SIZE-64;
+        END;
+      IF ODD(SIZE) THEN
+        SIZE:=SIZE+1;
+      WHILE SIZE>0 DO
+        BEGIN
+          NEW(P1);
+          SIZE:=SIZE-2;
+        END;
+      HEAPALLOCATE:=0;
+    END
+  ELSE
+    HEAPALLOCATE:=1; (*insufficient memory*)
+END (*HEAPALLOCATE*);
+
+PROCEDURE ZEROWORKAREA(*WI:DBWRKINDEX*);
+(*unprotected -- call checkworkarea if in doubt*)
+VAR I:INTEGER;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      FILLCHAR(WA^,WSIZE,CHR(0));
+      FOR I:=0  TO LASTWRKSTACKSLOT DO
+        WITH WIB^[I] DO
+          BEGIN
+            OFFSET:=0;
+            LEVEL:=NONET;
+            DESCRIPTORNUM:=-1;
+            ITEMNUM:=-1;
+          END;
+      WITH WIB^[0] DO
+        BEGIN
+          LEVEL:=GROUPT;
+          OFFSET:=0;
+          ITEMNUM:=0;
+        END;
+      SPACEINUSE:=0;
+      TOS:=0;
+    END (*WITH*);
+END (*ZEROWORKAREA*);
+
+FUNCTION NEXTLEVEL(LVL:DBLEVELTYPE):DBLEVELTYPE;
+BEGIN
+  IF LVL=NONET THEN
+    NEXTLEVEL:=NONET
+  ELSE
+    IF LVL=FIELDT THEN
+      NEXTLEVEL:=GROUPT
+    ELSE
+      NEXTLEVEL:=SUCC(LVL);
+END (*NEXTLEVEL*);
+
+FUNCTION MOVETAIL(DESTINATION:DBWRKINDEX; DELTA:INTEGER;
+                  OFFSET:PAGEPTR):DBERRTYPE;
+(*service routine for data transfer functions. shifts tail of workarea
+  after checking whether requested shift is legal *)
+BEGIN
+  MOVETAIL:=0;
+  WITH WRKTABLE[DESTINATION] DO
+    BEGIN
+      TRACEWA(2,DESTINATION);
+      IF (SPACEINUSE+DELTA) >= WSIZE THEN
+        MOVETAIL:=14 (*insufficient space*)
+      ELSE
+        IF (OFFSET+DELTA) < 0 THEN
+          MOVETAIL:=17 (*attempted negative offset*)
+        ELSE
+          BEGIN
+(*$R-*)
+            IF DELTA > 0 THEN
+              BEGIN
+                MOVERIGHT(WA^[OFFSET], WA^[OFFSET+DELTA], SPACEINUSE-OFFSET);
+                FILLCHAR(WA^[OFFSET],DELTA,CHR(0));
+              END
+            ELSE
+              IF DELTA < 0 THEN
+                MOVELEFT(WA^[OFFSET], WA^[OFFSET+DELTA], SPACEINUSE-OFFSET);
+            SPACEINUSE:=SPACEINUSE+DELTA;
+            IF DELTA < 0 THEN
+              FILLCHAR(WA^[SPACEINUSE], -DELTA, CHR(0));
+(*$R+*)
+          END;
+      TRACEWA(3,DESTINATION);
+    END (*WITH*);
+END (*MOVETAIL*);
+
+FUNCTION LINKVALUE(WA:WAPTR; OFFSET: PAGEPTR):PAGEPTR;
+VAR B1:BYTE;
+BEGIN
+(*$R-*)
+  B1:=WA^[OFFSET];
+  IF B1 < LINKESCAPE THEN
+    LINKVALUE:=B1
+  ELSE
+    LINKVALUE:=(B1-LINKESCAPE+1)*LINKESCAPE+WA^[OFFSET+1];
+(*$R+*)
+END (*LINKVALUE*);
+
+PROCEDURE SAVEBIGLINK(DESTINATION:DBWRKINDEX; NEWLINK:INTEGER; OFFSET:PAGEPTR);
+BEGIN
+  WITH WRKTABLE[DESTINATION] DO
+    BEGIN
+(*$R-*)
+      IF NEWLINK < LINKESCAPE THEN
+        WA^[OFFSET]:=NEWLINK
+      ELSE
+        BEGIN
+          WA^[OFFSET]:=(NEWLINK DIV LINKESCAPE)+(LINKESCAPE-1);
+          WA^[OFFSET+1]:=(NEWLINK MOD LINKESCAPE);
+        END;
+(*$R+*)
+    END;
+END (*SAVEBIGLINK*);
+
+FUNCTION LINKDELTA(DESTINATION:DBWRKINDEX; DELTA:INTEGER;
+                                           OFFSET:PAGEPTR):DBERRTYPE;
+(*add delta to the link at offset*)
+VAR B1,OLDLINK,NEWLINK:INTEGER;
+  CHOP:
+    PACKED RECORD CASE BOOLEAN OF
+      TRUE: (INT:INTEGER);
+      FALSE: (LB:BYTE; HB:BYTE)
+    END;
+
+BEGIN
+  LINKDELTA:=0;
+  TRACEWA(4,DESTINATION);
+  WITH WRKTABLE[DESTINATION] DO
+    BEGIN
+      OLDLINK:=LINKVALUE(WA,OFFSET);
+      IF ((OFFSET+OLDLINK+DELTA) >= WSIZE) OR ((OLDLINK+DELTA) < 0) THEN
+        LINKDELTA:=16 (*out of range*)
+      ELSE
+        BEGIN
+          NEWLINK:=OLDLINK+DELTA;
+          IF NEWLINK > 4079 (* (256-LINKESCAPE)*256+(LINKESCAPE-1) *) THEN
+            LINKDELTA:=18 (* too large to be expressed as a link *)
+          ELSE
+            IF OLDLINK < LINKESCAPE THEN (* one byte *)
+              BEGIN
+                IF NEWLINK < LINKESCAPE THEN (*also one byte*)
+  (*$R-*)
+                  WA^[OFFSET]:=NEWLINK
+                ELSE
+                  BEGIN
+                    NEWLINK:=NEWLINK+1; (* one more byte for 2-byte link *)
+                    DBSHOWERR('LINKDELTA#1', MOVETAIL(DESTINATION,1,OFFSET));
+                    SAVEBIGLINK(DESTINATION,NEWLINK,OFFSET);
+                  END;
+              END (*OLDLINK < LINKESCAPE*)
+            ELSE
+              BEGIN (*OLDLINK >= LINKESCAPE i.e. 2 bytes*)
+                IF (NEWLINK < LINKESCAPE) THEN
+                  BEGIN
+                    IF NEWLINK > 1 THEN
+                      NEWLINK:=NEWLINK-1; (*newlink 1-byte, oldlink was 2*)
+                                          (*however, cannot go < 1*)
+                    DBSHOWERR('LINKDELTA#2', MOVETAIL(DESTINATION,-1,
+                           OFFSET + 1(*avoid tromping on previous data*)));
+                    WA^[OFFSET]:=NEWLINK;
+  (*$R+*)
+                  END
+                ELSE (*both old and new are 2 bytes*)
+                  SAVEBIGLINK(DESTINATION,NEWLINK,OFFSET);
+              END (*OLDLINK >= LINKESCAPE*);
+        END (* (OFFSET+DELTA) < WSIZE *);
+    END (*WITH WRKTABLE*);
+  TRACEWA(5,DESTINATION);
+END (*LINKDELTA*);
+
+PROCEDURE FIXLINKS(DESTINATION:DBWRKINDEX; STACKCELL:TOSRANGE; DELTA:INTEGER);
+(*following a change in item contents, all enclosing levels must have 
+  links corrected*)
+VAR ISTACK:INTEGER;
+BEGIN
+  WITH WRKTABLE[DESTINATION] DO
+    FOR ISTACK:=STACKCELL DOWNTO 0 DO
+      WITH WIB^[ISTACK] DO
+        DBSHOWERR('FIXLINKS', LINKDELTA(DESTINATION,DELTA,OFFSET));
+  TRACEWA(16,DESTINATION);
+END (*FIXLINKS*);
+              
+FUNCTION LINKSIZE(LINKV:INTEGER):INTEGER;
+BEGIN
+  IF LINKV >= LINKESCAPE THEN LINKSIZE:=2
+                         ELSE LINKSIZE:=1;
+END (*LINKSIZE*);
+
+PROCEDURE STEPLINK(WI:DBWRKINDEX);
+(*advance offset at current level to step over a link-like item (either
+  link or tag*)
+BEGIN
+  WITH WRKTABLE[WI] DO
+    WITH WIB^[TOS] DO
+      OFFSET:=OFFSET+1+ORD(LINKVALUE(WA,OFFSET) >= LINKESCAPE);
+END (*STEPLINK*);
+
+PROCEDURE NEXTLINK(WA:WAPTR; VAR OFFSET:PAGEPTR; VAR ITEMNUM:INTEGER);
+(*advance offset to next location on list*)
+VAR LINKV:INTEGER;
+BEGIN
+  LINKV:=LINKVALUE(WA,OFFSET);
+  (*combine this guy and linkvalue call into one external proc*)
+  IF LINKV > 0 THEN
+    BEGIN
+      OFFSET:=OFFSET+LINKV;
+      ITEMNUM:=ITEMNUM+1;
+    END;
+END (*NEXTLINK*);
+
+PROCEDURE SETDESCRIPTORNUM(WI:DBWRKINDEX);
+(*gets descriptor number for field # ITEMNUM from list in record descriptor*)
+(* group descriptor from enclosing field or tag*)
+(* record descriptor from group*)
+VAR RP:RECDESPTR;
+  GP:GRPDESPTR;
+  FP:FLDDESPTR;
+  LINKV:INTEGER;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    CASE WIB^[TOS].LEVEL OF
+      FIELDT:
+        BEGIN (*refer to record's list of descriptor pointers*)
+          RP:=ACTIVERECORDS[WIB^[TOS-1].DESCRIPTORNUM];
+          WITH RP^ DO
+            IF (((LASTFLDLINK-1) DIV SIZEOF(FLDREF))-2) < WIB^[TOS].ITEMNUM THEN
+              (*Note: one item only (i.e. itemnum=0) goes with
+                LASTFLDLINK = 5 if FLDREF is 2 bytes; end of list is one
+                FLDREF entry with value of zero as stopper*)
+              WIB^[TOS].DESCRIPTORNUM:=-1 (*no such field*)
+            ELSE
+(*$R-*)
+              WITH WIB^[TOS] DO
+                DESCRIPTORNUM:=RP^.FLDREF[ITEMNUM].FDNUM;
+(*$R-*)
+        END;
+      GROUPT:
+        (*all groups are tagged*)
+        (*descriptor number is tag value at page level*)
+        IF TOS=0 THEN
+          WITH WIB^[TOS] DO
+            BEGIN
+              LINKV:=LINKVALUE(WA,OFFSET);
+              DESCRIPTORNUM:=LINKVALUE(WA,(OFFSET+LINKSIZE(LINKV)));
+            END
+        ELSE
+          BEGIN (*get from parent field descriptor*)
+            FP:=ACTIVEFIELDS[WIB^[TOS-1].DESCRIPTORNUM];
+            WITH WIB^[TOS] DO
+              DESCRIPTORNUM:=FP^.FLDREF;
+          END;
+      RECORDT:
+        BEGIN (*record is tagged if group specifies mixed records*)
+          GP:=ACTIVEGROUPS[WIB^[TOS-1].DESCRIPTORNUM];
+          WITH WIB^[TOS] DO
+            WITH GP^ DO
+              IF RECLINK > ONEITEMRECLINK THEN (*mixed*)
+                BEGIN
+                  LINKV:=LINKVALUE(WA,OFFSET);
+                  (*get the tag*)
+                  DESCRIPTORNUM:=LINKVALUE(WA,OFFSET+LINKSIZE(LINKV));
+                END
+              ELSE
+                DESCRIPTORNUM:=RECNUM[0];
+        END (*RECORDT:*);
+    END (*CASES*);
+END (*SETDESCRIPTORNUM*);
+
+
+(*TRAVERSAL PRIMITIVES*)
+FUNCTION DBHOME(*WI:DBWRKINDEX):DBERRTYPE*);
+(*zero out workstack for the workarea, except for its initial location*)
+VAR I:INTEGER;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      IF WA=NIL THEN
+        DBHOME:=8 (* workarea not open *)
+      ELSE
+        BEGIN
+          FOR I:=1 TO TOS DO
+            WITH WIB^[I] DO
+              BEGIN
+                OFFSET:=0;
+                LEVEL:=NONET;
+                DESCRIPTORNUM:=-1;
+                ITEMNUM:=-1;
+              END;
+          WITH WIB^[0] DO
+            BEGIN
+              OFFSET:=0;
+              ITEMNUM:=0;
+              IF DBTYPECHECK THEN SETDESCRIPTORNUM(WI);
+            END;
+          TOS:=0;
+        END (* WA <> NIL *);
+    END (*WITH WRKTABLE*);
+  TRACEWA(6,WI);
+END (*DBHOME*);
+
+FUNCTION DBNEXT(*WI:DBWRKINDEX):DBERRTYPE*);
+(*move to head of next linked item*)
+VAR RP:RECDESPTR;
+  BEFOREITEM,DUMMY:INTEGER;
+BEGIN
+  DBNEXT:=0;
+  TRACEWA(7,WI);
+  WITH WRKTABLE[WI] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        BEFOREITEM:=ITEMNUM;
+        IF LEVEL = FIELDT THEN
+          BEGIN
+            RP:=ACTIVERECORDS[WIB^[TOS-1].DESCRIPTORNUM];
+            IF RP = NIL THEN
+              DBNEXT:=32
+            ELSE
+              WITH RP^ DO
+                BEGIN
+                  IF ITEMNUM < FIRSTLITEMNUM THEN
+                    BEGIN
+                      ITEMNUM:=ITEMNUM+1;
+                      IF ITEMNUM = FIRSTLITEMNUM THEN
+                        (*transition from fixed to variable fields*)
+                        NEXTLINK(WA,OFFSET,DUMMY);
+                    END
+                  ELSE
+                    NEXTLINK(WA,OFFSET,ITEMNUM);
+                END (*WITH RP^*);
+          END (*LEVEL=FIELDT*)
+        ELSE
+          (*all items assumed to be linked & all lists stopped with nul*)
+          NEXTLINK(WA,OFFSET,ITEMNUM);
+        IF BEFOREITEM = ITEMNUM THEN
+          DBNEXT:=27 (*can't find any more*)
+        ELSE
+          IF DBTYPECHECK THEN SETDESCRIPTORNUM(WI);
+      END;
+  TRACEWA(8,WI);
+END (*DBNEXT*);
+
+FUNCTION DBHEAD(*WI:DBWRKINDEX):DBERRTYPE*);
+(*move to head of list at current level*)
+VAR LINKV:INTEGER;
+  RP:RECDESPTR;
+  PARENTOFFSET:PAGEPTR;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      IF TOS > 0 THEN
+        BEGIN
+          PARENTOFFSET:=WIB^[TOS-1].OFFSET;
+          LINKV:=LINKVALUE(WA,PARENTOFFSET);
+          WITH WIB^[TOS] DO
+            BEGIN
+              OFFSET:=PARENTOFFSET+LINKSIZE(LINKV);
+              IF LEVEL = RECORDT THEN (*step over parent group's tag*)
+                STEPLINK(WI);
+            END;
+        END
+      ELSE
+        (*global group level - point to head of page*)
+        WIB^[TOS].OFFSET:=0;
+      WIB^[TOS].ITEMNUM:=0;
+      IF DBTYPECHECK THEN SETDESCRIPTORNUM(WI);
+    END (*WITH WRKTABLE*);
+  TRACEWA(30,WI);
+END (*DBHEAD*);
+
+FUNCTION DBTAIL(*WI:DBWRKINDEX):DBERRTYPE*);
+(*point to link position following last non-nul item at current level*)
+VAR RP:RECDESPTR;
+  BEFOREITEMNUM:INTEGER;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        BEFOREITEMNUM:=ITEMNUM;
+        REPEAT
+          NEXTLINK(WA,OFFSET,ITEMNUM);
+        UNTIL LINKVALUE(WA,OFFSET)=0;
+        IF LEVEL = FIELDT THEN
+          BEGIN
+            RP:=ACTIVERECORDS[WIB^[TOS-1].DESCRIPTORNUM];
+            IF RP = NIL THEN
+              DBTAIL:=32
+            ELSE
+              WITH RP^ DO
+                IF BEFOREITEMNUM < FIRSTLITEMNUM THEN
+                  ITEMNUM:=ITEMNUM + (FIRSTLITEMNUM-BEFOREITEMNUM-1);
+          END (*LEVEL=FIELDT*);
+        SETDESCRIPTORNUM(WI);
+      END (*WITH WIB*);
+  TRACEWA(29,WI);
+END (*DBTAIL*);
+
+

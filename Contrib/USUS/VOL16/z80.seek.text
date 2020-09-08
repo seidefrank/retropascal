@@ -1,0 +1,99 @@
+{Copyright 1980 by
+Stuart Lynne
+1350 Clifton Ave.
+Coquitlam, British Columbia,
+Canada
+V3J 5K6
+
+Permission granted to use for noncommercial purposes.  All
+other rights reserved}
+  
+  
+{ z80.seek }
+{$U-,S+}
+
+{$I globals }
+{
+*
+*     Z80 Seek 
+*
+*
+*     This version of the UCSD Pascal Seek algorithm uses a seperate 
+*     assembler routine to calculate the block number and offset given
+*     the record number and record size.
+*
+*     
+}
+{$C Copyright (c) 1980, by Stuart Lynne. All rights reserved }
+
+(*----------------------------------------------------------*)
+
+Separate unit Z80_Seek;
+interface
+    
+  Procedure Fseek(var F: FIB; RECNUM: INTEGER);
+  
+implementation
+    
+  Procedure Mul_Div (var Byte: integer; var Block: integer; 
+                   Rec_Num, Rec_Size: integer);
+    external;
+  
+  PROCEDURE FSEEK(*VAR F: FIB; RECNUM: INTEGER*);
+    LABEL 1;
+    VAR BYTE,BLOCK,N: INTEGER;
+    
+    
+  BEGIN SYSCOM^.IORSLT := INOERROR;
+    IF F.FISOPEN THEN
+      WITH F,FHEADER DO
+        BEGIN 
+          IF (RECNUM < 0) OR NOT FSOFTBUF OR
+                  ((DFKIND = TEXTFILE) AND (FRECSIZE = 1)) THEN
+            GOTO 1; (*NO SEEK ALLOWED*)
+          {
+          * Block := RECNUM*FRECSIZE DIV FBLKSIZE + 1;
+          * Byte  := RECNUM*FRECSIZE MOD FBLKSIZE;
+          }
+          Mul_Div ( Byte, Block, Recnum, Frecsize);
+          Block := Block + 1;
+          IF BYTE = 0 THEN 
+            BEGIN
+              BYTE := FBLKSIZE;     
+              BLOCK := BLOCK - 1;
+              END;
+          N := DLASTBLK-DFIRSTBLK;
+          IF (BLOCK > N) OR ((BLOCK = N) AND (BYTE >= DLASTBYTE)) THEN
+            BEGIN BLOCK := N; BYTE := DLASTBYTE END;
+          IF BLOCK <> FNXTBLK THEN
+            BEGIN
+              IF FBUFCHNGD THEN
+                BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+                  UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1);
+                  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+                END;
+              IF (BLOCK <= FMAXBLK) AND (BYTE <> FBLKSIZE) THEN
+                BEGIN
+                  UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+BLOCK-1);
+                  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+                END
+            END;
+          IF FNXTBLK > FMAXBLK THEN
+            BEGIN FMAXBLK := FNXTBLK; FMAXBYTE := FNXTBYTE END
+          ELSE
+            IF (FNXTBLK = FMAXBLK) AND (FNXTBYTE > FMAXBYTE) THEN
+              FMAXBYTE := FNXTBYTE;
+          FEOF := FALSE; FEOLN := FALSE; FREPTCNT := 0;
+          IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR;
+          FNXTBLK := BLOCK; FNXTBYTE := BYTE
+        END
+    ELSE SYSCOM^.IORSLT := INOTOPEN;
+  1:
+  END (*FSEEK*) ;
+
+
+END { PASCALIO } ;
+
+(*Dummy level 0 outerblock*)
+BEGIN END.
+

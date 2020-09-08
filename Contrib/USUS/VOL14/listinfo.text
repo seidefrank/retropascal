@@ -1,0 +1,447 @@
+
+    { $L-remout:}
+    (**************************************************************)
+    (*                                                            *)
+    (*      author:    David Parrish                              *)
+    (*                 Medical College of Georgia                 *)
+    (*                 Augusta, Georgia  30912                    *)
+    (*                                                            *)
+    (*      date:      April 30, 1980                             *)
+    (*                                                            *)
+    (** This program is part of the MCG Pascal utilities library **)
+    (*                                                            *)
+    (*      system.miscinfo parameter record definition           *)
+    (*       by Ronald A. Parsons                                 *)
+    (*                                                            *)
+    (* defines terminal and screen parameters from the file       *)
+    (* produced by setup for ucsd pascal version i.5.             *)
+    (* also works for II.0 - gws                                  *)
+    (* the following variables are associated with                *)
+    (* the setup defined parameter.                               *)
+    (* the full name of these variables is minfobuffer.xxxxx      *)
+    (* e.g.,                                                      *)
+    (*       minfobuffer.screenheight                             *)
+    (* or                                                         *)
+    (*       with minfobuffer do ... screenheight ... end;        *)
+    (*                                                            *)
+    (* ----- the following variables are type boolean.            *)
+    (* hasclock            has clock                              *)
+    (* has8510a            has 8510a                              *)
+    (* haslowercase        has lower case                         *)
+    (* hasrandom           has random cursor addressing           *)
+    (* hasslow             has slow terminal                      *)
+    (* student             student                                *)
+    (* premcup             prefix [move cursor up]                *)
+    (* premcright          prefix [move cursor right]             *)
+    (* preereol            prefix [erase to end of line]          *)
+    (* preereos            prefix [erase to end of screen]        *)
+    (* premchome           prefix [move cursor home]              *)
+    (* predcharacter       prefix [delete character]              *)
+    (* preerscreen         prefix [erase screen]                  *)
+    (* preerline           prefix [erase line]                    *)
+    (* prekmcright         prefix [key for moving right]          *)
+    (* prekmcleft          prefix [key for moving left]           *)
+    (* prekmcup            prefix [key for moving up]             *)
+    (* prekmcdown          prefix [key for moving down]           *)
+    (* prenonprintchar     prefix [non-printing character]        *)
+    (* prekeystop          prefix [key for stop]                  *)
+    (* prekeybreak         prefix [key for break]                 *)
+    (* prekeyflush         prefix [key for flush]                 *)
+    (* prekeyendfile       prefix [key to end file]               *)
+    (* preedescapekey      prefix [editor 'escape' key]           *)
+    (* prekeydline         prefix [key to delete line]            *)
+    (* prekeydcharacter    prefix [key to delete character]       *)
+    (* preedacceptkey      prefix [editor 'accept' key]           *)
+    (*                                                            *)
+    (* ----- the following variables are type integer.            *)
+    (* screenheight        screen height                          *)
+    (* screenwidth         screen width                           *)
+    (*                                                            *)
+    (**************************************************************)
+    {$P}
+    (**************************************************************)
+    (*                                                            *)
+    (* ----- the follwing variables are type char.                *)
+    (* leadintoscreen      lead-in to screen                      *)
+    (* movecursorhome      move cursor home                       *)
+    (* eraseeos            erase to end of screen                 *)
+    (* eraseeol            erase to end of line                   *)
+    (* movecright          move cursor right                      *)
+    (* movecup             move cursor up                         *)
+    (* backspace           backspace                              *)
+    (* verticalmdelay      vertical move delay                    *)
+    (* eraseline           erase line                             *)
+    (* erasescreen         erase screen                           *)
+    (* keytomcup           key to move cursor up                  *)
+    (* keytomcdown         key to move cursor down                *)
+    (* keytomcleft         key to move cursor left                *)
+    (* keytomcright        key to move cursor right               *)
+    (* keytoendfile        key to end file                        *)
+    (* keyforflush         key for flush                          *)
+    (* keyforbreak         key for break                          *)
+    (* keyforstop          key for stop                           *)
+    (* keytodcharacter     key to delete character                *)
+    (* nonprintchar        non-printing character                 *)
+    (* keytodline          key to delete line                     *)
+    (* editorescapekey     editor 'escape' key                    *)
+    (* leadincharacter     lead-in character from keyboard        *)
+    (* editoracceptkey     editor 'accept' key                    *)
+    (*                                                            *)
+    (**************************************************************)
+
+      
+{$P}
+{$S+}
+Program listinfo;
+  
+
+  Const
+    vmd  = 'vertical move delay       ';
+    lns  = 'lead-in to screen         ';
+    lnk  = 'lead-in from keyboard     ';
+    mch  = 'move cursor home          ';
+    eos  = 'erase to end of screen    ';
+    eol  = 'erase to end of line      ';
+    mcr  = 'move cursor right         ';
+    mcu  = 'move cursor up            ';
+    bs   = 'backspace                 ';
+    el   = 'erase line                ';
+    es   = 'erase screen              ';
+    npc  = 'non-printing character    ';
+    kmcu = 'key to move cursor up     ';
+    kmcd = 'key to move cursor down   ';
+    kmcl = 'key to move cursor left   ';
+    kmcr = 'key to move cursor right  ';
+    keof = 'key to end file           ';
+    kf   = 'key for flush             ';
+    kb   = 'key for break             ';
+    ks   = 'key for stop              ';
+    kdc  = 'key to delete a character ';
+    kdl  = 'key to delete a line      ';
+    eak  = 'editor accept key         ';
+    eek  = 'editor escape key         ';
+
+
+Type
+   amiscinfo = packed record
+      dummy1 : packed array [0..28] of integer;
+      dummy2,dummy3,student,hasslow,hasrandom,haslowercase,
+      has8510a,hasclock : boolean;
+      dummy4 : integer;
+      erasescreen,eraseline,verticalmdelay,backspace,
+         movecup,movecright,eraseeol,eraseeos,movecursorhome,
+         leadintoscreen : char;
+      preerline,preerscreen,predcharacter,premchome,
+         preereos,preereol,premcright,premcup : boolean;
+      screenwidth,screenheight : integer;
+      editoracceptkey,leadincharacter,editorescapekey,
+         keytodline,nonprintchar,keytodcharacter,
+         keyforstop,keyforbreak,keyforflush,keytoendfile,
+         keytomcright,keytomcleft,keytomcdown,keytomcup : char;
+      dummy5 : integer;
+      dummy6,dummy7,predacceptkey,prekeydcharacter,
+         prekeydline,preedescapekey,prekeyendfile,
+         prekeyflush,prekeybreak,prekeystop,prenonprintchar,
+         prekmcdown,prekmcup,prekmcleft,prekmcright : boolean;
+      dummy8 : packed array [48..95] of integer;
+      end;
+   string8 = string[8];
+   string5 = string[5];
+   string6 = string[6];
+    
+{$P}
+Var
+   minfobuffer : amiscinforec;
+   out         : text;
+   mode        : integer;
+   charfield   : string6;
+   tffield     : string5;
+   decfield    : integer;
+   hexfield    : string8;
+   asc         : char;
+
+  Procedure clearfrom(y:integer);
+    begin
+      gotoxy(0,y);
+      with minfobuffer do
+        begin
+          if preereos then write(leadintoscreen);
+          write(eraseeos)
+        end
+    end;
+    
+  Procedure minfoinit; { initialize }
+    var  minfofile : file of amiscinforec;
+    begin
+      reset (minfofile,'*system.miscinfo');
+      get (minfofile);
+      minfobuffer := minfofile^ ;
+      close (minfofile);
+    end;  { minfoinit }
+  
+  Procedure tf(tfval : boolean; var tfstring : string5);
+    begin
+      if tfval = true then tfstring := 'True '
+                      else tfstring := 'False'
+    end; { true-false }
+    
+  Procedure conv(charval : char; var astring : string6; 
+                                 var ahex    : string8;
+                                 var adec    : integer);
+      var  charord : integer;
+    procedure hexconv;
+      VAR UD,LD : INTEGER;
+      BEGIN
+        ahex := '        ';
+        UD := charord DIV 16;
+        LD := charord MOD 16;
+        IF UD > 9 THEN ahex[7] := CHR(UD+55)
+                  ELSE ahex[7] := CHR(UD+48);
+        IF LD > 9 THEN ahex[8] := CHR(LD+55)
+                  ELSE ahex[8] := CHR(LD+48)
+      END;  { hexconv }
+  
+    {$P}
+    begin    { conv }
+      astring := '      ';
+      charord := ord(charval);
+      hexconv;
+      adec := charord;
+      if (charord > 32) and (charord < 127) then
+           astring[3] := charval
+         else
+           if charord = 127 then
+               astring := 'DEL   '
+             else
+               case charord of
+                  0: astring := 'NUL ^@';
+                  1: astring := 'SOH ^A';
+                  2: astring := 'STX ^B';
+                  3: astring := 'ETX ^C';
+                  4: astring := 'EOT ^D';
+                  5: astring := 'ENQ ^E';
+                  6: astring := 'ACK ^F';
+                  7: astring := 'BEL ^G';
+                  8: astring := 'BS  ^H';
+                  9: astring := 'HT  ^I';
+                 10: astring := 'LF  ^J';
+                 11: astring := 'VT  ^K';
+                 12: astring := 'FF  ^L';
+                 13: astring := 'CR  ^M';
+                 14: astring := 'SO  ^N';
+                 15: astring := 'SI  ^O';
+                 16: astring := 'DLE ^P';
+                 17: astring := 'DC1 ^Q';
+                 18: astring := 'DC2 ^R';
+                 19: astring := 'DC3 ^S';
+                 20: astring := 'DC4 ^T';
+                 21: astring := 'NAK ^U';
+                 22: astring := 'SYN ^V';
+                 23: astring := 'ETB ^W';
+                 24: astring := 'CAN ^X';
+                 25: astring := 'EM  ^Y';
+                 26: astring := 'SUB ^Z';
+                 27: astring := 'ESC ^[';
+                 28: astring := 'FS  ^\';
+                 29: astring := 'GS  ^]';
+                 30: astring := 'RS  ^^';
+                 31: astring := 'US  ^_';
+                 32: astring := 'SP    '
+              end    { case and if's }
+      end;      { conv }
+  
+ 
+  {$P}
+  Procedure  seg1print;
+   begin
+    with minfobuffer do
+    begin
+    conv(verticalmdelay,charfield,hexfield,decfield);
+     writeln(out,'   ',vmd ,'  ',charfield,'  ','-----',decfield:12,hexfield,'H');
+    conv(leadintoscreen,charfield,hexfield,decfield);
+     writeln(out,'   ',lns ,'  ',charfield,'  ','-----',decfield:12,hexfield,'H');
+    conv(leadincharacter,charfield,hexfield,decfield);
+     writeln(out,'   ',lnk ,'  ',charfield,'  ','-----',decfield:12,hexfield,'H');
+    tf(premchome       ,tffield);
+     conv(movecursorhome ,charfield,hexfield,decfield);
+      writeln(out,'   ',mch ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(preereos        ,tffield);
+     conv(eraseeos       ,charfield,hexfield,decfield);
+      writeln(out,'   ',eos ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(preereol        ,tffield);
+     conv(eraseeol       ,charfield,hexfield,decfield);
+      writeln(out,'   ',eol ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    end  { with }
+  end;  {  seg1print }
+  
+  Procedure  seg2print;
+   begin
+    with minfobuffer do
+    begin
+    tf(premcright      ,tffield);
+     conv(movecright     ,charfield,hexfield,decfield);
+      writeln(out,'   ',mcr ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(premcup         ,tffield);
+     conv(movecup        ,charfield,hexfield,decfield);
+      writeln(out,'   ',mcu ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(predcharacter   ,tffield);
+     conv(backspace      ,charfield,hexfield,decfield);
+      writeln(out,'   ',bs  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(preerline       ,tffield);
+     conv(eraseline      ,charfield,hexfield,decfield);
+      writeln(out,'   ',el  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(preerscreen     ,tffield);
+     conv(erasescreen    ,charfield,hexfield,decfield);
+      writeln(out,'   ',es  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prenonprintchar ,tffield);
+     conv(nonprintchar   ,charfield,hexfield,decfield);
+      writeln(out,'   ',npc ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    end  { with }
+  end;  {  seg2print }
+  
+  {$P}
+  Procedure  seg3print;
+   begin
+    with minfobuffer do
+    begin
+    tf(prekmcup        ,tffield);
+     conv(keytomcup      ,charfield,hexfield,decfield);
+      writeln(out,'   ',kmcu,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekmcdown      ,tffield);
+     conv(keytomcdown    ,charfield,hexfield,decfield);
+      writeln(out,'   ',kmcd,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekmcleft      ,tffield);
+     conv(keytomcleft    ,charfield,hexfield,decfield);
+      writeln(out,'   ',kmcl,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekmcright     ,tffield);
+     conv(keytomcright   ,charfield,hexfield,decfield);
+      writeln(out,'   ',kmcr,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekeyendfile   ,tffield);
+     conv(keytoendfile   ,charfield,hexfield,decfield);
+      writeln(out,'   ',keof,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekeyflush     ,tffield);
+     conv(keyforflush    ,charfield,hexfield,decfield);
+      writeln(out,'   ',kf  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    end  { with }
+  end;  {  seg3print }
+  
+  Procedure  seg4print;
+   begin
+    with minfobuffer do
+    begin
+    tf(prekeybreak     ,tffield);
+     conv(keyforbreak    ,charfield,hexfield,decfield);
+      writeln(out,'   ',kb  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekeystop      ,tffield);
+     conv(keyforstop     ,charfield,hexfield,decfield);
+      writeln(out,'   ',ks  ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekeydcharacter,tffield);
+     conv(keytodcharacter,charfield,hexfield,decfield);
+      writeln(out,'   ',kdc ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(prekeydline     ,tffield);
+     conv(keytodline     ,charfield,hexfield,decfield);
+      writeln(out,'   ',kdl ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(predacceptkey   ,tffield);
+     conv(editoracceptkey,charfield,hexfield,decfield);
+      writeln(out,'   ',eak ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    tf(preedescapekey  ,tffield);
+     conv(editorescapekey,charfield,hexfield,decfield);
+      writeln(out,'   ',eek ,'  ',charfield,'  ',tffield,decfield:12,hexfield,'H');
+    end  { with }
+  end;  {  seg4print }
+        
+  {$P}
+  Procedure seg5print;
+    begin
+     with minfobuffer do
+     begin
+     writeln(out);
+     tf(hasclock,tffield);
+      writeln(out,'     has clock           ',tffield);
+     tf(has8510a,tffield);
+      writeln(out,'     has 8510A           ',tffield);
+     tf(haslowercase,tffield);
+      writeln(out,'     has lower case      ',tffield);
+     tf(hasrandom,tffield);
+      writeln(out,'     has random cursor   ',tffield);
+     tf(hasslow,tffield);
+      writeln(out,'     has slow terminal   ',tffield);
+     tf(student,tffield);
+      writeln(out,'     student setup       ',tffield);
+     writeln(out);
+     writeln(out,'   The screen size is ',screenheight:3,' high by ',
+              screenwidth:3,' wide.')
+     end   { with }
+    end;   { seg5print }
+    
+  Procedure printbanner(pass : integer);
+    begin
+      if (mode =1) and (pass > 1) then begin
+        gotoxy(0,23);
+        write('Press any key to continue. ');
+        read(asc)
+        end;
+      if mode = 1 then clearfrom(0);
+      if (mode = 1) or (pass = 1) then begin
+        writeln(out);
+        write(out,'        Discription            Value Prefixed?    ');
+        writeln(out,'Dec value Hex value')
+        end
+    end;    { print banner }
+    
+  {$P}
+  Procedure setoutput;
+    var itsdone : boolean;
+        filname : string;
+    begin
+     repeat
+      case mode of 
+       1: filname := 'console:';
+       2: filname := 'remout:';
+       3: begin
+           gotoxy(0,7);
+           write('File name (include .text) > ');
+           readln(filname)
+          end
+        end;  { case }
+      {$I-}
+      rewrite (out,filname);
+      itsdone := (ioresult = 0)
+      {$I+}
+     until itsdone
+    end;   { setoutput }
+    
+
+Begin   { MAIN LINE }
+  minfoinit;
+  repeat
+    clearfrom(0);
+    gotoxy(0,3);
+    writeln('List SYSTEM.MISCINFO');
+    repeat
+     gotoxy(0,5);
+     write('Miscinfo listing to [1] screen, [2] printer, ');
+     write('[3] file [4] quit > [ ]');
+     gotoxy(66,5);
+     read(asc);
+     mode := ord(asc)-48
+    until (mode > 0) and (mode < 5);
+    if mode < 4 then begin
+      setoutput;
+      printbanner(1);
+      seg1print;
+      seg2print;
+      seg3print;
+      printbanner(2);
+      seg4print;
+      seg5print;
+      close(out, lock);
+      if (mode =1) then begin
+        gotoxy(0,23);
+        write('Press any key to continue. ');
+        read(asc)
+        end
+    end   { if mode < 4 }
+  until mode = 4
+End.     { MAIN LINE }
+

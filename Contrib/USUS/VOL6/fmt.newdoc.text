@@ -1,0 +1,152 @@
+             DOCUMENTATION FOR THE REVISED PASCAL SOURCE FORMATTER
+       by Michael Condict; published in Pascal News No. 13, December 1978
+
+                Debugged and extensively modified by Jim Gagne 
+              Datamed Research, 1433 Roscomare Road, Los Angeles.
+                                 28 August 1980
+
+     I've spent a lot of time on FORMAT, and I think that it's safe to say 
+that except for the bugs only more extensive use will uncover, it works.  
+Programs now will format into compilable textfiles that actually look better
+than the original, even if it had been prepared on a good editor.  FORMAT will 
+format itself, and the resulting file compiles and executes correctly.
+
+     Briefly, here is what is new.  FORMAT is now menu driven.  It will
+reformat programs for any width screen, as well as compressing text for modem
+transfer, to be restored by another run at the receiving end.  It will format
+correctly nearly all of the variant UCSD features, including UNITs.  At your 
+option, it will follow INCLUDE files.  Thus, I hope that it will find maximal
+use in transferring textfiles between different systems.  The major remaining
+problem with FORMAT is that it is slow; if it becomes popular, someone should
+run timing statistics and discover the bottlenecks.
+
+     In more detail, I've modified FORMAT as follows:
+
+     1) The problems with the "range" symbol (".."), due to errors in the
+number-processing part of READSYMBOL, have been corrected.
+
+     2) The section of READSYMBOL dealing with comments has been overhauled, 
+and it now handles them fairly intellegently.  Both brace- and parenthesis-and-
+asterisk-type comment delimiters work properly.  There has been special 
+provision made for long comments:  they are reformatted for the proper line 
+length, with word boundaries at the ends of lines respected 98% of the time.
+Comments are brought to a new line only if they won't fit on the previous one
+or if they contain compiler or formatter directives.  Comments at the 
+beginning of a program no longer cause FORMAT to die.  Further, since comments
+are by no means extraneous to a program, one has the option of retaining them
+during maximal program compression by a new command: if both procedure/
+function comments and end-symbol comments are enabled, even though they now DO
+NOT appear in compressed text, previously typed comments are retained. This
+feature was added to aid in the transmission of compressed text by modem,
+allowing the correct program to be fully restored by another run of FORMAT.
+Finally, no matter what, comments beginning with a compiler directive are
+retained in compressed text.
+
+     The only problems I've identified with comments so far are:
+        a) if one has a series of long comments within a section that is
+normally contained within one line if possible, FORMAT is apt to break this up
+into lines beginning with long comments, plus whatever else fits on the line.
+Since I usually put comments AFTER the text they refer to, this looks weird.
+The problem came up with a lengthy procedure declaration section of a UNIT.
+        b) long comments BEFORE a procedure/function declaration are closed up
+with the previous section.  Solution: comment your procedures after the
+declaration.
+        c) many people like to write pretty comments that are themselves 
+formatted.  Although the original program preserved the comment structure, it
+looked pretty funny when going from a larger to a smaller line size.  Now,
+all extraneous ends of lines and spaces are removed, somewhat to the
+detriment of such statements as authorship and names and addresses.
+
+     3) Handling of long strings was problematical; they now FORMAT
+correctly.  Especially long strings are made flush with the left margin. 
+Strings longer than the current maximal line length are broken up into
+substrings set off by commas.  Although this will create an error in any but
+WRITE statements, it was the most intellegent behavior I could devise.
+
+     4) Assorted typos in my original typed-in version have been corrected.
+
+     5) FORMAT now will handle all the UCSD Pascal variant features, including 
+UNITS, SEPARATE UNITS, SEGMENT PROCEDURES/FUNCTIONS, etc., with the exception 
+of the INTRINSIC UNITS limited to the Apple version.  This is easily added if 
+you wish (at the beginning of the main program).  Of course, standard Pascal 
+files also format correctly.
+
+     6) There is one important alteration in procedure WRITEA:  blanks at the 
+beginning of new lines are compressed with the UCSD blank-compression code.  
+This change occupies one line and is well marked.  It saves oodles of disk 
+space.
+
+     7) FORMAT now will incorporate INCLUDE files (i.e., the compiler
+directive "I", used in the following format: "{$I<filename>}" or
+"(*$I<filename>*)", where "<filename>" refers to any valid UCSD filename,
+including if needed volume name or unit number.  Unless a volume is
+specified, FORMAT will look on volumes 4 and 5 for the filename if it can't
+find it on the default volume.  Comments are printed in the output at the
+start and end of an INCLUDED file, and a message noting a new INCLUDE file is 
+printed on the console.  
+
+     You may enable or disable FORMAT from acting on INCLUDE directives with
+the "D(elve into INCLUDE files" parameter on the menu.  If disabled, INCLUDE 
+directives are treated like any other parameter.  Nested INCLUDEs are always
+ignored.  If you have enabled INCLUDE files and there is a problem with one,
+an error message will be printed on the console, and FORMAT will do as little
+damage as possible, restoring the original compiler directive in the output.
+
+     Of course, it is difficult to format an INCLUDE file primarily, since you 
+can put virtually anything in an INCLUDE file, so long as the larger program
+pieces it together properly.  FORMAT is just as helpless with a fragment of a
+program as your compiler is.  If you MUST format an INCLUDE file separately
+from its host, you'll have to kludge: the file in question must start out with
+either a "PROGRAM" or "UNIT" declaration, then contain some sort of standard
+Pascal format.  FORMAT does not check that identifiers have been previously
+declared; so only the program structure must be correct.  If your INCLUDE file
+does not meet these specifications, you'll have to write a dummy host and
+INCLUDE the desired file.
+
+     8) Finally, and by far the most useful feature, is the addition of menu-
+selected formatting parameters in a highly user-friendly manner.  Once you've 
+read the main FORMAT.DOC documentation, you should find choosing the format 
+you desire quite simple.  For those who like single key-stroke parameter 
+setting, the global commands 4(0, 6(4, and 8(0-column widths and M(odem 
+transfer will select and display a reasonable set of parameters for each of
+those situations.
+
+     Several caveats should be observed in using the menu.  First, if FORMAT 
+cannot find the file "FMT.MASK.DATA" (a structured binary file that will NOT
+look good on your screen or printer) on either units 4 or 5, menu selection
+is skipped.  Second, the current FMT.MASK.DATA is designed for 80-column, 24-
+line screens, including the standard Apple variant (40 columns with
+horizontal scrolling).  There is an alternate file, FMT.64MASK.DATA, designed
+for those souls with 16x64 screens, but as the data file is still in 24x80
+format (filled in with blanks) you will have to alter the procedure
+OPENDATAFILE (part of GETNEWINITVALUES in FORMAT.3.TEXT) to NOT write more
+than 64 characters per line nor print more than 15 lines (actually, 13 will
+do), or you are apt to have the menu scroll off the screen.  If you then
+change the name of FMT.MASK.DATA to something else and rename FMT.64MASK.DATA
+as FMT.MASK.DATA, the program should work fine.  Finally, there is no way for
+the menu portion to work properly if you do not have a valid GOTOXY bound into
+your system.
+
+     If you wish to alter the menu, you will have to use the program MAKEMASKS 
+on the UCSD Pascal Users' Library, Volume 5, or write your own.
+
+     
+     
+     Despite my testing, I'm certain that someone will find problems with 
+FORMAT, in view of the extensive changes I've made.  The major remaining area 
+I would like to deal with is the aesthetic problem of dangling punctuation, 
+caused by a statement that almost but not quite fits on a line; one or two 
+characters are apt to hang off the line in a most irritating manner.
+
+     Please let me know if you find bugs and, more importantly, if you can
+fix them.  However, make SURE you tell me what the problem is you're fixing
+with a bug fix.
+
+     Have fun.
+
+     Sincerely,
+
+                           Jim Gagne, M.D., President
+                                Datamed Research
+                              1433 Roscomare Road
+                             Los Angeles, CA 90024

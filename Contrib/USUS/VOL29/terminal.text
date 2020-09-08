@@ -1,0 +1,126 @@
+PROGRAM terminal;
+
+{
+29 Apr 84 gws  removed a unitwrite to suppress half duplex
+29 Apr 84 gws  added $U directives to unit list
+}
+
+USES   screenops, 
+       (*$U remunit.code*) remunit, 
+       (*$U osmisc.code*) osmisc;
+
+CONST
+  version = 'C1';
+  baud_rate = 300;
+  convers_name = '*CONVERS';
+
+  exit_command = 5;             {  CTL-E  }
+  convers_command = 3;          {  CTL-C  }
+  ch_esc = 27;
+
+
+VAR
+  c             : CHAR ;
+  exit_requested:  BOOLEAN;
+  to_convers:  BOOLEAN;
+  keyboard:  INTERACTIVE;
+  command_string:  STRING [ 255 ];
+
+PROCEDURE initialize ;
+
+  VAR
+    havedial     : BOOLEAN ;
+    haverem      : BOOLEAN ;
+    result       : cr_baud_result ;
+  
+  BEGIN
+  sc_clr_screen;
+  GOTOXY ( 0, 0 );
+  WRITE ( 'TERMINAL Version ', version, '.  Baud rate = ', baud_rate, '.' );
+  GOTOXY ( 0, 3 );
+  cr_comminit( cr_orig, CHR( 5 ), haverem, havedial ) ;
+  IF NOT haverem THEN
+    BEGIN
+    WRITELN( ' REMOTE not supported in current environment.' ) ;
+    WRITELN( ' Program is terminating.' ) ;
+    EXIT( PROGRAM ) ;
+    END ;
+
+  cr_setcommunications(
+                TRUE,
+                TRUE,
+                baud_rate,
+                7,
+                1,
+                cr_orig,
+                '',
+                result ) ;
+
+  WRITE ( 'Waiting for carrier...' );
+  cr_answer ;
+  GOTOXY ( 0, 3 );
+  sc_clr_cur_line;
+  
+  END;          {  PROCEDURE initialize  }
+
+
+
+BEGIN   {  PROGRAM terminal  }
+
+initialize ;
+exit_requested := FALSE;
+to_convers := FALSE;
+
+REPEAT
+  IF cr_remstat THEN
+    BEGIN
+    c := cr_getrem;
+    if c <> chr ( 10 ) then unitwrite ( 1,c,1 ); (* lsi-11 can't suppress lf *)
+    (** UNITWRITE(1,c,1,,4+8 );*)(* use this line instead for most p-systems *)
+    END
+  ELSE
+    BEGIN
+    IF cr_kbstat THEN
+      BEGIN
+      c := cr_getkb ;
+      IF ( c = CHR ( exit_command ) ) OR ( c = CHR ( convers_command )) THEN
+        CASE ORD ( c ) OF
+          exit_command:     exit_requested := TRUE;
+          convers_command:  BEGIN
+                            WRITE ( 'CONVERS command string: ');
+                            READLN ( INPUT, command_string );
+                            IF LENGTH ( command_string ) > 0 THEN
+                              BEGIN
+                              os_store_command ( convers_name, command_string );
+                              exit_requested := TRUE;
+                              to_convers := TRUE;
+                              END;      {  IFEND  }
+                            END;        {  CASE ITEM  }
+          END  {  CASEND  }
+
+      ELSE
+        BEGIN
+        (**UNITWRITE(1,c,1,,4+8 ) ;*)  (* don't want local echo - gws *)
+        cr_putrem( c ) ;
+        END ;
+      END ;
+    IF NOT cr_carrier THEN
+      BEGIN
+      WRITELN ;
+      WRITELN('LOST CARRIER');
+      WRITELN ;
+      cr_commquit;
+      EXIT ( PROGRAM )
+      END;
+  END;
+
+UNTIL exit_requested;
+
+sc_clr_screen;
+cr_commquit ;
+
+IF to_convers THEN
+  os_exit_to_next;
+
+END.
+

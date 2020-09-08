@@ -1,0 +1,91 @@
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+segment procedure start;  {sets up the variables}
+
+procedure initialize;
+{inserts nul values in tlines}
+var i   : 1..maxline;
+    empty : tline;
+begin
+   max_tax [ h_own ] := 0;
+   max_tax [ w_own ] := 0;
+   max_tax [ t_own ] := 0;
+   with empty do 
+      begin
+         iptr := nil;
+         hus := 0;
+         wif := 0;
+         tot := 0;
+      end;
+   for i := 8 to maxline do
+      begin 
+         tlines [ i ] := empty;
+         tlines [ i ].tag := 1;
+      end;
+   with tlines [ 7 ] do
+      begin
+         d1 := 1;
+         d2 := 1;
+         d3 := 80;
+         taxyear := ' ';
+         fs := 0;
+         exem := 0;
+      end;
+   with tlines [ 6 ] do name := ' ';
+end;
+
+procedure readfactors;
+{reads the tax factor file into the array taxray}
+var     tfile : file of factorarray;
+        ttlable : tax_table;
+begin
+  reset ( tfile, 'factors.ftax' );
+  for ttable := x to z do
+     begin
+        taxray [ ttable ] := tfile^;
+        write ( '.' );
+        get ( tfile );
+     end;
+  close ( tfile );
+end;
+
+procedure readnames;
+{reads the line names into the array titles}
+type    t       = array  [ 1..maxline ] of string [ 30 ];
+var     tnames  : file of t;
+begin
+   reset ( tnames, 'linenams.ftax' );
+   titles := tnames^;
+end;
+
+procedure getdate;
+{gets the system date from drive 4}
+var     dummy   : packed array [ 1..22 ] of char;
+        high, low : integer;
+begin
+   unitread ( 4, dummy, 24 ,2 );
+   high := ord ( dummy [ 22 ] );
+   low := ord ( dummy [ 21 ] );
+   day := ( high mod 2 ) * 16 + ( low div 16 );
+   month := low mod 16;
+   year := high div 2;
+end;
+
+begin
+   getdate;
+   {the following set contains line numbers of lines requiring calculation}
+   calcset := [ 9,10,22,20,31,32,33,34,35,37,46,47,54,62..66,69,70,
+                73..76,82,86,88,90,93..95,98..107,109,111,114,115];
+   single := true;  {needs a value to start}
+   screen := true;  {most times it is}
+   initialize;
+   readfactors;
+   readnames;
+end;
+   

@@ -1,0 +1,478 @@
+(*$S+, Modified by F. J. Monaco for UCSD PASCAL *)
+PROGRAM ID2D (INFILE,OUTFILE, IDPAIRS, SCREEN );
+USES GOODSTUFF;
+
+CONST 
+      MAXLENGTH = 25;
+      BLANKS = '                         ';
+
+TYPE 
+     CHARS =  'A' .. 'z';
+     CHARSET = SET OF CHARS;
+     IDLENGTH = 1 .. MAXLENGTH;
+     IDTYPE = RECORD
+                NAME : PACKED ARRAY [ IDLENGTH ] OF CHAR;
+                LENGTH : IDLENGTH
+              END;
+     BALANCE = (HIGHERLEFT, EVEN, HIGHERRIGHT);
+     NODEPTR = ^NODE;
+     NODE = RECORD
+              ID : IDTYPE;
+              LEFT, RIGHT : NODEPTR;
+              BAL : BALANCE;
+              IDISNEW : BOOLEAN;
+              CASE IDISOLD: BOOLEAN OF
+                TRUE: (NEWPTR : NODEPTR);
+                FALSE: (SEENININFILE : BOOLEAN)
+            END;
+
+VAR 
+    IDTABLE : NODEPTR;
+    INFILE, OUTFILE, IDPAIRS, SCREEN: TEXT;
+    LETTERS, DIGITS, LETTERANDDIGITS : CHARSET;
+
+PROCEDURE INITIALIZE;
+VAR
+  THISNAME : STRING[30];
+BEGIN
+  REWRITE(SCREEN, 'CONSOLE:');
+  GETCRTINFO;
+  getdate ( thisname );
+  GOTOXY ( 0, 0 );
+  CRT ( ERASEOS );
+  writeln (' UCSD PASCAL version of PUG''s ID2D ... ',thisname, ' ...');
+  writeln ('  modified by Frank Monaco  ');
+  writeln;
+  WRITELN ( 'This Program replaces OLD IDENTIFIERS with NEW IDENTIFIERS ');
+  WRITELN ('  ...... in a PASCAL Program ... ');
+  writeln;
+  writeln (' You will be prompted for two INPUT files: ');
+  writeln ('     1)  The file containing "oldids, newids"  ');
+  writeln ('     2)  The file containing the program to be changed ');
+  writeln (' You will be next prompted for the new OUTPUT program file ');
+  gotoxy ( 25, 12 );
+  write (' ... First, the IDPAIRS file .... ');
+  getfile (idpairs, true );
+  GOTOXY ( 0, 0);
+  CRT (ERASEOS );
+  gotoxy ( 25, 12 );
+  write (' ... Next, the PROGRAM file to be changed ...');
+  GETFILE (INFILE, TRUE );
+  gotoxy ( 0, 0);
+  CRT (ERASEOS);
+  gotoxy ( 25, 12 );
+  write (' ... Next, the NEW PROGRAM File name ...');
+  GETFILE (OUTFILE, FALSE);
+  gotoxy ( 0, 0 );
+  crt ( eraseos );
+  LETTERS := [ 'A', 'B','C','D','E','F','G','H','I','J','K','L','M',
+             'N', 'O','P','Q','R','S','T','U','V','W','X','Y','Z',
+             'a', 'b', 'c', 'd', 'e','f','g','h','i','j','k','l','m',
+             'n','o','p','q','r','s','t','u','v','w','x','y','z'];
+  DIGITS := [ '0' .. '9' ];
+  LETTERANDDIGITS := LETTERS + DIGITS;
+END;
+
+PROCEDURE READID(VAR INFILE : TEXT; VAR IDENT : IDTYPE);
+
+VAR 
+    CHCOUNT : 0 .. MAXLENGTH;
+BEGIN
+  IDENT.NAME := BLANKS;
+  CHCOUNT := 0;
+  REPEAT
+    CHCOUNT := SUCC (CHCOUNT);
+    IDENT.NAME [ CHCOUNT ] := INFILE^;
+    GET(INFILE)
+  UNTIL NOT (INFILE^ IN LETTERANDDIGITS) OR (CHCOUNT = MAXLENGTH);
+  IDENT.LENGTH := CHCOUNT
+END;
+
+PROCEDURE READIDPAIRSANDCREATESYMBOLTABLE;
+
+TYPE 
+     IDKIND = (OLDKIND, NEWKIND);
+
+VAR 
+    OLDID, NEWID: IDTYPE;
+    LINK: NODEPTR;
+    LINENUM: INTEGER;
+    INCRHGT : BOOLEAN;
+
+PROCEDURE ERROR;
+BEGIN
+  WRITELN(SCREEN,' ON LINE NUMBER ':29,LINENUM: 1, ' OF THE "IDPAIRS" FILE');
+END;
+
+PROCEDURE ENTER (VAR IDENTIFIER: IDTYPE; KIND: IDKIND; VAR P :
+                 NODEPTR; VAR INCREASEDHEIGHT : BOOLEAN);
+
+VAR 
+    P1, P2 : NODEPTR;
+BEGIN
+  IF P = NIL
+    THEN
+      BEGIN
+        NEW(P);
+        INCREASEDHEIGHT := TRUE;
+        WITH P^ DO
+          BEGIN
+            ID := IDENTIFIER;
+            IDISNEW := KIND = NEWKIND;
+            IDISOLD := KIND = OLDKIND;
+            LEFT := NIL;
+            RIGHT := NIL;
+            BAL := EVEN;
+            IF IDISNEW
+              THEN
+                BEGIN
+                  LINK := P;
+                  SEENININFILE := FALSE;
+                END
+              ELSE
+                NEWPTR := LINK
+          END
+      END
+    ELSE
+      IF IDENTIFIER.NAME < P^.ID.NAME
+        THEN
+          BEGIN
+            ENTER (IDENTIFIER, KIND, P^.LEFT, INCREASEDHEIGHT);
+            IF INCREASEDHEIGHT
+              THEN
+                CASE P^.BAL OF
+                  HIGHERRIGHT : BEGIN
+                                  P^.BAL := EVEN;
+                                  INCREASEDHEIGHT := FALSE
+                                END;
+                  EVEN: P^.BAL := HIGHERLEFT;
+                  HIGHERLEFT: BEGIN
+                                P1 := P^.LEFT;
+                                IF P1^.BAL = HIGHERLEFT
+                                  THEN
+                                    BEGIN
+                                      P^.LEFT := P1^.RIGHT;
+                                      P1^.RIGHT := P;
+                                      P^.BAL := EVEN;
+                                      P := P1
+                                    END
+                                  ELSE
+                                    BEGIN
+                                      P2 := P1^.RIGHT;
+                                      P1^.RIGHT := P2^.LEFT;
+                                      P2^.LEFT := P1;
+                                      P^.LEFT := P2^.RIGHT;
+                                      P2^.RIGHT := P;
+                                      IF P2^.BAL = HIGHERLEFT
+                                        THEN
+                                          P^.BAL := HIGHERRIGHT
+                                        ELSE
+                                          P^.BAL := EVEN;
+                                      IF P2^.BAL = HIGHERRIGHT
+                                        THEN
+                                          P^.BAL := HIGHERLEFT
+                                        ELSE
+                                          P1^.BAL := EVEN;
+                                      P := P2;
+                                    END;
+                                P^.BAL := EVEN;
+                                INCREASEDHEIGHT := FALSE;
+                              END;
+                END
+          END
+        ELSE
+          IF IDENTIFIER.NAME > P^.ID.NAME
+            THEN
+              BEGIN
+                ENTER(IDENTIFIER, KIND, P^.RIGHT, INCREASEDHEIGHT);
+                IF INCREASEDHEIGHT
+                  THEN
+                    CASE P^.BAL OF
+                      HIGHERLEFT: BEGIN
+                                    P^.BAL := EVEN;
+                                    INCREASEDHEIGHT := FALSE;
+                                  END;
+                      EVEN: 
+                            P^.BAL := HIGHERRIGHT;
+                      HIGHERRIGHT: BEGIN
+                                     P1 := P^.RIGHT;
+                                     IF P1^.BAL = HIGHERRIGHT
+                                       THEN
+                                         BEGIN
+                                           P^.RIGHT := P1^.LEFT;
+                                           P1^.LEFT := P;
+                                           P^.BAL := EVEN;
+                                           P := P1
+                                         END
+                                       ELSE
+                                         BEGIN
+                                           P2 := P1^.LEFT;
+                                           P1^.LEFT := P2^.RIGHT;
+                                           P2^.RIGHT := P1;
+                                           P^.RIGHT := P2^.LEFT;
+                                           P2^.LEFT := P;
+                                           IF P2^.BAL = HIGHERRIGHT
+                                             THEN
+                                               P^.BAL := HIGHERLEFT
+                                             ELSE
+                                               P^.BAL := EVEN;
+                                           IF P2^.BAL = HIGHERLEFT
+                                             THEN
+                                               P1^.BAL := HIGHERRIGHT
+                                             ELSE
+                                               P1^.BAL := EVEN;
+                                           P := P2;
+                                         END;
+                                     P^.BAL := EVEN;
+                                     INCREASEDHEIGHT := FALSE;
+                                   END;
+                    END
+              END
+            ELSE
+              BEGIN
+                INCREASEDHEIGHT := FALSE;
+                WITH P^ DO
+                  BEGIN
+                    IF IDISOLD
+                      THEN
+                        IF KIND = OLDKIND
+                          THEN
+                            BEGIN
+                              WRITELN(SCREEN,
+                                      '***DUPLICATE OLD IDS ENCOUNTERED: ',
+                                      IDENTIFIER.NAME);
+                              ERROR;
+                              EXIT ( PROGRAM )
+                            END
+                          ELSE
+                            BEGIN
+                              IDISNEW := TRUE;
+                              LINK := P
+                            END
+                      ELSE
+                        IF KIND = NEWKIND
+                          THEN
+                            BEGIN
+                              WRITELN(SCREEN, '---WARNING:  ', IDENTIFIER.NAME,
+                                      ' HAS ALSO APPEARED AS ANOTHER NEWID');
+                              ERROR;
+                              LINK := P
+                            END
+                          ELSE
+                            BEGIN
+                              IDISOLD := TRUE;
+                              NEWPTR := LINK
+                            END
+                  END
+              END
+END;
+
+PROCEDURE TRUNCATION ( VAR IDENT: IDTYPE);
+BEGIN
+  WRITELN(SCREEN, '---WARNING: TRUNCATION FOR IDENTIFIER: ',
+          IDENT.NAME);
+  WRITELN(SCREEN, '---EXTRA CHARACTERS IGNORED ': 39);
+  ERROR;
+  REPEAT
+    GET (IDPAIRS)
+  UNTIL NOT (IDPAIRS^ IN LETTERANDDIGITS);
+END;
+BEGIN
+  IDTABLE := NIL;
+  RESET (IDPAIRS);
+  LINENUM := 1;
+  INCRHGT := FALSE;
+  WHILE NOT EOF(IDPAIRS) DO
+    BEGIN
+      WHILE (IDPAIRS^ = ' ') AND NOT EOLN(IDPAIRS) DO
+        GET(IDPAIRS);
+      IF IDPAIRS^ IN LETTERS
+        THEN
+          BEGIN
+            READID(IDPAIRS,OLDID);
+            IF IDPAIRS^ IN LETTERANDDIGITS
+              THEN
+                TRUNCATION(OLDID);
+            WHILE (IDPAIRS^ IN [' ',',']) AND NOT  EOLN(IDPAIRS) DO
+              GET (IDPAIRS);
+            IF IDPAIRS^ IN LETTERS
+              THEN
+                BEGIN
+                  READID(IDPAIRS,NEWID);
+                  IF IDPAIRS^ IN LETTERANDDIGITS
+                    THEN
+                      TRUNCATION(NEWID);
+                  ENTER(NEWID,NEWKIND, IDTABLE,INCRHGT);
+                  ENTER(OLDID, OLDKIND, IDTABLE, INCRHGT);
+                END
+              ELSE
+                BEGIN
+                  WRITELN(SCREEN, '---WARNING: MALFORMED IDPAIR');
+                  ERROR;
+                END
+          END
+        ELSE
+          BEGIN
+            WRITELN(SCREEN, '---WARNING: MALFORMED IDPAIR');
+            ERROR;
+          END;
+      READLN(IDPAIRS);
+      LINENUM := SUCC ( LINENUM);
+    END;
+END;
+
+PROCEDURE EDITINFILETOOUTFILE;
+
+VAR 
+    INFILEID: IDTYPE;
+    DIGITSE, IMPORTANTCHARS: CHARSET;
+
+PROCEDURE SUBSTITUTE (VAR IDENTIFIER: IDTYPE; P : NODEPTR);
+
+PROCEDURE WRITEINFILEID;
+BEGIN
+  WITH INFILEID DO
+    WRITE(OUTFILE, NAME: LENGTH);
+  WHILE INFILE^ IN LETTERANDDIGITS DO
+    BEGIN
+      WRITE(OUTFILE, INFILE^);
+      GET(INFILE);
+    END
+END;
+BEGIN
+  IF P = NIL
+    THEN
+      WRITEINFILEID
+    ELSE
+      IF IDENTIFIER.NAME < P^.ID.NAME
+        THEN
+          SUBSTITUTE(IDENTIFIER, P^.LEFT)
+        ELSE
+          IF IDENTIFIER.NAME > P^.ID.NAME
+            THEN
+              SUBSTITUTE(IDENTIFIER, P^.RIGHT)
+            ELSE
+              WITH P^ DO
+                IF IDISOLD
+                  THEN
+                    BEGIN
+                      WITH NEWPTR^.ID DO
+                        WRITE(OUTFILE, NAME: LENGTH);
+                      WHILE INFILE^ IN LETTERANDDIGITS DO
+                        GET(INFILE)
+                    END
+                  ELSE
+                    BEGIN
+                      SEENININFILE := TRUE;
+                      WRITEINFILEID
+                    END
+END;
+BEGIN
+  IMPORTANTCHARS := LETTERANDDIGITS + ['(', '_', ''''];
+  DIGITSE := DIGITS + ['E', 'e'];
+  WHILE NOT EOF(INFILE) 
+    DO
+    BEGIN
+      WHILE NOT EOLN(INFILE) DO
+        IF INFILE^ IN IMPORTANTCHARS
+          THEN
+            CASE INFILE^ OF
+              'A','B','C','D','E','F','G','H','I','J','K','L','M','N',
+              'O','P','Q','R','S','T','U','V','W','X','Y','Z',
+              'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o',
+              'p','q','r','s','t','u','v','w','x','y','z': 
+                                                               BEGIN
+                                                                 READID(INFILE,
+                                                                        INFILEID
+                                                                 );
+                                                                 SUBSTITUTE(
+                                                                        INFILEID
+                                                                            ,
+                                                                        IDTABLE
+                                                                 );
+                                                               END;
+              '0','1','2','3','4','5','6','7','8','9': 
+                                                       REPEAT
+                                                         WRITE(OUTFILE, INFILE^)
+                                                         ;
+                                                         GET(INFILE)
+                                                       UNTIL NOT (INFILE^ IN
+                                                             DIGITS);
+              '''': 
+                    BEGIN
+                      REPEAT
+                        WRITE(OUTFILE, INFILE^);
+                        GET(INFILE);
+                      UNTIL ( INFILE^ = '''') OR EOLN(INFILE);
+                      IF EOLN(INFILE)
+                        THEN
+                          WRITELN(SCREEN, 'UNCLOSED STRING FOUND');
+                      WRITE(OUTFILE, INFILE^);
+                      GET(INFILE);
+                    END;
+              '(' : 
+                    BEGIN
+                      WRITE (OUTFILE, INFILE^);
+                      GET(INFILE);
+                      IF INFILE^ = '*'
+                        THEN
+                          BEGIN
+                            REPEAT
+                              WRITE(OUTFILE, INFILE^);
+                              GET(INFILE);
+                              WHILE INFILE^ <> '*' 
+                                DO
+                                BEGIN
+                                  IF EOLN (INFILE)
+                                    THEN
+                                      WRITELN (OUTFILE)
+                                    ELSE
+                                      WRITE(OUTFILE, INFILE^);
+                                  GET(INFILE);
+                                END;
+                              WRITE(OUTFILE,INFILE^);
+                              GET(INFILE)
+                            UNTIL INFILE^ = ')';
+                            WRITE(OUTFILE, INFILE^);
+                            GET(INFILE);
+                          END;
+                    END;
+            END
+          ELSE
+            BEGIN
+              WRITE(OUTFILE,INFILE^);
+              GET(INFILE);
+            END;
+      READLN(INFILE);
+      WRITELN(OUTFILE);
+    END
+END;
+
+PROCEDURE CHECKSEENININFILE(P: NODEPTR);
+BEGIN
+  IF P <> NIL
+    THEN
+      BEGIN
+        CHECKSEENININFILE(P^.LEFT);
+        WITH P^ DO
+          IF IDISNEW AND NOT IDISOLD
+            THEN
+              IF SEENININFILE
+                THEN
+                  BEGIN
+                    WRITELN(SCREEN,'---WARNING: ', ID.NAME: ID.LENGTH,
+                            ' WAS SPECIFIED AS A NEW IDENTIFIER ');
+                    WRITELN(SCREEN,'---AND WAS ALSO SEEN IN THE INFILE ': 46,
+                            ' PROGRAM UNCHANGED ');
+                  END;
+        CHECKSEENININFILE(P^.RIGHT)
+      END
+END;
+BEGIN 
+  INITIALIZE;
+  READIDPAIRSANDCREATESYMBOLTABLE; 
+  EDITINFILETOOUTFILE; 
+  CHECKSEENININFILE(IDTABLE); 
+  CLOSE ( OUTFILE, LOCK ); 
+END.
+

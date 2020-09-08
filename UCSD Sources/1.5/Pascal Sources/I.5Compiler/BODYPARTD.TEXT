@@ -1,0 +1,438 @@
+
+ (*    COPYRIGHT (C) 1978, REGENTS OF THE        *)
+ (*    UNIVERSITY OF CALIFORNIA, SAN DIEGO       *)
+
+   PROCEDURE EXPRESSION(*FSYS: SETOFSYS*);
+     LABEL 1;    (* STRING COMPARE KLUDGE *)
+     VAR LATTR: ATTR; LOP: OPERATOR; TYPIND: INTEGER;
+         LSIZE: ADDRRANGE; LSTRING,GSTRING: BOOLEAN;
+         LMIN,LMAX: INTEGER;
+
+     PROCEDURE FLOATIT(VAR FSP: STP; FORCEFLOAT: BOOLEAN);
+     BEGIN
+       IF (GATTR.TYPTR = REALPTR) OR (FSP = REALPTR) OR FORCEFLOAT THEN
+         BEGIN
+           IF GATTR.TYPTR = INTPTR THEN
+             BEGIN GEN0(10(*FLT*)); GATTR.TYPTR := REALPTR END;
+           IF FSP = INTPTR THEN
+             BEGIN GEN0(9(*FLO*)); FSP := REALPTR END
+         END
+     END (*FLOATIT*) ;
+
+     PROCEDURE STRETCHIT(VAR FSP: STP);
+
+     BEGIN
+       IF (FSP^.FORM = LONGINT) OR (GATTR.TYPTR^.FORM = LONGINT) THEN
+         IF GATTR.TYPTR = INTPTR THEN
+           BEGIN GENLDC(INTSIZE); GATTR.TYPTR := LONGINTPTR END
+         ELSE
+           IF FSP = INTPTR THEN
+             BEGIN GENLDC(14(*DCV*)); GENNR(DECOPS); FSP := LONGINTPTR END
+     END (*STRETCHIT*) ;
+
+     PROCEDURE SIMPLEEXPRESSION(FSYS: SETOFSYS);
+       VAR LATTR: ATTR; LOP: OPERATOR; SIGNED: BOOLEAN;
+
+       PROCEDURE TERM(FSYS: SETOFSYS);
+         VAR LATTR: ATTR; LSP: STP; LOP: OPERATOR;
+
+         PROCEDURE FACTOR(FSYS: SETOFSYS);
+           VAR LCP: CTP; LVP: CSP; VARPART,ALLCONST: BOOLEAN;
+               LSP: STP; HIGHVAL,LOWVAL,LIC,LOP: INTEGER;
+               CSTPART: SET OF 0..127;
+         BEGIN
+           IF NOT (SY IN FACBEGSYS) THEN
+             BEGIN ERROR(58); SKIP(FSYS + FACBEGSYS);
+               GATTR.TYPTR := NIL
+             END;
+           WHILE SY IN FACBEGSYS DO
+             BEGIN
+               CASE SY OF
+         (*ID*)  IDENT:
+                   BEGIN SEARCHID([KONST,FORMALVARS,ACTUALVARS,FIELD,FUNC],LCP);
+                     INSYMBOL;
+                     IF LCP^.KLASS = FUNC THEN
+                       BEGIN CALL(FSYS,LCP); GATTR.KIND := EXPR END
+                     ELSE
+                       IF LCP^.KLASS = KONST THEN
+                         WITH GATTR, LCP^ DO
+                           BEGIN TYPTR := IDTYPE; KIND := CST;
+                             CVAL := VALUES
+                           END
+                       ELSE SELECTOR(FSYS,LCP);
+                     IF GATTR.TYPTR <> NIL THEN
+                       WITH GATTR,TYPTR^ DO
+                         IF FORM = SUBRANGE THEN TYPTR := RANGETYPE
+                   END;
+         (*CST*) INTCONST:
+                   BEGIN
+                     WITH GATTR DO
+                       BEGIN TYPTR := INTPTR; KIND := CST;
+                         CVAL := VAL
+                       END;
+                     INSYMBOL
+                   END;
+                 REALCONST:
+                   BEGIN
+                     WITH GATTR DO
+                       BEGIN TYPTR := REALPTR; KIND := CST;
+                         CVAL := VAL
+                       END;
+                     INSYMBOL
+                   END;
+                 STRINGCONST:
+                   BEGIN
+                     WITH GATTR DO
+                       BEGIN
+                         IF LGTH = 1 THEN TYPTR := CHARPTR
+                         ELSE
+                           BEGIN NEW(LSP,ARRAYS,TRUE,TRUE);
+                             LSP^ := STRGPTR^;
+                             LSP^.MAXLENG := LGTH;
+                             TYPTR := LSP
+                           END;
+                         KIND := CST; CVAL := VAL
+                       END;
+                     INSYMBOL
+                   END;
+                 LONGCONST:
+                   BEGIN
+                     WITH GATTR DO
+                       BEGIN NEW(LSP,LONGINT);
+                         LSP^ := LONGINTPTR^;
+                         LSP^.SIZE := DECSIZE(LGTH);
+                         TYPTR := LSP; KIND := CST; CVAL := VAL
+                       END;
+                     INSYMBOL
+                   END;
+         (*(*)   LPARENT:
+                   BEGIN INSYMBOL; EXPRESSION(FSYS + [RPARENT]);
+                     IF SY = RPARENT THEN INSYMBOL ELSE ERROR(4)
+                   END;
+         (*NOT*) NOTSY:
+                   WITH GATTR DO
+                     BEGIN INSYMBOL; FACTOR(FSYS);
+                       IF (KIND = CST) AND (TYPTR = BOOLPTR) THEN
+                         CVAL.IVAL := ORD(NOT ODD(CVAL.IVAL))
+                       ELSE
+                       BEGIN LOAD; GEN0(19(*NOT*));
+                         IF TYPTR <> NIL THEN
+                           IF TYPTR <> BOOLPTR THEN
+                             BEGIN ERROR(135); TYPTR := NIL END
+                       END
+                     END;
+         (*[*)   LBRACK:
+                   BEGIN INSYMBOL; CSTPART := [ ]; VARPART := FALSE;
+                     NEW(LSP,POWER);
+                     WITH LSP^ DO
+                       BEGIN ELSET := NIL; SIZE := 0; FORM := POWER END;
+                     IF SY = RBRACK THEN
+                       BEGIN
+                         WITH GATTR DO
+                           BEGIN TYPTR := LSP; KIND := CST END;
+                         INSYMBOL
+                       END
+                     ELSE
+                       BEGIN
+                         REPEAT EXPRESSION(FSYS + [COMMA,RBRACK,COLON]);
+                           IF GATTR.TYPTR <> NIL THEN
+                             IF GATTR.TYPTR^.FORM <> SCALAR THEN
+                               BEGIN ERROR(136); GATTR.TYPTR := NIL END
+                             ELSE
+                               IF COMPTYPES(LSP^.ELSET,GATTR.TYPTR) THEN
+                                 BEGIN ALLCONST := FALSE; LOP := 23(*SGS*);
+                                   IF (GATTR.KIND = CST) AND
+                                      (GATTR.CVAL.IVAL <= 127) THEN
+                                     BEGIN ALLCONST := TRUE;
+                                       LOWVAL := GATTR.CVAL.IVAL;
+                                       HIGHVAL := LOWVAL
+                                     END;
+                                   LIC := IC; LOAD;
+                                   IF SY = COLON THEN
+                                     BEGIN INSYMBOL; LOP := 20(*SRS*);
+                                       EXPRESSION(FSYS + [COMMA,RBRACK]);
+                                       IF COMPTYPES(LSP^.ELSET,GATTR.TYPTR) THEN
+                                       ELSE
+                                         BEGIN ERROR(137); GATTR.TYPTR:=NIL END;
+                                       IF ALLCONST THEN
+                                         IF (GATTR.KIND = CST) AND
+                                            (GATTR.CVAL.IVAL <= 127) THEN
+                                             HIGHVAL := GATTR.CVAL.IVAL
+                                         ELSE
+                                           BEGIN LOAD; ALLCONST := FALSE END
+                                       ELSE LOAD
+                                     END;
+                                   IF ALLCONST THEN
+                                     BEGIN IC := LIC; (*FORGET FIRST CONST*)
+                                       CSTPART := CSTPART + [LOWVAL..HIGHVAL]
+                                     END
+                                   ELSE
+                                     BEGIN GEN0(LOP);
+                                       IF VARPART THEN GEN0(28(*UNI*))
+                                       ELSE VARPART := TRUE
+                                     END;
+                                   LSP^.ELSET := GATTR.TYPTR;
+                                   GATTR.TYPTR := LSP
+                                 END
+                               ELSE ERROR(137);
+                           TEST := SY <> COMMA;
+                           IF NOT TEST THEN INSYMBOL
+                         UNTIL TEST;
+                         IF SY = RBRACK THEN INSYMBOL ELSE ERROR(12)
+                       END;
+                     IF VARPART THEN
+                       BEGIN
+                         IF CSTPART <> [ ] THEN
+                           BEGIN
+                             SCONST^.PVAL := CSTPART;
+                             SCONST^.CCLASS := PSET;
+                             GATTR.CVAL.VALP := SCONST;
+                             GATTR.KIND := CST;
+                             LOAD; GEN0(28(*UNI*))
+                           END;
+                         GATTR.KIND := EXPR
+                       END
+                     ELSE
+                       BEGIN
+                         SCONST^.PVAL := CSTPART;
+                         SCONST^.CCLASS := PSET;
+                         GATTR.CVAL.VALP := SCONST;
+                         GATTR.KIND := CST
+                       END
+                   END
+               END (*CASE*) ;
+               IF NOT (SY IN FSYS) THEN
+                 BEGIN ERROR(6); SKIP(FSYS + FACBEGSYS) END
+             END (*WHILE*)
+         END (*FACTOR*) ;
+
+       BEGIN (*TERM*)
+         FACTOR(FSYS + [MULOP]);
+         WHILE SY = MULOP DO
+           BEGIN LOAD; LATTR := GATTR; LOP := OP;
+             INSYMBOL; FACTOR(FSYS + [MULOP]); LOAD;
+             IF (LATTR.TYPTR <> NIL) AND (GATTR.TYPTR <> NIL) THEN
+               CASE LOP OF
+       (***)     MUL:  BEGIN FLOATIT(LATTR.TYPTR,FALSE); STRETCHIT(LATTR.TYPTR);
+                         IF (LATTR.TYPTR = INTPTR) AND (GATTR.TYPTR = INTPTR)
+                           THEN GEN0(15(*MPI*))
+                         ELSE
+                           IF (LATTR.TYPTR = REALPTR) AND
+                              (GATTR.TYPTR = REALPTR) THEN GEN0(16(*MPR*))
+                           ELSE
+                             IF (GATTR.TYPTR^.FORM = LONGINT) AND
+                                (LATTR.TYPTR^.FORM = LONGINT) THEN
+                               BEGIN GENLDC(8(*DMP*)); GENNR(DECOPS) END
+                             ELSE
+                               IF (LATTR.TYPTR^.FORM = POWER)
+                                   AND COMPTYPES(LATTR.TYPTR,GATTR.TYPTR) THEN
+                                 GEN0(12(*INT*))
+                               ELSE BEGIN ERROR(134); GATTR.TYPTR:=NIL END
+                       END;
+       (*/*)     RDIV: BEGIN FLOATIT(LATTR.TYPTR,TRUE);
+                         IF (LATTR.TYPTR = REALPTR) AND
+                            (GATTR.TYPTR = REALPTR) THEN GEN0(7(*DVR*))
+                         ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+                       END;
+       (*DIV*)   IDIV: BEGIN STRETCHIT(LATTR.TYPTR);
+                         IF (LATTR.TYPTR = INTPTR) AND
+                            (GATTR.TYPTR = INTPTR) THEN GEN0(6(*DVI*))
+                         ELSE
+                           IF (LATTR.TYPTR^.FORM = LONGINT) AND
+                              (GATTR.TYPTR^.FORM = LONGINT) THEN
+                             BEGIN GENLDC(10(*DDV*)); GENNR(DECOPS) END
+                           ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+                       END;
+       (*MOD*)   IMOD: IF (LATTR.TYPTR = INTPTR) AND
+                          (GATTR.TYPTR = INTPTR) THEN GEN0(14(*MOD*))
+                       ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END;
+       (*AND*)   ANDOP:IF (LATTR.TYPTR = BOOLPTR) AND
+                          (GATTR.TYPTR = BOOLPTR) THEN GEN0(4(*AND*))
+                       ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+               END (*CASE*)
+             ELSE GATTR.TYPTR := NIL
+           END (*WHILE*)
+       END (*TERM*) ;
+
+     BEGIN (*SIMPLEEXPRESSION*)
+       SIGNED := FALSE;
+       IF (SY = ADDOP) AND (OP IN [PLUS,MINUS]) THEN
+         BEGIN SIGNED := OP = MINUS; INSYMBOL END;
+       TERM(FSYS + [ADDOP]);
+       IF SIGNED THEN
+         BEGIN LOAD;
+           IF GATTR.TYPTR = INTPTR THEN GEN0(17(*NGI*))
+           ELSE
+             IF GATTR.TYPTR = REALPTR THEN GEN0(18(*NGR*))
+             ELSE
+               IF GATTR.TYPTR^.FORM = LONGINT THEN
+                 BEGIN GENLDC(6(*DNG*)); GENNR(DECOPS) END
+               ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+         END;
+       WHILE SY = ADDOP DO
+         BEGIN LOAD; LATTR := GATTR; LOP := OP;
+           INSYMBOL; TERM(FSYS + [ADDOP]); LOAD;
+           IF (LATTR.TYPTR <> NIL) AND (GATTR.TYPTR <> NIL) THEN
+             CASE LOP OF
+     (*+*)     PLUS:
+                 BEGIN FLOATIT(LATTR.TYPTR,FALSE); STRETCHIT(LATTR.TYPTR);
+                   IF (LATTR.TYPTR = INTPTR)AND(GATTR.TYPTR = INTPTR) THEN
+                     GEN0(2(*ADI*))
+                   ELSE
+                     IF (LATTR.TYPTR = REALPTR)AND(GATTR.TYPTR = REALPTR) THEN
+                       GEN0(3(*ADR*))
+                     ELSE
+                       IF (GATTR.TYPTR^.FORM = LONGINT) AND
+                          (LATTR.TYPTR^.FORM = LONGINT) THEN
+                         BEGIN GENLDC(2(*DAD*)); GENNR(DECOPS) END
+                       ELSE
+                         IF (LATTR.TYPTR^.FORM = POWER)
+                            AND COMPTYPES(LATTR.TYPTR,GATTR.TYPTR) THEN
+                           GEN0(28(*UNI*))
+                         ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+                 END;
+     (*-*)     MINUS:
+                 BEGIN FLOATIT(LATTR.TYPTR,FALSE); STRETCHIT(LATTR.TYPTR);
+                   IF (LATTR.TYPTR = INTPTR) AND (GATTR.TYPTR = INTPTR) THEN
+                     GEN0(21(*SBI*))
+                   ELSE
+                     IF (LATTR.TYPTR = REALPTR) AND (GATTR.TYPTR = REALPTR)
+                       THEN GEN0(22(*SBR*))
+                     ELSE
+                       IF (GATTR.TYPTR^.FORM = LONGINT) AND
+                          (LATTR.TYPTR^.FORM = LONGINT) THEN
+                         BEGIN GENLDC(4(*DSB*)); GENNR(DECOPS) END
+                       ELSE
+                         IF (LATTR.TYPTR^.FORM = POWER)
+                             AND COMPTYPES(LATTR.TYPTR,GATTR.TYPTR) THEN
+                           GEN0(5(*DIF*))
+                         ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+                 END;
+     (*OR*)    OROP:
+                 IF (LATTR.TYPTR = BOOLPTR) AND (GATTR.TYPTR = BOOLPTR) THEN
+                   GEN0(13(*IOR*))
+                 ELSE BEGIN ERROR(134); GATTR.TYPTR := NIL END
+             END (*CASE*)
+           ELSE GATTR.TYPTR := NIL
+         END (*WHILE*)
+     END (*SIMPLEEXPRESSION*) ;
+
+     PROCEDURE MAKEPA(VAR STRGFSP: STP; PAFSP: STP);
+       VAR LMIN,LMAX: INTEGER;
+     BEGIN
+       IF PAFSP^.INXTYPE <> NIL THEN
+         BEGIN GETBOUNDS(PAFSP^.INXTYPE,LMIN,LMAX);
+           IF LMAX-LMIN+1 <> STRGFSP^.MAXLENG THEN ERROR(129)
+         END;
+       STRGFSP := PAFSP
+     END (*MAKEPA*) ;
+
+   BEGIN (*EXPRESSION*)
+     SIMPLEEXPRESSION(FSYS + [RELOP]);
+     IF SY = RELOP THEN
+       BEGIN
+         LSTRING := (GATTR.KIND = CST) AND
+                 (STRGTYPE(GATTR.TYPTR) OR (GATTR.TYPTR = CHARPTR));
+         IF GATTR.TYPTR <> NIL THEN
+           IF GATTR.TYPTR^.FORM <= POWER THEN LOAD
+           ELSE LOADADDRESS;
+         LATTR := GATTR; LOP := OP;
+         INSYMBOL; SIMPLEEXPRESSION(FSYS);
+         GSTRING := (GATTR.KIND = CST) AND
+                 (STRGTYPE(GATTR.TYPTR) OR (GATTR.TYPTR = CHARPTR));
+         IF GATTR.TYPTR <> NIL THEN
+           IF GATTR.TYPTR^.FORM <= POWER THEN LOAD
+           ELSE LOADADDRESS;
+         IF (LATTR.TYPTR <> NIL) AND (GATTR.TYPTR <> NIL) THEN
+           IF LOP = INOP THEN
+             IF GATTR.TYPTR^.FORM = POWER THEN
+               IF COMPTYPES(LATTR.TYPTR,GATTR.TYPTR^.ELSET) THEN
+                 GEN0(11(*INN*))
+               ELSE BEGIN ERROR(129); GATTR.TYPTR := NIL END
+             ELSE BEGIN ERROR(130); GATTR.TYPTR := NIL END
+           ELSE
+             BEGIN
+               IF LATTR.TYPTR <> GATTR.TYPTR THEN
+                 BEGIN FLOATIT(LATTR.TYPTR,FALSE); STRETCHIT(LATTR.TYPTR) END;
+               IF LSTRING THEN
+                 BEGIN
+                   IF PAOFCHAR(GATTR.TYPTR) THEN
+                     IF NOT GATTR.TYPTR^.AISSTRNG THEN
+                       BEGIN GEN0(29(*S2P*));
+                         MAKEPA(LATTR.TYPTR,GATTR.TYPTR)
+                       END
+                 END
+               ELSE
+                 IF GSTRING THEN
+                   BEGIN
+                     IF PAOFCHAR(LATTR.TYPTR) THEN
+                       IF NOT LATTR.TYPTR^.AISSTRNG THEN
+                         BEGIN GEN0(80(*S1P*));
+                           MAKEPA(GATTR.TYPTR,LATTR.TYPTR)
+                         END;
+                   END;
+               IF (LSTRING AND STRGTYPE(GATTR.TYPTR)) OR
+                  (GSTRING AND STRGTYPE(LATTR.TYPTR)) THEN GOTO 1;
+               IF COMPTYPES(LATTR.TYPTR,GATTR.TYPTR) THEN
+                 BEGIN LSIZE := LATTR.TYPTR^.SIZE; (*INVALID FOR LONG INTEGERS*)
+                   CASE LATTR.TYPTR^.FORM OF
+                     SCALAR:
+                       IF LATTR.TYPTR = REALPTR THEN TYPIND := 1
+                       ELSE
+                         IF LATTR.TYPTR = BOOLPTR THEN TYPIND := 3
+                         ELSE TYPIND := 0;
+                     POINTER:
+                       BEGIN
+                         IF LOP IN [LTOP,LEOP,GTOP,GEOP] THEN ERROR(131);
+                         TYPIND := 0
+                       END;
+                     LONGINT: TYPIND := 7;
+                     POWER:
+                       BEGIN
+                         IF LOP IN [LTOP,GTOP] THEN ERROR(132);
+                         TYPIND := 4
+                       END;
+                     ARRAYS:
+                       BEGIN
+                         TYPIND := 6;
+                         IF PAOFCHAR(LATTR.TYPTR) THEN
+                           IF LATTR.TYPTR^.AISSTRNG THEN
+                 1:          TYPIND := 2
+                           ELSE
+                             BEGIN TYPIND := 5;
+                               IF LATTR.TYPTR^.INXTYPE <> NIL THEN
+                                 BEGIN
+                                   GETBOUNDS(LATTR.TYPTR^.INXTYPE,LMIN,LMAX);
+                                   LSIZE := LMAX - LMIN + 1
+                                 END
+                             END
+                         ELSE
+                           IF LOP IN [LTOP,LEOP,GTOP,GEOP] THEN ERROR(131)
+                       END;
+                     RECORDS:
+                       BEGIN
+                         IF LOP IN [LTOP,LEOP,GTOP,GEOP] THEN ERROR(131);
+                         TYPIND := 6
+                       END;
+                     FILES:
+                       BEGIN ERROR(133); TYPIND := 0 END
+                   END;
+                   IF TYPIND = 7 THEN
+                     BEGIN GENLDC(ORD(LOP)); GENLDC(16(*DCMP*));
+                       GENNR(DECOPS)
+                     END
+                   ELSE
+                     CASE LOP OF
+                       LTOP: GEN2(53(*LES*),TYPIND,LSIZE);
+                       LEOP: GEN2(52(*LEQ*),TYPIND,LSIZE);
+                       GTOP: GEN2(49(*GRT*),TYPIND,LSIZE);
+                       GEOP: GEN2(48(*GEQ*),TYPIND,LSIZE);
+                       NEOP: GEN2(55(*NEQ*),TYPIND,LSIZE);
+                       EQOP: GEN2(47(*EQU*),TYPIND,LSIZE)
+                     END
+                 END
+               ELSE ERROR(129)
+             END;
+         GATTR.TYPTR := BOOLPTR; GATTR.KIND := EXPR
+       END (*SY = RELOP*)
+   END (*EXPRESSION*) ;

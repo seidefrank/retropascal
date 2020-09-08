@@ -1,0 +1,543 @@
+(*$S+*)(*$G+*)
+PROGRAM UNLPATCH;    (*version 2.4, 2 Nov 82*)
+  
+CONST   EVERMORE = FALSE;
+        MAXMEMORY = 59;    (*block no.*)
+        MAXDISK = 987;     (*block no.*)
+TYPE    SNUM = STRING[7];
+        BASE = 2..16;
+        JEKYLLHYDE = RECORD CASE BOOLEAN OF
+                       TRUE : (ADDR : INTEGER);
+                       FALSE : (DATA : ^INTEGER)
+                     END;
+        CHAMELEON =  RECORD CASE BOOLEAN OF
+                      TRUE : (CH : PACKED ARRAY[0..1] OF CHAR);
+                      FALSE : (INT : INTEGER)
+                    END;
+        ONELINE = PACKED RECORD
+                    ADDRESS : INTEGER;
+                    CODE : PACKED ARRAY[0..7] OF CHAMELEON
+                  END;
+        NAME = STRING[24];
+        CHARSET = SET OF CHAR;
+VAR     FIN : FILE;
+        DATA : CHAMELEON;
+        WINDOW : PACKED ARRAY[0..31] OF ONELINE;
+        TEMP : PACKED ARRAY[0..511] OF CHAR;
+        LINENO,COLNO,UNITNO,BLKNO,START,STOP,X,Y,RADIX,BLKRADIX : INTEGER;
+        BYTEBLOCK,HALFPAGE,SHOWCHARS,LOWBYTE,SHOWHEX,SHOWDEC : BOOLEAN;
+        DONE,FILEBLOCK,MEMORYBLOCK,DISKBLOCK,ALTLINE,WAIT : BOOLEAN;
+        REPLY : CHAR;
+        SFIN : NAME;
+        VISIBLE : CHARSET;
+        STRG : STRING;
+
+PROCEDURE CLEARSCREEN;
+  VAR LF : PACKED ARRAY [1..24] OF CHAR;
+      I : INTEGER;
+  BEGIN
+    GOTOXY(0,23);
+    FOR I := 1 TO 24 DO LF[I] := CHR(10);
+    UNITWRITE(1,LF,24);
+    GOTOXY(0,0)
+  END;
+
+PROCEDURE CLEARSPACE (X,Y,N : INTEGER);
+  VAR I : INTEGER;
+      CS :PACKED ARRAY [1..160] OF 0..255;
+  BEGIN
+    GOTOXY(X,Y);
+    FOR I := 1 TO N DO CS[I] := 32;
+    FOR I := N+1 TO N+N DO CS[I] := 8;
+    UNITWRITE(1,CS[1],N);
+    UNITWRITE(1,CS[N+1],N)
+  END;
+  
+FUNCTION COMMAND(COMMANDSET : CHARSET) : CHAR;
+  VAR   REPLY : CHAR;
+        SURROGATE : PACKED ARRAY [0..0] OF CHAR;
+  BEGIN
+    REPEAT
+      UNITREAD(2,SURROGATE[0],1);
+      REPLY := SURROGATE[0];
+      IF REPLY IN ['a'..'z'] THEN REPLY := CHR(ORD(REPLY) - 32);
+    UNTIL REPLY IN COMMANDSET;
+    COMMAND := REPLY
+  END;
+
+PROCEDURE PAUSE(XCUR,YCUR : INTEGER; S : STRING);
+  VAR   REPLY : CHAR;
+  BEGIN
+    GOTOXY(XCUR,YCUR);
+    WRITE(CHR(7),S);
+    REPLY := COMMAND([' ']);
+    CLEARSPACE(XCUR,YCUR,LENGTH(S))
+  END;
+  
+FUNCTION CONTINUE : BOOLEAN;
+  VAR   REPLY : CHAR;
+  BEGIN
+    REPLY := COMMAND([' ','Q']);
+    IF (REPLY = ' ') THEN CONTINUE := TRUE ELSE CONTINUE := FALSE
+  END;
+
+FUNCTION DOIT : BOOLEAN;
+  VAR   REPLY : CHAR;
+  BEGIN
+    REPLY := COMMAND(['Y','N']);
+    IF (REPLY = 'Y') THEN DOIT := TRUE ELSE DOIT := FALSE
+  END;
+  
+PROCEDURE GETBYTESTR(VAR CHARSTR : STRING; X,Y : INTEGER); FORWARD;
+
+PROCEDURE STRINTCONV (STRG : SNUM; VAR INT : INTEGER; RADIX : BASE;
+    X,Y,LEN,MAX : INTEGER; GETSTR : BOOLEAN);
+  VAR   I,RESULT : INTEGER;
+        REPLY : CHAR;
+        S : STRING;
+  PROCEDURE ERRSIR(ERRORNO : INTEGER);
+    BEGIN
+      CASE ERRORNO OF
+        1 : S := 'Number too large. Type <SP> to continue.';
+        2 : S := ('Invalid number. Type <SP> to continue.');
+      END;
+      PAUSE(0,23,S);
+      CLEARSPACE(X,Y,LEN);
+      IF GETSTR THEN
+        BEGIN
+          READLN(STRG);
+          STRINTCONV(STRG,INT,RADIX,X,Y,LEN,MAX,TRUE)
+        END
+      ELSE
+        BEGIN
+          GETBYTESTR(STRG,X,Y);
+          STRINTCONV(STRG,INT,RADIX,X,Y,LEN,MAX,FALSE)
+        END;
+      EXIT(STRINTCONV)
+    END;
+    
+  BEGIN
+    IF (LENGTH(STRG) > 0) THEN
+      BEGIN
+        RESULT := 0;
+        FOR I := 1 TO LENGTH(STRG) DO
+          BEGIN
+            IF ((STRG[I] IN ['0'..'9']) AND
+                ((ORD(STRG[I])-ORD('0')) IN [0..RADIX])) THEN
+              BEGIN
+                IF (RESULT <= (MAXINT - (ORD(STRG[I]) - ORD('0'))) DIV RADIX) THEN
+                  BEGIN
+                    RESULT := RADIX*RESULT + ORD(STRG[I]) - ORD('0');
+                    IF (RESULT > MAX) THEN ERRSIR(1)
+                  END
+                ELSE ERRSIR(1)
+              END
+            ELSE IF ((STRG[I] IN ['A'..'F']) AND (RADIX > 10) AND
+              ((ORD(STRG[I])-ORD('A')+10) < RADIX)) THEN
+              BEGIN
+                IF (RESULT <= (MAXINT - ORD(STRG[I]) + ORD('A') - 10) DIV RADIX) THEN
+                  BEGIN
+                    RESULT := RADIX*RESULT + ORD(STRG[I]) - ORD('A') + 10;
+                    IF (RESULT > MAX) THEN ERRSIR(1)
+                  END
+                ELSE ERRSIR(1)
+              END
+            ELSE 
+              BEGIN
+                ERRSIR(1)
+              END
+          END;
+        INT := RESULT
+      END
+  END;
+  
+PROCEDURE GETRADIX(ASK : BOOLEAN);
+  VAR   SRADIX : STRING;
+  BEGIN
+    IF ASK THEN
+      BEGIN
+        CLEARSPACE(0,0,80);
+        WRITE('Do you want to change the current radix? <Y/N>');
+        REPEAT READ(KEYBOARD,REPLY) UNTIL REPLY IN ['Y','y','N','n'];
+        IF (REPLY IN ['N','n']) THEN EXIT(GETRADIX)
+      END;
+    REPEAT
+      CLEARSPACE(0,0,80);
+      WRITE('Enter new radix (8,10,16; 10 defaults to 8 for words): ');
+      READLN(SRADIX)
+    UNTIL ((SRADIX = '8') OR (SRADIX = '10') OR (SRADIX = '16'));
+    STRINTCONV(SRADIX,RADIX,10,55,0,10,16,TRUE);
+    CASE RADIX OF
+       8 : BEGIN
+             SHOWHEX := FALSE;
+             SHOWDEC := FALSE;
+           END;
+      10 : BEGIN
+             SHOWDEC := TRUE;
+             SHOWHEX := FALSE
+           END;
+      16 : BEGIN
+             SHOWHEX := TRUE;
+             SHOWDEC := FALSE
+           END
+    END
+  END;
+      
+PROCEDURE GETWORD (VAR DATA : INTEGER; X,Y : INTEGER);
+ CONST BS = 8;
+       ESC = 27;
+       CR = 13;
+ VAR   RESULT,I,RDX : INTEGER;
+       CH : CHAR;
+       STRG :STRING;
+  PROCEDURE BADNUMBER;
+    BEGIN
+      CLEARSPACE(0,0,80);
+      WRITE(CHR(7),'Improper number.  Current word radix = ',RDX,'. Retype. ');
+      CLEARSPACE(X,Y,I);
+      GETWORD(DATA,X,Y);
+      CLEARSPACE(0,0,80);
+      EXIT(GETWORD)
+    END;
+  BEGIN
+    RESULT := 0;
+    I := 0;
+    IF (RADIX = 16) THEN RDX := 16 ELSE RDX := 8;
+    REPEAT
+      READ(INPUT,CH);
+      IF (CH = CHR(CR)) THEN CH := ' ';
+      IF (CH = CHR(BS)) THEN
+        BEGIN
+          IF (I > 0) THEN
+            BEGIN
+              WRITE(' ');
+              WRITE(CHR(BS));
+              I := I - 1;
+              RESULT := RESULT DIV RDX
+            END
+          ELSE WRITE(' ')
+        END
+      ELSE IF ((RDX = 8) AND ((ORD(CH)-ORD('0')) IN [0..7])) OR
+        ((RDX = 10) AND ((ORD(CH)-ORD('0')) IN [0..9])) THEN
+        BEGIN
+          I := I + 1;
+          IF ((RDX = 8) AND (RESULT > 8191)) OR
+            ((RDX = 10) AND ((RESULT > 6553) OR ((RESULT = 6553) AND
+            ((ORD(CH)-ORD('0')) > 5)))) THEN BADNUMBER
+          ELSE RESULT := RDX*RESULT + ORD(CH) - ORD('0')
+        END
+      ELSE IF (((RDX = 16) AND ((ORD(CH)-ORD('0')) IN [0..9])) OR
+         ((ORD(CH)-ORD('A')) IN [0..5])) THEN
+        BEGIN
+          I := I + 1;
+          IF (RESULT > 4095) THEN BADNUMBER
+          ELSE
+            BEGIN
+              IF ((ORD(CH)-ORD('0')) IN [0..9]) THEN RESULT := RDX*RESULT + ORD(CH) - ORD('0')
+              ELSE RESULT := RDX*RESULT + ORD(CH) - ORD('A') + 10
+            END
+        END
+      ELSE IF NOT(CH IN [' ',CHR(ESC)]) THEN BADNUMBER
+    UNTIL (CH IN [' ',CHR(ESC)]);
+    IF (CH = ' ') THEN DONE := FALSE ELSE DONE := TRUE;
+    DATA := RESULT
+  END;
+
+PROCEDURE WRITEOCTAL (DATA : INTEGER);
+  
+  VAR   DIVISOR : INTEGER;
+        
+  BEGIN
+    DIVISOR := 4096;
+    IF (DATA < 0) THEN
+      BEGIN
+        WRITE('1');
+        DATA:= DATA + 32767 + 1
+      END
+    ELSE WRITE('0');
+    REPEAT WRITE(CHR(DATA DIV DIVISOR MOD 8 + ORD('0')));
+      DIVISOR := DIVISOR DIV 8
+    UNTIL DIVISOR = 0
+  END;
+  
+PROCEDURE WRITEBYTE(CH : CHAR);
+  VAR NUMBER,DIVISOR : INTEGER;
+  BEGIN
+    NUMBER := ORD(CH);
+    DIVISOR := 64;
+    REPEAT
+      WRITE(CHR(NUMBER DIV DIVISOR MOD 8 + ORD('0')));
+      DIVISOR := DIVISOR DIV 8
+    UNTIL DIVISOR = 0
+  END;
+  
+PROCEDURE WRITEHEXBYTE(CH : CHAR);
+  VAR   HEXDIGIT,NUMBER,DIVISOR : INTEGER;
+  BEGIN
+    NUMBER := ORD(CH);
+    DIVISOR := 16;
+    REPEAT
+      HEXDIGIT := NUMBER DIV DIVISOR MOD 16;
+      IF (HEXDIGIT IN [0..9]) THEN WRITE(CHR(HEXDIGIT+ORD('0')))
+        ELSE WRITE(CHR(HEXDIGIT+ORD('A')-10));
+      DIVISOR := DIVISOR DIV 16
+    UNTIL DIVISOR = 0;
+  END;
+  
+PROCEDURE WRITEDECBYTE(CH : CHAR);
+  VAR   NUMBER : INTEGER;
+  BEGIN
+    NUMBER := ORD(CH);
+    IF (NUMBER < 100) THEN WRITE('0');
+    IF (NUMBER < 10) THEN WRITE('0');
+    WRITE(NUMBER)
+  END;
+
+FUNCTION PEEK(ADDRESS : INTEGER): INTEGER;
+  VAR   MEMORY : JEKYLLHYDE;
+  BEGIN
+    MEMORY.ADDR := ADDRESS;
+    PEEK := MEMORY.DATA^
+  END;
+  
+PROCEDURE POKE(ADDRESS,INFO : INTEGER);
+  VAR   MEMORY : JEKYLLHYDE;
+  BEGIN
+    MEMORY.ADDR := ADDRESS;
+    MEMORY.DATA^ := INFO
+  END;
+
+PROCEDURE GETFIN;
+  VAR LEN,RSLT : INTEGER;
+  BEGIN
+(*$I-*)
+    REPEAT
+      GOTOXY(36,0);
+      READLN(SFIN);
+      IF (LENGTH(SFIN) = 0) THEN
+        BEGIN
+          CLEARSCREEN;
+          EXIT(PROGRAM)
+        END;
+      RESET(FIN,SFIN);
+      RSLT := IORESULT;
+      IF RSLT <> 0 THEN
+        BEGIN
+          GOTOXY(0,23);
+          WRITE(CHR(7),'I/O error ',RSLT:3,'.  Correct and type <SP> to continue or Q(uit');
+          IF NOT CONTINUE THEN
+            BEGIN
+              CLEARSCREEN;
+              EXIT(PROGRAM)
+            END;
+          CLEARSPACE(0,23,80);
+          CLEARSPACE(36,0,LENGTH(SFIN))
+        END
+    UNTIL RSLT = 0
+(*$I+*)
+  END;
+  
+PROCEDURE GETBLKNO;
+  VAR   STRG : SNUM;
+        CH : CHAR;
+        MAX : INTEGER;
+  BEGIN
+    CLEARSPACE(0,0,80);
+WRITE('Current block no. radix = ',BLKRADIX:2,'. Type <SP> to accept, 8 or 10 to change: ');
+    REPEAT
+      READ(CH);
+      IF NOT(CH IN [' ','1','8']) THEN CLEARSPACE(70,0,8)
+    UNTIL (CH IN [' ','1','8']);
+    STRG := ' ';
+    STRG[1] := CH;
+    IF (NOT (STRG = ' ')) AND (NOT (STRG = '8')) THEN
+      BEGIN
+        REPEAT
+          READ(CH);
+          IF NOT(CH = '0') THEN CLEARSPACE(71,0,7)
+        UNTIL (CH = '0');
+        STRG := CONCAT(STRG,'0')
+      END;
+    IF NOT(STRG = ' ') THEN
+      BEGIN
+        READLN;
+        STRINTCONV(STRG,BLKRADIX,10,70,0,8,10,TRUE)
+      END;
+    CLEARSPACE(0,0,80);
+    WRITE('Enter starting block no.: ');
+    READLN(STRG);
+    IF MEMORYBLK THEN MAX := MAXMEMORY ELSE MAX := MAXDISK;
+    STRINTCONV(STRG,BLKNO,BLKRADIX,26,0,8,MAX,TRUE);
+    CLEARSPACE(0,0,40)
+  END;
+
+(*$I-*)
+PROCEDURE GETBLOCK;
+  VAR   I : INTEGER;
+  BEGIN
+    IF EOF(FIN) THEN
+      BEGIN
+        CLEARSPACE(0,0,80);
+        WRITELN(CHR(7),'End of file.  Do you want to continue? <Y/N>');
+        IF NOT DOIT THEN EXIT(PROGRAM);
+        RESET(FIN);
+        GETBLKNO
+      END;
+    I := BLOCKREAD(FIN,TEMP,1,BLKNO);
+    IF (IORESULT = 0) AND (I = 1) THEN EXIT(GETBLOCK);
+    WRITELN('Block not transferred.  Type <SP> to continue or Q(uit.');
+    IF NOT CONTINUE THEN
+      BEGIN
+        CLEARSCREEN;
+        EXIT(PROGRAM)
+      END;
+    CLEARSCREEN;
+    GETBLKNO;
+    GETBLOCK
+  END;
+(*$I+*)
+
+PROCEDURE GETMEMORYBLOCK;
+  VAR   I,N : INTEGER;
+  BEGIN
+    I := 0;
+    N := BLKNO*256;
+    REPEAT
+      DATA.INT := PEEK(N + I);
+      TEMP[I] := DATA.CH[0];
+      I := I + 1;
+      TEMP[I] := DATA.CH[1];
+      I := I + 1
+    UNTIL I >= 512
+  END;
+  
+PROCEDURE LOADMEMORY;
+  VAR   I,J,K,N : INTEGER;
+    BEGIN
+      K := 0;
+      N := BLKNO*256;
+      FOR I := 0 TO 31 DO FOR J := 0 TO 7 DO
+        BEGIN
+          POKE((N + K),WINDOW[I].CODE[J].INT);
+          K := K + 2
+        END
+    END;
+    
+PROCEDURE WRITEADDRESS(RDX : INTEGER; ADDR : INTEGER);
+  VAR   DIGIT,DIVISOR : INTEGER;
+  BEGIN
+    DIVISOR := RDX*RDX;
+    REPEAT
+      DIGIT := ADDR DIV DIVISOR MOD RDX;
+      IF (DIGIT IN [0..9]) THEN WRITE(CHR(DIGIT+ORD('0')))
+        ELSE WRITE(CHR(DIGIT+ORD('A')-10));
+      DIVISOR := DIVISOR DIV RDX
+    UNTIL DIVISOR = 0;
+  END;
+
+PROCEDURE INITWINDOW;
+  VAR  I,J,K : INTEGER;
+  BEGIN
+    K := 0;
+    FOR I := 0 TO 31 DO FOR J:= 0 TO 7 DO
+      BEGIN
+        WINDOW[I].ADDRESS := 16*I;
+        WINDOW[I].CODE[J].CH[0] := TEMP[K];
+        K := K + 1;
+        WINDOW[I].CODE[J].CH[1] := TEMP[K];
+        K := K + 1
+      END
+  END;
+  
+PROCEDURE RELOAD;
+  VAR   I,J,K : INTEGER;
+  BEGIN
+    K := 0;
+    FOR I:= 0 TO 31 DO FOR J := 0 TO 7 DO
+        BEGIN
+          TEMP[K] := WINDOW[I].CODE[J].CH[0];
+          K := K + 1;
+          TEMP[K] := WINDOW[I].CODE[J].CH[1];
+          K := K + 1
+       END;
+  END;
+  
+PROCEDURE BLOCKLINE;
+  BEGIN
+    WRITE('Block number ',BLKNO,'     Radix is ');
+    CASE RADIX OF
+      8 : WRITELN('octal');
+      10 : IF BYTEBLOCK THEN WRITELN('decimal') ELSE WRITELN('octal');
+      16 : WRITELN('hexadecimal')
+    END;
+    WRITELN
+  END;
+  
+PROCEDURE OWTOPLINE;
+  BEGIN
+    WRITELN('        00     02     04     06     10     12     14     16');
+    WRITELN
+  END;
+
+PROCEDURE HWTOPLINE;
+  BEGIN
+    WRITELN('        00     02     04     06     08     0A     0C     OE');
+    WRITELN
+  END;
+  
+PROCEDURE OBTOPLINE;
+  BEGIN
+    WRITELN('       00  01  02  03  04  05  06  07  10  11  12  13  14  15  16  17');
+    WRITELN
+  END;
+  
+PROCEDURE HBTOPLINE;
+  BEGIN
+    WRITELN('       00  01  02  03  04  05  06  07  08  09  0A  0B  0C  0D  0E  0F');
+    WRITELN
+  END;
+  
+PROCEDURE SHOWWORDS;
+  VAR  J,N : INTEGER;
+  BEGIN
+    IF SHOWHEX THEN HWTOPLINE ELSE OWTOPLINE;
+    FOR N := START TO STOP DO
+      BEGIN
+        WITH WINDOW[N] DO
+          BEGIN
+            IF (NOT SHOWHEX) THEN
+              BEGIN
+                WRITEADDRESS(8,ADDRESS);
+                WRITE(': ');
+                FOR J := 0 TO 7 DO
+                  BEGIN
+                    WRITE(' ');
+                    WRITEOCTAL(CODE[J].INT)
+                  END;
+              END
+            ELSE
+              BEGIN
+                WRITEADDRESS(16,ADDRESS);
+                WRITE(': ');
+                FOR J := 0 TO 7 DO
+                  BEGIN
+                    WRITE('  ');
+                    WRITEHEXBYTE(CODE[J].CH[1]);
+                    WRITEHEXBYTE(CODE[J].CH[0]);
+                    WRITE(' ');
+                  END;
+              END;
+            WRITE('  ');
+            FOR J := 0 TO 7 DO
+              BEGIN
+                IF (CODE[J].CH[0] IN VISIBLE) THEN
+                  WRITE(CODE[J].CH[0]) ELSE WRITE('.');
+                IF (CODE[J].CH[1] IN VISIBLE) THEN
+                  WRITE(CODE[J].CH[1]) ELSE WRITE('.')
+              END;
+            WRITELN
+          END
+      END
+  END;
+
+(*$I #5:UNLPATCH.2.TEXT*)

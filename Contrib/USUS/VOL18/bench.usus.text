@@ -1,0 +1,457 @@
+  program benchusus;
+  (* Self timed version of Jon Bondy's benchmark
+     See USUS News #4*)
+  
+  type
+    rec2_type = record
+      next : ^rec2_type;
+      end;
+  var
+    num_loops : integer;
+    i,j,k,l, test : integer;
+    r,s,t : real;
+    starth,startl,endh,endl : integer;
+    a : array[1..100] of integer;
+    b : array[1..100] of real;
+    ch : char;
+    rec1 : record
+        firsti, secondi : integer;
+        firstr, secondr : real;
+      end;
+    root, ptr : ^rec2_type;
+    cset : set of char;
+    overhead,xt,xs,xe : real;
+    fudge_loop : boolean;
+    (* printr : interactive; *)
+    
+    procedure prompt;
+      procedure prompt1; { too big for 1200 bytes otherwise... }
+        var line:integer;
+        begin
+        gotoxy(0,23);
+        for line:=1 to 24 do writeln;
+        gotoxy(0,0);
+        writeln('Select a test or enter "0" for all tests.');
+        writeln('Enter a negative number to quit.');
+        writeln;
+        end;
+      begin
+      prompt1;
+      writeln(' 1. null for loops (to).           2. null for loops (downto).');
+      writeln(' 3. integer increments (for loop). 4. null while loops.');
+      writeln(' 5. null repeat loops.             6. integer adds.');
+      writeln(' 7. integer multiplys.             8. integer divides.');
+      writeln(' 9. real increments.              10. real adds.');
+      writeln('11. real multiplies.              12. real divides.');
+      writeln('13. integer transfers.            14. integer array transfers.');
+      writeln('15. real transfers.               16. real array transfers.');
+      writeln('17. integer record transfers.     18. real record transfers.');
+      writeln('19. integer if comparisons.       20. real if comparisons.');
+      writeln('21. case statements.              22. procedure calls.');
+      writeln('23. proc calls with integer param.24. proc calls with real param.');
+      writeln('25. proc calls with a local var.  26. set unions.');
+      writeln('27. set differences.              28. set IN''s.');
+      writeln('29. pointer transfers.            30. NOOP''s.');
+      write('Test:');
+      end; { prompt }
+      
+  procedure doneit;
+  
+  begin
+    writeln( chr ( 7 ), 'Done.');
+    xs:=ABS(startl);
+    xe:=ABS(endl);
+    xt:=ABS(xe-xs)/60;
+    if xt <> 0.0 then 
+      begin
+         write('Time = ',xt:5:2,' seconds  ' );
+         if fudge_loop then  
+         writeln ((((xt/numloops ) * 1000 ) - ( overhead )):7:3,' ms per loop ')
+         else writeln ((( xt/numloops ) * 1000 ):7:3, ' ms per loop' );
+      end;
+    (*writeln(printr,t);*)
+  end;
+
+  procedure dummy1;
+    begin
+    end;
+    
+  procedure dummy2(i : integer);
+    begin
+    end;
+    
+  procedure dummy3(r: real);
+    begin
+    end;
+  
+  procedure dummy4;
+    var
+      i : integer;
+    begin
+    end;
+    
+  procedure test1;
+    begin
+    fudge_loop := false;
+    write('1 . ',numloops,' null for loops (to).');
+    time(starth,startl);
+    for i := 1 to num_loops do begin end;
+    time(endh,endl);
+    end;
+   
+  procedure test2;
+    begin
+    fudge_loop := false;
+    write('2.  ',numloops,
+      ' null for loops (downto).');
+    time(starth,startl);
+    for i := num_loops downto 1 do begin end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test3;
+    begin
+    fudge_loop := false;
+    write('3.  ',numloops,
+      ' integer increments (for loop).');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := j + 1; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test4;
+    begin
+    fudge_loop := false;
+    write('4.  ',numloops,' null while loops.');
+    j := 0;
+    time(starth,startl);
+    while (j < num_loops) do begin j := j + 1; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test5;
+    begin
+    fudge_loop := false;
+    write('5.  ',numloops,' null repeat loops.');
+    j := 0;
+    time(starth,startl);
+    repeat j := j + 1 until (j = num_loops);
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test6;
+    begin
+    fudge_loop := true;
+    write('6.  ',numloops,' integer adds.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := j + k; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test7;
+    begin
+    fudge_loop := true;
+    write('7.  ',numloops,' integer multiplys.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := k * l; end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+  procedure test8;
+    begin
+    fudge_loop := true;
+    write('8.  ',numloops,' integer divides.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := k div l; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test9;
+    begin
+    fudge_loop := true;
+    write('9.  ',numloops,' real increments.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin r := r + 1.0 end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test10;
+    begin
+    fudge_loop := true;
+    write('10.  ',numloops,' real adds.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin r := r + s; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test11;
+    begin
+    fudge_loop := true;
+    write('11.  ',numloops,' real multiplies.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin r := s * t; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test12;
+    begin
+    fudge_loop := true;
+    write('12.  ',numloops,' real divides.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin r := s / t; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test13;
+    begin
+    fudge_loop := true;
+    write('13.  ',numloops,' integer transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin j := k; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test14;
+    begin
+    fudge_loop := true;
+    j := 5; k := 12;
+    write('14.  ',numloops,
+      ' integer array transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin a[j] := a[k]; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test15;
+    begin
+    fudge_loop := true;
+    write('15.  ',numloops,' real transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin r := s; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test16;
+    begin
+    fudge_loop := true;
+    j := 5; k := 12;
+    write('16.  ',numloops,' real array transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin b[j] := b[k]; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test17;
+    begin
+    fudge_loop := true;
+    write('17.  ',numloops,
+      ' integer record transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin rec1.firsti := rec1.secondi; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test18;
+    begin
+    fudge_loop := true;
+    write('18.  ',numloops,
+      ' real record transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin rec1.firstr := rec1.secondr; end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test19;
+    begin
+    fudge_loop := true;
+    j := 5; k := 12;
+    write('19.  ',numloops,
+      ' integer if comparisons.');
+    time(starth,startl);
+    for i := 1 to num_loops do if (j < k) then begin end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test20;
+    begin
+    fudge_loop := true;
+    r := 5.0; s := 12.0;
+    write('20.  ',numloops,' real if comparisons.');
+    time(starth,startl);
+    for i := 1 to num_loops do if (r < s) then begin end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test21;
+    begin
+    fudge_loop := true;
+    j := 2;
+    write('21.  ',numloops,' case statements.');
+    time(starth,startl);
+    for i := 1 to num_loops do
+      case j of
+        1 : begin end;
+        2 : begin end;
+        3 : begin end;
+        4 : begin end;
+        end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test22;
+    begin
+    fudge_loop := true;
+    write('22.  ',numloops,' procedure calls.');
+    time(starth,startl);
+    for i := 1 to num_loops do dummy1;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test23;
+    begin
+    fudge_loop := true;
+    write('23.  ',numloops,
+      ' procedure calls with integer parameter.');
+    time(starth,startl);
+    for i := 1 to num_loops do dummy2(i);
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test24;
+    begin
+    fudge_loop := true;
+    write('24.  ',numloops,
+      ' procedure calls with real parameter.');
+    time(starth,startl);
+    for i := 1 to num_loops do dummy3(r);
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test25;
+    begin
+    fudge_loop := true;
+    write('25.  ',numloops,
+      ' procedure calls with a local variable.');
+    time(starth,startl);
+    for i := 1 to num_loops do dummy4;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test26;
+    begin
+    fudge_loop := true;
+    write('26.  ',numloops,' set unions.');
+    time(starth,startl);
+    for i := 1 to num_loops do cset := cset + ['a','b'];
+    time(endh,endl);
+    doneit;
+    end;
+
+  procedure test27;
+    begin
+    fudge_loop := true;
+    write('27.  ',numloops,' set differences.');
+    time(starth,startl);
+    for i := 1 to num_loops do cset := cset - ['a','b'];
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test28;
+    begin
+    fudge_loop := true;
+    write('28.  ',numloops,' set IN''s.');
+    time(starth,startl);
+    for i := 1 to num_loops do if (ch in cset) then begin end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test29;
+    begin
+    fudge_loop := true;
+    new(root); { create a loop of list elements }
+    new(root^.next);
+    root^.next^.next := root;
+    ptr := root;
+    write('29.  ',numloops,' pointer transfers.');
+    time(starth,startl);
+    for i := 1 to num_loops do ptr := ptr^.next;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  procedure test30;
+    begin
+    fudge_loop := true;
+    write('30. ',numloops,' NOOP''s.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin
+      pmachine(156);
+    end;
+    time(endh,endl);
+    doneit;
+    end;
+   
+  begin { main }
+   
+  j := 100; k := 200; l := 300; r := 400; s := 500; t := 600;
+  (*rewrite(printr,'printer:');*)
+  write('Enter number of loops per test : ');
+  readln(num_loops);
+  test1;
+  xs:=ABS(startl);
+  xe:=ABS(endl);
+  xt:=ABS(xe-xs)/60;
+  overhead := (xt/numloops) * 1000;
+  repeat
+    prompt; 
+    readln(test);
+    if (test >= 0) then 
+      case test of
+        0 : begin
+            test1; doneit; test2; test3; test4; test5; test6; test7; test8;
+            test9; test10; test11; test12; test13; test14; test15;
+            test16; test17; test18; test19; test20; test21; test22;
+            test23; test24; test25; test26; test27; test28; test29;
+            test30; end;
+        1 : begin test1; doneit end; 2 : test2; 3 : test3; 4 : test4;
+        5 : test5; 6 : test6; 7 : test7; 8 : test8;
+        9 : test9; 10 : test10; 11 : test11; 12 : test12;
+        13 : test13; 14 : test14; 15 : test15; 16 : test16;
+        17 : test17; 18 : test18; 19 : test19; 20 : test20;
+        21 : test21; 22 : test22; 23 : test23; 24 : test24;
+        25 : test25; 26 : test26; 27 : test27; 28 : test28;
+        29 : test29; 30 : test30;
+        end;
+        if test>=0 then
+          begin
+            write('Type <return> to continue');
+            readln;
+          end;
+    until (test < 0);
+  end.

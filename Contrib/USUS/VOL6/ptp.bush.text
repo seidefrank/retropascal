@@ -1,0 +1,3188 @@
+{$S+}
+{$G+}
+{||| $R-}
+{***************************************************************}
+{                                                               }
+{                        PTP                                    }
+{                                                               }
+{               PASCAL  TRANSFER  PROGRAM                       }
+{                                                               }
+{                                                               }
+{  (C) COPYRIGHT 1979  J. MARK GANG                             }
+{                                                               }
+{                                                               }
+{  PERMISSION GRANTED FOR NON-COMMERCIAL USE BY INDIVIDUALS.    }
+{  ALL OTHER RIGHTS RESERVED.                                   }
+{                                                               }
+{  HISTORY:                                                     }
+(*
+        05-Oct-80 turn off iochecking around disk writes
+        05-Oct-80 uattended lets estconnection do call to progstart
+        05-Oct-80 timeouts halved {9k,6k}, autoans clears modem when through
+        04-Oct-80 close files in modemmenu
+        03-Oct-80 disk writes verified
+        03-Oct-80 wln adjustments, prompt info and ans/org options
+        03-Oct-80 init modemmode with mynode in init
+        02-Oct-80 tell duplexity
+        02-Oct-80 timeouts * 10 {30000 & 20000}
+        02-Oct-80 DotCount rather than ..........................
+        01-Oct-80 originate_wait_time to 60 secs from 20
+        30-Sep-80 preset baudrates and reclengths
+        30-Sep-80 only test Ringing once for uarts who tell and forget
+        30-Sep-80 Wait for Carrier from 200 to 20 secs
+        25-Sep-80 Delay Timer set to 1166 for uEngine for .1sec.
+        25-Sep-80 ModemMode to Org if loopback mode
+        25-Sep-80 Scan loop terminates on < also for recd ltb
+        25-Sep-80 GenCkSum fix Val Rge Err
+        24-Sep-80 m41wd41 brought over from old
+        24-Sep-80 IO.DCL include
+        24-Sep-80 Range check inhibit localization started
+        24-Sep-80 titling, logs version etc.
+*)
+{       VERSION 1.0   JULY 1979                                 }
+{       VERSION 1.1   NOV  1979   PMMI MODEM CONTROL            }
+{       VERSION 1.2   MAR  1980   LINK MODE CONTROL             }
+{                                                               }
+{***************************************************************}
+
+{Note 1: In several places in this program it was necessary to set
+         the length of a string. The length is held in byte 0 of the 
+         string. In order to assign to this byte it is necessary that
+         range checking be turned of.
+
+|xjm$ver|nx|f8|ejm$profile|n|n|*|f1|.
+|.
+
+}
+
+
+program ptp ();
+const
+   
+{|||}
+   title        = 
+'PTP {Pascal Transfer Program} by J M Gang / Volition Systems, Inc.';
+   version      = 
+'               uEngine Version of 05-Oct-80';
+   LOR          = 160;
+   STO          = 196;
+{|||}
+   
+   TIMER = {|||28 |||}  1166;           {adjust to .1 second for DELAY}
+(*|||   Vol Sys Mod
+   ANSTIMEOUT = 3000;                   {receiver timeout }
+   ORGTIMEOUT = 2000;                   {a different timeout for org mode}
+|||*)
+   AnsTimeOut = 9000;                   {receiver timeout }
+   OrgTimeOut =  6000;                   {a different timeout for org mode}
+(*|||*)
+   ATTENCHAR=05;                        {^E - used to get to menu}
+   BLKSZ = 512;                         {disk block size}
+   PPSBUFSZ = 130;                      {size of pps data buffers}
+   MAXLTBSZ= 271;                       {size of the LTB buffer}
+   MAXDATASZ = 128;                {max amount of unencoded data in LTB blocks}
+   MAXREXMIT = 16;                      {maximum number of retransmit attempts}
+   MAXDUPSEQ = 5;                       {max allowed dup seq before correction}
+   LTBHDLEN = 2;                        {length of the LTB header}
+   ESC = 27;                            {escape}
+   LF = 10;                             {line feed}
+   CR = 13;                             {carriage return}
+   NULLPPS = 255;                       {indicates invalid pps}
+
+   {process numbers}
+   CTRL = 0;                            {process number of control process}
+   LSTNER=1;                            {process number of file xfer listener}
+   FTPREC = 2;                          {process number of file xfer receiver}
+   FTPSND = 3;                          {process number of file xfer sender}
+   TERM = 4;                            {process number of terminal hanndler}
+   GETFILE = 5;                        {process number of remote file requester}
+   SINK = 6;                            {dummy process to dump unwamted input}
+   MAXPROCESS = 6;                      {maximum process number}
+   MAXPPS = 9 {MAXPROCESS+3};           {maximum process to process streams
+                                         allows for a few 2 stream processes}
+
+   {control messages codes}
+   IWN = 0;                             {I won't}
+   PDN = 64;                            {Please don't - hex 40}
+   IW  = 128;                           {I will - hex 80}
+   PD  = 192;                           {Please do - hex C0}
+   SF  = 17;                            {send file - hex 11}
+   RF  = 18;                            {receive file - hex 12}
+   AF  = 19;                            {accept file - hex 13}
+   PROTO = 22;                          {sending valid modes}
+   GOPROTO = 23;                        {go to following modes}        
+   PDPROTO = 214;                       {PD + PROTO}
+   PDGOPROTO = 215;                     {PD + GOPROTO}
+   IWPROTO = 150;                      {IW + PROTO (returns common vaild modes)}
+   IWGOPROTO = 151;                   {IW + GOPROTO (have gone to common modes)}
+   
+
+type
+    
+    seqno=0..7;
+    
+    bytesz=0..255;
+    
+    iam= (ORG, ANS);
+    
+    exception = (EMPTY, FULL, LAST, OK, ERROR);    {status of PPS buffer}
+    
+    controlState = (SNDSYSNAME, REQPROTO,  CIDLE);{state of control process}
+    
+    ftpState = (idle, initiate, request, send, terminate, ack, localabort);
+                                        {state of ftp process}
+    
+    fileLength = ARRAY [0:2] of integer; {holds length of file to be transfered
+                                          in bits low byte first}
+    
+    pSelect = (PT,                      {PTP mode}
+               RT);                     {raw terminal mode}
+    
+    coroutine = (rltb, xltb, done);
+    
+    blk= packed array [0..511] of char; {disk block buffer}
+    
+    word = packed record case integer of       {address word as int or two char}
+                0: (intval: integer);
+                1: (byteval: packed record
+                       hibyte, lobyte : char;
+                       end);
+                end;
+    
+    byte = packed record case char of
+            'a':(hdr:  packed record    {LTB header format}
+                  oob: seqno;
+                  seq: seqno;
+                  esc: 0..1;
+                  oa : iam;
+                  end);
+            'b':(ppsh: packed record    {PPS header format}
+                 seq: seqno;
+                 fil: seqno;
+                 lst: boolean;
+                 fst: boolean;
+                 end);
+            'c':(bte:bytesz);
+            'd':(ch: char);
+            'e':(op: packed record      {control character format}
+                msg: 0..63;
+                flavor: 0..3;
+                end);
+            'f':(md: packed record     {LTB and hardware modes}
+                bin: boolean;           {binary mode vs r41}
+                full: boolean;          {full duplex vs half}
+                res: 0:63;              {reserved for future use}
+                end);
+            'g':(bd: packed record      {defines baud rates}
+                b110: boolean;
+                b150: boolean;
+                b300: boolean;
+                b450: boolean;
+                b600: boolean;
+                b1200: boolean;
+                b2400: boolean;
+                b4800: boolean;
+                end);
+         end;
+   
+   ltbarray = packed array [0..MAXLTBSZ] of byte;       {LTB buffer}
+   datarray = packed array [0..MAXDATASZ] of byte;      {send data buffer}
+
+   pps = packed record                  {PPS header record format}
+           ppsnum:bytesz;
+           pseq:seqno;
+           active:boolean;
+           err: boolean;
+           fstblk:boolean;
+           lstblk:boolean;
+           srcproc:bytesz;
+           destproc:bytesz;
+           fstptr: integer;    
+           nxtptr: integer;    
+           buf: packed array [0:PPSBUFSZ] of char;
+         end;
+
+    ppsarray = packed array [0..MAXPPS] of pps;       {PPS table}
+
+{---------------- GLOBALS ------------------------------------------}
+
+var
+    c:char;
+    acr: string[1];                     {a carriage return}
+    
+    {-- TEST --}
+    ppsmon:boolean;                     {indicates PPS tracing is on}
+    ftpmon:boolean;                     {indicates ftp tracing is on}
+    loopbk:boolean;                     {internal loop back for debugging}
+    trace:boolean;                      {LTB tracing}
+    serbuf:array[0..256] of char;       {loopback buffer}
+    serptr:integer;                     {loopback buffer pointer}
+    
+    {-- SCHEDULING/SEQUENCE/FLOW --}
+    mynode:iam;                 {indicates sex of this site during a connection}
+    i:integer;                          {answer delay counter}
+    timeout: integer;                   {holds timeout constant}
+    ansbrkt,orgbrkt:char;            {hold answer and orignate break characters}
+    xmtgen:seqno;                       {seq no for next LTB generated}
+    rcvoob:seqno;                       {old block not yet received }
+    xmtoob:seqno;                       {oldest LTB not yet acked by other end}
+    sch:coroutine;                      {next LTB process to be run}
+    
+    {---- LTB GENERAL ---}
+    vMode: byte;                        {vaild modes for this node}
+    vBaud: byte;                        {vaild bauds for this node}
+    cMode: byte;                        {current mode for this node}
+    cBaud: byte;                        {current baud for this node}
+    
+    {---- LTB XMIT ---}
+    xmitBinary: boolean;                {LTB xmit is using pure binary mode }
+    xmitFull: boolean;                  {full duplex (not implemented)}
+    xmitBaud: integer;                  {baud rate for transmitting}
+    r41:string;                         {holds r41 character set}
+    rmtRecDataSz: integer;              {max data remote will accept}
+    maxXmitDataSz: integer;             {max data to send in one LTB}
+    xmitDataSz: integer;                {max amoutn data to send in one LTB}
+    rexmtcnt:integer;                   {number of consetive rexmits attempted}
+    xbuf: ltbarray;                     {LTB xmit buffers}
+    xdataptr,xlen: integer;             {LTB xmit buffer pointers}
+    
+    {-- LTB REC --}
+    recDataSz: integer;                 {max data to receive in one LTB}
+    recEscSet: boolean;                 {binary mode last char was escape}
+    recBinary: boolean;                 {LTB rec is using pure binary mode }
+    recFull: boolean;
+    recBaud:integer;                    {baud rate for receiving}
+    turncnt: integer;
+    atcnt:integer;
+    
+    {-- PPS --}
+    rppstbl: ppsarray;                  {receive PPS table}
+    xppstbl: ppsarray;                  {xmit PPS table}
+    lstOpenPPS: integer;                { last xmit PPS which was opened }
+    pollpps:bytesz;                     {next process to be polled by PPS xmitter}
+    ctrLock: boolean;                   {send only control messages}
+    
+    {-- CTRL --}
+    ctrlInPPS: integer;                 {incomming PPS stream number}
+    ctrlInSlot: integer;                {incomming PPS slot number}
+    ctrlState: controlState;            {state of control process}
+    ctrlOtPPS:integer;                  {hold control process PPS number (always 0)}
+    ctrlReply: array [0:2] of byte;     {holds msg to be sent to remote}
+    ctrlMsgLen: integer;                {length of  ctrl msg to send to remote}
+    ctrlRequestCnt: integer;            {number of request to send}
+    
+    {--- TERMINAL---}
+    termppsno:bytesz;                   {holds terminal handler PPS number}
+    termInPPS: integer;                 {incomming PPS stream number}
+    termInSlot: integer;                {incomming PPS slot number}
+    termot: integer;                    {out going PPS stream number}
+    fstKbCh: char;                      {first char of terminal string}
+    kbInterrupt: boolean;               {keyboard interrupt set}
+    
+    {-- FTP XMITTER --}
+    xfile:file;                         {fileid of file to be xmitted}
+    xfilptr:integer;                    {xmit file pointer}
+    xblk:blk;                           {number of blocks xmitted}
+    xbufptr:integer;                    {pointer into xmit data buffer}
+    xname:string;                     {name of file to be xmitted}
+    destname:string;                  {destination name of file being xmitted}
+    xeof:boolean;                       {xmit file EOF flag}
+    fSndOtPPS: integer;                 {out going PPS stream number}
+    fSndInPPS: integer;                 {incomming PPS stream number}
+    fSndInSlot:integer;                 {incomming PPS slot number}
+    xfiletype:bytesz;    {indicates type of file being xfered (not version 1.0)}
+    xfilesize:word;      {indicates size of file to be xfered (not version 1.0)}
+    fsndstate: ftpState;                {FTP sender state}
+    fsndcode:bytesz;                    {holds control to be sent}
+    
+    {---- LISTENER ------}
+    lsnrInSlot: integer;                {listner incomming slot numner}
+    lsnrInPPS: integer;                 {listner incomming stream numner}
+    lsnrOtPPS: integer;                 {listner out going stream number}
+    
+    {---- FTP RECEIVER ----}
+    rfile:file;                         {ftp receive file fileid}
+    rfilptr:integer;                    {receive file block pointer}
+    rblk:blk;                           {receive buffer}
+    rbufptr:integer;                    {receive buffer pointer}
+    rname:string;                     {receive file name}
+    rck0, rck1:integer;                 {checksums}
+    srcname:string;                   {name of file at sending end}
+    receiving:boolean;                  {indicates ftp receiver is active}
+    lastc: byte;                        { holds last character received }
+    firstChar: boolean;                 {first char of incomming stream}
+    fRecInSlot: integer;                {incomming slot number}
+    fRecInPPS: integer;                 {incomming PPS stream number}
+    fRecOtPPS: integer;                 {out going PPS stream number}
+    
+    {--- GET FILE ---}
+    getstr:string;                  {name of remote file to be gotten}
+    
+    {---- RAW TERMINAL ----}
+    halfduplex: boolean;                {raw terminal half duplex else full}
+    
+    {--- MENU --- }
+    menuexit:boolean;                   {flag to indicate to exit the menu}
+    
+    {---- MODEM CONTROL-----}
+    currentBaud: integer;               {current rate before computation}
+    baudrate: integer;                  {baud rate }
+    telnum: string;                     {telphone number }
+    modemMode: iam;                     {ans/org mode of modem }
+    progSelect: pSelect;                {current program selected}
+    unattended: boolean;                {indicates unatteneded mode in use}
+
+{|||}
+    DotCount    : INTEGER;
+    
+    
+{$I UTIL_5:IO.DCL.TEXT }
+{|||}
+
+
+
+{------------------------- FORWARD  DECLARATIONS -------------------------}
+
+procedure ltbinit; forward;
+procedure sched; forward;
+procedure xpps; forward;
+procedure rpps (var rbuf:ltbarray; var rstrt:integer; var rcnt:integer); 
+forward;
+function frecstart(inSlot: integer):boolean; 
+forward;
+function rmtsndstart(inSlot: integer):boolean; 
+forward;
+procedure pollProcesses; forward;
+procedure pCtrl; forward;
+procedure pSinker; forward;
+procedure pListner; forward;
+procedure pFtpSnd; forward;
+procedure pFtpRec; forward;
+procedure pTerm; forward;
+procedure pGetFtp; forward;
+procedure menu; forward;
+procedure init; forward;
+procedure initState; forward;
+procedure setBaud (rate: integer); forward;
+procedure changeBaud (rate: integer); forward;
+
+(*||| REPLACED UNITS WITH ONE BIG INCLUDE       |||
+{--- external functions ----}
+function mread:char; external;          { returns char from modem rec }
+function kbstat: boolean; external;     { returns true if keyboard char rdy}
+function mrecstat: boolean; external;   { returns true if modem rec char rdy}
+function ringing: boolean; external;    { returns true if phone is ringing }
+function cts: boolean; external;        { returns true if modem clear to send set}
+function dtonedet: boolean; external;   { returns true if dial tone present }
+
+{--- external procedures ----}
+procedure mwrite(c:char); external;     { write char to modem xmitter }
+procedure modemInit; external;          { performs modem initialization }
+procedure hangup; external;             { hangup phone - go on hook }
+procedure ri; external;                 { go off hook in answer mode } 
+procedure baud; external;               { set modem baud rate }
+procedure dtron; external;              { set data terminal ready }
+procedure dialer (c: char); external;   { dial a digit }
+procedure sh; external;                 { go off hook in orginate mode }
+|||*)
+{$I UTIL_5:IO.PKG.TEXT }
+{|||}
+
+{----------------- GENERAL ----------------------------------------------}
+
+procedure delay (ticks: integer);
+{purpose: delay .1 seconds for each tick }
+var
+    i: integer;
+begin
+    while ticks > 0 do
+        begin
+        i := timer;
+        while i > 0 do
+            i := i-1;
+        ticks := ticks -1;
+        end;
+end;
+
+
+
+procedure byteprint (c: char);
+
+{purpose: Print characters use decimal when not a printing character}
+var
+    w: word;
+begin
+    if (ord(c) < 32) or (ord(c) > 126) then
+        begin
+        w.byteval.lobyte := c;
+        w.byteval.hibyte := chr(0);
+        write ('<',w.intval,'>')
+        end
+    else
+        write (c);
+end;
+
+
+
+{-------------------- LTB RECEIVER SECTION --------------------------------}
+
+procedure getserial(var x:byte); 
+
+{purpose : Get a character for the LTB receiver from either the loopback
+           buffer or the serial line  - if no character arrives 
+           on the serial line by TIMEOUT return a turnaround character
+}
+
+var
+   i:integer;
+begin
+    if loopbk then
+        begin
+        x.ch := serbuf[serptr];
+        if trace then byteprint (x.ch);
+        serptr := serptr +1;
+        end
+    else
+        begin
+        i:=0;
+        while (i<>timeout) and (not mrecstat) do
+            i := i+1;
+        if i=timeout then
+            begin
+            if trace then
+                writeln ('RECEIVER TIMEOUT');
+            if mynode = ORG then
+                x.ch:=ansbrkt
+            else
+                x.ch:=orgbrkt;
+            end
+        else
+            begin
+            x.ch := mread ;
+            {if r41 mode clear high order bit}
+            if not recBinary and (x.bte > 127) then
+                x.bte := x.bte - 128;
+            if trace then byteprint (x.ch);
+            end;
+       end;
+end;
+
+procedure m41wd1 (var buf:ltbarray; var len:integer);
+{purpose: Convert 3 bytes of mod 41 to 2 bytes of binary
+          repeat thur entire buffer, output is placed back in 
+          source buffer, length is set to the length of the converted form.
+}
+{|||
+        rb and rhk thought of this hairy one w/o overflow
+|||}
+
+var
+   i,j:integer;
+   tmp:word;
+   K            : INTEGER;
+   K_0          : INTEGER;
+   K_1          : INTEGER;
+begin 
+   j:=0;
+   i:=0;
+   while j < len do
+      begin
+      K   := Buf[J+1].Bte + Buf[J+2].Bte * 41 ;     
+      K_0 := K * 1 + Buf[J].Bte ;    
+      K_1 := K * 10 ;
+      IF ( (((MAXINT - K_1) - K_1) - K_1) - K_1 ) > K_0    
+         THEN Tmp.IntVal := K_0 + 4 * K_1 
+         ELSE BEGIN
+            K := ((K_0 + 2 * (K_1 - 16384)) + K_1) + K_1 ;         
+            PMACHINE (^Tmp.IntVal, (K), (-MAXINT-1), LOR, STO)
+            END; 
+      buf[i].ch := tmp.byteval.lobyte; 
+      buf[i+1].ch := tmp.byteval.hibyte;
+      j:= j+3;
+      i:= i+2;
+      end;
+   len := i;
+end;
+
+
+
+procedure r41m41(var c:byte);
+
+{purpose: Converts a character from radix 41 character set to mod 41}
+
+var
+   cv:integer;
+begin
+   if c.ch = '(' then cv := 0
+   else
+   if (c.bte > 47) and (c.bte < 58) then   {'0' to '9'}
+       cv := c.bte - 47
+   else
+   if (c.bte > 64) and (c.bte < 91) then   {'A' to 'Z'}
+       cv := c.bte - 54
+   else
+   if c.ch = '*' then cv := 37
+   else
+   if c.ch = '+' then cv := 38
+   else
+   if c.ch = '-' then cv := 39
+   else
+   if c.ch = ')' then cv := 40
+   else
+   cv := 41;    {invalid character}
+   
+   c.bte := cv; 
+end;
+    
+
+function spCharChk (x: byte; rcnt: integer): boolean;
+begin
+   spCharChk := TRUE;
+   if recEscSet then
+       begin
+       spCharChk := FALSE;
+       recEscSet := FALSE;
+       end
+   else
+       begin
+       if x.ch = '@' then
+           begin
+           if turncnt < 3 then turncnt := turncnt+1;
+           if (rcnt = 0) and (atcnt > 0) then atcnt := atcnt -1;
+           if rcnt <> 0 then atcnt := 1; {stop after first data block}
+           end
+       else
+           if ((x.ch=ansbrkt) and (mynode=ORG)) 
+                                           or ((x.ch=orgbrkt) and (mynode=ANS)) 
+           then turncnt:=turncnt-1
+           else
+               if recBinary and (x.bte = ESC) then
+                   recEscSet := TRUE
+               else
+                   spCharChk := FALSE;
+      end;
+end;
+
+    
+procedure hdxscanner (var rbuf:ltbarray; var rcnt:integer);
+
+{purpose: Pack incomming stream into LTB packets. Expects one 
+          packet per transmission.
+}
+var
+    x:byte;
+    specChar: boolean;
+begin
+    if trace then begin writeln; write ('LTB REC ='); writeln; end;
+    atcnt := 3;
+    turncnt:=3;
+    rcnt := 0;
+    repeat
+       getserial(x);                {get character from serial line}
+       specChar := spCharChk (x, rcnt);
+       if not specChar then
+           if (rcnt < MAXLTBSZ) and (atcnt = 0) then
+               begin
+               if not recBinary then
+                   begin
+                   r41m41(x);
+                   if x.bte<>41 then {valid char}
+                       begin
+                       rbuf[rcnt] := x;
+                       rcnt := rcnt+1;
+                       end
+                   end
+               else {is binary}
+                   begin
+                   rbuf[rcnt] := x;
+                   rcnt := rcnt+1;
+                   if odd(rcnt) then  {compute binary checksum}
+                       rck0 := rck0 + x.bte
+                   else
+                       rck1 := rck1 + x.bte;
+                   end
+              end
+           else {block has not begun }
+              if atcnt < 3 then atcnt := atcnt+1;
+    until turncnt=0;
+end;
+    
+    
+function ckcksum (rbuf:ltbarray; rcnt:integer) : boolean;
+
+{purpose: Check checksum of an incomming LTB packet}
+
+var
+   i:integer;
+begin
+   i:=0;
+   while i < rcnt do
+       begin
+       rck0 := rck0 + rbuf[i].bte;
+       i:=i+1;
+       rck1 := rck1 + rbuf[i].bte;
+       i := i+1;
+       end;
+   rck0 := rck0 mod 256;
+   rck1 := rck1 mod 256;
+   if (rck0 <> 0) or (rck1 <> 0) then
+      begin
+      writeln ('ck0=',rck0,' ck1=',rck1);
+      ckcksum := false
+      end
+   else
+      ckcksum := true;
+end;
+   
+   
+   
+procedure ltbframer;
+
+{purpose: Checks validity of incomming LTB packet. Updates sequence
+          numbers as needed. Check to see if a character has been 
+          typed on the keyboard before returning to the LTB xmitter.
+}
+
+label
+    1;
+var
+    rbuf:ltbarray;
+    rstrt, rcnt,i:integer;
+    c:char;
+begin
+       if recBaud <> currentBaud then
+           changeBaud (recBaud);
+       rck0 := 0;
+       rck1 := 0;       {clear checksums}
+       hdxscanner (rbuf, rcnt);
+       if rcnt >= MAXLTBSZ then
+           begin
+           writeln; writeln ('REC ERROR - LTB TOO LONG');
+           goto 1;
+           end;
+       if not recBinary then
+           begin
+           if (rcnt mod 3) <> 0 then
+               begin
+               writeln; 
+               writeln ('REC ERROR -  NOT MULTIPLE OF THREE RADIX-41 CHARACTERS');
+               goto 1;
+               end;
+           m41wd1 (rbuf, rcnt);     {convert 3 byte m41 to 2 binary}
+           end;
+       if rcnt < 4 then
+           begin
+           writeln; writeln ('REC ERROR - TIMEOUT OR LTB TOO SHORT.');
+           goto 1;
+           end;
+       if not recBinary then
+           if ckcksum (rbuf, rcnt) = FALSE then
+              begin
+              writeln ('REC ERROR - RECEIVE CHECKSUM');
+              goto 1;
+              end
+      else
+           begin
+           rck0 := rck0 mod 256;
+           rck1 := rck1 mod 256;
+           if (rck0 <> 0) or (rck1 <> 0) then
+              begin
+              writeln ('ck0=',rck0,' ck1=',rck1);
+              writeln ('REC ERROR - RECEIVE CHECKSUM');
+              goto 1;
+              end;
+           end;
+      
+      if odd(rbuf[1].bte) and (rbuf[rcnt-1].bte = 0)
+           then rcnt:=rcnt-1;
+      rcnt:=rcnt-2;         {delete checksum bytes}
+      if trace then 
+         begin
+         writeln;
+         writeln ('RECEIVED ',rcnt,' BYTES');
+         end;
+      if rcnt <> rbuf[1].bte then        {lengths not equal}
+           begin
+           writeln; writeln ('REC ERROR - LTB LENGTH CHECK ERROR');
+           goto 1;
+           end;
+     with rbuf[0], hdr do
+         begin
+         if (oa = mynode) and not loopbk or (oa <> mynode) and loopbk then
+             begin
+             writeln; writeln ('REC ERROR - LTB O/A MODE INCORRECT.');
+             goto 1;
+             end;
+         if esc = 1 then  {should always be zero}
+             begin
+             writeln; writeln ('REC ERROR - PROTOCOL ESCAPE NON ZERO.');
+             goto 1;
+             end;
+         if loopbk then
+            xmtoob := (seq+1) mod 8
+         else
+            xmtoob:= oob;
+         if seq = rcvoob-1 then
+             begin
+             writeln; writeln ('REC ERROR - DUPLICATE SEQUENCE RECEIVED.');
+             goto 1;
+             end;
+         if seq <> rcvoob then
+             begin
+             writeln; writeln ('UNEXPECTED SEQUENCE NUMBER RECEIVED.');
+             writeln; writeln ('REINITIALIZING PTP');
+             ltbinit;
+             goto 1;
+             end
+         else
+             rcvoob:=(rcvoob+1) mod 8;
+         rstrt := LTBHDLEN;
+         end;
+         {if length less than or equal to LTBHDLEN then no data in this LTB}
+{|||    Vol Sys Mod     |||}
+        DotCount := (DotCount+1) MOD (10000);
+        IF (DotCount MOD 50) = 0
+            THEN BEGIN
+                WRITELN;
+                WRITE ('[', DotCount:4, ']')
+                END;
+{|||}
+         write ('.');
+         if rcnt > LTBHDLEN then 
+             rpps (rbuf, rstrt, rcnt);
+1:
+if sch<>done then sch := xltb;
+end;
+
+{--------------- LTB XMITTER SECTION ----------------------------}
+
+
+
+procedure mkhdr(var buf:ltbarray; length:integer);
+
+{purpose: Create LTB header for packet to sent}
+
+begin
+    with buf[0] do
+    begin
+        hdr.oob := rcvoob;
+        hdr.seq := (xmtgen+7) mod 8;
+        hdr.esc := 0;
+        hdr.oa  := mynode;
+    end;
+    buf[1].bte := length;
+end;
+    
+    
+
+    
+procedure gencksum( var buf:ltbarray; var len:integer );
+
+{purpose: Generate checksum for LTB packet to be sent}
+
+var ck0,ck1,i:integer;
+begin
+    ck0 := 0; ck1 := 0;
+    i := 0;
+    len := buf[1].bte;
+    buf[len].bte := 0;
+    while i < len do
+        begin
+        ck0 := ck0+ buf[i].bte;
+        i := i+1;
+        ck1 := ck1 + buf[i].bte;
+        i := i+1;
+        end;
+{|||
+    buf[len+(len mod 2)].bte := (-ck0) mod 256;
+    buf[len+((len + 1) mod 2)].bte := (-ck1) mod 256;
+|||}
+    buf[len+(len mod 2)].ch := chr( 256 - (ck0 mod 256) );
+    buf[len+((len + 1) mod 2)].ch := chr( 256 - (ck1 mod 256) );
+{|||}
+    len := len + 2;
+    if odd(len) then
+        begin
+            buf[len].bte := 0;
+            len := len + 1;
+        end;
+end;
+
+        
+
+procedure putserial( c:char );
+
+{purpose: Put a character out to either the loopback buffer or the
+          the serial line
+}
+begin
+    if loopbk then
+        begin
+        serbuf[serptr] := c;
+        serptr := serptr+1;
+        end
+    else
+        begin
+        mwrite(c);
+        end;
+    if trace then byteprint(c);
+end;
+
+
+
+procedure binm41(c1, c2: char);
+
+{purpose: Convert incomming buffer from binary to mod 41 and place in output buffer}
+
+var 
+    k, dtmp:integer;
+    wd, tmp:word;
+    c: char;
+begin
+    wd.byteval.lobyte := c1;
+    wd.byteval.hibyte := c2;
+    for k:=0 to 2 do
+        begin
+        if wd.intval < 0 then   {correct for overflow problem}
+            begin
+            tmp.byteval.lobyte := wd.byteval.hibyte;
+            tmp.byteval.hibyte := chr (0);
+            dtmp := (tmp.intval div 41)*256;
+            tmp.intval := tmp.intval mod 41;
+            wd.byteval.hibyte := tmp.byteval.lobyte;
+            end
+        else
+            dtmp := 0;
+            
+        c := r41[(wd.intval mod 41) + 1 ];
+        putserial (c);
+        wd.intval  := (wd.intval div 41) + dtmp;
+        end;
+end;
+
+
+procedure binExpand (c: char);
+
+{purpose: Place escape character in front of special characters when they
+          are not special and send cahracter}
+begin
+    if c in [chr(ESC), '@', ']', '[' ] then
+        putserial (chr(ESC));
+    putserial (c);
+end;
+
+
+procedure endxmit;
+
+{purpose: Send turnaround characters.}
+
+var
+   i:integer;
+begin
+    putserial( '@' );
+    for i:=1 to 5 do
+        begin
+        if mynode = ANS then
+            putserial ('[')
+        else
+            putserial (']');
+        end;
+    putserial (chr(CR));
+end;
+      
+      
+      
+procedure xmitblk( buf:ltbarray; len:integer);
+
+{purpose: Send the LTB buffer.}
+
+var i:integer;
+begin
+    for i:=1 to 6 do
+        putserial( '@' );
+    if xmitBinary then
+        begin
+        for i:=0 to len-1 do
+            binExpand (xbuf[i].ch);             {expand escape char}
+        end
+    else
+        begin
+        i:=0;
+        while i < len-1 do
+            begin
+            binm41(xbuf[i].ch, xbuf[i+1].ch);       
+            i:=i+2;
+            end;
+        end;
+    endxmit;
+end;
+
+
+
+procedure ltbsend;
+
+{purpose: Create an LTB packet containing the data, send it}
+
+var
+   i:integer;
+begin
+    if trace then 
+       begin
+       writeln;
+       writeln ('XMIT ',xdataptr,' BYTES');
+       end;
+    xlen := xdataptr;
+    mkhdr (xbuf, xlen);              {update header info}
+    gencksum (xbuf, xlen);           {generate checksum, return total length} 
+    if trace then
+        begin
+        writeln;
+        for i:=0 to xlen-1 do
+           byteprint (xbuf[i].ch);
+        writeln;
+        end;
+    xmitblk(xbuf,xlen);                    {transmit}
+end;
+    
+    
+    
+procedure xmitltb;
+
+{purpose: Determine if the previous packet must be retransmitted or
+          if a new packet can be sent. In the case of excessive 
+          retransmission attempts aborts the program.
+}
+begin
+   if xmitBaud <> currentBaud then
+       changeBaud (xmitBaud);
+   if rexmtcnt >= MAXREXMIT then
+       begin
+       writeln;
+       writeln ('EXCESSIVE RETRANSMISSION ATTEMPTS -- CONNECTION ABORTED');
+       sch := done;
+       end
+   else
+       begin
+           if xmtoob = xmtgen then  
+               begin
+               xdataptr := 2;
+               xpps;
+               rexmtcnt := 0;
+               xmtgen := (xmtgen+1) mod 8;     {increment seq number}
+               end
+           else
+               begin
+               rexmtcnt := rexmtcnt+1;
+               end;
+           ltbsend;
+       end;
+if sch<>done then sch := rltb;
+end;
+
+
+{----------- LTB GENERAL ------------------------------------}
+
+
+procedure sched;
+
+{purpose: Low level dispatcher for the LTB receiver and transmitter.}
+var
+    ch: array [0..0] of char;
+begin
+{|||}   DotCount := 0;  {|||}
+    repeat
+
+        if (not cts) and (not loopbk)  then 
+            begin
+            writeln ('CARRIER LOST');
+            initState;
+            sch := done
+        end;
+        
+        if kbstat then
+            begin
+            unitread (2,ch[0],1,0,0);
+            if ch[0] = chr(ATTENCHAR) then
+                menu
+            else
+                begin
+                fstKbCh := ch[0];
+                kbInterrupt := TRUE;
+                end;
+            end;
+        
+        serptr := 0;
+        case sch of     {the heart of the system}
+            xltb:xmitltb;
+            rltb:ltbframer;
+            end;
+        
+   until sch=done;
+end;
+             
+        
+             
+procedure ltbinit;
+
+{purpose: Initialize LTB values at startup.}
+begin
+    { Define radix 41 character set. }
+    r41 := '(0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*+-)';
+    xmtgen := 0;
+    rcvoob := 0;
+    xmtoob := 0;
+    rexmtcnt := 0;
+    serptr:=0;
+    if loopbk then
+        sch := xltb
+    else
+        sch := rltb;
+end;
+
+
+procedure modeInit;
+begin
+    xmitBinary := FALSE;
+    recBinary := FALSE;
+    recEscSet := FALSE;
+    xmitDataSz := 64;
+    recBaud := 300;
+    xmitBaud := 300;
+end;
+
+{-------------------- PPS TRANSMIT  --------------------------}
+
+
+
+procedure ppsinit;
+
+{purpose:Initialize PPS tables at startup.}
+
+var 
+  i:integer;
+begin
+    for i:= 0 to MAXPPS do
+        begin
+        with xppstbl[i] do
+            begin
+            active := FALSE;
+            ppsnum := i;
+            err := FALSE;
+            end;
+        with rppstbl[i] do
+            begin
+            active := FALSE;
+            ppsnum := i;
+            err := FALSE;
+            end;
+        end;
+    lstOpenPPS := 0;
+    pollpps:=0;
+end;
+
+
+
+procedure ppsopen (src, dest:integer; var ppsno:bytesz);
+
+{purpose: Open a new xmit PPS, enter the source and the destination process
+          numbers in the xmit PPS table. The number of the PPS that is opened
+          is returned to the caller.
+}
+begin
+   ppsno := lstOpenPPS;
+   repeat
+        ppsno := (ppsno+1) mod MAXPPS;
+   until not xppstbl[ppsno].active or (ppsno = lstOpenPPS);
+   
+   if xppstbl[ppsno].active then
+      begin
+      writeln; writeln('PPS xmit table full');
+      end
+   else
+      begin
+      lstOpenPPS := ppsno;
+      with xppstbl[ppsno] do
+          begin
+          active := TRUE;
+          err := FALSE;
+          srcproc := src;
+          destproc := dest;
+          pseq := 0;
+          fstblk := TRUE;
+          lstblk := FALSE;
+          fstptr := 0;
+          nxtptr := 0;
+          if ppsmon then
+             begin
+             writeln; writeln ('Opening xmit PPS ',ppsno,' source ',src,
+                                ' destination ',dest);
+             end;
+          end;
+     end;
+end;
+
+
+
+procedure ppsclose (ppsno:bytesz);
+
+{purpose: Close the specified xmit PPS number. 
+          Note: One more transmission (last block) will occur on this stream.
+}
+begin
+    if xppstbl[ppsno].active = FALSE then
+        begin
+        if ppsmon then
+            begin
+            writeln; writeln ('Request to close inactive xmit PPS ',ppsno);
+            end
+        end
+    else
+        begin
+        xppstbl[ppsno].lstblk := TRUE;
+        if ppsmon then
+            begin
+            writeln; writeln ('Closing xmit PPS ',ppsno);
+            end;
+        end;
+end;
+
+
+procedure mkpps (ppsno:integer);
+{purpose: Build the PPS }
+var
+   orglen:integer;
+begin
+   orglen := xdataptr;
+   
+    with xppstbl[ppsno] do
+        begin
+        if ppsmon then
+            begin
+            writeln; 
+            write ('Sending PPS ',ppsno,' seq no ',pseq);
+            if fstblk then write(' - first block');
+            end;
+       
+        { pps header }
+        with  xbuf[xdataptr] do
+            begin
+            ppsh.fst := fstblk;    
+            ppsh.lst := FALSE;
+            ppsh.fil := 0; {zero filler}
+            ppsh.seq := pseq;
+            end;
+        
+        pseq := (pseq +1) mod 8;
+       
+        xbuf[xdataptr+1].bte := ppsno;
+       
+        if fstblk then
+            begin
+            xbuf[xdataptr+3].bte := srcproc;
+            xbuf[xdataptr+4].bte := destproc;
+            xdataptr := xdataptr+5;
+            fstblk := FALSE;
+            end
+        else
+            begin
+            xdataptr := xdataptr+3;
+            end;
+        
+        {move data to pps}
+        while (fstptr <> nxtptr) and (xdataptr-orglen < xmitDataSz) do
+            begin
+            xbuf[xdataptr].ch := buf[fstptr];
+            xdataptr := xdataptr+1;
+            fstptr := fstptr+1;
+            if fstptr = PPSBUFSZ then
+                fstptr := 0;
+            end;
+        
+        xbuf[orglen+2].bte := xdataptr-orglen;
+        if ppsmon then write (' - length ',(xdataptr-orglen));
+        
+        {if last block and no more data to send}
+        if lstblk  and (fstptr = nxtptr) then
+            begin
+            active := FALSE;    
+            lstblk := FALSE;
+            xbuf[orglen].ppsh.lst := TRUE;
+            if ppsmon then write (' - last block');
+            end;
+        end {with};
+    if ppsmon then writeln;
+end;
+             
+
+
+procedure xpps;
+
+{purpose: Search for an acitive pps with something to send}
+
+var
+   dlen:integer;
+   ppsno:bytesz;
+   done: boolean;
+begin
+    
+    { to simulate multiple processes we poll the process procedures here}
+    pollProcesses;
+    
+    done := FALSE;
+    ppsno:= pollpps;    {Continue from last poll + 1}
+    repeat  {poll sending processes for out going}
+       with xppstbl[ppsno] do
+           begin
+           if active then
+               if (fstptr<>nxtptr) or fstblk or lstblk then
+                   if not ctrLock then
+                       begin
+                       mkpps (ppsno);
+                       done := TRUE;
+                       end
+                   else 
+                       if srcproc = CTRL then
+                           begin
+                           mkpps (ppsno);
+                           ctrLock := FALSE;
+                           if ppsmon then writeln ('PPS control lock reset');
+                           done := TRUE;
+                           end;
+           end;
+       ppsno := (ppsno +1)mod MAXPPS;
+    until (ppsno = pollpps) or done;
+    pollpps := ppsno;
+end;
+
+
+
+function statusOtPPS (ppsNum: integer): exception;
+var
+    tmp: integer;
+begin
+    statusOtPPS := ERROR;
+    if ppsNum <= MAXPPS then
+        begin
+        with xppstbl[ppsNum] do
+            begin
+            if active and not err then
+                begin
+                if lstblk then
+                    statusOtPPS := LAST
+                else
+                    begin
+                    tmp := nxtptr+1;
+                    if tmp =  PPSBUFSZ then
+                        tmp := 0;
+                    if tmp <> fstptr then
+                        statusOtPPS := OK
+                    else
+                        statusOtPPS := FULL;
+                    end;
+                end;
+            end;
+        end;
+end;
+
+    
+
+function ppsWrite (ppsNum: integer; c: char): exception;
+var
+    tmp: integer;
+begin
+    {there are several checks that should be made here
+     they are not done in this version for efficiency reasons}
+    ppsWrite := ERROR;
+    with xppstbl[ppsNum] do
+        begin
+        tmp := nxtptr+1;
+        if tmp = PPSBUFSZ then
+            tmp := 0;
+        if tmp <> fstptr then
+            begin
+            buf[nxtptr] := c;
+            if ppsmon then
+                byteprint (c);
+            nxtptr := tmp;
+            tmp := nxtptr+1;
+            if tmp = PPSBUFSZ then
+                tmp := 0;
+            if tmp = fstptr then
+                begin
+                ppsWrite := FULL;
+                if ppsmon then writeln ('FULL');
+                end
+            else
+                ppsWrite := OK;
+            end
+        end
+end;
+
+
+
+{--------- PPS RECEIVER ---------------}
+
+procedure findRecPPS (dest, fstEntry: integer; 
+                      VAR slot: integer; VAR ppsNo: integer);
+{purpose: find any incomming streams to the specified destanation starting at the 
+          specified slot. Returns slot and PPS number if found, NULLPPS 
+          otherwise}
+var
+    i: integer;
+    done: boolean;
+begin
+    done := FALSE;
+    ppsNo := NULLPPS; 
+    if fstEntry <= MAXPPS then
+        begin
+        i := fstEntry;
+        repeat
+            if (rppstbl[i].destproc = dest) and (rppstbl[i].active)  then
+                begin
+                slot := i;
+                ppsNo := rppstbl[i].ppsnum;
+                done := TRUE;
+                end;
+            i := i+1;
+        until (i > MAXPPS) or done;
+        end;
+    if ftpmon and (ppsNo <> NULLPPS) then
+        writeln (' Found destination ', dest,  ' ppsNo ', ppsNo, ' in slot ', slot);
+end;
+
+
+procedure rpps; 
+
+{purpose: Check incomming PPS packets and place in buffer}
+
+label
+   1;
+var
+   ppsno:bytesz;
+   index: integer;
+begin
+    ppsno := rbuf[rstrt+1].bte;
+    if ppsmon then
+        writeln ('Receiving PPS ',ppsno,' length ',rbuf[rstrt+2].bte);
+    rcnt := rbuf[rstrt+2].bte - 3;
+    
+    index := 0;
+    while (index<MAXPPS) and ((rppstbl[index].ppsnum<>ppsno) or 
+           not rppstbl[index].active ) do index := index + 1;
+    
+    with rbuf[rstrt].ppsh do
+        begin
+        if index = MAXPPS then
+            begin
+            if not fst then
+                begin
+                writeln ('PPS ERROR - received packet on inactive PPS number ',ppsno);
+                end
+            else {activate this pps}
+                begin
+                index := 0;
+                while (index<MAXPPS) and rppstbl[index].active do
+                    index := index + 1;
+                if index = MAXPPS then
+                    begin
+                    writeln; writeln ('PPS receive table full');
+                    goto 1;
+                    end
+                else
+                    begin
+                    with rppstbl[index] do
+                        begin
+                        ppsnum := ppsno;
+                        active := TRUE;
+                        srcproc := rbuf[rstrt+3].bte;
+                        destproc := rbuf[rstrt+4].bte;
+                        nxtptr := 0;
+                        fstptr := 0;
+                        err := FALSE;
+                        pseq := 0;
+                        if ppsmon then
+                            begin
+                            writeln ('Receiving new PPS ',ppsnum,' source ',
+                                      srcproc,' destination ',destproc,
+                                      ' using slot ', index);
+                            end;
+                        rstrt := rstrt + 2;
+                        rcnt := rcnt-2;
+                        end
+                    end;
+                end;
+            end
+        else { found active pps in table}
+            begin
+            if fst then
+                begin
+                writeln ('PPS ERROR - received unexpected first block on ',ppsno);
+                rppstbl[index].err := TRUE;
+                goto 1;
+                end;
+            end;
+            
+   {if we get this far this is an active pps}
+        with rppstbl[index] do
+            begin
+            {update status }
+            fstblk := fst;
+            lstblk := lst;
+            if lstblk and ftpmon then
+                begin
+                writeln; writeln ('Last block on PPS ', ppsno);
+                end;
+            if seq <> pseq then
+                begin
+                writeln;
+    writeln ('PPS ERROR - received unexpected sequence number ',seq,' on ',ppsno);
+                err := TRUE;
+                end
+            else
+                pseq := (pseq+1) mod 8;
+          
+            {move data to pps buffer}
+            rstrt := rstrt + 3; {skip pps header}
+            if ppsmon then
+                writeln ('PPS rec buffer =');
+            while (rcnt > 0) and not err do
+                begin
+                buf[nxtptr] := rbuf[rstrt].ch;
+                if ppsmon then
+                    byteprint (rbuf[rstrt].ch);
+                rcnt := rcnt -1;
+                rstrt := rstrt+1;
+                nxtptr := nxtptr+1;
+                if nxtptr = PPSBUFSZ then
+                    nxtptr := 0;
+                if nxtptr = fstptr then
+                    begin
+                    writeln ('Receive buffer overflow on PPS ',ppsno);
+                    err := TRUE;
+                    end;
+                end;
+            end {with};
+        end {with};
+1:
+end;
+
+
+procedure rppsredirect (ppsno, newdest:bytesz);
+
+{purpose: Redirect all further packets received on the specified PPS stream to
+          the specified destination process.
+}
+begin
+    with rppstbl[ppsno] do
+           begin
+           destproc:=newdest;
+           if ppsmon then
+               begin
+               writeln;
+ writeln ('PPS REC - Redirecting PPS ',ppsnum,' to destination ',destproc);
+               end;
+           end;
+end;
+
+
+function ppsRead (ppsSlot: integer; VAR c: char): exception;
+begin
+    {there are several checks that should be made here
+     they are not done in this version for efficiency reasons}
+    ppsRead := ERROR;
+    with rppstbl[ppsSlot] do
+        begin
+        if not err then
+            begin
+            if (fstptr <> nxtptr) then
+                begin
+                c := buf[fstptr];
+                fstptr := fstptr+1;
+                if fstptr = PPSBUFSZ then
+                    fstptr := 0;
+                ppsRead:= OK;  
+                end
+            else
+                if not lstblk then
+                    begin
+                    ppsRead := EMPTY;
+                    if ppsmon then writeln ('EMPTY');
+                    end
+                else
+                    begin
+                    ppsRead := LAST;
+                    if ppsmon then writeln ('LAST');
+                    active := FALSE;
+                    end
+            end
+        end
+end;
+
+
+
+{-------------- PROCESS GENERAL --------------}
+
+procedure pollProcesses;
+{purpose: Polls the pseudo processes}
+begin
+    pCtrl;
+    pSinker;
+    pListner;
+    pFtpSnd;
+    pFtpRec;
+    pTerm;
+    pGetFtp;
+end;
+
+
+{------------------ SINK ----------------------}
+
+procedure pSinker;
+{a dummy receiver process to dump unwanted input }
+var
+    i, ppsno, slot: integer;
+    c: char;
+begin
+    i := 0;
+    repeat
+        findRecPPS (SINK, i, slot, ppsno);
+        if ppsno <> NULLPPS then
+            begin
+            while ppsRead (slot, c) = OK do;
+            i := slot+1;
+            end;
+    until ppsno = NULLPPS;
+end;
+
+
+
+{--------------- CONTROL PROCESS ----------------------}
+
+procedure ctrlinit;
+begin
+   ppsopen (CTRL, CTRL, ctrlOtPPS);
+   ctrlState := SNDSYSNAME;
+   ctrlInPPS := NULLPPS;
+   ctrLock := TRUE;
+end;
+
+procedure maxCommonBaud (x, y: byte; VAR max: byte; VAR ibaud: integer);
+{purpose: Find highest common baud rate}
+begin
+    max.bte := 0;
+    if x.bd.b4800 and y.bd.b4800 then
+        begin
+        max.bd.b4800 := TRUE;
+        ibaud := 4800;
+        end
+    else
+    if x.bd.b2400 and y.bd.b2400 then
+        begin
+        max.bd.b2400 := TRUE;
+        ibaud := 2400;
+        end
+    else
+    if x.bd.b1200 and y.bd.b1200 then
+        begin
+        max.bd.b1200 := TRUE;
+        ibaud := 1200;
+        end
+    else
+    if x.bd.b600 and y.bd.b600 then
+        begin
+        max.bd.b600 := TRUE;
+        ibaud := 600;
+        end
+    else
+    if x.bd.b450 and y.bd.b450 then
+        begin
+        max.bd.b450 := TRUE;
+        ibaud := 450;
+        end
+    else
+    if x.bd.b300 and y.bd.b300 then
+        begin
+        max.bd.b300 := TRUE;
+        ibaud := 300;
+        end
+    else
+    if x.bd.b150 and y.bd.b150 then
+        begin
+        max.bd.b150 := TRUE;
+        ibaud := 150;
+        end
+    else
+    if x.bd.b110 and y.bd.b110 then
+        begin
+        max.bd.b110 := TRUE;
+        ibaud := 110;
+        end
+    else
+        begin
+        writeln ('No compatable baud rates in request.');
+        ibaud := 0;
+        end;
+end;
+
+
+procedure decodeCtrlMsg;
+{purpose: Decode incomming control messages}
+var
+  c: char;
+  x: byte;
+  newBaud: integer;
+  result: exception;
+begin
+   result := ppsRead (ctrlInSlot, c);
+   x.ch := c;
+   if result = OK  then
+       begin
+       if x.bte = PDPROTO then
+           begin
+           writeln; write ('Setting ');
+           
+           {check modes }
+           result := ppsRead (ctrlInSlot, c);
+           x.ch := c;
+           cMode.md.bin :=  x.md.bin and vMode.md.bin;
+           recBinary := cMode.md.bin;
+           if loopbk then xmitBinary := recBinary;
+           if cMode.md.bin then
+               begin
+               write ('binary ');
+               end
+           else
+               write ('radix 41 ');
+           
+           cMode.md.full := x.md.full and vMode.md.full;
+           recFull := cMode.md.full;
+           if cMode.md.full then
+               begin
+               write ('full duplex ')
+               end
+           else
+               write ('half duplex ');
+           
+           {check baud rate}
+           result := ppsRead (ctrlInSlot, c);
+           x.ch := c;
+           maxCommonBaud (x, vBaud, cBaud, newBaud);
+           write (newBaud, ' baud.');
+           recBaud := newBaud;
+           writeln;
+           {get rmt max ltb size}
+           result := ppsRead (ctrlInSlot, c);
+           x.ch := c;
+           rmtRecDataSz := x.bte;
+           writeln ('Max remote receive data size: ',rmtRecDataSz);
+           if maxXmitDataSz > rmtRecDataSz then 
+               xmitDataSz := rmtRecDataSz
+           else
+               xmitDataSz := maxXmitDataSz;
+           writeln ('Xmit data size: ', xmitDataSz);
+           
+           {send reply}
+           ctrLock := TRUE;
+           x.bte := IW+PROTO;
+           result := ppsWrite (ctrlOtPPS, x.ch);
+           result := ppsWrite (ctrlOtPPS, cMode.ch);
+           result := ppsWrite (ctrlOtPPS, cBaud.ch);
+           x.bte := recDataSz;
+           result := ppsWrite (ctrlOtPPS, x.ch);
+           end
+       else
+       if x.bte = IWPROTO then
+           begin
+           writeln; write ('Setting  ');
+           {set modes}
+           result := ppsRead (ctrlInSlot, c);
+           cMode.ch := c;
+           if cMode.md.bin then
+               begin
+               recBinary := TRUE;
+               xmitBinary := TRUE;
+               write ('binary ');
+               end
+           else
+               begin
+               recBinary := FALSE;
+               xmitBinary := FALSE;
+               write ('radix 41 ');
+               end;
+           
+           if cMode.md.full then
+               begin
+               recFull := TRUE;
+               xmitFull := TRUE;
+               write ('full duplex ');
+               end
+           else
+               begin
+               recFull := FALSE;
+               xmitFull := FALSE;
+               write ('half duplex ');
+               end;
+           {set baud}
+           result := ppsRead (ctrlInSlot, c);
+           x.ch := c;
+           maxCommonBaud (x, vBaud, cBaud, newBaud);
+           recBaud := newBaud;
+           xmitBaud := newBaud;
+           writeln (newBaud, ' baud.');
+           
+           {get rmt max LTB size}
+           result := ppsRead (ctrlInSlot, c);
+           x.ch := c;
+           rmtRecDataSz := x.bte;
+           writeln ('Max remote receive data size: ',rmtRecDataSz);
+           if maxXmitDataSz > rmtRecDataSz then 
+               xmitDataSz := rmtRecDataSz
+           else
+               xmitDataSz := maxXmitDataSz;
+           writeln ('Xmit data size: ', xmitDataSz);
+           
+           {send reply to complete sequence}
+           ctrLock := TRUE;
+           x.bte := PDGOPROTO;
+           result := ppsWrite (ctrlOtPPS, x.ch);
+           end
+       else
+       if x.bte = PDGOPROTO then
+           begin
+           xmitBinary := cMode.md.bin;
+           xmitFull := cMode.md.full;
+           xmitBaud := recBaud;
+           writeln ('Mode change complete.');
+           end
+       else
+           begin
+           byteprint (x.ch);
+           while ppsRead (ctrlInSlot, c) = OK do byteprint (c);
+           end;
+       end;
+end;
+                
+
+procedure pCtrl;
+{purpose:Control process}
+var
+  i:integer;
+  x: byte;
+  sysname: string;
+  result: exception;
+  sfile: text;
+begin
+    case ctrlState of
+        
+        SNDSYSNAME: begin
+                    ctrLock := TRUE;
+{|||}               WRITELN;            {|||}
+                    {$I-}
+                    reset (sfile, 'sysname.text');
+                    {$I+}
+                    if IORESULT <> 0 then
+                        begin
+                        writeln ('Unable to open sysname.text.');
+                        end
+                    else
+                        begin
+                        repeat
+                            read (sfile, c);
+                            result := ppsWrite(ctrlOtPPS, c);
+                        until EOLN(sfile) or (result <> OK);
+                        close (sfile);
+                        end;
+                    if mynode = ORG then
+                        ctrlState := REQPROTO       
+                    else
+                        ctrlState := CIDLE;
+                    end;
+        REQPROTO  : begin 
+                    ctrLock := TRUE;
+                    x.bte := PD + PROTO;        {send control code}
+                    result := ppsWrite (ctrlOtPPS, x.ch);
+                    {send valid modes}
+                    result := ppsWrite (ctrlOtPPS, vMode.ch);
+                    {send valid bauds}
+                    result := ppsWrite (ctrlOtPPS, vBaud.ch);
+                    x.bte := recDataSz;       {max amount of data to rec }
+                    result := ppsWrite (ctrlOtPPS, x.ch);
+                    ctrlState := CIDLE;
+                    end;
+    end;
+    
+    if ctrlInPPS = NULLPPS then
+        findRecPPS (CTRL, 0, ctrlInSlot, ctrlInPPS);
+    
+    if ctrlInPPS <> NULLPPS then
+        decodeCtrlMsg;
+end;
+
+
+
+{---------------- FTP MESSAGE PARSER ------------------------}
+
+procedure ftpMsgParser (inSlot: integer; 
+           VAR srcname, destname: string; 
+           VAR fLength: fileLength);
+{purpose: Parse incomming FTP request}
+var
+    msgLen, i: integer;
+    x: byte;
+    result: exception;
+begin
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    msgLen := x.bte;
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    fLength[0] := x.bte; {length of file in bits }
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    fLength[1] := x.bte; {not used in this version}
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    fLength[2] := x.bte;
+{$R-}
+    {get source file name }
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    i := 1;
+    while x.ch <> chr(CR) do
+        begin
+        srcname[i] := x.ch;
+        result := ppsRead (inSlot, c);
+        x.ch := c;
+        i := i+1;
+        end;
+    srcname[0]:=chr(i-1);  {See Note 1}
+    
+    { get destnation name }
+    result := ppsRead (inSlot, c);
+    x.ch := c;
+    i := 1;
+    while x.ch <> chr(CR) do
+        begin
+        destname[i] := x.ch;
+        result := ppsRead (inSlot, c);
+        x.ch := c;
+        i := i+1;
+        end;
+    destname[0]:=chr(i-1);  {See Note 1}
+{$R+}
+end;
+
+{--------------- FTP SENDER ---------------------------}
+
+procedure fsndinit;
+
+{purpose: Initialize ftp sender at startup.}
+
+begin
+    fsndstate:=idle;
+    xfiletype:=0;
+    xfilesize.intval:=0;
+    xname := ' ';
+    destname := ' ';
+    fSndInPPS := NULLPPS;
+end;
+
+
+procedure ftpstart;
+{purpose: Does setup for file sending when requested locally.}         
+var 
+  cnt:integer;
+begin
+    if fsndstate<>idle then
+        begin
+        {$I-}
+        writeln;writeln ('Sender is busy transfering ',xname,' to ',destname);
+        write ('Do you wish to abort this transfer ? (Y/N):');
+        read (c);
+        writeln;
+        if c in ['Y','y'] then
+            begin {set up conditions that indicate end to sender}
+            fsndstate:= localabort;
+            menuexit := TRUE;
+            end;
+        end
+    else
+        begin
+{|||    writeln; |||} writeln; write ('Name of file to be sent: ');
+        readln (xname);
+{|||    writeln; |||} write ('Name of destination file: ');
+        readln (destname);
+{|||    writeln; |||}
+        reset (xfile, xname);
+        if IORESULT <> 0 then 
+            begin
+            writeln ('Unable to open ',xname);
+            end
+        else
+            begin
+               fsndstate:=initiate;
+               ppsopen (FTPSND, LSTNER, fSndOtPPS);
+               menuexit := TRUE;
+           end;
+       end;
+    {$I+}
+end;
+
+
+
+function rmtsndstart;
+
+{purpose: Does setup for file sending when requested from remote.}
+
+var
+    fLength: fileLength;
+begin
+    {$I-}
+    {$R-}
+    if fsndstate<>idle then {already busy}
+        rmtsndstart:=FALSE 
+    else
+        begin
+        ftpMsgParser (inSlot, xname, destname, fLength);
+        if ftpmon then
+            begin
+            writeln;writeln ('Remote start opening ',xname,' to ',destname);
+            end;
+        reset (xfile, xname);
+        if IORESULT<>0 then   {could not open file}
+            rmtsndstart := false
+        else
+            begin
+            ppsopen (FTPSND, LSTNER, fSndOtPPS);
+            fsndstate:=initiate;
+            rmtsndstart :=TRUE
+            end
+       end
+{$R+}
+{$I+}
+end;
+
+
+
+procedure ftpSndRec (x: byte);
+{purpose: Decode incomming FTP conrol messages}
+begin
+
+    case fsndstate of
+        request:    begin
+                    if x.bte = (IW + RF) then { i will receive file}
+                        begin
+                        writeln ('accepted');
+                        fsndstate:=send;
+                        end             
+                    else
+                        begin
+                        writeln ('refused');
+                        rppsredirect (fSndInSlot, SINK);
+                        fSndInPPS := NULLPPS;
+                        ppsclose (fSndOtPPS);
+                        close (xfile);
+                        fsndstate := idle;
+                        end;
+                    end;
+        ack:        begin
+{|||}               WRITELN; {|||}
+                    write ('Transfer of ',xname,' to ',rname);
+                    if x.bte = (IW + AF) then { i will accept this file}
+                        writeln(' completed sucessfully.')
+                    else
+                        writeln (' refused - code: ', x.bte);
+                    rppsredirect (fSndInSlot, SINK);
+                    fSndInPPS := NULLPPS;
+                    close (xfile);
+                    fsndstate := idle;
+                    end;
+        send:       begin
+                    if x.bte = (IWN + AF)  then
+                        begin
+                        writeln;
+                        writeln ('Transfer of ',xname,' to ',rname,' aborted by receiver.');
+                        ppsclose (fSndOtPPS);
+                        rppsredirect (fSndInSlot, SINK);
+                        fSndInPPS := NULLPPS;
+                        close (xfile);
+                        fsndstate := idle;
+                        end;
+                    end;
+        end;
+end;
+
+
+
+procedure pFtpSnd;
+{purpose: Transmits file contents to FTP receiver.}
+label
+    1;
+var
+    result: exception;
+    i, cnt:integer;
+    x: byte;
+    c:char;
+    tmpstr:string;
+    tmp: integer;
+begin
+    if fsndstate = idle then
+        goto 1;
+        
+    if fSndInPPS = NULLPPS then
+        findRecPPS (FTPSND, 0, fSndInSlot, fSndInPPS);
+
+    if fSndInPPS <> NULLPPS then
+        begin
+        result := ppsRead (fSndInSlot, c);
+        x.ch := c;
+        if (result = LAST) or (result = ERROR)  then
+            fSndInPPS := NULLPPS
+        else
+            if result <> EMPTY then
+                begin
+                ftpSndRec (x);
+                end;
+        end;
+    
+            
+    case fsndstate of
+        request:  ;
+        ack:      ;
+        idle:     ;
+        localabort: begin
+                    x.bte := PDN + AF;
+                    result := ppsWrite (fSndOtPPS, x.ch);
+                    ppsclose (fSndOtPPS);
+                    rppsredirect (fSndInSlot, SINK);
+                    fSndInPPS := NULLPPS;
+                    close (xfile);
+                    fsndstate := idle;
+                    end;
+        send:     begin
+                  {$R-}
+                  if statusOtPPS (fSndOtPPS) = OK then
+                      begin
+                      repeat
+                          if xbufptr = BLKSZ then        {get next blk from disk}
+                              begin
+                              if EOF(xfile) then {note: this eof occurred on the previous read}
+                                  begin
+                                  x.bte := PD + AF;
+                                  result := ppsWrite (fSndOtPPS, x.ch);
+                                  ppsclose (fSndOtPPS);
+                                  fsndstate := ack;
+                                  end
+                              else
+                                  begin
+                                  {$I-}
+                                  cnt := blockread (xfile, xblk, 1, xfilptr);
+                                  {$I+}
+                                  xfilptr := xfilptr+1;
+                                  if IORESULT <> 0 then
+                                      begin
+                                      writeln; 
+                                      writeln ('File sender I/O error ',IORESULT,' file ',
+                                                xname,'...');
+                                      x.bte := PDN + AF;
+                                      result := ppsWrite (fSndOtPPS, x.ch);
+                                      ppsclose (fSndOtPPS);
+                                      rppsredirect (fSndInSlot, SINK);
+                                      fSndInPPS := NULLPPS;
+                                      close (xfile);
+                                      fsndstate := idle;
+                                      end
+                                  else
+                                      xbufptr := 0;
+                                  end
+                              end
+                          else
+                                begin
+                                {for efficency this transfer does not use ppsWrite}
+                                with xppstbl[fsndOtPPS] do
+                                    begin
+                                    buf[nxtptr] := xblk[xbufptr];
+                                    nxtptr := nxtptr+1;
+                                    if nxtptr = PPSBUFSZ then
+                                        nxtptr := 0;
+                                    tmp := nxtptr+1;
+                                    if tmp = PPSBUFSZ then
+                                        tmp := 0;
+                                    xbufptr := xbufptr+1;
+                                    end;
+                                end;
+                      until (tmp = xppstbl[fsndOtPPS].fstptr) or (fsndstate <> send);
+                      end;
+                  end;
+                  {$R+}
+        initiate: begin
+{|||              writeln;      |||}
+                  write ('Request to transfer ',xname,' to ',destname);
+                  x.bte:= PD + RF;  { please do receive file}
+                  result := ppsWrite (fSndOtPPS, x.ch);
+                  tmpstr:= concat(xname, acr ,destname, acr);
+                  x.bte := length(tmpstr)+5;  {length of this message in bytes }
+                  result := ppsWrite (fSndOtPPS, x.ch);
+                  x.bte:= 0;  {24 bit length in bits, low byte first }
+                              {always zero in this version }
+                  result := ppsWrite (fSndOtPPS, x.ch);
+                  result := ppsWrite (fSndOtPPS, x.ch);
+                  result := ppsWrite (fSndOtPPS, x.ch);
+                  
+                  for i:= 1 to length(tmpstr) do
+                      result := ppsWrite (fSndOtPPS, tmpstr[i]);
+                  
+                  xeof:= FALSE;
+                  xbufptr := BLKSZ;
+                  xfilptr:=0;
+                  fsndstate:=request;
+                  end 
+        end;
+1:
+end;
+
+{------- LISTNER ------------}
+
+{ This process acts as a well known process to setup file transfers.}
+
+procedure pListner;
+{purpose: Listner process}
+
+var
+    i:integer;
+    x: byte;
+    result: exception;
+begin
+{$I-}
+    findRecPPS (LSTNER, 0, lsnrInSlot, lsnrInPPS);
+    
+    if lsnrInPPS <> NULLPPS then
+        begin
+        result := ppsRead (lsnrInSlot, c);
+        x.ch := c;
+        if ftpmon then
+            begin
+            writeln; writeln ('Listener requested to:',x.bte);
+            end;
+        
+        if x.bte= (PD + RF) then { please receive file}
+            begin
+            ppsopen (LSTNER, rppstbl[lsnrInSlot].srcproc, lsnrOtPPS);
+            if frecstart (lsnrInSlot) then {FTP receiver ready}
+                begin
+                x.bte:= IW + RF;  { i will receive file};
+                rppsredirect (lsnrInSlot, FTPREC)
+                end
+            else {receiver not ready}
+                begin
+                x.bte := IWN + RF; { i will not receive file}
+                rppsredirect (lsnrInSlot, SINK)
+                end;
+            result := ppsWrite (lsnrOtPPS, x.ch);
+            ppsclose (lsnrOtPPS);
+            end
+        else
+            if x.bte= (PD + SF) then { please do send file}
+                begin
+                ppsopen (LSTNER, rppstbl[lsnrInSlot].srcproc, lsnrOtPPS);
+                if rmtsndstart(lsnrInSlot) then 
+                    x.bte := IW + SF { i will send file}
+                else
+                    x.bte := IWN + SF; { i will not send file}
+                if ftpmon then
+                    begin
+                    writeln;
+                    write ('LISTENER - remote request to transfer ');
+                    if x.bte= (IWN + SF) then
+                        writeln(' refused')
+                    else
+                        writeln(' accepted');
+                    end;
+                result := ppsWrite (lsnrOtPPS, x.ch);
+                ppsclose (lsnrOtPPS);
+                end
+            else {unknown request}
+               if ftpmon then
+                   begin
+                   writeln;
+                   writeln ('LISTENER - Unknown request type ',x.bte)
+                   end;
+       end;
+{$I+}
+end;
+
+
+{------- FTP RECEIVER -------------}
+
+procedure frecinit;
+
+{purpose: Initializes FTP receiver at startup.}
+
+begin
+    receiving:=FALSE;
+    srcname := ' ';
+    rname := ' ';
+end;
+
+
+
+function frecstart;
+
+{purpose: Setup receiver for a file transfer.}
+
+var
+  msgLen: integer;
+  fLength: fileLength;
+begin
+    frecstart:=FALSE;
+    if not receiving then 
+         begin {initialization for receiver }
+         ftpMsgParser (inSlot, srcname, rname, fLength);
+{|||}    WRITELN;       {|||}
+         write('Request to receive  ',rname,' from ',srcname, '...');
+         {$I-}
+         reset (rfile,rname);
+         if IORESULT=0 then {file already exists}
+             begin
+{|||         writeln; |||}
+             writeln ('local file ',rname,' already exists, transfer refused.');
+             close (rfile);
+             end
+         else
+             begin
+             rewrite (rfile, rname);
+             if IORESULT<>0 then
+                 begin
+{|||             writeln; |||}
+                 writeln ('unable to create local file ',rname,' transfer refused.')
+                 end
+             else
+                begin
+                writeln ('accepted.');
+                frecInPPS := NULLPPS;
+                rfilptr:=0;
+                rbufptr := 0;
+                receiving := TRUE;
+                frecstart:=TRUE;
+                firstChar := TRUE;
+                end
+            end
+         end
+{$I+}
+end;
+
+
+procedure pftpRec;
+{purpose: FTP receiver process}
+label
+    1;
+var
+{|||} SpareBlk : Blk;      {|||}
+    cnt,i:integer;
+    x: byte;
+    result: exception;
+begin
+    if not receiving then goto 1;
+    
+    if frecInPPS = NULLPPS then
+        begin
+        findRecPPS (FTPREC, 0, frecInSlot, frecInPPS);
+        if frecInPPS = NULLPPS then goto 1;
+        end;
+    
+    if firstChar then
+        begin
+        result := ppsRead (fRecInSlot, c);
+        lastc.ch := c;
+        if result = OK then firstChar := FALSE;
+        end;
+    
+    {|||   $R-} {turn off range checking for speed}
+    if not firstChar then
+        repeat
+            result := ppsRead (fRecInSlot, c);
+            x.ch := c;
+            if result = OK then
+                begin
+                rblk[rbufptr] := lastc.ch;
+                lastc.ch := x.ch;
+                rbufptr := rbufptr+1;
+                if rbufptr = BLKSZ then
+                   begin
+{$I-|||}
+                   cnt := blockwrite (rfile, rblk, 1, rfilptr);
+{|||    Vol Sys Mod     |||}
+                   WHILE Cnt = 1 DO BEGIN
+                       IF (BLOCKREAD (RFile, SpareBlk, 1, RFilPtr) = 1)
+                                              AND (SpareBlk = RBlk)
+                           THEN Cnt := 0
+                           ELSE Cnt := BLOCKWRITE (RFile, RBlk, 1, RFilPtr)
+                       END;
+{$I+|||}
+                   rfilptr := rfilptr+1;
+                   rbufptr := 0;
+                   if IORESULT <> 0 then
+                      begin
+                      ppsopen (FTPREC, rppstbl[frecInSlot].srcproc, fRecOtPPS);
+                      x.bte:=IWN + AF; {i will not accept file}
+                      ppsclose (fRecOtPPS);
+                      rppsredirect (fRecInSlot, SINK);
+                      receiving := FALSE;
+                      end;
+                   end;
+                end;
+        until result <> OK;
+    {|||$R+}
+
+    {$I-}
+    if result = LAST then  {last block of a file transfer}
+        begin
+        receiving := FALSE;
+        writeln;
+        if lastc.bte= (PDN + AF) then
+            begin
+            close (rfile);
+            writeln ('Received abort request on transfer of ',rname);
+            end
+        else
+            begin
+            close (rfile, lock);
+            ppsopen (FTPREC, rppstbl[frecInSlot].srcproc, fRecOtPPS);
+            if IORESULT <> 0 then
+               begin
+               writeln ('FTP REC - close error ',IORESULT,' on ',rname);
+               x.bte:=IWN + AF;
+               end
+            else
+               begin
+               writeln ('FTP REC - transfered ',rfilptr,' blocks to ',rname);
+               x.bte:=IW + AF; {i will accept file}
+               end;
+            result := ppsWrite (fRecOtPPS, x.ch);
+            ppsclose (fRecOtPPS);
+            receiving := FALSE;
+            end
+        end
+    else
+        if result = ERROR then
+            begin
+            ppsopen (FTPREC, rppstbl[frecInSlot].srcproc, fRecOtPPS);
+            x.bte:=IWN + AF;
+            result := ppsWrite (fRecOtPPS, x.ch);
+            ppsclose (fRecOtPPS);
+            rppsredirect (fRecInSlot, SINK);
+            receiving := FALSE;
+            end;
+1:
+{$I+}
+end;
+    
+
+{------------ GET - REQUEST A FILE FROM REMOTE ----------------}
+
+{Local process to request a file from remote node.}
+
+procedure getftp;
+
+{purpose: Get name of remote file from user.}
+
+var
+    getFtpOtPPS: integer;
+    gname,localname:string;
+    x: byte;
+    result: exception;
+begin
+{|||writeln; |||} write ('Transfer remote file: ');
+    readln (gname);
+{|||writeln;|||}
+    write ('To local file: ');
+    readln (localname);
+{|||writeln;|||}
+    write ('Transfer of ',gname,' to ',localname,'...');
+    ppsopen (GETFILE, LSTNER, getFtpOtPPS);
+    x.bte:= PD + SF;  { please do receive file}
+    result := ppsWrite (getFtpOtPPS, x.ch);
+    getstr:=concat (gname, acr, localname, acr);
+    x.bte := length(getstr)+5;  {length of this message in bytes }
+    result := ppsWrite (getFtpOtPPS, x.ch);
+    x.bte:= 0;  {24 bit length in bits, low byte first }
+                {always zero in this version }
+    result := ppsWrite (getFtpOtPPS, x.ch);
+    result := ppsWrite (getFtpOtPPS, x.ch);
+    result := ppsWrite (getFtpOtPPS, x.ch);
+    
+    for i:= 1 to length(getstr) do
+        result := ppsWrite (getFtpOtPPS, getstr[i]);
+    ppsclose (getFtpOtPPS);
+    menuexit:=TRUE;
+end;
+
+
+procedure pGetFtp;
+{purpose: Get FTP process}
+var
+    ppsno, slot: integer;
+    result: exception;
+    x: byte;
+begin
+    findRecPPS (GETFILE, 0, slot, ppsno);
+    if ppsno <> NULLPPS then
+        begin
+        result := ppsRead (slot, c);
+        x.ch := c;
+        if result = OK then
+            if x.bte = (IW + SF) then
+                writeln ('initiated')
+            else
+                writeln ('refused - code: ', x.bte);
+        end;
+end;
+
+
+
+{----------------- TERMINAL PROCESS --------------------------------}
+
+procedure terminit;
+
+{purpose: Initialize terminal process at setup time.}
+
+begin
+    ppsopen (TERM, TERM, termot);
+    termInPPS := NULLPPS;
+    kbInterrupt := FALSE;
+end;
+
+
+procedure pTerm;
+{purpose: PTP terminal process}
+var
+    c: char;
+    chc:packed array[0..0] of char;
+    status: exception;
+begin
+    if termInPPS = NULLPPS then
+        findRecPPS (TERM, 0, termInSlot, termInPPS);
+    
+    if termInPPS <> NULLPPS then
+        while ppsRead (termInSlot, c) = OK do
+            write (c);
+    
+    { check for key board character}
+    if kbInterrupt then 
+        begin
+        kbInterrupt := FALSE;
+        writeln;
+        write ('> ');
+        write (fstKbCh);
+        if ppsWrite (termot, fstKbCh) = OK then
+            repeat
+                unitread (2,chc[0], 1,0,0);
+                status := ppsWrite (termot, chc[0]);
+                write (chc[0]);
+                if status <> OK then writeln (' status not ok');
+            until (chc[0] = chr(13)) or (status <> OK);
+        end;
+end;
+    
+{-------- PTP START --------------------}
+
+procedure ptpinit;
+{purpose: Initialize PTP }
+begin
+    modeInit;
+    ltbinit;
+    ppsinit;
+    ctrlinit;
+    terminit;
+    frecinit;
+    fsndinit;
+end;
+
+
+procedure firstptpinit;
+{purpose: Initialization required before first PTP invocation}
+begin
+    trace := FALSE;
+    ppsmon := FALSE;
+    ftpmon := FALSE;
+    loopbk := FALSE;
+    ansbrkt := '[';
+    orgbrkt := ']';
+    ptpinit;
+end;
+
+
+procedure ptprun;
+{purpose: Start PTP}
+begin
+    mynode := modemMode;
+    if mynode = ANS then
+        timeout := ANSTIMEOUT
+    else
+        timeout := ORGTIMEOUT;
+    ptpinit;
+    if mynode = ANS then
+{|||}   BEGIN Delay (10);       {|||}
+        endxmit;                {send turn around }
+{|||}   END;                    {|||}
+    sched;
+end;
+    
+    
+{--------------------- PTP MENU ---------------------------}
+    
+procedure monitor;
+
+{purpose: Allows the user to control tracing for debugging.}
+
+begin
+    repeat
+        writeln;
+        write('Trace LTB ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': trace := TRUE;
+        'n','N': trace :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Trace PPS ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': ppsmon := TRUE;
+        'n','N': ppsmon :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Trace FTP ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': ftpmon := TRUE;
+        'n','N': ftpmon :=FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    repeat
+        writeln;
+        write('Local loopback test ? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': begin
+                     ansbrkt:=']'; orgbrkt:=']';
+                     loopbk := TRUE;
+                 end;
+        'n','N': begin
+                     ansbrkt:='['; orgbrkt:=']';
+                     loopbk := FALSE;
+                 end
+        end;
+    until c in ['y','Y','n','N'];
+{|||writeln; |||}
+end;
+
+procedure setModes;
+{purpose: Sets the valid PTP modes and baud rates}
+begin
+{|||writeln; |||}
+    vMode.bte := 0;
+    repeat
+        writeln;
+        write('Binary mode? (Y/N)');
+        read(c);
+        case c of
+        'y','Y': vMode.md.bin := TRUE;
+        'n','N': vMode.md.bin := FALSE;
+        end;
+    until c in ['y','Y','n','N'];
+    
+    vBaud.bte := 0;
+{|||
+    while vBaud.bte = 0 do
+        begin
+        writeln;
+        writeln ('Enter valid baud rates (y/n)');
+        write ('4800:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b4800 := TRUE;
+        write (' 2400:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b2400 := TRUE;
+        write (' 1200:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b1200 := TRUE;
+        write (' 600:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b600 := TRUE;
+        write (' 450:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b450 := TRUE;
+        write (' 300:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b300 := TRUE;
+        write (' 150:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b150 := TRUE;
+        write (' 110:');
+        read (c);
+        if (c = 'y') or (c = 'Y') then
+            vBaud.bd.b110 := TRUE;
+        if vBaud.bte = 0 then
+            begin
+            writeln; writeln ('Please enter at least one valid baud rate.');
+            end;
+        end;
+    writeln; 
+|||}
+    WITH vBaud.Bd DO BEGIN
+        b_300 := TRUE;
+        b1200 := TRUE;
+        WRITELN;
+        WRITELN ('Baud Rates : 300, 1200')
+        END;
+{|||}
+    {$I-}
+    repeat
+{|||
+        write ('Enter recever data size (32-'); write (MAXLTBSZ-15);
+        write ('): ');
+        readln (recDataSz);
+|||}
+        RecDataSz := MaxLtbSz-18;
+        WRITELN ('Receiver Data Size - ', RecDataSz)
+{|||}
+    until (IORESULT = 0) and (recDataSz >= 32) and (recDataSz <= (MAXLTBSZ-15));
+    
+    repeat
+{|||
+        write ('Enter xmitter data size (32-'); write (MAXLTBSZ-15);
+        write ('): ');
+        readln (maxXmitDataSz);
+|||}
+        MaxXmitDataSz := MaxLtbSz-18;
+        WRITELN ('Tansmitter Data Size - ', MaxXmitDataSz)
+{|||}
+    until (IORESULT = 0) and (maxXmitDataSz >= 32) 
+          and (maxXmitDataSz <= (MAXLTBSZ-15));
+{|||writeln; |||}
+    {$I+}
+    
+    ctrlState := REQPROTO;
+end;
+    
+    
+procedure exiter;
+
+{purpose : Terminates PTP program after warning user if transfers are in progress.}
+
+var
+   c:char;
+begin
+   {$I-}
+   if receiving or (fsndstate <> idle) then
+      begin
+      writeln; 
+      write('Currently engaged in file transfer.');
+      writeln; write ('Are you sure you want to exit? (Y/N): ');
+      read (c);
+      if (c='Y') or (c='y') then
+          begin
+          close (rfile,lock);
+          close (xfile);
+          sch := done;
+          menuexit := true;
+          end;
+      end
+   else
+      begin
+      sch := done;
+      menuexit := true;
+      end;
+{$I+}
+end;
+
+      
+procedure menu;
+
+{purpose: PTP menu loop.}
+
+begin
+    menuexit := FALSE;
+    repeat
+        writeln;
+        write ('G(et S(end M(ode T(race I(nitialize E(xit: ');
+        read (c);
+        case c of
+            'S','s':ftpstart;
+            'E','e':exiter;
+            'M','m': setModes;
+            'T','t':monitor;
+            'I','i':ptpinit;
+            'G','g':getftp;
+            end;
+    until eoln or menuexit;
+    writeln;
+end;
+
+
+
+{------------ RAW TERMINAL  ---------------}
+
+{Process which allows raw data typed on the terminal to be sent over
+ the serial line, used for debugging. Also used to allow login to timesharing
+ systems.
+ }
+
+procedure rawterm;
+var 
+   c: char;
+   termdone:boolean;
+   ch:packed array [0..0] of char;
+begin
+    termdone:=FALSE;
+    repeat
+        if not cts then
+            begin
+            writeln;
+            writeln ('CARRIER LOST');
+            termdone := true;
+            end;
+        if kbstat then
+            begin
+            unitread (2,ch[0],1,0,0);
+            if ch[0]=chr(ATTENCHAR) then 
+               termdone:=TRUE
+            else 
+               begin
+               if halfduplex then write(ch[0]);
+               putserial(ch[0])
+               end
+            end;
+        if mrecstat then
+            begin
+            c:=mread;
+            if c <> chr(LF) then write (c);   
+            end;
+   until termdone=TRUE;
+end;
+
+procedure initrawterm;
+begin
+    halfduplex := false;
+end;
+
+{--------------------- MODEM CONTROL ---------------------------}
+
+procedure hangitup;
+{purpose: Hangup phone and wait for loss of carrier}
+begin
+    hangup;
+    while cts do;
+end;
+
+procedure progStart;
+{purpose: Start the selected program}
+begin
+    case progSelect of
+        PT: ptprun;
+        RT: rawterm;
+        end;
+end;
+
+function estconnection: boolean;
+{purpose: Establish modem connection}
+var
+    i: integer;
+    cd: boolean;
+begin
+    delay (10);
+    
+    {turn dtr on sh off }
+    dtron;                           
+{|||
+    write ('waiting for carrier... ');
+|||}
+    WRITELN ('Modem Switch may be needed to Engage Carriers.');
+    WRITE ('Waiting 60 seconds for Carrier... ');
+{|||}
+    
+    { set baud rate and mode}
+    delay (1); {.10 seconds }
+    baud;                 
+    
+    {wait for carrier }
+    i := 0;               {Pascal for this might be                           }
+    repeat                { WHILE (NOT (Cts OR KbStat)) AND (I<200) DO BEGIN  } 
+        cd :=cts;         {    I := I + 1;                                    }
+        if cd = false then{    Delay (10)                                     }
+            delay (10);   {    END;                                           }
+        i := i+1;
+(*|||   Vol Sys Mod
+    until cd or (i = 200) or kbstat;           { 20 seconds to answer }
+|||*)
+    until cd or (i = 60) or kbstat;           { 60 seconds to answer }
+{|||}
+    if cd = false then    { IF NOT Cd THEN                                    }
+        begin
+{|||
+        writeln ('no answer, phone on hook');
+|||}
+        WRITELN ('Never got their Carrier.');
+{|||}
+        hangitup;
+        end
+    else
+        begin
+        writeln ('carrier detected');
+        progStart;
+        end;
+    estconnection := cd;
+end;
+
+
+procedure go;
+{purpose: Used when modem connection may already be established}
+var
+    result: boolean;
+begin
+    if modemMode = ANS then
+        ri
+    else
+        sh;
+    result := estconnection;
+end;
+
+
+procedure dialnum;
+{purpose: Get dial tone and dial number}
+var
+    i, j: integer;
+    result: boolean;
+begin
+    modemMode := ORG;
+    result := true;
+    { hangup }
+    hangitup;
+    {go off hook }
+    sh;
+    {wait for dial tone }
+    i := 0;
+    repeat
+        result := dtonedet;
+        if not result then
+            delay (5); {.5 seconds }
+        i := i+1;
+    until result or (i = 10);                 { 5 seconds for dial tone }
+    
+    if not result then
+        writeln ('no dial tone')
+    else
+        { dial number }
+        begin
+        delay (3);        { delay .3 seconds }
+        writeln;
+        write ('DIALING: ');
+        i := 1;  
+        while (i <= length(telnum)) and result do
+            begin
+            write (telnum[i]);
+            if (telnum[i] >= '0') and (telnum[i] <= '9') then
+                dialer (telnum[i])
+            else
+                if telnum[i] = '*' then
+                    begin
+                    {wait for dial tone }
+                    j := 0;
+                    repeat
+                        result := dtonedet;
+                        if not result then
+(*|||
+                            delay (50); {.5 seconds }
+|||*)
+                            Delay (5); {.5 seconds }
+{|||}
+                        j := j+1;
+                    until dtonedet or (i = 10);     { 5 seconds for dial tone }
+                    if not result then
+                        writeln ('no dial tone')
+                    end;
+            i:= i+1;     
+            end;
+       writeln;
+       if result then
+           result := estconnection;
+    end;
+end;
+       
+procedure dial;
+{purpose: Get number to be dialed, and call dialer}
+var
+    ready: boolean;
+begin
+    writeln;
+    write ('Enter number to be dialed: ');
+    readln (telnum);
+    dialnum;
+end;
+    
+procedure contRedial;
+{purpose: Redail continuely}
+var
+    ready: boolean;
+    kbrdy: boolean;
+begin
+    repeat
+        dialnum;
+        kbrdy := kbstat;
+        if not ready and not kbrdy then
+            delay (30);           { wait 30 seconds}
+        kbrdy := kbstat;
+    until ready or kbrdy;
+end;
+
+
+function autoanswer: boolean;
+begin
+    initState;
+    progSelect := PT;
+    modemMode := ANS;
+    autoanswer := false;
+    writeln;
+    write ('Waiting for call...');
+    repeat
+    until ringing or kbstat;
+{|||    Vol Sys Mod
+    if ringing then
+        delay (10);                     
+    if ringing then
+        begin
+        ri;
+        autoanswer := estconnection;
+        end;
+|||}
+    IF NOT KbStat THEN BEGIN   {Only test Ringing once}
+        DtrOn;
+        Delay (10);
+        Ri;
+        AutoAnswer := EstConnection;
+        UartCmd (FALSE)  {can't hangitup cause might be unattended}
+        END
+{|||}
+end;
+
+
+procedure uattended;
+{purpose: Unattended autoanswer mode}
+begin
+    repeat
+        if autoanswer then
+{|||
+            progStart;
+|||         ; {autoanswer will have done it   |||}
+    until kbstat;
+end;
+
+
+procedure changeBaud;
+{purpose: Change to specified baud rate}
+const
+    baudFac = 15625;        {used to calculate baud rate for PMMI modem only}
+begin
+    currentBaud := rate;
+{|||
+    baudrate := baudFac div rate;
+|||}
+    BaudRate := Rate;
+{|||}
+    baud;
+end;
+
+
+procedure setBaud;
+{purpose: Set PTP receiver and xmitter baud rates and set baud rate}
+begin
+    xmitBaud := rate;
+    recBaud := rate;
+    changeBaud (rate);
+end;
+
+procedure getBaud;
+{purpose: Get user requested baud rate and set}
+var
+    rate: integer;
+begin
+    {$I-}
+    repeat
+        writeln;
+        write ('Enter baud rate (110-4800): ');
+        readln (rate);
+    until (IORESULT = 0) and (rate >=110) and (rate <= 4800);
+    {$I+}
+    setBaud (rate);
+end;
+
+
+procedure options;
+{purpose: Call specified option setting routine}
+begin
+    writeln;
+    write (
+'P(TP M(ode T(race O(rg A(ns / R(awTerm B(aud F(ullduplex H(alfduplex: ');
+    read (c);
+    case c of 
+        'P','p': progSelect := PT;
+        'R','r': progSelect := RT;
+        'B','b': getBaud;
+        'F','f': halfduplex := false;
+        'H','h': halfduplex := true;
+        'T','t': monitor;
+        'M','m': setModes;
+{|||}   
+        'O','o': ModemMode := Org;
+        'A','a': ModemMode := Ans;
+{|||}
+    end;
+end;
+
+
+procedure modemMenu;
+{purpose: Display modem menu}
+var
+    c: char;
+    ready: boolean;
+begin
+    repeat
+        writeln;
+{$I-|||}
+        CLOSE (RFile, LOCK);
+        CLOSE (XFile, LOCK);
+{$I+|||}
+        case progSelect of
+{|||        Vol Sys Mod         |||}
+            PT: BEGIN
+                WRITE ('PTP Mode-');
+                IF ModemMode = Org 
+                    THEN WRITE ('ORG')
+                    ELSE IF ModemMode = Ans
+                        THEN WRITE ('ANS');
+                WRITE (' Xmit-');
+                IF XmitBinary 
+                    THEN WRITE ('Bin')
+                    ELSE WRITE ('R41');
+                WRITE (' Recv-');
+                IF RecBinary
+                    THEN WRITE ('Bin')
+                    ELSE WRITE ('R41')
+                END;
+            RT: BEGIN
+                write ('RAW ');
+                IF HalfDuplex
+                    THEN WRITE ('Half')
+                    ELSE WRITE ('Full');
+                WRITE ('Duplex')
+                END;
+{|||}
+        end;
+        write (' ',currentBaud,' baud ');
+{|||}   if cts or loopbk then
+            begin
+            writeln (' Carrier');
+{|||        writeln;    |||}
+            write ('E(xit G(o H(angup O(ptions U(nattended: ');
+            read (c);
+            case c of 
+                'H','h': hangitup;
+                'G','g': progStart;
+                'O','o': options;
+                'U','u': uattended;
+                end;
+            end
+        else
+            begin
+            writeln (' OnHook');
+{|||
+            writeln;
+|||}
+write (
+   'A(utoans C(ntdial D(ial E(xit G(o H(angup O(ptions R(edial U(nattended : ');
+            read (c);
+            case c of 
+                'D','d': dial;
+                'R','r': dialnum;
+                'C','c': contRedial;
+                'A','a': ready := autoanswer;
+                'O','o': options;
+                'G','g': go;
+                'H','h': hangitup;
+                'U','u': uattended;
+               end;
+        end;
+   until (c = 'E') or (c = 'e');
+end;
+
+procedure initState;
+{purpose: Initial modem state}
+    begin
+    setBaud (300);
+    cBaud.bte := 0;
+    cBaud.bd.b300 := TRUE;
+    recBinary := FALSE;
+    xmitBinary := FALSE;
+    recFull := FALSE;
+    xmitFull := FALSE;
+end;
+
+procedure modInit;
+{purpose: Initial state at starup}
+begin
+    progSelect := RT;
+    unattended := false;
+    initState;
+    modemInit;
+end;
+
+
+{------------------- INITIALIZATION  -----------------}
+
+procedure init;
+
+{purpose: Calls individual initialization procedures.}
+
+begin
+    {init a CR string}
+    {$R-}
+    acr[0] := chr(1);
+    acr[1] := chr(CR);
+    {$R+}
+{|||}
+    ModemMode := ORG;
+{|||}
+    mynode := ORG;
+    initrawterm;
+    firstptpinit;
+    modInit;
+end;
+
+begin {main}
+    
+{|||}
+    PAGE (OUTPUT);
+    writeln;
+    writeln (title);
+    writeln;
+    writeln (version);
+{|||}
+    
+    writeln;
+    setModes;
+    init;
+    modemMenu;
+    hangitup;
+end.

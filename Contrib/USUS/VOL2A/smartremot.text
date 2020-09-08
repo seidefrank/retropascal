@@ -1,0 +1,501 @@
+
+(* Program Author:   Walter Hess
+                     1460 Seven Pines Rd.
+                     Schaumberg, IL 60193
+                     
+                                                        *)
+                                                        
+(* SMTTERM
+               
+                    BEWARE!!!   This program has only been 
+               finished (I think) during the last week.  It 
+               requires a serial card at addresses 177570 thru
+               177576 (octal). the VECTOR address is 270 but is 
+               not used as PASCAL has no provision for servicing
+               an interrupt from this card.  The resultant RS232 
+               port is connected to a coupler for dial-up to the 
+               remote computer.
+               
+                    The biggest problem I had was in writing to 
+               a disc file from the remote computer due to the 
+               fact that PASCAL stores data for a file in 
+               temporary storage someplace and periodically 
+               actually writes it to disc.  The period while it 
+               is writing to disc is relatively long and since 
+               the remote computer keeps sending data, some
+               information would be lost.  I solved the problem
+               by writing to an array, and when the array is
+               nearly full, I send the remote computer an ESC
+               "H" which is the command sequence which halts the
+               particular remote computer I use (see PROCEDURE
+               WARRY).  After a short wait while the remote
+               computer stops during which time arriving
+               characters are accepted, I write the array to the
+               disc file and then tell the remote computer to
+               resume by sending an ESC which restarts the 
+               remote computer (see PROCEDURE WFILE). The
+               particular commands will, of course, be different
+               for different computers.
+               
+                    Another tricky area was the use of "BREAK". 
+               If you want to send a "BREAK" to the remote 
+               computer, do not use the "BREAK" key as this will 
+               locally interrupt PASCAL.  Instead, I simulate a 
+               "BREAK" with the top row f5 which does the job 
+               nicely.
+               
+                    The program uses certain of the ESC 
+               functions created by the top row of keys as 
+               program commands and passes all other ESC 
+               sequences to the remote computer.  If the remote 
+               computer needs one of the top row sequences, the 
+               command structure will have to be modified.  It 
+               seems that Heath uses sequences for the top row 
+               which are not commonly used elsewhere.*)
+               
+PROGRAM SMTTERM;
+{ VERSION "O"  10/20/79  W.I.H. }
+
+CONST
+  ARLEN = 100;
+
+TYPE
+  POINTER = ^CHAR;
+
+VAR
+  PCH,PCHS,PCHR,PCHRS,CCH,CCHS,CCHR,CCHRS : POINTER;
+  TCHAR : PACKED ARRAY[0..1] OF CHAR;
+  ARINDEX,CFULL,PRINDEX,COLM,LNCT,LNLINE,LNINCH,LNPAGE,L : INTEGER;
+  NFULL,HALT,LESC,FDUP,CMD,PRINTON,RCRDON,PLBKON,TERMINATE : BOOLEAN;
+  FILENAME : STRING[30];
+  PRARRY : PACKED ARRAY[1..ARLEN] OF STRING[132];
+  SSTRING : STRING[1];
+  PRFILE : TEXT;
+  R : REAL;
+  RCH,CH,ESCH : CHAR;
+
+PROCEDURE INITPT;
+
+TYPE
+  REP = (POINTREP,INTREP);
+  ALIAST = RECORD
+    CASE REP OF
+      POINTREP:
+        (POINTVAL : POINTER);
+      INTREP:
+        (INTVAL : INTEGER);
+    END; { CASE }
+
+VAR
+  ALIAS : ALIAST;
+
+BEGIN
+  ALIAS.INTVAL := -130;
+  CCH := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -132;
+  CCHS := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -134;
+  CCHR := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -136;
+  CCHRS := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -178;
+  PCH := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -180;
+  PCHS := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -182;
+  PCHR := ALIAS.POINTVAL;
+  ALIAS.INTVAL := -184;
+  PCHRS := ALIAS.POINTVAL;
+END;
+
+PROCEDURE WASTE;
+VAR
+  K : INTEGER;
+
+BEGIN
+  REPEAT
+    K := ORD(PCHS^);
+  UNTIL K = 128;
+END; {Waste}
+
+PROCEDURE COMM(CH : CHAR);
+
+VAR
+  L : INTEGER;
+  
+BEGIN
+  REPEAT
+    L := ORD(CCHS^);
+  UNTIL L = 128;
+  CCH^ := CH
+END; {Comm}
+
+PROCEDURE CARRAY;
+
+VAR
+  J : INTEGER;
+
+BEGIN
+  FOR J := 2 TO ARLEN DO
+    PRARRY[J] := '';
+END; {Carray}
+
+PROCEDURE WARRY;
+
+BEGIN
+  IF ORD(CH) > 127
+    THEN CH := CHR(ORD(CH) - 128);
+  IF CH = CHR(10)
+    THEN CH := CHR(127);
+  IF (CH = CHR(13))
+    THEN
+      BEGIN
+        PRINDEX := 1;
+        ARINDEX := ARINDEX + 1;
+        IF ARINDEX = ARLEN - 3
+          THEN
+            BEGIN
+              NFULL := TRUE;
+              COMM(ESCH);COMM('H');
+            END;
+      END
+    ELSE
+      BEGIN
+        IF CH <> CHR(127)
+          THEN
+            BEGIN
+              SSTRING[1] := CH;
+              INSERT(SSTRING,PRARRY[ARINDEX],PRINDEX);
+              PRINDEX := PRINDEX + 1;
+            END;
+      END;
+END; {Warry}
+
+PROCEDURE WFILE;
+
+VAR
+  K,J : INTEGER;
+
+BEGIN
+  K := 1;
+  IF LENGTH(PRARRY[1]) = 0
+    THEN K := 2;
+  FOR J := K TO ARINDEX - 1 DO
+    WRITELN(PRFILE,PRARRY[J]);
+  IF PRINDEX > 1
+    THEN
+      PRARRY[1] := PRARRY[ARINDEX]
+    ELSE
+      PRARRY[1] := '';
+  ARINDEX := 1;
+  CARRAY;
+  NFULL := FALSE;
+  COMM(ESCH);
+END; {Wfile}
+
+PROCEDURE PRINT (PRTCHR : CHAR);
+
+BEGIN
+  IF PRTCHR = CHR(13)
+    THEN PRTCHR := CHR(10);
+  WASTE;PCH^ := PRTCHR;
+END; {Print}
+
+PROCEDURE PRINTER;
+
+BEGIN
+  WRITE(ESCH,'Y8 ',ESCH,'l','Enter printer characters per line ');
+  WRITE('80, 96 or 132)  ');
+  PCH^ := ESCH;WASTE;PCH^ := CHR(117);WASTE;
+  REPEAT
+    READLN(LNLINE);
+    IF LNLINE = 80
+    THEN
+      BEGIN
+        PCH^ := CHR(1);WASTE;
+      END
+    ELSE
+      IF LNLINE = 96
+      THEN
+        BEGIN
+          PCH^ := CHR(20);WASTE;
+        END
+      ELSE
+        IF LNLINE = 132
+        THEN
+          BEGIN
+            PCH^ := CHR(36);WASTE;
+          END;
+    UNTIL (LNLINE = 80) OR (LNLINE = 96) OR (LNLINE = 132);
+    WRITE(ESCH,'Y8 ',ESCH,'l','Enter lines per inch (6 or 8)  ');
+    PCH^ := ESCH;WASTE;
+    REPEAT
+      READLN(LNINCH);
+      IF LNINCH = 6
+      THEN
+        BEGIN
+          PCH^ := CHR(120);WASTE;
+        END
+      ELSE
+        IF LNINCH = 8
+        THEN
+          BEGIN
+            PCH^ := CHR(121);WASTE;
+          END;
+    UNTIL (LNINCH = 6) OR (LNINCH = 8);
+END; {Printer}
+
+PROCEDURE COMMAND;
+
+VAR
+  GCHAR : BOOLEAN;
+
+  PROCEDURE DISPLAY;
+  
+  BEGIN
+    WRITE(ESCH,'Y8 ',ESCH,'l',ESCH,'F^',ESCH,'G');
+    IF CMD
+      THEN WRITE(ESCH,'p');
+    WRITE('BLUE Cmd',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF PLBKON
+      THEN WRITE(ESCH,'p');
+    WRITE('RED Playback',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF RCRDON
+      THEN WRITE(ESCH,'p');
+    WRITE('GREY Record',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF NOT FDUP
+      THEN WRITE(ESCH,'p');
+    WRITE('f1 Half Duplex',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF PRINTON
+      THEN WRITE(ESCH,'p');
+    WRITE('f2 Print',ESCH,'q',ESCH,'F^',ESCH,'G','f3 Terminate',
+                                              ESCH,'F^',ESCH,'G');
+  END; {Display}
+  
+  PROCEDURE RCORD;
+  
+  VAR
+    TRYAGAIN : BOOLEAN;
+
+  BEGIN
+    {$I-}
+    REPEAT
+      WRITE(ESCH,'Y8 ',ESCH,'l','Enter File Name (.TEXT Assumed)');
+      WRITE(' Or CR to Terminate  ');
+      READLN(FILENAME);
+      IF LENGTH(FILENAME) = 0
+        THEN
+          BEGIN
+            RCRDON := FALSE;
+            EXIT(RCORD);
+          END;
+      FILENAME := CONCAT(FILENAME,'.TEXT');
+      RESET(PRFILE,FILENAME);
+      IF IORESULT = 0
+        THEN
+          BEGIN
+            CLOSE(PRFILE);
+            WRITE(ESCH,'Y8 ',ESCH,'l','File exists, do you want to ');
+            WRITE('replace it (Y or N)   ');
+            REPEAT
+              READ(CH);
+            UNTIL (CH = 'Y') OR (CH = 'N') OR (CH = 'y') OR (CH = 'n');
+            IF (CH = 'N') OR (CH = 'n')
+              THEN TRYAGAIN := TRUE
+              ELSE TRYAGAIN := FALSE;
+          END
+        ELSE TRYAGAIN := FALSE;
+      IF NOT TRYAGAIN
+        THEN REWRITE(PRFILE,FILENAME);
+    UNTIL (IORESULT = 0) AND (NOT TRYAGAIN);
+    {$I+}
+    WRITE(ESCH,'k');
+    END; {Rcord}
+    
+    PROCEDURE PLAYBACK;
+  
+    VAR
+      J : INTEGER;
+  
+    BEGIN
+      {$I-}
+      REPEAT
+        WRITE(ESCH,'Y8 ',ESCH,'l','Enter File Name (.TEXT Assumed)');
+        WRITE(' Or CR to Terminate  ');
+        READLN(FILENAME);
+        FILENAME := CONCAT(FILENAME,'.TEXT');
+        IF LENGTH(FILENAME) = 0
+          THEN
+            BEGIN
+              PLBKON := FALSE;
+              EXIT(PLAYBACK);
+            END;
+        RESET(PRFILE,FILENAME);
+      UNTIL IORESULT = 0;
+      {$I+}
+      WRITE(ESCH,'k');
+      COMM(ESCH);COMM('E');COMM(CHR(17));
+      WHILE NOT EOF(PRFILE) DO
+        BEGIN
+          READ(PRFILE,RCH);
+          COMM(RCH);
+          WRITE(RCH);
+          IF EOLN(PRFILE)
+            THEN
+              BEGIN
+                COMM(CHR(13));
+                WRITE(CHR(13));
+                READ(PRFILE,RCH);
+              END;
+        END; {While}
+        IF ORD(CCHRS^) = 128
+          THEN IF ORD(CCHR^) = 7
+            THEN FOR J := 1 TO 1000 DO
+              R := 6.2*164.83*9.5/17.84;
+        PLBKON := FALSE;
+        WRITE(ESCH,'j');
+        CLOSE(PRFILE);
+        COMM(ESCH);COMM('E');COMM(CHR(19));
+      END; {Playback}
+    
+BEGIN {Command}
+  WRITE(ESCH,'x5',ESCH,'j');
+  CMD := TRUE;
+  DISPLAY;
+  REPEAT
+    GCHAR := FALSE;
+    REPEAT
+      READ(CH);
+      IF CH = ESCH
+        THEN
+          BEGIN
+            GCHAR := TRUE;
+            READ(CH);
+          END
+        ELSE WRITE(CHR(7));
+    UNTIL GCHAR AND (CH IN ['P'..'U']);
+    CASE CH OF
+      'P' : CMD := FALSE;
+      'Q' : IF PLBKON
+            THEN PLBKON := FALSE
+            ELSE
+              BEGIN
+                PLBKON := TRUE;
+                DISPLAY;
+                PLAYBACK;
+              END;
+      'R' : IF RCRDON
+              THEN
+                BEGIN
+                  RCRDON := FALSE;
+                  WFILE;
+                  CLOSE(PRFILE,LOCK);
+                END
+              ELSE
+               BEGIN
+                 RCRDON := TRUE;
+                 PRINDEX := 1;
+                 ARINDEX := 1;
+                 CARRAY;
+                 NFULL := FALSE;
+                 PRARRY[1] := '';
+                 RCORD;
+               END;
+      'S' : IF FDUP = TRUE
+              THEN FDUP := FALSE
+              ELSE FDUP := TRUE;
+      'T' : IF PRINTON
+              THEN
+                BEGIN
+                  PRINT(CHR(12));
+                  PRINTON := FALSE
+                END
+              ELSE
+                BEGIN
+                  PRINTON := TRUE;
+                  PRINTER;
+                END;
+      'U' : TERMINATE := TRUE;
+    END; {Case}
+    DISPLAY;
+  UNTIL (NOT CMD) OR TERMINATE;
+  WRITE(ESCH,'y5',ESCH,'k');
+END; {Command}
+
+BEGIN { Smtterm }
+  
+  WRITELN;
+  WRITELN(CHR(7),' ** NOTE **  f5 SENDS A "BREAK".  ENTER SPACE TO CONTINUE');
+  READ(CH);
+  ESCH := CHR(27);
+  WRITE(ESCH,'x1');
+  SSTRING := ' ';
+  CFULL := 0;
+  INITPT;
+  NFULL := FALSE;TERMINATE := FALSE; HALT := FALSE;
+  FDUP := TRUE;CMD := FALSE;PRINTON := FALSE;RCRDON := FALSE;PLBKON := FALSE;
+  WRITE(ESCH,'y6');
+  COMMAND;
+  REPEAT
+    UNITREAD(2,TCHAR[0],1,,1);
+    WHILE UNITBUSY(2) DO
+      BEGIN
+        L := ORD(CCHRS^);
+        IF NFULL THEN CFULL := CFULL + 1;
+        IF L = -32640
+          THEN
+            BEGIN
+              CH := CCHR^;
+              WRITE(CH);
+              IF PRINTON
+                THEN PRINT(CH);
+              IF RCRDON
+                THEN WARRY;
+            END;
+        IF CFULL = 5000
+          THEN 
+            BEGIN
+              WFILE;
+              CFULL := 0;
+            END;
+      END; {While}
+    IF LESC
+      THEN
+        BEGIN
+          LESC := FALSE;
+          IF TCHAR[0] = 'P'
+            THEN COMMAND
+            ELSE
+              BEGIN
+                IF TCHAR[0] = 'W'
+                  THEN
+                    BEGIN
+                      CCHS^ := CHR(1);
+                      FOR L := 1 TO 10 DO
+                        R := 6.2*164.83*9.5/17.84;
+                      CCHS^ := CHR(0);
+                    END
+                  ELSE
+                    BEGIN
+                      COMM(ESCH);COMM(TCHAR[0]);
+                      IF TCHAR[0] = 'H'
+                        THEN HALT := TRUE;
+                    END;
+              END;
+        END
+      ELSE
+        IF (TCHAR[0] = ESCH) AND (NOT HALT)
+          THEN LESC := TRUE
+          ELSE
+            BEGIN
+              COMM(TCHAR[0]);
+              IF TCHAR[0] = ESCH
+                THEN HALT := FALSE
+                ELSE IF NOT FDUP
+                  THEN WRITE(TCHAR[0]);
+            END;
+  UNTIL TERMINATE;
+  WRITE(ESCH,'k');
+  WRITE(ESCH,'z');
+END. {Smtterm}
+

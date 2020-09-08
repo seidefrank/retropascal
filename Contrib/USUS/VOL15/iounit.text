@@ -1,0 +1,115 @@
+UNIT IOUNIT;
+{This is an implememtation dependent unit for LSI-11's.  It allow direct
+ access to the hardware buffers so the i/o can be accomplished directly
+ without the intervention of the OS.  It may be necessary to disable
+ interrupts at a port if characters are to be read from that port as the
+ interrupt driven OS has a tendency to snatch them away before you can get
+ your hands on them.    george w. schreyer}
+ 
+INTERFACE
+
+TYPE CHAR_POINTER = ^CHAR;
+     WORD = PACKED ARRAY[0..15] OF BOOLEAN;
+     WORD_POINTER = ^WORD;
+
+VAR MODEM_RBUF   : CHAR_POINTER;
+    MODEM_RCSR   : WORD_POINTER;
+    MODEM_XBUF   : CHAR_POINTER;
+    MODEM_XCSR   : WORD_POINTER;
+    
+    PRINT_RBUF   : CHAR_POINTER;
+    PRINT_RCSR   : WORD_POINTER;
+    PRINT_XBUF   : CHAR_POINTER;
+    PRINT_XCSR   : WORD_POINTER;
+    
+    CRT_RBUF     : CHAR_POINTER;
+    CRT_RCSR     : WORD_POINTER;
+    CRT_XBUF     : CHAR_POINTER;
+    CRT_XCSR     : WORD_POINTER;
+    
+    BIT : WORD;
+    
+PROCEDURE VER_IOUNIT;
+PROCEDURE SET_UP_POINTERS;
+
+(******************)
+
+IMPLEMENTATION
+
+PROCEDURE VER_IOUNIT ;
+BEGIN
+   WRITELN('uses iounit     version 1     5-Aug-81');
+END;
+
+PROCEDURE SET_UP_POINTERS;  {sets values of pointers}
+ TYPE REP = (POINTREP,INTREP);   {this procedure adapted from SMARTREMOT in
+                                                   USUS library}
+      TTT = (WORDREF,BITREP);
+ 
+ ALIAST = RECORD
+    CASE REP OF
+       POINTREP: (POINTVAL : CHAR_POINTER);
+       INTREP  : (INTVAL : INTEGER);
+    END;
+ 
+ BUFFER = RECORD
+    CASE TTT OF
+       WORDREF : (WORDVAL : WORD_POINTER);
+       BITREP  : (INTVALX : INTEGER);
+    END;
+    
+ VAR ALIAS : ALIAST;
+     XBUFFER : BUFFER;
+ 
+ {the negative numbers below are two's complement representations of the
+  addresses (octal) of various places in the I/O page.  The addresses used 
+  conform to UCSD and RT-11 standard conventions.  Although not important
+  here, the vector is 200.}
+ 
+ BEGIN
+    ALIAS.INTVAL := -182;   {printer rbuf, 177512}
+    PRINT_RBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -184;   {printer rcsr, 177510}
+    PRINT_RCSR := XBUFFER.WORDVAL;
+    
+    ALIAS.INTVAL := -178;   {printer xbuf, 177516}
+    PRINT_XBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -180;   {printer xcsr, 177514}
+    PRINT_XCSR := XBUFFER.WORDVAL;
+    
+    (*********)
+    
+    ALIAS.INTVAL := -170;   {modem xbuf,  177526}
+    MODEM_XBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -172;  {modem xcsr, 177524}
+    MODEM_XCSR := XBUFFER.WORDVAL;
+    
+    ALIAS.INTVAL := -174;   {modem rbuf,  177522}
+    MODEM_RBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -176;  {modem rcsr,  177520}
+    MODEM_RCSR := XBUFFER.WORDVAL;
+    
+    (********)
+    
+    ALIAS.INTVAL := -138;  {console xbuf,  177566}
+    CRT_XBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -140;  {console xcsr,  177564}
+    CRT_XCSR := XBUFFER.WORDVAL;
+    
+    ALIAS.INTVAL := -142;  {console rbuf,  177562}
+    CRT_RBUF := ALIAS.POINTVAL;
+    
+    XBUFFER.INTVALX := -144;  {console rcsr,  177560}
+    CRT_RCSR := XBUFFER.WORDVAL;
+    
+    
+END;   {initpointer}
+
+            
+END.
+            

@@ -1,0 +1,333 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ARM">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM">
+      <Configuration>Release</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="filesystem\converttext.cpp" />
+    <ClCompile Include="filesystem\diskio_winrt.cpp" />
+    <ClCompile Include="lib\byte_sex.c" />
+    <ClCompile Include="lib\diskio.c" />
+    <ClCompile Include="lib\memory.c" />
+    <ClCompile Include="lib\progname.c" />
+    <ClCompile Include="lib\version.c" />
+    <ClCompile Include="lib\version_stamp.c" />
+    <ClCompile Include="ucsdpsys_vm\array.c" />
+    <ClCompile Include="ucsdpsys_vm\long_integer.c" />
+    <ClCompile Include="ucsdpsys_vm\main.c" />
+    <ClCompile Include="ucsdpsys_vm\native6502.c" />
+    <ClCompile Include="ucsdpsys_vm\printer.c" />
+    <ClCompile Include="ucsdpsys_vm\ptrace.c" />
+    <ClCompile Include="ucsdpsys_vm\search.c" />
+    <ClCompile Include="ucsdpsys_vm\sets.c" />
+    <ClCompile Include="ucsdpsys_vm\stack.c" />
+    <ClCompile Include="ucsdpsys_vm\term.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="ucsdpsys_vm\turtlegr.c" />
+    <ClCompile Include="ucsdpsys_vm\unit_io.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="filesystem\converttext.h" />
+    <ClInclude Include="filesystem\diskio_winrt.h" />
+    <ClInclude Include="lib\byte_sex.h" />
+    <ClInclude Include="lib\diskio.h" />
+    <ClInclude Include="lib\gcc_attributes.h" />
+    <ClInclude Include="lib\memory.h" />
+    <ClInclude Include="lib\patchlevel.h" />
+    <ClInclude Include="lib\pcode.h" />
+    <ClInclude Include="lib\progname.h" />
+    <ClInclude Include="lib\psystem.h" />
+    <ClInclude Include="lib\version.h" />
+    <ClInclude Include="lib\version_stamp.h" />
+    <ClInclude Include="ucsdpsys_vm\array.h" />
+    <ClInclude Include="ucsdpsys_vm\long_integer.h" />
+    <ClInclude Include="ucsdpsys_vm\main.h" />
+    <ClInclude Include="ucsdpsys_vm\native6502.h" />
+    <ClInclude Include="ucsdpsys_vm\printer.h" />
+    <ClInclude Include="ucsdpsys_vm\ptrace.h" />
+    <ClInclude Include="ucsdpsys_vm\search.h" />
+    <ClInclude Include="ucsdpsys_vm\sets.h" />
+    <ClInclude Include="ucsdpsys_vm\stack.h" />
+    <ClInclude Include="ucsdpsys_vm\term.h" />
+    <ClInclude Include="ucsdpsys_vm\turtlegr.h" />
+    <ClInclude Include="winrt\compat.h" />
+    <ClInclude Include="winrt\libexplain.h" />
+    <ClInclude Include="winrt\term_winrt.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\COMMAND.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\EDITOR.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\ENVIRON.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\FIND.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\HEAD.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\INIT.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\INSERTIT.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\MISC.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\MOVEIT.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\OUT.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\USER.PAS" />
+    <None Include="..\UCSD Pascal 1.5\editor-e.4\UTIL.PAS" />
+    <None Include="..\UCSD Pascal 1.5\I.5Binder.text" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BLOCK.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BODYPARTA.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BODYPARTB.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BODYPARTC.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BODYPARTD.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\BODYPARTE.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\COMPGLBLS.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\COMPILER.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\COMPINIT.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\DECPARTA.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\DECPARTB.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\DECPARTC.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\PROCS.A.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\PROCS.B.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Compiler\UNITPART.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Librarian.text" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINK0.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINK1.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINK2.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINK3A.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINK3B.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5Linker\LINKER.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5System\GLOBALS.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5System\SYSSEGS.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5System\SYSTEM.B.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5System\SYSTEM.C.TEXT" />
+    <None Include="..\UCSD Pascal 1.5\I.5System\SYSTEM.TEXT" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\long_integer\decop.a.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\long_integer\decop.b.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\long_integer\drwstuff.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\long_integer\globals.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\long_integer\main.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\transcendental\main.text" />
+    <None Include="..\ucsd-psystem-os-1.3-raw\turtle_graphics\main.text" />
+    <None Include="lib\config.h.in" />
+    <None Include="README" />
+    <None Include="turtle_graphics\turt.asm.text" />
+    <None Include="turtle_graphics\turtlegr.text" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\filenote.txt" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\FILER.TXT" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\FILERA.TXT" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\FILERB.TXT" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\FILERC.TXT" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\FILERD.TXT" />
+    <Text Include="..\UCSD Pascal 1.5\filer-F5\GLOBALS.TXT" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{fb1983c4-45cd-4b38-b706-ed9f88c4e223}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectName>ucsd-psystem lib</ProjectName>
+    <RootNamespace>ucsd_psystem_lib</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>11.0</MinimumVisualStudioVersion>
+    <AppContainerApplication>true</AppContainerApplication>
+    <SccProjectName>SAK</SccProjectName>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccProvider>SAK</SccProvider>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <GenerateManifest>false</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|arm'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|arm'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <SDLCheck>true</SDLCheck>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);TURTLEGRAPHICS</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories);winrt</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

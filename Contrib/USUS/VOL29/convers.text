@@ -1,0 +1,1967 @@
+{$S++}
+PROGRAM convers;
+
+{$C Copyright 1981, 1982, 1983, 1984 by John Dykstra.  All rights reserved.  }
+
+
+{       CONVERS - Release 1 - 7/3/82  }
+{                 Release 2 - 1/10/83  }
+{                 Release 3 - 1/01/84  }
+
+
+
+
+USES  screenops, 
+      (*$U remunit.code*) remunit, 
+      (*$U textio.code*) textio, 
+      (*$U osmisc.code*) osmisc;
+
+{$P}
+
+CONST
+  
+  {  Constants that define the characteristics of the serial link.  }
+  
+  default_baud = 0;             {  Default baud rate used - zero means search  }
+  use_par = TRUE;               {  Use parity checking  }
+  even_par = TRUE;              {  Even parity  }
+  char_size = 7;                {  Link character size, in bits  }
+  stop_bits = 1;                {  Number of stop bits for link  }
+  
+  {  Miscellaneous program constants which may be changed in the future.  }
+  
+  version = 'C9';               {  Program version  }
+  copyr_msg=
+    'Copyright 1981, 1982, 1983, 1984 by John Dykstra.  All rights reserved.';
+  
+  max_open_files = 5;           {  Number of transfer files open at once  }
+  sym_tbl_size = 30;            {  size of the symbol table  }
+  max_nest_level = 5;           {  max levels of script nesting  }
+  max_cnd_level = 5;            {  max levels of conditional nesting  }
+  max_name_size = 32;           {  Max size of names  }
+  max_cmd_size = 8;             {  max chars in a command name  }
+  max_script_line = 80;         {  Max length of line in script  }
+  
+  {  Program constants that will probably never change.  }
+  
+  ch_lf = 10;                   {  ASCII line feed character  }
+  ch_cr = 13;                   {  ASCII carriage return character  }
+  ch_ff = 12;                   {  ASCII form feed character  }
+  ch_esc = 27;                  {  ASCII <ESC> }
+  console = 1;                  {  unit number of CONSOLE:  }
+  
+  {  Screen format addresses  }
+  
+  header_x = 31;  header_y = 0; {  Program identification header  }
+  status_x = 0;  status_y = 5;  {  Start of status box  }
+  cmd_x = 0;  cmd_y = 7 ;       {  Start of command box  }
+  link_x = 0;  link_y = 11;     {  Start of text display field  }
+
+{$P}
+
+TYPE
+  script_line = STRING [ max_script_line ];
+  
+  command_name = STRING [ max_cmd_size ];
+  
+  long_string = STRING [ 255 ];
+  
+  script_index = 1 .. max_script_line;
+
+  name_type = STRING [ max_name_size ];
+  
+  string_type = STRING [ max_script_line ];
+  
+  {  The script status types  }
+  
+  script_status = ARRAY [ 1..max_nest_level ] OF  RECORD
+    script_name:  STRING;
+    line_number:  INTEGER;
+    END;        {  RECEND  }
+    
+  {  Conditional status types  }
+  
+  cnd_kinds = (  if_cnd, el_cnd, wh_cnd );
+  
+  cnd_status = ARRAY [ 1..max_cnd_level ] OF 
+    RECORD 
+      skip_flag:  BOOLEAN;
+      CASE cnd_kind:  cnd_kinds OF
+        wh_cnd:  ( line_num:  INTEGER );
+        if_cnd:  (  );
+        el_cnd:  (  );
+    END;        {  RECEND  }
+  
+  {  Lexical tokens definitions  }
+  
+  token_kinds = ( nam_tok, str_tok, int_tok, equ_tok, com_tok, eol_tok, 
+                  con_tok, fun_tok, lpn_tok, rpn_tok, log_tok, not_tok,
+                  bad_tok, no_tok );
+
+  set_of_token_kinds = SET OF token_kinds;
+  
+  token_type = RECORD CASE tok_kind:  token_kinds OF
+    int_tok:  ( int_val:  INTEGER );
+    str_tok:  ( str_val:  string_type );
+    nam_tok:  ( nam_val:  name_type );
+    fun_tok:  ( fun_val:  name_type );
+    log_tok:  ( log_val:  BOOLEAN );
+    END;        {  RECEND  }
+
+  {  function definitions  }
+  
+  fun_kinds = ( chr_fun, val_fun, read_fun, eof_fun, eq_fun, str_fun, nam_fun,
+                def_fun, bad_fun );
+  
+  {  error message severity levels  }
+  
+  error_level = ( warning, fatal, catastrophic );
+
+  time_period = INTEGER;
+  
+  {  Command definitions  }
+  
+  cmd_kinds = ( cal_cmd, com_cmd, def_cmd, dis_cmd, exe_cmd, mat_cmd, qui_cmd,
+                ret_cmd, sen_cmd, pau_cmd, tra_cmd, wai_cmd, if_cmd, 
+                els_cmd, ife_cmd, whi_cmd, whe_cmd, dia_cmd, han_cmd, 
+                bad_cmd  );
+                
+  {  reserved variable names  }
+  
+  res_kinds = ( res_command, res_line, res_unknown );
+  
+  {  Symbol table types  }
+  
+  symtbl_entry = RECORD
+    name:  name_type;
+    value:  token_type; 
+    END;                {  RECEND  }
+  
+  sym_tbl_index =  1..sym_tbl_size;
+
+  {  Transfer file table entry  }
+  
+  tran_entry = RECORD
+    name:  name_type;
+    now_open:  BOOLEAN;
+    direction:  io_direction;
+    file_blk:  io_file;
+    END;
+
+  tran_range = 1..max_open_files;
+  
+  {  The translate table is used to translate ASCII characters into upper-case
+  {  or printable (non-control) characters only.                              }
+  
+  xlate_entry = RECORD
+    upper:  CHAR;
+    no_ctl:  CHAR;
+    END;
+    
+{$P}
+
+VAR
+  cur_script_line:  script_line;        {  current script line  }
+  exit_requested:  BOOLEAN;             {  user hit ESC on keyboard  }
+  command:  token_type;                 {  current command name  }
+  delim_tok:  token_type;               {  delimiter of command name  }
+  alpha_chars:  SET OF CHAR;            {  All alphabetic characters  }
+  visible_chars:  SET OF CHAR;          {  All printables (not space)  }
+  script_file:  io_file;                {  The script input file  }
+  script_name:  STRING;                 {  the script file title  }
+  exit_condition:  BOOLEAN;             {  Some reason found to exit prog  }
+  successful:  BOOLEAN;                 {  Command processor was successful  }
+  sym_table:  ARRAY [ sym_tbl_index ]
+    OF symtbl_entry;                    {  The symbol table  }
+  highest_entry_index:  0..sym_tbl_size;{  Index of top entry in symbol table  }
+  nest_stack:  script_status;           {  Keeps track of script nesting  }
+  script_level:  1..max_nest_level;     {  current script nesting level  }
+  cnd_stack:  cnd_status;               {  keeps track of condition nesting  }
+  cnd_level:  0..max_cnd_level;         {  current conditional nesting level  }
+  tok_table:  ARRAY [ token_kinds ] 
+    OF STRING [ 7 ];                    {  Names of tokens for error messages  }
+  tran_tbl:  ARRAY [ tran_range ] OF 
+    tran_entry;                         {  Table of open transfer files  }
+  fun_names:  ARRAY [ fun_kinds ] OF
+    STRING [ 7 ];                       {  Names of functions  }
+  cmd_names:  ARRAY [ cmd_kinds ] OF
+    command_name;                       {  Names of all commands  }
+  var_names:  ARRAY [ res_kinds ] OF
+    name_type;                          {  Names of reserved variables  }
+  cmd_index:  cmd_kinds;                {  Index of current command  }
+  skipping:  BOOLEAN;                   {  Currently skipping command  }
+  cnd_cmds:  SET OF cmd_kinds;          {  Conditional commands  }
+  xlate_tbl:  ARRAY [ CHAR ] OF 
+    xlate_entry;                        {  Translates characters  }     
+  link_dis_line:  INTEGER;              {  Where we're displaying text  }
+  cmd_display:  BOOLEAN;                {  Display all commands  }
+  link_display:  BOOLEAN;               {  Display downline text  }
+  max_screen_y:  INTEGER;               {  Maximum y for GOTOXY  }
+
+{$P}
+
+
+{  Forward procedure declarations  }
+
+
+PROCEDURE get_token ( VAR line:  script_line;
+                      expected:  set_of_token_kinds;
+                      VAR  token:  token_type );  FORWARD;
+  
+PROCEDURE eval_expr ( VAR line:  script_line;
+                      exp_type:  set_of_token_kinds;
+                      exp_delim:  set_of_token_kinds;
+                      VAR value:  token_type;
+                      VAR delim:  token_type  );  FORWARD;
+
+PROCEDURE error ( level:  error_level;
+                  message:  STRING );  FORWARD;
+
+PROCEDURE make_upper ( VAR symbol:  STRING );  FORWARD;
+
+PROCEDURE get_tran_file ( file_name:  script_line;
+                            direction:  io_direction;
+                            VAR tbl_index:  tran_range );  FORWARD;
+
+PROCEDURE close_all_files;  FORWARD;
+
+PROCEDURE close_tran_file ( tbl_index:  tran_range );  FORWARD;
+
+PROCEDURE match ( text_line:  string_type;
+                  quiet_ending:  BOOLEAN;
+                  period:  time_period;
+              VAR complete_match:  BOOLEAN );  FORWARD;
+ 
+PROCEDURE do_define ( line:  script_line );  FORWARD;
+
+PROCEDURE check_kb ( VAR exit_seen:  BOOLEAN);  FORWARD;
+
+{$P}
+
+SEGMENT PROCEDURE initialize;
+
+  
+  TYPE
+    baud_rates = ( baud_9600, baud_1200, baud_300, baud_110, all_tried );
+    
+  VAR
+    rem_exists, dialer_exists:  BOOLEAN;
+    bauds:  ARRAY [ baud_rates ] OF INTEGER;
+    attempted_baud_rate:  baud_rates;
+    table_index:  1..max_open_files;
+    result:  cr_baud_result;
+    index:  CHAR;
+    
+    
+  PROCEDURE init_screen;
+  
+    VAR
+      info:  sc_info_type;
+      box_line:  STRING [ 80 ];
+    
+    BEGIN       {  PROCEDURE init_screen  }
+    
+    {  Get the screen height from SCREENOPS.  This is used to decide how far
+    {  we can write while displaying downlink data.                           }
+    
+    sc_use_info ( sc_get, info );
+    max_screen_y := info.misc_info.height;
+    
+    sc_clr_screen;
+    GOTOXY ( header_x, header_y );
+    WRITE ( 'CONVERS  Version ', version );
+    GOTOXY ( header_x - 26, header_y + 2 );
+    WRITE ( copyr_msg );
+    
+    {  Put the status box onto the screen, with an initializing message.
+    {  This message will be overlaid with the first message from the script.  }
+    
+    box_line :=  '----------------------------------------';
+    box_line := CONCAT ( box_line, box_line );
+      
+    GOTOXY ( status_x, status_y );
+    WRITE ( box_line );
+    GOTOXY ( status_x, status_y + 1 );
+    WRITE ( '|   Status:  Initializing' );
+    GOTOXY ( 79, status_y + 1 );
+    WRITE ( '|' );
+    GOTOXY ( status_x, status_y + 2 );
+    WRITE ( box_line );
+    
+    END;        {  PROCEDURE init_screen  }
+    
+    
+  PROCEDURE init_tables;
+  
+    BEGIN
+    
+    {  Initialize the token table, used for error messages by get_token.  }
+    
+    tok_table [ nam_tok ] := 'name';
+    tok_table [ str_tok ] := 'string';
+    tok_table [ int_tok ] := 'integer';
+    tok_table [ equ_tok ] := '"="';
+    tok_table [ com_tok ] := '","';
+    tok_table [ eol_tok ] := '<EOL>';
+    tok_table [ con_tok ] := '"//"';
+    tok_table [ fun_tok ] := 'functn';
+    tok_table [ lpn_tok ] := '"("';
+    tok_table [ rpn_tok ] := '")"';
+    tok_table [ log_tok ] := 'bool';
+    tok_table [ not_tok ] := '"NOT"';
+    tok_table [ bad_tok ] := 'int err';
+    tok_table [ no_tok ]  := 'int err';
+    
+    {  Initialize the command name table.  }
+    
+    cmd_names [ cal_cmd ] := 'CALL';
+    cmd_names [ com_cmd ] := '*';
+    cmd_names [ def_cmd ] := 'DEFINE';
+    cmd_names [ dis_cmd ] := 'DISPLAY';
+    cmd_names [ els_cmd ] := 'ELSE';
+    cmd_names [ if_cmd  ] := 'IF';
+    cmd_names [ ife_cmd ] := 'IFEND';
+    cmd_names [ exe_cmd ] := 'EXECUTE';
+    cmd_names [ mat_cmd ] := 'MATCH';
+    cmd_names [ pau_cmd ] := 'PAUSE';
+    cmd_names [ qui_cmd ] := 'QUIT';
+    cmd_names [ ret_cmd ] := 'RETURN';
+    cmd_names [ sen_cmd ] := 'SEND';
+    cmd_names [ tra_cmd ] := 'TRANSFER';
+    cmd_names [ wai_cmd ] := 'WAIT';
+    cmd_names [ whe_cmd ] := 'WHILEND';
+    cmd_names [ whi_cmd ] := 'WHILE';
+    cmd_names [ dia_cmd ] := 'DIAL';
+    cmd_names [ han_cmd ] := 'HANGUP';
+    cmd_names [ bad_cmd ] := '';
+    
+    {  Initialize the function name table  }
+    
+    fun_names [ chr_fun ]  := '$CHR';
+    fun_names [ val_fun ]  := '$VALUE';
+    fun_names [ read_fun ] := '$READ';
+    fun_names [ eof_fun ]  := '$EOF';
+    fun_names [ eq_fun ]   := '$EQ';
+    fun_names [ nam_fun ] := '$NAME';
+    fun_names [ str_fun ] := '$STR';
+    fun_names [ def_fun ] := '$DEF';
+    
+    {  Initialize the reserved variable table  }
+    
+    var_names [ res_command ] := 'DISPLAY_COMMANDS';
+    var_names [ res_line ] := 'DISPLAY_LINK';
+    var_names [ res_unknown ] := '';
+    
+    END;        {  PROCEDURE init_tables  }
+    
+    
+  PROCEDURE process_parameters;
+  
+    VAR
+      param_line:  script_line;             {  Program parameter line }
+      script:  token_type;
+      delim:  token_type;
+      successful:  BOOLEAN;
+      
+    BEGIN       {  PROCEDURE process_parameters  }
+    
+    os_get_param_line ( param_line );
+    
+    {  The following IF/EXIT is present to kludge around a IV bug that
+    {  prevents EXIT from UNITs.                                        }
+    
+    IF LENGTH ( param_line ) = 0 THEN
+      EXIT ( PROGRAM );
+      
+    eval_expr ( param_line, [ nam_tok ], [ eol_tok, com_tok ], command, 
+      delim_tok );
+    nest_stack [ 1 ] . script_name := command.nam_val;
+    io_open_file ( script_file, nest_stack [ 1 ].script_name, io_input,
+      successful );
+    IF NOT successful THEN
+      error ( fatal, CONCAT ( 'Cannot find script ', command.nam_val ) );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while opening script file' );
+
+    do_define ( param_line );
+    
+    END;        {  PROCEDURE process_parameters  }
+    
+    
+  BEGIN         {  SEGMENT PROCEDURE initialize  }
+  
+  {  Preset the display screen.  }
+  
+  init_screen;
+  
+  {  Initialize the serial interface link  }
+
+  bauds [ baud_9600 ] := 9600;
+  bauds [ baud_1200 ] := 1200;
+  bauds [ baud_300 ] := 300;
+  bauds [ baud_110 ] := 110;
+
+  cr_comminit ( cr_orig, CHR ( ch_esc ), rem_exists, dialer_exists );
+  IF NOT rem_exists THEN
+    error ( catastrophic,  'Remote interface cannot be initialized' );
+
+  {  If no default baud rate has been specified by a compilation constant
+  {  (the usual case), try each baud rate in turn until REMUNIT accepts one.
+  {  If a default baud rate has been specified, just try that one.            }
+  
+  IF default_baud = 0 THEN
+    BEGIN
+    attempted_baud_rate := baud_9600;
+    REPEAT
+      cr_setcommunications ( use_par, even_par, bauds [ attempted_baud_rate ],
+        char_size, stop_bits, cr_orig, '', result );
+      attempted_baud_rate := SUCC ( attempted_baud_rate );
+    UNTIL ( result = cr_rate_set_ok ) OR ( result = cr_select_not_supported ) OR
+      ( attempted_baud_rate = all_tried );
+    END
+  ELSE
+    cr_setcommunications ( TRUE, TRUE, default_baud,
+      char_size, stop_bits, cr_orig, '', result );
+  
+  IF ( result <> cr_rate_set_ok ) AND (result <> cr_select_not_supported ) THEN
+    error ( catastrophic, 'Cannot set link baud rate' );
+
+  alpha_chars := [ 'A'..'Z', 'a'..'z' ];
+  visible_chars := [ '!' .. CHR ( 127 ) ];
+  script_level := 1;
+  highest_entry_index := 0;
+  skipping := FALSE;
+  cnd_cmds := [ if_cmd, ife_cmd, els_cmd, whi_cmd, whe_cmd ];
+  
+  {  Initialize the transfer file table.  }
+  
+  FOR table_index := 1 TO max_open_files DO
+    tran_tbl [ table_index ] . now_open := FALSE;
+    
+  
+  {  Initialize the Pascal variables that implement the reserved variables.  }
+  
+  cmd_display := FALSE;
+  link_display := FALSE;
+  
+  {  Initialize the condition stack.  }
+  
+  cnd_level := 0;
+  
+  {  Initialize xlate_tbl.  This table is used to translate names (and other
+  {  character strings) to all-upper-case, or non-control characters.         }
+  
+  FOR index := CHR ( 0 ) TO CHR ( 127 ) DO
+    BEGIN
+    IF index IN [ 'a'..'z' ] THEN
+      xlate_tbl [ index ].upper := CHR ( ORD ( index ) - 32 )
+    ELSE
+      xlate_tbl [ index ] . upper := index;
+    IF index <= ' ' THEN
+      xlate_tbl [ index ] . no_ctl := ' '
+    ELSE
+      xlate_tbl [ index ] . no_ctl := index;
+    END;        {  FOREND  }
+    
+  {  Initialize other "constant" tables.  This is done in a separate procedure
+  {  due to a UCSD II.0 limitation on the size of a procedure.                 }
+  
+  init_tables;
+  
+  {  Process the program parameters.  }
+  
+  process_parameters;
+  
+  END;          {  SEGMENT PROCEDURE initialize  }
+
+{$P}
+  
+
+
+
+SEGMENT PROCEDURE transfer_command ( line:  script_line;
+                         VAR  successful:  BOOLEAN );
+
+  CONST
+    ch_cr = 13;         {  ASCII carriage return  }
+    
+  TYPE
+    trans_direction = ( download, upload );
+    
+  VAR
+    direction:  trans_direction;
+    usecc_mode:  BOOLEAN;
+    line_mode:  BOOLEAN;
+    term_string:  name_type;
+    prompt_string:  script_line;
+    file_name:  name_type;
+    period:  time_period;
+    
+  
+  PROCEDURE scan_command ( line:  script_line;
+                       VAR file_name:  name_type;
+                       VAR direction:  trans_direction;
+                       VAR usecc_mode:  BOOLEAN;
+                       VAR term_string:  name_type;
+                       VAR period:  time_period  );
+    VAR
+      value:  token_type;
+      token:  token_type;
+      keyword:  token_type;
+    
+    BEGIN       {  PROCEDURE scan_command  }
+    
+    {  Get the filename ( first symbol in the command ).  }
+    
+    eval_expr ( line, [ nam_tok ], [ com_tok, eol_tok ], value, token );
+    file_name := value.nam_val;
+    
+    {  Set the defaults if the appropriate keywords are not encountered.  }
+    
+    direction := download;
+    usecc_mode := FALSE;
+    line_mode := FALSE;
+    term_string := '';
+    prompt_string := '';
+    period := 300;
+    
+    {  Scan the command line for keywords.  }
+    
+    WHILE token.tok_kind <> eol_tok DO
+      BEGIN
+      eval_expr ( line, [ nam_tok ], [ com_tok, eol_tok, equ_tok ], keyword, 
+        token );
+      IF keyword.nam_val = 'UPLOAD' THEN  direction := upload;
+      IF keyword.nam_val = 'DOWNLOAD' THEN  direction := download;
+      IF keyword.nam_val = 'ADDCC' THEN  usecc_mode := TRUE;
+      IF keyword.nam_val = 'USECC' THEN  usecc_mode := TRUE;
+      IF keyword.nam_val = 'LINE' THEN line_mode := TRUE;
+      IF keyword.nam_val = 'TERM' THEN
+        BEGIN
+        eval_expr ( line, [ str_tok ], [ com_tok, eol_tok ], value, token );
+        term_string := value.str_val;
+        make_upper ( term_string );
+        END;
+      IF keyword.nam_val = 'PROMPT' THEN
+        BEGIN
+        eval_expr ( line, [ str_tok ], [ com_tok, eol_tok ], value, token );
+        prompt_string := value.str_val;
+        make_upper ( prompt_string );
+        END;
+      IF keyword.nam_val = 'PERIOD' THEN
+        BEGIN
+        eval_expr ( line, [ int_tok ], [ com_tok, eol_tok], value, token );
+        period := value.int_val;
+        END;
+    
+      END;      {  WHILEND  }
+    
+    END;        {  PROCEDURE scan_command  }
+  
+  PROCEDURE do_upload ( file_name:  name_type;
+                        usecc_mode:  BOOLEAN;
+                        line_mode:  BOOLEAN;
+                        prompt_string:  script_line;
+                        period:  time_period  );
+  
+    CONST
+      ch_ff = 12;       {  ASCII form feed character  }
+      
+    VAR
+      buffer:  STRING [ 255 ];
+      index:  0..255;
+      successful:  BOOLEAN;
+      tbl_index:  tran_range;
+      
+    BEGIN       {  PROCEDURE do_upload  }
+    
+    {  Open the transfer file.  If we are in ADDCC mode, write
+    {  a first line containing only a carriage control of "1".               }
+    
+    get_tran_file ( file_name, io_input, tbl_index );
+    
+    IF usecc_mode THEN
+      BEGIN
+      cr_putrem ( '1' );
+      cr_putrem ( CHR ( ch_cr )  );
+      END;    {  IFEND  }
+    
+    IF NOT io_end_of_file ( tran_tbl [ tbl_index ] . file_blk ) THEN
+      BEGIN
+      REPEAT
+        io_read_line ( tran_tbl [ tbl_index ] . file_blk, buffer );
+        IF IORESULT <> 0 THEN
+          error ( fatal, 'I/O device error while transfering file' );
+        IF usecc_mode AND ( LENGTH ( buffer ) > 0 ) THEN
+          BEGIN       {  Add carriage control character  }
+          index := SCAN( LENGTH ( buffer ), = CHR ( ch_ff ), buffer [ 1 ] ) + 1;
+          IF ( index < LENGTH ( buffer ) ) THEN
+            BEGIN
+            DELETE ( buffer, index, 1 );
+            cr_putrem ( '1' );
+            END
+          ELSE
+            cr_putrem ( ' ' );
+          END;            {  IFEND  Add carriage control  }
+        FOR index := 1 to LENGTH ( buffer ) DO
+          BEGIN
+          IF NOT cr_carrier THEN
+            error ( fatal, 'Lost carrier during upload' );
+          cr_putrem ( buffer [ index ] );
+          END;    {  FOREND  }
+        
+        cr_putrem ( CHR ( ch_cr ) );
+          
+        IF ( LENGTH ( prompt_string ) > 0 ) AND NOT
+         io_end_of_file ( tran_tbl [ tbl_index ] . file_blk ) THEN
+          BEGIN
+          match ( prompt_string, FALSE, period, successful );
+          IF NOT successful THEN
+            error ( fatal, 'Did not see prompt within specified period' );
+          END;
+        
+        check_kb ( exit_requested );
+        
+      UNTIL io_end_of_file ( tran_tbl [ tbl_index ] . file_blk ) OR
+       exit_requested OR line_mode;
+      END;      {  IFEND  }
+    
+    IF io_end_of_file ( tran_tbl [ tbl_index ] . file_blk ) THEN
+      close_tran_file ( tbl_index );
+      
+    END;        {  PROCEDURE do_upload  }
+  
+  
+  PROCEDURE do_download ( file_name:  name_type;
+                          term_string:  name_type;
+                          usecc_mode:  BOOLEAN  );
+  
+    VAR
+      buffer:  long_string;
+      buffer_index:  1..255;
+      ch:  CHAR;
+      term_index:  script_index;
+      terminated:  BOOLEAN;
+      tbl_index:  tran_range;
+    
+    BEGIN       {  PROCEDURE do_download  }
+    
+    get_tran_file ( file_name, io_output, tbl_index );
+    
+    {$R-}  {  Disable range checking for speed in these loops.  }
+    
+    REPEAT      {  for each line  }
+      
+      buffer [ 0 ] := CHR ( 255 );
+      buffer_index := 1;
+      term_index := 1;
+      terminated := FALSE;
+      
+      REPEAT    {  for each character  }
+      
+        REPEAT
+          check_kb ( exit_requested );
+        UNTIL cr_remstat OR exit_requested;
+        
+        IF NOT exit_requested THEN
+          BEGIN
+          ch := cr_getrem;
+          IF  ch >=  ' '  THEN
+            BEGIN
+            buffer [ buffer_index ] := ch;
+            buffer_index := buffer_index + 1;
+            END;          {    IFEND  }
+          
+          IF xlate_tbl [ ch ] . upper  = term_string [ term_index ] THEN
+            BEGIN
+            IF term_index < LENGTH ( term_string ) THEN
+              term_index := term_index + 1
+            ELSE
+              terminated := TRUE;
+            END
+          ELSE
+            term_index := 1;
+          END;
+        
+      UNTIL terminated OR ( ch = CHR ( ch_cr ) ) OR
+        exit_requested OR NOT cr_carrier;
+    
+      buffer [ 0 ] := CHR ( buffer_index - 1 );
+      
+      {  If processing carriage controls and the first character in the 
+      {  line is a "1", write an ASCII FF character as the first character
+      {  in the line.  Delete any other value of carriage control character. }
+      
+      IF usecc_mode THEN
+        IF LENGTH ( buffer ) > 0 THEN
+          IF buffer [ 1 ] = '1' THEN
+            buffer [ 1 ] := CHR ( ch_ff )
+          ELSE
+            DELETE ( buffer, 1, 1 );
+            
+      IF NOT terminated THEN
+        BEGIN
+        io_write_line ( tran_tbl [ tbl_index ] . file_blk, buffer );
+        IF IORESULT <> 0 THEN
+          error ( fatal, 'I/O device error while writing transfer file' );
+        END;
+    
+    UNTIL terminated OR exit_requested OR NOT cr_carrier ;
+    
+    {$R+}  {  Reenable range checking.  }
+    
+    IF NOT cr_carrier THEN
+      error ( fatal, 'Carrier lost during download' );
+    
+    close_tran_file ( tbl_index );
+    
+    END;        {  PROCEDURE do_download  }
+    
+  
+
+  BEGIN         {  PROCEDURE transfer_command  }
+  successful := FALSE;          {  in case a called procedure exits  }
+  scan_command ( line, file_name, direction, usecc_mode, term_string, period );
+  
+  CASE direction OF
+    
+    download: BEGIN
+              IF LENGTH ( term_string ) = 0 THEN
+                error ( fatal, 
+                  'Termination string must be specifed for download.');
+              do_download ( file_name, term_string, usecc_mode );
+              END;     {  CASE ITEM  }
+    
+    upload:  do_upload ( file_name, usecc_mode, line_mode, prompt_string, 
+               period );
+    
+    END;        {  CASEND  }
+  
+  successful := TRUE;
+  
+  END;          {  SEGMENT PROCEDURE transfer_command  }
+
+{$P}
+
+PROCEDURE setup_display;
+
+  VAR
+    box_line:  STRING [ 80 ];
+    
+  BEGIN         {  PROCEDURE setup_display  }
+  box_line :=  '----------------------------------------';
+  box_line := CONCAT ( box_line, box_line );
+    
+  sc_eras_eos ( cmd_x, cmd_y+1 );
+  IF cmd_display THEN
+    BEGIN
+    GOTOXY ( cmd_x, cmd_y );
+    WRITE ( box_line );
+    GOTOXY ( cmd_x, cmd_y + 1 );
+    WRITE ( '|   Command:' );
+    GOTOXY ( 79, cmd_y + 1 );
+    WRITE ( '|' );
+    GOTOXY ( cmd_x, cmd_y + 2 );
+    WRITE ( box_line );
+    END;        {  IFEND  }
+  
+  IF link_display THEN
+    BEGIN
+    GOTOXY ( link_x, link_y );
+    WRITE ( 'Downlink text:  ' );
+    GOTOXY ( link_x, link_y + 2 );
+    END;        {  IFEND  }
+    
+  {  Note that we always initialize link_dis_line, even if we are not
+  {  displaying link text, because this is where we always put the
+  {  cursor when we're not writing something to the screen.            }
+  
+  link_dis_line := link_y + 2;
+  
+  END;          {  PROCEDURE setup_display  }
+  
+
+{$P}
+
+PROCEDURE check_kb {  ( VAR exit_seen:  BOOLEAN )  };
+
+  CONST
+    ch_esc = 27;        {  ASCII ESC character  }
+    
+  BEGIN         {  PROCEDURE check_kb  }
+  
+  {  If the user hits ESC on the keyboard, return with exit_seen TRUE.
+  {  Otherwise, don't change it.                                              }
+  
+  IF cr_kbstat THEN
+    IF cr_getkb = CHR ( ch_esc ) THEN
+      exit_seen := TRUE;
+  END;          {  PROCEDURE check_kb  }
+  
+  
+
+  
+{$P}
+
+PROCEDURE display_status ( message:  STRING );
+
+  BEGIN         {  PROCEDURE display_status  }
+  GOTOXY ( status_x + 11, status_y + 1 );
+  WRITE ( message: 64 );
+  GOTOXY ( 0, link_dis_line );
+  END;          {  PROCEDURE display_status  }
+  
+  
+{$P}
+
+
+
+PROCEDURE error {  ( level:  error_level;
+                  message:  STRING )  };
+
+  VAR
+    prefix:  STRING [ 25 ];
+    
+  BEGIN         {  PROCEDURE error  }
+  CASE level OF
+    
+    warning:  prefix :=  'Warning - ' ;
+    
+    fatal:  prefix :=  'Fatal error - ' ;
+    
+    catastrophic:  prefix :=  'Catastrophic error - ' ;
+    
+    END;        {  CASEND  }
+  display_status ( CONCAT ( prefix, message ));
+  IF level > warning THEN
+    BEGIN
+    close_all_files;
+    os_clear_commands;
+    EXIT ( PROGRAM );
+    END;
+  END;          {  PROCEDURE error  }
+
+{$P}
+
+PROCEDURE get_tran_file {  ( file_name:  script_line;
+                            direction:  io_direction;
+                            VAR tbl_index:  tran_range  )  };
+
+  VAR
+    open_successful:  BOOLEAN;
+    
+  BEGIN         {  PROCEDURE get_tran_file  }
+  
+  {  First, check to see if the file is already open.  }
+  
+  tbl_index := 1;
+  WHILE  ( ( tran_tbl [ tbl_index ] . name <> file_name ) OR
+   ( tran_tbl [ tbl_index ] . direction <> direction ) OR
+   ( NOT tran_tbl [ tbl_index ] . now_open ) ) AND
+   ( tbl_index < max_open_files ) DO
+    tbl_index := tbl_index + 1;
+  
+  IF  ( tran_tbl [ tbl_index ] . name <> file_name ) OR 
+   NOT tran_tbl [ tbl_index ] . now_open OR 
+   ( tran_tbl [ tbl_index ] . direction <> direction ) THEN
+    
+    BEGIN       
+    
+    {  File not already open, so search for vacant table entry.  }
+    
+    tbl_index := 1;
+    WHILE tran_tbl [ tbl_index ].now_open AND ( tbl_index < max_open_files ) DO
+      tbl_index := tbl_index + 1;
+    
+    IF tran_tbl [ tbl_index ] . now_open THEN
+      error ( fatal, 'Maximum number of files already open' );
+      
+    tran_tbl [ tbl_index ] . name := file_name;
+    tran_tbl [ tbl_index ] . direction := direction;
+    tran_tbl [ tbl_index ] . now_open := TRUE;
+    io_open_file ( tran_tbl [ tbl_index ] . file_blk, file_name, direction,
+      open_successful );
+    IF NOT open_successful THEN
+      error ( fatal, CONCAT ( 'Cannot open transfer file ', file_name ) );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while opening transfer file' );
+    
+    END;         {  IFEND  }
+   
+  END;          {  PROCEDURE get_tran_file  }
+  
+{$P}
+
+PROCEDURE close_tran_file { tbl_index:  tran_range };
+
+  BEGIN
+  io_close_file ( tran_tbl [ tbl_index ] . file_blk );
+  IF IORESULT <> 0 THEN
+    error ( fatal, 'I/O device error while closing transfer file' );
+  tran_tbl [ tbl_index ] . now_open := FALSE;
+  END;          {  PROCEDURE close_tran_file  }
+  
+{$P}
+
+PROCEDURE close_all_files;
+
+  VAR
+    tbl_index:  1..max_open_files;
+    
+  BEGIN         {  PROCEDURE close_all_files  }
+  FOR tbl_index := 1 TO max_open_files DO
+    IF tran_tbl [ tbl_index ] . now_open THEN
+      close_tran_file ( tbl_index );
+  END;          {  PROCEDURE close_all_files  }
+
+{$P}
+
+
+PROCEDURE make_upper {  ( VAR symbol:  STRING )  };
+
+  VAR
+    index:  1..255;            
+    
+  BEGIN         {  PROCEDURE make_upper  }
+  FOR index := 1 TO LENGTH ( symbol ) DO
+    symbol [ index ] := xlate_tbl [ symbol [ index ] ] . upper;
+  END;          {  PROCEDURE make_upper  }
+  
+  {$P}
+
+
+PROCEDURE get_token { ( VAR line:  script_line;
+                        expected:  set_of_token_kinds;
+                        VAR  token:  token_type   )  };
+
+  VAR
+    index:  script_index;
+    saved_line:  script_line;
+    token_index:  token_kinds;
+    msg_text:  STRING [ 255 ];
+    
+  PROCEDURE get_symbol;
+  
+    VAR
+      symbol_length:  0..max_name_size;
+      symbol_done:  BOOLEAN;
+    
+    BEGIN       {  PROCEDURE get_symbol  }
+    symbol_length := 0;
+    REPEAT
+      symbol_length := symbol_length + 1;
+      IF index + symbol_length <= LENGTH ( line ) THEN
+        symbol_done :=  NOT (  line [ index + symbol_length ] IN 
+          [ 'a'..'z', 'A'..'Z', '0'..'9','_', '$', '.', '*', ':' ] )
+      ELSE
+        symbol_done := TRUE;
+    UNTIL symbol_done;
+    token.tok_kind := nam_tok;
+    token.nam_val := COPY ( line, index, symbol_length );
+    make_upper ( token.nam_val );
+    IF ( token.nam_val = 'TRUE' ) OR ( token.nam_val = 'YES' ) THEN
+      BEGIN
+      token.tok_kind := log_tok;
+      token.log_val := TRUE;
+      END
+    ELSE
+      IF (token.nam_val = 'FALSE' ) OR ( token.nam_val = 'NO' ) THEN
+        BEGIN
+        token.tok_kind := log_tok;
+        token.log_val := FALSE;
+        END
+      ELSE
+        IF token.nam_val = 'NOT' THEN
+          token.tok_kind := not_tok;
+    index := index + symbol_length;
+    END;        {  PROCEDURE get_symbol  }
+    
+  PROCEDURE get_number;
+  
+    VAR
+      more_to_go:  BOOLEAN;
+      
+    BEGIN       {  PROCEDURE get_number  }
+    token.int_val := 0;
+    REPEAT
+      BEGIN
+      token.int_val := ORD ( line [ index ] ) - 48 + ( token.int_val * 10 );
+      index := index + 1;
+      IF index <= LENGTH ( line ) THEN
+        more_to_go := line [ index ] IN [ '0'..'9' ] 
+      ELSE
+        more_to_go := FALSE;
+      END;      {  WHILEND  }
+    UNTIL NOT more_to_go;
+    END;        {  PROCEDURE get_number  }
+  
+  PROCEDURE get_string;
+  
+    VAR
+      string_length:  0..max_script_line;
+      string_done:  BOOLEAN;
+    
+    BEGIN       {  PROCEDURE get_string  }
+    string_length := 0;
+    index := index + 1;
+    
+    REPEAT
+      IF ( index + string_length <= LENGTH ( line ) ) AND ( string_length <
+       max_script_line ) THEN
+        string_done := line [ index + string_length ] = ''''
+      ELSE
+        string_done := TRUE;
+      IF NOT string_done THEN
+        string_length := string_length + 1;
+    UNTIL string_done;
+    
+    token.str_val := COPY ( line, index, string_length  );
+    index := index + string_length + 1;
+    END;        {  PROCEDURE get_string  }
+    
+  BEGIN         {  PROCEDURE get_token  }
+  saved_line := line;
+  token.tok_kind := no_tok;
+  IF LENGTH ( line ) > 0 THEN
+    BEGIN
+    index := 1;
+    REPEAT
+      CASE line [ index ] OF
+        
+        ' ':  index := index + 1;
+        
+        ',':  BEGIN
+              token.tok_kind := com_tok;
+              index := index + 1;
+              END;
+        
+        'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q',
+        'r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H',
+        'I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y',
+        'Z','.','_','*',':':  BEGIN 
+              get_symbol;
+              END;
+        
+        '$':  BEGIN
+              get_symbol;
+              token.tok_kind := fun_tok;
+              END;
+              
+        '0','1','2','3','4','5','6','7','8','9':  BEGIN
+             token.tok_kind := int_tok;
+             get_number;
+             END;
+             
+        '(':  BEGIN
+              token.tok_kind := lpn_tok;
+              index := index + 1;
+              END;
+              
+        ')':  BEGIN
+              token.tok_kind := rpn_tok;
+              index := index + 1;
+              END;
+              
+        '=':  BEGIN
+              token.tok_kind := equ_tok;
+              index := index + 1;
+              END;
+        
+        '/':  BEGIN
+              IF index < LENGTH ( line ) THEN
+                IF line [ index + 1 ] = '/' THEN
+                  BEGIN
+                  token.tok_kind := con_tok;
+                  index := index + 2;
+                  END;
+              IF token.tok_kind <> con_tok THEN
+                BEGIN
+                token.tok_kind := bad_tok;
+                index := index + 1;
+                END;
+              END;      {  CASE ITEM  }
+        
+        '''': BEGIN
+              token.tok_kind := str_tok;
+              get_string;
+              END;
+        
+        '!','"','#','%','&','+','-',';','<','>',
+        '?','@','[','\',']','^','`','{','|','}','~':  
+              BEGIN
+              token.tok_kind := bad_tok;
+              index := index + 1;
+              END;
+        
+        END;      {  CASEND  }
+    UNTIL ( token.tok_kind <> no_tok ) OR ( index > LENGTH ( line ) );
+    
+    DELETE ( line, 1, index - 1 );
+    END;        {  IFEND  }
+  
+  IF ( token.tok_kind = no_tok ) AND ( LENGTH ( line ) = 0 ) THEN
+    token.tok_kind := eol_tok;
+  
+  IF NOT ( token.tok_kind IN expected ) THEN
+    BEGIN       {  report error  }
+    msg_text := 'Command syntax error - Expected ';
+    FOR token_index := nam_tok TO no_tok DO
+      IF token_index IN expected THEN
+        msg_text := CONCAT ( msg_text, tok_table [ token_index ], ', ' );
+    error ( fatal, COPY ( msg_text, 1, LENGTH ( msg_text ) - 2 ) );
+    END;        {  IFEND   report error  }
+    
+  END;          {  PROCEDURE get_token  }
+  
+{$P}
+
+PROCEDURE lookup_variable ( VAR name:  token_type;
+                            VAR found:  BOOLEAN  );
+
+  VAR
+    table_index:  sym_tbl_index;
+    
+  BEGIN         {  PROCEDURE lookup_variable  }
+  
+  {  Search the variable table for a match with the variable name.  }
+  
+  found := TRUE;
+  IF highest_entry_index > 0 THEN
+    FOR table_index := 1 TO highest_entry_index DO
+      IF sym_table [ table_index ] . name = name.nam_val THEN
+        BEGIN           {  match found  }
+        name := sym_table [ table_index ] . value;
+        EXIT ( lookup_variable );
+        END;            {  IFEND }
+  
+  {  No match was found.  }
+  
+  found := FALSE;
+  
+  END;          {  PROCEDURE lookup_variable    }
+
+{$P}
+
+PROCEDURE eval_func ( VAR line:  script_line;
+                      exp_type:  set_of_token_kinds;
+                      VAR value:  token_type );
+
+  VAR
+    temp_token:  token_type;
+    temp2_token:  token_type;
+    delim_token:  token_type;
+    fun_index:  fun_kinds;
+    tbl_index:  tran_range;
+    variable_found:  BOOLEAN;
+    
+  BEGIN           {  PROCEDURE eval_func  }
+  make_upper ( value.fun_val );
+  fun_index := chr_fun;
+  WHILE ( value.fun_val <> fun_names [ fun_index ] ) AND 
+   ( fun_index < bad_fun ) DO
+    fun_index := SUCC ( fun_index );
+  CASE fun_index OF
+  
+    chr_fun:  BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              get_token ( line, [ int_tok ], temp_token );
+              IF (temp_token.int_val < 0 ) OR ( temp_token.int_val > 127 ) THEN
+                error ( fatal, '$CHR parameter not 0..127' );
+              value.tok_kind := str_tok;
+              value.str_val := 'x';
+              value.str_val [ 1 ] := CHR ( temp_token.int_val );
+              get_token ( line, [ rpn_tok ], delim_token );
+              END;      {  CASE ITEM  }
+    
+    val_fun:  BEGIN
+              
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok ], [ rpn_tok ], temp_token, 
+                delim_token );
+              
+              lookup_variable ( temp_token, variable_found );
+              IF NOT variable_found THEN
+                error ( fatal, CONCAT ( 'Variable ', temp_token.nam_val,
+                 ' has not been defined' ));
+              
+              value := temp_token;
+              
+              END;      {  CASE ITEM  }
+              
+    read_fun: BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok ], [ rpn_tok ], temp_token, 
+                delim_token );
+              get_tran_file ( temp_token.nam_val, io_input, tbl_index );
+              value.tok_kind := str_tok;
+              io_read_line ( tran_tbl [ tbl_index ] . file_blk,
+                value.str_val );
+              IF IORESULT <> 0 THEN
+                error ( fatal, 'I/O device error while reading file' );
+              END;      {  CASE ITEM  }
+      
+    eof_fun:  BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok ], [ rpn_tok ], temp_token,
+                delim_token );
+              get_tran_file ( temp_token.nam_val, io_input, tbl_index );
+              value.tok_kind := log_tok;
+              value.log_val :=
+                io_end_of_file ( tran_tbl [ tbl_index ] . file_blk );
+              END;      {  CASE ITEM  }
+              
+    eq_fun:   BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok, str_tok, int_tok, log_tok ],
+                [ com_tok ], temp_token, delim_token );
+              eval_expr ( line, [ temp_token.tok_kind ], [ rpn_tok ], 
+                temp2_token, delim_token );
+              value.tok_kind := log_tok;
+              CASE temp_token.tok_kind OF
+              
+                nam_tok: value.log_val:=temp_token.nam_val=temp2_token.nam_val;
+              
+                str_tok: value.log_val:=temp_token.str_val=temp2_token.str_val;
+                
+                int_tok: value.log_val:=temp_token.int_val=temp2_token.int_val;
+                
+                log_tok: value.log_val:=temp_token.log_val=temp2_token.log_val;
+                
+                END;            {  CASEND  }
+                
+              END;      {  CASE ITEM  }
+              
+    str_fun:  BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok ], [ rpn_tok ], temp_token, 
+                delim_token );
+              value.tok_kind := str_tok;
+              value.str_val := temp_token.nam_val;
+              END;      {  CASE ITEM  }
+    
+    nam_fun:  BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ str_tok ], [ rpn_tok ], temp_token,
+                delim_token  );
+              value.tok_kind := nam_tok;
+              value.nam_val := temp_token.str_val;
+              END;      {  CASE ITEM  }
+    
+    def_fun:  BEGIN
+              get_token ( line, [ lpn_tok ], delim_token );
+              eval_expr ( line, [ nam_tok ], [ rpn_tok ], temp_token,
+                delim_token );
+              lookup_variable ( temp_token, variable_found );
+              value.tok_kind := log_tok;
+              value.log_val := variable_found;
+              END;      {  CASE ITEM  }
+              
+    bad_fun:  error ( fatal, 'Unknown function name' );
+    
+    END;        {  CASEND  }
+  
+  IF NOT ( value.tok_kind IN exp_type ) THEN
+    error ( fatal, 'Function is not of expected type' );
+    
+  END;          {  PROCEDURE eval_func  }
+
+{$P}
+  
+PROCEDURE eval_expr {  ( VAR line:  script_line;
+                      exp_type:  set_of_token_kinds;
+                      exp_delim:  set_of_token_kinds;
+                      VAR value:  token_type;
+                      VAR delim:  token_type  )  };
+
+  VAR
+    exp_operators:  set_of_token_kinds;
+    exp_term:  set_of_token_kinds;
+    term_value:  token_type;
+    
+  PROCEDURE get_term ( VAR line:  script_line;
+                       exp_type:  set_of_token_kinds;
+                       VAR value:  token_type );
+  
+    VAR
+      unary_not:  BOOLEAN;
+      unary_ops:  set_of_token_kinds;
+    
+    BEGIN       {  PROCEDURE get_term  }
+    IF log_tok IN exp_type THEN
+      unary_ops := [ not_tok ]
+    ELSE
+      unary_ops := [];
+    unary_not := FALSE;
+    REPEAT
+      get_token ( line, exp_type + unary_ops + [ fun_tok ], value );
+      IF value.tok_kind = fun_tok THEN
+        eval_func ( line, exp_type, value )
+      ELSE
+        IF value.tok_kind = not_tok THEN
+          unary_not := NOT unary_not;
+    UNTIL NOT ( value.tok_kind IN unary_ops );
+    
+    IF unary_not THEN
+      value.log_val := NOT value.log_val;
+    END;        {  PROCEDURE get_term  }
+    
+  
+  BEGIN         {  PROCEDURE eval_expr  }
+  
+  get_term ( line, exp_type, value );
+  
+  {  Now that we know the base type of the expression, figure out which 
+  {  operators are acceptable.                                            }
+  
+  IF value.tok_kind = str_tok THEN
+    exp_operators := [ con_tok ]
+  ELSE
+    exp_operators := [ ];
+  
+  get_token ( line, exp_operators + exp_delim, delim );
+  WHILE delim.tok_kind IN exp_operators DO
+    BEGIN
+    get_term ( line, exp_type, term_value );
+    IF delim.tok_kind = con_tok THEN
+      value.str_val := CONCAT ( value.str_val, term_value.str_val );
+    get_token ( line, exp_operators + exp_delim, delim );
+    END;        {  WHILEND  }
+  END;          {  PROCEDURE eval_expr  }
+  
+{$P}
+
+PROCEDURE do_define {  ( line:  script_line )  };
+
+  VAR
+    var_name:  name_type;
+    var_value:  token_type;
+    res_index:  res_kinds;
+    token:  token_type;
+    table_index:  sym_tbl_index;
+  
+  BEGIN         {  PROCEDURE do_define  }
+  REPEAT
+    BEGIN       {  repeat for each defnition  }
+    get_token ( line, [  nam_tok, eol_tok ], token );
+    IF token.tok_kind <> eol_tok THEN
+      BEGIN  {  more defnitions on line  }
+      var_name := token.nam_val;
+      make_upper ( var_name );
+      get_token ( line, [ equ_tok ], token );
+      eval_expr ( line, [ nam_tok, int_tok, str_tok, log_tok ], 
+        [ com_tok, eol_tok ], var_value, token );
+      
+      {  Search the reserved variable table, and change the value of the
+      {  relevant Pascal variable if found.  Note that we also put an
+      {  entry into the Symbol table, so that the user can refer to
+      {  this variable later.                                          }
+      
+      res_index := res_command;
+      WHILE ( res_index < res_unknown ) AND 
+        ( var_name <> var_names [ res_index ] ) DO
+          res_index := SUCC ( res_index );
+      
+      IF res_index <> res_unknown THEN
+        BEGIN
+        IF ( res_index IN [ res_command, res_line ] ) AND 
+          ( var_value.tok_kind <> log_tok ) THEN
+            error ( fatal, CONCAT ( var_name, ' can only be TRUE or FALSE' ));
+        IF res_index = res_command THEN
+          cmd_display := var_value.log_val;
+        IF res_index = res_line THEN
+          link_display := var_value.log_val;
+        END;    {  IFEND  }
+        
+      {  Find a table entry in which to put this symbol.  }
+      
+      table_index := 1;
+      IF highest_entry_index > 0 THEN
+        BEGIN 
+        WHILE ( sym_table [ table_index ] . name <> var_name ) AND
+         ( table_index < highest_entry_index ) DO
+          table_index := table_index + 1;
+        END;    {  IFEND  }
+      IF ( highest_entry_index = 0 ) OR ( sym_table [ table_index ] . name <>
+       var_name ) THEN
+        BEGIN         {  new table entry needed  }
+        IF highest_entry_index < sym_tbl_size THEN
+          BEGIN       {  make new table entry  }
+          highest_entry_index := highest_entry_index + 1;
+          table_index := highest_entry_index;
+          END           {  IFEND  }
+        ELSE
+          error ( fatal, 'Variable table is full' );
+        END;            {  IFEND make new table entry  }
+        
+      {  Put new data into the variable table entry.  }
+      
+      sym_table [ table_index ] . name := var_name;
+      sym_table [ table_index ] . value := var_value;
+      END;      {  IFEND more definitions on line  }
+    END;                {  REPEATEND for all defnitions  }
+  UNTIL token.tok_kind = eol_tok;
+  END;          {  PROCEDURE do_define  }         
+
+{$P}
+
+FUNCTION get_char:  CHAR;
+
+  VAR
+    ch:  CHAR;
+    translated:  xlate_entry;
+  
+  BEGIN         {  FUNCTION get_char  }
+  
+  {$R-  Turn off range checking to speed up execution  }
+  
+  ch := cr_getrem;
+  translated := xlate_tbl [ ch ];
+  IF link_display THEN
+    IF ch = CHR ( ch_lf ) THEN
+      BEGIN
+      IF link_dis_line < max_screen_y THEN
+        link_dis_line := link_dis_line + 1
+      ELSE
+        link_dis_line := link_y + 2;
+      GOTOXY ( link_x, link_dis_line );
+      sc_clr_cur_line;
+      END
+    ELSE
+      UNITWRITE ( console, translated.no_ctl, 1,, 4+8 );
+  get_char := ch;
+  
+  {$R+  Turn range checking on again  }
+  
+  END;          {  FUNCTION get_char  }
+  {$P}
+  
+
+
+PROCEDURE match {  ( text_line:  string_type;
+                  quiet_ending:  BOOLEAN;
+                  period:  time_period;
+              VAR complete_match:  BOOLEAN )  };
+ 
+  VAR
+    delim:  token_type;         {  delimiter of the pattern  }
+    char_index:  script_index;        {  current character being matched  }
+    text_match:  BOOLEAN;             {  all the text has matched  }
+    input_char:  CHAR;                {  character read from serial interface  }
+    total_time:  os_timer;               {  time we've been trying to match  }   
+    ending_time:  os_timer;              {  wait for quiet after text match}
+    visible_seen:  BOOLEAN;           {  a visible char has been received  }
+    exit_condition:  BOOLEAN;
+    ms_period:  INTEGER;
+
+  BEGIN         {  PROCEDURE match  }
+    
+  {$R-  Disable range checking to make this run faster.  }
+    
+  ms_period := period * 100;
+  complete_match := FALSE;
+  exit_condition := FALSE;
+  os_start_timer ( total_time );
+  
+  WHILE cr_carrier AND NOT complete_match AND ( LENGTH ( text_line ) >
+    0 ) AND ( os_elapsed_time ( total_time ) < ms_period ) AND 
+    NOT exit_condition DO
+    
+    BEGIN
+    text_match := FALSE;
+    char_index := 1;
+    
+    REPEAT
+      
+      BEGIN           {  text match  }
+      REPEAT
+        check_kb ( exit_requested );
+        exit_condition := exit_requested OR NOT cr_carrier OR
+          ( os_elapsed_time ( total_time ) >= ms_period );
+      UNTIL exit_condition OR cr_remstat;
+      IF NOT exit_condition THEN
+        BEGIN
+        input_char := get_char;
+        IF input_char = text_line [ char_index ] THEN
+          IF char_index < LENGTH ( text_line ) THEN
+            char_index := char_index + 1 
+          ELSE
+            text_match := TRUE
+        ELSE
+          char_index := 1;
+        END;
+      END;         {  REPEATEND text match  }
+     
+    UNTIL text_match OR exit_condition;
+     
+    IF text_match THEN
+      BEGIN
+      visible_seen := FALSE;
+      IF quiet_ending THEN
+        BEGIN     {  check for quiet ending  }
+        os_start_timer ( ending_time );
+        WHILE cr_carrier AND NOT visible_seen AND ( os_elapsed_time(ending_time) <
+         500 ) AND NOT exit_condition DO
+          BEGIN
+          IF cr_remstat THEN 
+            visible_seen := get_char IN visible_chars;
+          check_kb ( exit_requested );
+          exit_condition := exit_requested;
+          END;    {  WHILEND  }
+        END;      {  IFEND  }
+       
+      complete_match := NOT visible_seen AND cr_carrier;
+      END;      {  ifend  }
+    END;        {  WHILEND complete match  }
+ 
+  {$R+  Reenable range checking.  }
+  
+  END;          {  PROCEDURE match  }
+   
+
+
+
+{$P}
+
+
+
+PROCEDURE if_command ( line:  script_line );
+
+  VAR
+    value:  token_type;
+    delim:  token_type;
+    
+  BEGIN         {  PROCEDURE if_command  }
+  IF cnd_level = max_cnd_level THEN
+    error ( fatal, 'Maximum conditional nesting level exceeded' );
+  cnd_level := cnd_level + 1;
+  cnd_stack [ cnd_level ] . cnd_kind := if_cnd;
+  eval_expr ( line, [ log_tok ], [ eol_tok ], value, delim );
+  skipping := NOT value.log_val OR skipping;
+  cnd_stack [ cnd_level ] . skip_flag := skipping;
+  END;          {  PROCEDURE if_command  }
+
+{$P}
+
+PROCEDURE ifend_command;
+
+  BEGIN         {  PROCEDURE ifend_command  }
+  IF ( cnd_level = 0 ) OR NOT ( cnd_stack [ cnd_level ] . cnd_kind IN 
+   [ if_cnd, el_cnd ] ) THEN
+    error ( fatal, 'IFEND not expected here.' );
+  cnd_level := cnd_level - 1;
+  IF cnd_level > 0 THEN
+    skipping := cnd_stack [ cnd_level ] . skip_flag
+  ELSE
+    skipping := FALSE;
+  END;          {  PROCEDURE ifend_command  }
+
+{$P}
+
+PROCEDURE else_command;
+
+  BEGIN         {  PROCEDURE else_command  }
+  IF ( cnd_level = 0 ) OR ( cnd_stack [ cnd_level ] . cnd_kind <> if_cnd )
+   THEN
+    error ( fatal, 'ELSE not expected here' );
+  IF cnd_level = 1 THEN
+    skipping := NOT skipping
+  ELSE
+    IF cnd_stack [ cnd_level - 1 ] . skip_flag <> TRUE THEN
+      skipping := NOT skipping;
+  cnd_stack [ cnd_level ] . skip_flag := skipping;
+  END;          {  PROCEDURE else_command  }
+
+{$P}
+
+PROCEDURE while_command ( line:  script_line );
+
+  VAR
+    value:  token_type;
+    delim:  token_type;
+    
+  BEGIN         {  PROCEDURE while_command  }
+  IF cnd_level = max_cnd_level THEN
+    error ( fatal, 'Maximum conditional nesting level exceeded' );
+  cnd_level := cnd_level + 1;
+  cnd_stack [ cnd_level ] . cnd_kind := wh_cnd;
+  cnd_stack [ cnd_level ] . line_num := 
+    nest_stack [ script_level ] . line_number - 1;
+  eval_expr ( line, [ log_tok ], [ eol_tok ], value, delim );
+  skipping := NOT value.log_val OR skipping;
+  cnd_stack [ cnd_level ] . skip_flag := skipping;
+  END;          {  PROCEDURE while_command  }
+
+{$P}
+
+PROCEDURE whilend_command;
+
+  BEGIN         {  PROCEDURE whilend_command  }
+  IF ( cnd_level = 0 ) OR ( cnd_stack [ cnd_level ] . cnd_kind <> 
+    wh_cnd ) THEN
+    error ( fatal, 'WHILEND not expected here.' );
+  IF NOT skipping THEN
+    BEGIN       {  jump to the top of the loop  }
+    io_seek_line ( script_file, cnd_stack [ cnd_level ] . line_num );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while reading script file' );
+    nest_stack [ script_level ] . line_number :=
+      cnd_stack [ cnd_level ] . line_num;
+    cnd_level := cnd_level - 1;
+    END         {  go to top of loop  }
+  ELSE
+    BEGIN       {  finished skipping over loop  }
+    cnd_level := cnd_level - 1;
+    IF cnd_level > 0 THEN
+      skipping := cnd_stack [ cnd_level ] . skip_flag
+    ELSE
+      skipping := FALSE;
+    END;        {  ELSEND  finished skipping over loop  }
+  END;          {  PROCEDURE whilend_command  }
+
+{$P}
+
+PROCEDURE return_command ( VAR exit_condition:  BOOLEAN );
+
+  VAR
+    file_exists:  BOOLEAN;
+    
+  BEGIN         {  PROCEDURE return_command  }
+  IF script_level = 1 THEN
+    exit_condition := TRUE
+  ELSE
+    BEGIN
+    exit_condition := FALSE;
+    io_close_file ( script_file );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while closing script file' );
+    script_level := script_level - 1;
+    io_open_file ( script_file, nest_stack [ script_level ] . script_name,
+     io_input, file_exists );
+    IF NOT file_exists THEN
+      error ( catastrophic, 'Cannot open script file during RETURN' );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while opening script file' );
+    io_seek_line ( script_file, nest_stack [ script_level ] . line_number );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while reading script file' );
+    END;        {  ELSEND  }
+  END;          {  PROCEDURE return_command  }
+  
+{$P}
+
+PROCEDURE define_command ( line: script_line );
+
+  BEGIN         {  PROCEDURE define_command  }
+  do_define ( line );
+  END;          {  PROCEDURE define_command  }
+
+{$P}
+
+PROCEDURE display_command ( line:  script_line );
+
+  VAR
+    message:  token_type;
+    delim:  token_type;
+    
+  BEGIN         {  PROCEDURE display_command  }
+  eval_expr ( line, [ str_tok ], [ eol_tok ], message, delim );
+  display_status ( message.str_val );
+  END;          {  PROCEDURE display_command  }
+  
+{$P}
+
+PROCEDURE match_command ( text_line:  script_line;
+                      VAR complete_match:  BOOLEAN );
+
+
+  VAR
+    anywhere_mode:  boolean;
+    pattern:   token_type;
+    delim:  token_type;
+    keyword:  token_type;
+    value:  token_type;
+    period:  time_period;
+    
+  BEGIN         {  PROCEDURE match_command  }
+  eval_expr ( text_line, [ str_tok ], [eol_tok, com_tok ], pattern, delim );
+  anywhere_mode := TRUE;
+  period := 300;
+  WHILE delim.tok_kind = com_tok DO
+    BEGIN
+    eval_expr(text_line, [nam_tok],[eol_tok,com_tok,equ_tok ], keyword, delim );
+    IF keyword.nam_val = 'ENDING' THEN
+      anywhere_mode := FALSE;
+    IF keyword.nam_val = 'PERIOD' THEN
+      BEGIN
+      eval_expr ( text_line, [ int_tok ], [ eol_tok, com_tok ], value, delim );
+      period := value.int_val;
+      END;
+    END;        {  IFEND  }
+  match ( pattern.str_val, NOT anywhere_mode, period, complete_match );
+  IF NOT complete_match AND NOT exit_requested THEN
+    error ( fatal, CONCAT ( 'Could not match ''', pattern.str_val, 
+      ''' within specified period' ));
+  END;          {  PROCEDURE match_command  }
+
+{$P}
+
+PROCEDURE send_command ( text_line:  script_line );
+
+  VAR
+    char_index:  script_index;
+    echoed_char:  CHAR;
+    text_data:  token_type; 
+    delim:  token_type;
+    param:  token_type;
+    no_cr:  BOOLEAN;
+    
+  BEGIN       {  PROCEDURE send_command  }
+  IF LENGTH ( text_line ) > 0  THEN
+    BEGIN
+    eval_expr(text_line, [ str_tok ], [ com_tok,eol_tok ], text_data, delim );
+    no_cr := FALSE;
+    WHILE delim.tok_kind = com_tok DO
+      BEGIN
+      eval_expr(text_line, [nam_tok], [ com_tok,eol_tok ], param, delim );
+      IF param.nam_val = 'NOCR' THEN
+        no_cr := TRUE;
+      END;      {  WHILEND  }
+    FOR char_index := 1 TO LENGTH ( text_data.str_val ) DO
+      IF cr_carrier THEN 
+        BEGIN
+        cr_putrem ( text_data.str_val [ char_index ] );
+        IF cr_remstat THEN echoed_char := get_char;
+        END;            {  IFEND  }
+    END;        {  IFEND  }
+  IF cr_carrier AND NOT no_cr THEN 
+    cr_putrem ( CHR ( ch_cr ) );
+  IF cr_remstat THEN 
+    echoed_char := get_char;
+  END;        {  PROCEDURE send_command  }
+
+{$P}
+
+PROCEDURE pause_command ( text_line:  script_line );
+
+  VAR
+    pause_time:  os_timer;
+    display_char:  CHAR;
+  
+  BEGIN         {  PROCEDURE pause_command  }
+  os_start_timer ( pause_time );
+  WHILE os_elapsed_time ( pause_time ) < 1000 DO 
+    IF cr_carrier THEN
+      IF cr_remstat THEN 
+        display_char := get_char;
+  END;          {  PROCEDURE pause_command  }
+
+{$P}
+ 
+PROCEDURE call_command ( line:  script_line );
+
+  VAR
+    name:  token_type;
+    delim:  token_type;
+    file_exists:  BOOLEAN;
+    
+  BEGIN         {  PROCEDURE call_command  }
+  IF script_level = max_nest_level THEN
+    error ( fatal, 'Maximum script nesting level exceeded' )
+  ELSE
+    BEGIN
+    io_close_file ( script_file );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while closing script file' );
+    script_level := script_level + 1;
+    eval_expr ( line, [ nam_tok ], [ com_tok, eol_tok ], name, delim );
+    nest_stack [ script_level ] . script_name := name.nam_val;
+    nest_stack [ script_level ] . line_number := 1;
+    io_open_file ( script_file,  name.nam_val, io_input, file_exists );
+    IF NOT file_exists THEN
+      error ( fatal, CONCAT ( 'Called script ', name.nam_val,
+        ' does not exist' ) );
+    IF IORESULT <> 0 THEN
+      error ( fatal, 'I/O device error while opening script file' );
+    END;        {  ELSEND  }
+    IF delim.tok_kind = com_tok THEN
+      do_define ( line );
+  END;          {  PROCEDURE call_command  }
+
+{$P}
+
+PROCEDURE execute_command ( text_line:  script_line );
+
+   VAR
+     prog_name:  token_type;
+     prog_param:  os_prog_param;
+     delim:  token_type;
+
+   BEGIN        {  PROCEDURE execute_command  }
+
+   IF LENGTH ( text_line ) = 0 THEN
+     error ( fatal, '?  No codefile title specified in eXecute command.' );
+
+   eval_expr ( text_line, [ nam_tok ], [ eol_tok, com_tok ], prog_name,
+     delim );
+
+   IF LENGTH ( text_line ) > 0 THEN
+     prog_param := text_line
+   ELSE
+     prog_param := '';
+
+   os_store_command ( prog_name.nam_val, prog_param );
+   
+   close_all_files;
+   os_exit_to_next;
+   
+   {  The following EXIT is present to kludge around a bug in IV.03.  Delete
+   {  it when no longer needed.                                               }
+   
+   EXIT ( PROGRAM );
+   
+   END;         {  PROCEDURE execute_command  }
+  
+  {$P}
+  
+PROCEDURE dial_command ( text_line:  script_line  );
+
+  VAR
+    result:  cr_dialresult;
+    
+  BEGIN         {  PROCEDURE dial_command  }
+  
+  {  Take the line off-hook.  }
+  
+  cr_hook ( FALSE );
+  
+  {  Dial the number, and check the response we get.  }
+  
+  cr_dial ( text_line, ':', result );
+  
+  CASE result OF
+    
+    cr_noautodial: error ( fatal, 'Dialing not supported by REMUNIT software' );
+  
+    cr_dialerror: error ( fatal, 'Error detected by REMUNIT during dialing' );
+    
+    cr_offhook:  BEGIN  END;
+    
+    END;        {  CASEND  }
+    
+  END;          {  PROCEDURE dial_command  }
+  
+  {$P}
+  
+PROCEDURE hangup_command;
+
+  BEGIN         {  PROCEDURE hangup_command  }
+  
+  cr_hook ( TRUE );
+  
+  END;          {  PROCEDURE hangup_command  }
+  
+  {$P}
+
+PROCEDURE wait_command ( VAR carrier_found:  BOOLEAN );
+    
+  VAR
+    start_time:  os_timer;
+    
+  BEGIN         {  PROCEDURE wait_command  }
+  os_start_timer ( start_time );
+  REPEAT
+    check_kb ( exit_requested );
+  UNTIL cr_carrier OR exit_requested OR ( os_elapsed_time ( start_time ) > 
+    30000 );
+  IF cr_carrier THEN
+    cr_answer
+  ELSE
+    IF NOT exit_requested THEN
+      error ( fatal, 'Did not detect carrier within 30 seconds' );
+  carrier_found := TRUE;
+  END;          {  PROCEDURE wait_command  }
+  
+
+
+
+
+{$P}
+
+BEGIN          {  PROGRAM convers  }
+
+initialize;
+setup_display;
+nest_stack [ 1 ] . line_number := 1;
+exit_condition := FALSE;
+exit_requested := FALSE;
+display_status ( CONCAT ( 'Beginning execution of script ',
+  nest_stack [ 1 ].script_name ));
+
+WHILE NOT exit_condition DO
+  BEGIN
+  successful := TRUE;
+  io_read_line ( script_file, cur_script_line );
+  IF IORESULT <> 0 THEN
+    error ( fatal, 'I/O device error while reading script file' );
+  nest_stack [ script_level ] . line_number := 
+    nest_stack [ script_level ] . line_number + 1;
+  IF cmd_display THEN
+    BEGIN
+    GOTOXY ( cmd_x + 13, cmd_y + 1 );
+    WRITE ( cur_script_line: 60 );
+    GOTOXY ( 0, link_dis_line );
+    END;        {  IFEND  }
+  eval_expr ( cur_script_line, [ nam_tok ], [ nam_tok..bad_tok ], 
+    command, delim_tok );
+  
+  make_upper ( command.nam_val );
+  cmd_index := cal_cmd;
+  WHILE ( command.nam_val <> cmd_names [ cmd_index ] ) AND 
+   ( cmd_index < bad_cmd ) DO  
+    cmd_index := SUCC ( cmd_index );
+  IF cmd_index <> bad_cmd THEN
+    BEGIN               {  valid command  }
+    IF ( NOT skipping ) OR ( cmd_index IN cnd_cmds ) THEN
+      CASE cmd_index OF
+        cal_cmd:   call_command ( cur_script_line );
+        com_cmd:   BEGIN  END;
+        def_cmd:   define_command ( cur_script_line );
+        dis_cmd:   display_command ( cur_script_line );
+        dia_cmd:   dial_command ( cur_script_line );
+        els_cmd:   else_command;
+        exe_cmd:   execute_command ( cur_script_line );
+        han_cmd:   hangup_command;
+        if_cmd:    if_command ( cur_script_line );
+        ife_cmd:   ifend_command;
+        mat_cmd:   match_command ( cur_script_line, successful );
+        pau_cmd:   pause_command ( cur_script_line );
+        qui_cmd:   exit_condition := TRUE; 
+        ret_cmd:   return_command ( exit_condition );
+        sen_cmd:   send_command ( cur_script_line );
+        tra_cmd:   transfer_command ( cur_script_line, successful );
+        wai_cmd:   wait_command ( successful );
+        whe_cmd:   whilend_command;
+        whi_cmd:   while_command ( cur_script_line );
+        END        {  CASEND   }
+    END         {  IFEND valid command  }
+  ELSE
+    error ( fatal, CONCAT ( 'Unrecognized command ', command.nam_val,
+     ' found.' ) );
+  
+  IF NOT exit_requested THEN
+    check_kb ( exit_requested );
+  exit_condition := NOT successful OR exit_condition OR exit_requested;
+  
+  END;           {  WHILEND  }
+
+IF exit_requested THEN
+  error ( warning, 'Execution ended in response to ESC key' );
+  
+close_all_files;
+
+cr_commquit;
+
+END.
+
+
+

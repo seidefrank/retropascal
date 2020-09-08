@@ -1,0 +1,486 @@
+{
+(*$L-PRINTER:*)
+}
+
+                            (****STARGAME.TEXT****)
+                                (****4/1/83****)
+
+(* Original autor is not known to me. This version executes only on the *)
+(* Heathkit H-19 terminal.  Revised by Hays Busch. For more information *)
+(* call 303-238-7227 or write 3071 Oak St., Lakewood, CO. 80215         *)
+        
+{  Modified (kludged) for terminal independence.  If you have an H-19, you
+   can put back all the code that I commented out, and the game will look
+   a little nicer, but it will work the same - gws }
+   
+PROGRAM THE_STAR_GAME;
+CONST
+  T_SID_HORZ = 3;               {top side horizontal}
+  T_MID_HORZ = 9;               {top middle horizontal}
+  B_MID_HORZ = 15;              {bottom etc.}
+  B_SID_HORZ = 21;
+  L_SID_VERT = 30;              {left side vertical}
+  L_MID_VERT = 36;
+  R_MID_VERT = 42;              {right etc.}
+  R_SID_VERT = 48;
+VAR
+  star                  : ARRAY [1..9] OF 0..1;
+  move_numb             : INTEGER;
+  rand_seed             : REAL;
+  u_r_c, l_r_c,                 {upper right corner, etc.}
+  l_l_c, u_l_c,                 {lower left corner, etc.}
+  h_ln, v_ln,                   {horiz and vert line}
+  dn_t, lf_t,                   {down & left T}
+  up_t, rt_t,                   {up & right T}
+  crs                   : CHAR;  {cross}
+  star_top,
+  star_mid,
+  star_bot              : STRING[3];
+  
+  PROCEDURE BELL;
+  BEGIN
+    WRITE(CHR(7));
+  END;  {alarm}
+  
+  PROCEDURE CLEAR_SCREEN;
+  var buf : packed array [ 0..23 ] of char;
+  BEGIN
+    (**WRITE(CHR(27),'E');  {H-19 clearscreen}*)
+    fillchar ( buf, sizeof ( buf ) , chr ( 10 ) );
+    gotoxy ( 0, 23 );
+    unitwrite ( 2, buf, sizeof ( buf ) );
+  END;  {clear screen}
+  
+  PROCEDURE CLR_LINE_RIGHT(clr_col,clr_row:INTEGER);
+  var buf : packed array [ 0..79 ] of char;
+  BEGIN
+    fillchar ( buf, sizeof( buf ), chr ( 32 ) );
+    GOTOXY(clr_col,clr_row);
+    (**WRITE(CHR(27),'K'); {H-19 command}*)
+    unitwrite ( 2, buf, 80-clr_col );
+  END;  {clear line right}
+  
+  
+  PROCEDURE START_GRAPHICS;
+  BEGIN
+    (*WRITE(CHR(27),'F'); {graphics on}
+    write(CHR(27),'x5');{cursor off}*)
+  END;  {start graphics and cursor off}
+  
+  PROCEDURE END_GRAPHICS;
+  BEGIN 
+    (*WRITE(CHR(27),'G'); {graphics mode off}
+    write(CHR(27),'y5');{cursor on}*)
+  END;  {end graphics and cursor on}
+  
+  FUNCTION REPLY_CHAR:CHAR;
+  VAR
+    rc_char     : CHAR;
+  BEGIN
+    READ(KEYBOARD,rc_char);
+    REPLY_CHAR := rc_char;
+  END;  {reply char}
+  
+  PROCEDURE INITIALIZE;
+  VAR
+    i_go_ahead  : CHAR;
+    i_continue  : BOOLEAN;
+  BEGIN
+    GOTOXY(30,2);WRITE('THE STAR GAME');
+    GOTOXY(15,4);WRITE('The object of the game is to fill all boxes in');
+    GOTOXY(15,5);WRITE('the rectangle...EXCEPT #5...with a star.  The');
+    GOTOXY(15,6);WRITE('problem is, when you change one star, you change');
+    GOTOXY(15,7);WRITE('several other stars as well!');
+    GOTOXY(15,9);WRITE('To change a star, type its box number.  Typing');
+    GOTOXY(15,10);WRITE('an empty box number will just add one count to');
+    GOTOXY(15,11);WRITE('your score...which is not good!');
+    GOTOXY(15,13);WRITE('If you erase all stars, you lose right away.');
+    GOTOXY(15,15);WRITE('Player who fills all boxes...EXCEPT #5...with a');
+    GOTOXY(15,16);WRITE('star, in the least number of turns, wins.');
+    GOTOXY(15,18);WRITE('There is a pattern to the play...try to find');
+    GOTOXY(15,19);WRITE('it and you can win every time.  GOOD LUCK!');
+    REPEAT
+      BELL;
+      GOTOXY(15,22);WRITE('Type "C" to continue  -> ');
+      i_go_ahead := REPLY_CHAR;
+      GOTOXY(40,22);WRITE(i_go_ahead);
+      i_continue := FALSE;
+      IF i_go_ahead IN ['C','c']
+      THEN i_continue := TRUE;
+    UNTIL i_continue;
+    CLEAR_SCREEN;
+    (**
+    u_r_c := 'c';                       {Heath H-19 termainal graphics}
+    l_r_c := 'd';
+    l_l_c := 'e';
+    u_l_c := 'f';
+    h_ln := 'a';
+    v_ln := '`';
+    dn_t := 's';
+    lf_t := 't';
+    up_t := 'u';
+    rt_t := 'v';
+    crs := 'b';
+    star_top := 'y`x';
+    star_mid := 'aia';
+    star_bot := 'x`y';
+    *)
+    u_r_c := '+';                       {ASCII character graphics - gws }
+    l_r_c := '+';
+    l_l_c := '+';
+    u_l_c := '+';
+    h_ln := '-';
+    v_ln := '|';
+    dn_t := '+';
+    lf_t := '+';
+    up_t := '+';
+    rt_t := '+';
+    crs := '+';
+    star_top := '* *';
+    star_mid := ' * ';
+    star_bot := '* *';
+    BELL;
+    GOTOXY(20,10); WRITE('Enter a number between 1 and 100 -> ');
+    READLN(rand_seed);
+  END;  {initialize}
+  
+  PROCEDURE DRAW_FIELD;
+  VAR
+    df_x,
+    df_y        : INTEGER;
+  
+    PROCEDURE DRAW_LINE(dl_x_start,dl_x_end,dl_y_start,dl_y_end:INTEGER);
+    VAR
+      dl_x_axis, dl_y_axis      : INTEGER;
+      
+      PROCEDURE DRAW_DIAG;
+      BEGIN
+        END_GRAPHICS;
+        WRITE('LINE COORDINATES YIELD DIAGONAL');
+        START_GRAPHICS;
+      END;  {draw diagonal}
+      
+    BEGIN {draw_line}
+      IF (dl_x_end <> dl_x_start) AND (dl_y_end <> dl_y_start)
+      THEN DRAW_DIAG
+      ELSE IF dl_x_end <> dl_x_start
+           THEN                    {draw a horizontal line}
+             BEGIN
+               IF dl_x_start < dl_x_end
+               THEN FOR dl_x_axis := dl_x_start TO dl_x_end DO
+                      BEGIN
+                        GOTOXY(dl_x_axis,dl_y_start); WRITE(h_ln);
+                      END
+               ELSE FOR dl_x_axis := dl_x_start DOWNTO dl_x_end DO
+                      BEGIN
+                        GOTOXY(dl_x_axis,dl_y_start); WRITE(h_ln);
+                      END;
+             END
+           ELSE                    {draw a vertical line}
+             BEGIN
+               IF dl_y_start < dl_y_end
+               THEN FOR dl_y_axis := dl_y_start TO dl_y_end DO
+                      BEGIN
+                        GOTOXY(dl_x_start,dl_y_axis); WRITE(v_ln);
+                      END
+               ELSE FOR dl_y_axis := dl_y_start DOWNTO dl_y_end DO
+                      BEGIN
+                        GOTOXY(dl_x_start,dl_y_axis); WRITE(v_ln);
+                      END;
+             END;
+    END;  {draw line}
+    
+  BEGIN {draw field}
+    CLEAR_SCREEN;
+    START_GRAPHICS;
+    
+{first draw the box}
+
+    DRAW_LINE((L_SID_VERT + 1),(R_SID_VERT - 1),T_SID_HORZ,T_SID_HORZ);
+    GOTOXY(R_SID_VERT,T_SID_HORZ); WRITE(u_r_c);
+    DRAW_LINE(R_SID_VERT,R_SID_VERT,(T_SID_HORZ + 1),(B_SID_HORZ - 1));
+    GOTOXY(R_SID_VERT,B_SID_HORZ); WRITE(l_r_c);
+    DRAW_LINE((R_SID_VERT - 1),(L_SID_VERT + 1),B_SID_HORZ,B_SID_HORZ);
+    GOTOXY(L_SID_VERT,B_SID_HORZ); WRITE(l_l_c);
+    DRAW_LINE(L_SID_VERT,L_SID_VERT,(B_SID_HORZ - 1),(T_SID_HORZ + 1));
+    GOTOXY(L_SID_VERT,T_SID_HORZ); WRITE(u_l_c);
+    
+{next the high middle line}
+
+    GOTOXY(L_SID_VERT,T_MID_HORZ); WRITE(rt_t);
+    DRAW_LINE((L_SID_VERT + 1),(R_SID_VERT - 1),T_MID_HORZ,T_MID_HORZ);
+    GOTOXY(R_SID_VERT,T_MID_HORZ); WRITE(lf_t);
+    
+{next low middle line}
+
+    GOTOXY(L_MID_VERT,T_SID_HORZ); WRITE(dn_t);
+    DRAW_LINE(L_MID_VERT,L_MID_VERT,(T_SID_HORZ + 1),(T_MID_HORZ - 1));
+    GOTOXY(L_MID_VERT,T_MID_HORZ); WRITE(crs);
+    DRAW_LINE(L_MID_VERT,L_MID_VERT,(T_MID_HORZ + 1),(B_SID_HORZ - 1));
+    GOTOXY(L_MID_VERT,B_SID_HORZ); WRITE(up_t);
+    
+{next low middle line}
+
+    GOTOXY(L_SID_VERT,B_MID_HORZ); WRITE(rt_t);
+    DRAW_LINE((L_SID_VERT + 1),(L_MID_VERT - 1),B_MID_HORZ,B_MID_HORZ);
+    GOTOXY(L_MID_VERT,B_MID_HORZ); WRITE(crs);
+    DRAW_LINE((L_MID_VERT + 1),(R_SID_VERT - 1),B_MID_HORZ,B_MID_HORZ);
+    GOTOXY(R_SID_VERT,B_MID_HORZ); WRITE(lf_t);
+    
+{finally right middle line}
+
+    GOTOXY(R_MID_VERT,T_SID_HORZ); WRITE(dn_t);
+    DRAW_LINE(R_MID_VERT,R_MID_VERT,(T_SID_HORZ + 1),(T_MID_HORZ - 1));
+    GOTOXY(R_MID_VERT,T_MID_HORZ); WRITE(crs);
+    DRAW_LINE(R_MID_VERT,R_MID_VERT,(T_MID_HORZ + 1),(B_MID_HORZ - 1));
+    GOTOXY(R_MID_VERT,B_MID_HORZ); WRITE(crs);
+    DRAW_LINE(R_MID_VERT,R_MID_VERT,(B_MID_HORZ + 1),(B_SID_HORZ - 1));
+    GOTOXY(R_MID_VERT,B_SID_HORZ); WRITE(up_t);
+    
+{then number the boxes}
+
+    GOTOXY((L_SID_VERT + 1),(T_SID_HORZ + 1)); WRITE('1');
+    GOTOXY((L_MID_VERT + 1),(T_SID_HORZ + 1)); WRITE('2');
+    GOTOXY((R_MID_VERT + 1),(T_SID_HORZ + 1)); WRITE('3');
+    GOTOXY((L_SID_VERT + 1),(T_MID_HORZ + 1)); WRITE('4');
+    GOTOXY((L_MID_VERT + 1),(T_MID_HORZ + 1)); WRITE('5');
+    GOTOXY((R_MID_VERT + 1),(T_MID_HORZ + 1)); WRITE('6');
+    GOTOXY((L_SID_VERT + 1),(B_MID_HORZ + 1)); WRITE('7');
+    GOTOXY((L_MID_VERT + 1),(B_MID_HORZ + 1)); WRITE('8');
+    GOTOXY((R_MID_VERT + 1),(B_MID_HORZ + 1)); WRITE('9');
+    END_GRAPHICS;
+  END;  {draw field}
+  
+  PROCEDURE DRAW_STAR(ds_star:INTEGER);
+  VAR
+    ds_x,
+    ds_y       : INTEGER;
+  BEGIN
+    START_GRAPHICS;
+    CASE ds_star OF                             {first find out which star}
+      1: BEGIN
+           ds_x := L_SID_VERT + 2;
+           ds_y := T_SID_HORZ + 2;
+         END;
+      2: BEGIN
+           ds_x := L_MID_VERT + 2;
+           ds_y := T_SID_HORZ + 2;
+         END;
+      3: BEGIN
+           ds_x := R_MID_VERT + 2;
+           ds_y := T_SID_HORZ + 2;
+         END;
+      4: BEGIN
+           ds_x := L_SID_VERT + 2;
+           ds_y := T_MID_HORZ + 2;
+         END;
+      5: BEGIN
+           ds_x := L_MID_VERT + 2;
+           ds_y := T_MID_HORZ + 2;
+         END;
+      6: BEGIN
+           ds_x := R_MID_VERT + 2;
+           ds_y := T_MID_HORZ + 2;
+         END;
+      7: BEGIN
+           ds_x := L_SID_VERT + 2;
+           ds_y := B_MID_HORZ + 2;
+         END;
+      8: BEGIN
+           ds_x := L_MID_VERT + 2;
+           ds_y := B_MID_HORZ + 2;
+         END;
+      9: BEGIN
+           ds_x := R_MID_VERT + 2;
+           ds_y := B_MID_HORZ + 2;
+         END;
+    END; {case}
+    IF star[ds_star] <> 0
+    THEN                                        {build the star}
+      BEGIN
+        GOTOXY(ds_x,ds_y + 0); WRITE(star_top);     {  \|/  }
+        GOTOXY(ds_x,ds_y + 1); WRITE(star_mid);     {  -*-  }
+        GOTOXY(ds_x,ds_y + 2); WRITE(star_bot);     {  /|\  }
+      END
+    ELSE
+      BEGIN
+        GOTOXY(ds_x,ds_y + 0); WRITE('   ');
+        GOTOXY(ds_x,ds_y + 1); WRITE('   ');
+        GOTOXY(ds_x,ds_y + 2); WRITE('   ');
+      END;
+    END_GRAPHICS;                                  {shut off the graphics}
+  END;  {draw star}
+  
+  PROCEDURE GEN_BOARD;
+  VAR
+    gb_index    : INTEGER;
+  
+    FUNCTION RANDOM:INTEGER;
+    VAR
+      r_ptr      :^REAL;
+      r_int      :INTEGER;
+    BEGIN
+      REPEAT
+        NEW(r_ptr);
+      UNTIL r_ptr^ <> 0;
+      IF r_ptr^ < 0
+      THEN r_ptr^ := 0 - r_ptr^;
+      rand_seed := rand_seed * r_ptr^;
+      REPEAT
+        WHILE rand_seed > 1 DO
+          rand_seed := rand_seed / 10;
+        WHILE rand_seed < 0.1 DO
+          rand_seed := rand_seed * 10;
+        r_int := TRUNC(rand_seed * 10.0);
+      UNTIL (r_int >= 1) AND (r_int <= 9);
+      RANDOM := r_int;
+    END;  {random}
+    
+  BEGIN {gen_board}
+    DRAW_FIELD;
+    FOR gb_index := 1 TO 9 DO
+      star[gb_index] := 0;
+    star[RANDOM] := 1;
+    FOR gb_index := 1 TO 9 DO
+      DRAW_STAR(gb_index);
+    move_numb := 1;
+  END;  {generate board}
+  
+  PROCEDURE PLAY;
+  VAR
+    p_move      : CHAR;
+    p_index     : INTEGER;
+  
+    PROCEDURE FLIP(fstar:INTEGER);
+    BEGIN
+      IF star[fstar] = 0
+      THEN star[fstar] := 1
+      ELSE star[fstar] := 0;
+      DRAW_STAR(fstar);
+    END;  {flip}
+    
+    FUNCTION FINISHED:BOOLEAN;
+    VAR
+      f_sum,
+      f_index   : INTEGER;
+    BEGIN
+      f_sum := 0;
+      FOR f_index := 1 to 9 DO
+        f_sum := f_sum + star[f_index];
+      IF (f_sum = 0) OR ((f_sum = 8) AND (star[5] = 0))
+      THEN FINISHED := TRUE
+      ELSE FINISHED := FALSE;
+    END;  {finished}
+    
+  BEGIN {play}
+    REPEAT
+      GOTOXY(60,0); WRITE('MOVE -> ',move_numb:3);
+      GOTOXY(0,0); WRITE('Enter move -> ');
+      IF move_numb = 35
+      THEN
+        BEGIN
+          BELL;
+          GOTOXY(0,24); WRITE('Give up ???  Type "Q" instead of box number');
+          GOTOXY(15,0);
+        END;
+      p_move := REPLY_CHAR;
+      IF p_move IN ['Q','q']
+      THEN
+        BEGIN
+          CLEAR_SCREEN;
+          EXIT(PROGRAM);
+        END;
+      IF p_move IN ['1'..'9']
+      THEN
+        BEGIN
+          p_index := ORD(p_move) - ORD('0');
+          IF star[p_index] = 1
+          THEN CASE p_index OF
+                 1: BEGIN
+                      FLIP(1);
+                      FLIP(5);
+                      FLIP(4);
+                      FLIP(2);
+                    END;
+                 2: BEGIN
+                      FLIP(2);
+                      FLIP(1);
+                      FLIP(3);
+                    END;
+                 3: BEGIN
+                      FLIP(3);
+                      FLIP(5);
+                      FLIP(2);
+                      FLIP(6);
+                    END;
+                 4: BEGIN
+                      FLIP(4);
+                      FLIP(7);
+                      FLIP(1);
+                    END;
+                 5: BEGIN
+                      FLIP(5);
+                      FLIP(2);
+                      FLIP(6);
+                      FLIP(8);
+                      FLIP(4);
+                    END;
+                 6: BEGIN
+                      FLIP(6);
+                      FLIP(3);
+                      FLIP(9);
+                    END;
+                 7: BEGIN
+                      FLIP(7);
+                      FLIP(5);
+                      FLIP(8);
+                      FLIP(4);
+                    END;
+                 8: BEGIN
+                      FLIP(8);
+                      FLIP(9);
+                      FLIP(7);
+                    END;
+                 9: BEGIN
+                      FLIP(9);
+                      FLIP(5);
+                      FLIP(6);
+                      FLIP(8);
+                    END;
+                 END; {case}
+          move_numb := move_numb + 1;
+        END
+      ELSE
+        BEGIN
+          FOR p_index := 1 TO 10 DO
+            BELL;
+        END;
+    UNTIL FINISHED;
+    IF star[1] = 1                      {test for win vs loss}
+    THEN
+      BEGIN
+        GOTOXY(0,23);
+        WRITE('You won in -> ',(move_numb - 1):3,' moves.  ');
+        BELL;
+      END
+    ELSE
+      BEGIN
+        GOTOXY(0,23);
+        WRITE('You lost in -> ',(move_numb - 1):3,' moves.  ');
+        FOR p_index := 1 TO 250 DO
+          BELL;
+      END;
+  END;  {play}
+  
+BEGIN {star game}
+  CLEAR_SCREEN;
+  INITIALIZE;
+  REPEAT
+    GEN_BOARD;
+    PLAY;
+    CLR_LINE_RIGHT(0,24);
+    WRITE('Another game?  <Y/N> ');
+  UNTIL NOT(REPLY_CHAR IN ['y','Y']);
+  CLEAR_SCREEN;
+END.  {program}
+

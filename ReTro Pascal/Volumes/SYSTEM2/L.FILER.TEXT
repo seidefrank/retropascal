@@ -1,0 +1,2448 @@
+     2   1    1:D     1 {.fs} {$L L.FILER.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+     3   1    1:D     1 
+     4   1    1:D     1 {$S+}
+     4   1    1:D     1 {$I GLOBALS.TEXT}
+     5   1    1:D     1 
+     6   1    1:D     1 {.fs modifications marked by this}
+     7   1    1:D     1 
+     8   1    1:D     1 {$S+}
+     9   1    1:D     1 (*$U-*)
+    10   1    1:D     1     (******************************************************************)
+    11   1    1:D     1     (*                                                                *)
+    12   1    1:D     1     (*  Copyright (c) 1978 Regents of the University of California.   *)
+    13   1    1:D     1     (*  Permission to copy or distribute this software or documen-    *)
+    14   1    1:D     1     (*  tation in hard or soft copy granted only by written license   *) 
+    15   1    1:D     1     (*  obtained from the Institute for Information Systems.          *)
+    16   1    1:D     1     (*                                                                *)
+    17   1    1:D     1     (******************************************************************)
+    18   1    1:D     1     
+    19   0    1:D     1 PROGRAM PASCALSYSTEM;
+    20   0    1:D     1 
+    21   0    1:D     1 (************************************************)
+    22   0    1:D     1 (*                                              *)
+    23   0    1:D     1 (*    UCSD PASCAL OPERATING SYSTEM              *)
+    24   0    1:D     1 (*                                              *)
+    25   0    1:D     1 (*    RELEASE LEVEL:  I.3   AUGUST, 1977        *)
+    26   0    1:D     1 (*                    I.4   JANUARY, 1978       *)
+    27   0    1:D     1 (*                    I.5   SEPTEMBER, 1978     *)
+    28   0    1:D     1 (*                    II.0  FEBRUARY, 1979 BD   *)
+    29   0    1:D     1 (*                                              *)
+    30   0    1:D     1 (*    WRITTEN BY ROGER T. SUMNER                *)
+    31   0    1:D     1 (*    WINTER 1977                               *)
+    32   0    1:D     1 (*                                              *)
+    33   0    1:D     1 (*    INSTITUTE FOR INFORMATION SYSTEMS         *)
+    34   0    1:D     1 (*    UC SAN DIEGO, LA JOLLA, CA                *)
+    35   0    1:D     1 (*                                              *)
+    36   0    1:D     1 (*    KENNETH L. BOWLES, DIRECTOR               *)
+    37   0    1:D     1 (*                                              *)
+    38   0    1:D     1 (************************************************)
+    39   0    1:D     1 
+    40   0    1:D     1 CONST
+    41   0    1:D     1      MMAXINT = 32767;   (*MAXIMUM INTEGER VALUE*)
+    42   0    1:D     1      MAXUNIT = 12;      (*MAXIMUM PHYSICAL UNIT # FOR UREAD*)
+    43   0    1:D     1      MAXDIR = 77;       (*MAX NUMBER OF ENTRIES IN A DIRECTORY*)
+    44   0    1:D     1      VIDLENG = 7;       (*NUMBER OF CHARS IN A VOLUME ID*)
+    45   0    1:D     1      TIDLENG = 15;      (*NUMBER OF CHARS IN TITLE ID*)
+    46   0    1:D     1 {.fs#MAX_SEG = 31; }    (*MAX CODE SEGMENT NUMBER*)
+    47   0    1:D     1 {.fs}MAX_SEG = 15;      (*MAX CODE SEGMENT NUMBER*) { this is for the disk header, so must be 15 }
+    48   0    1:D     1 {.fs}MAX_RSEG = 31;     (*max resident code segment number*) { as loaded to mem }
+    49   0    1:D     1      FBLKSIZE = 512;    (*STANDARD DISK BLOCK LENGTH*)
+    50   0    1:D     1      DIRBLK = 2;        (*DISK ADDR OF DIRECTORY*)
+    51   0    1:D     1      AGELIMIT = 300;    (*MAX AGE FOR GDIRP...IN TICKS*)
+    52   0    1:D     1      EOL = 13;          (*END-OF-LINE...ASCII CR*)
+    53   0    1:D     1      DLE = 16;          (*BLANK COMPRESSION CODE*)
+    54   0    1:D     1      NAME_LEN = 23;     {Length of CONCAT(VIDLENG,':',TIDLENG)}
+    55   0    1:D     1      FILL_LEN = 11;     {Maximum # of nulls in FILLER}
+    56   0    1:D     1 
+    57   0    1:D     1 TYPE
+    58   0    1:D     1 
+    59   0    1:D     1      IORSLTWD = (INOERROR,IBADBLOCK,IBADUNIT,IBADMODE,ITIMEOUT,
+    60   0    1:D     1 	         ILOSTUNIT,ILOSTFILE,IBADTITLE,INOROOM,INOUNIT,
+    61   0    1:D     1 	         INOFILE,IDUPFILE,INOTCLOSED,INOTOPEN,IBADFORMAT,
+    62   0    1:D     1 	         ISTRGOVFL);
+    63   0    1:D     1 
+    64   0    1:D     1 	                                (*COMMAND STATES...SEE GETCMD*)
+    65   0    1:D     1 
+    66   0    1:D     1      CMDSTATE = (HALTINIT,DEBUGCALL,
+    67   0    1:D     1 	         UPROGNOU,UPROGUOK,SYSPROG,
+    68   0    1:D     1 	         COMPONLY,COMPANDGO,COMPDEBUG,
+    69   0    1:D     1                  LINKANDGO,LINKDEBUG);
+    70   0    1:D     1      
+    71   0    1:D     1                                         (*CODE FILES USED IN GETCMD*)
+    72   0    1:D     1                                         
+    73   0    1:D     1      SYSFILE = (ASSMBLER,COMPILER,EDITOR,FILER,LINKER);
+    74   0    1:D     1 
+    75   0    1:D     1 	                                (*ARCHIVAL INFO...THE DATE*)
+    76   0    1:D     1 
+    77   0    1:D     1      DATEREC = PACKED RECORD
+    78   0    1:D     1 	         MONTH: 0..12;          (*0 IMPLIES DATE NOT MEANINGFUL*)
+    79   0    1:D     1 	         DAY: 0..31;            (*DAY OF MONTH*)
+    80   0    1:D     1 	         YEAR: 0..100           (*100 IS TEMP DISK FLAG*)
+    81   0    1:D     1 	       END (*DATEREC*) ;
+    82   0    1:D     1 
+    83   0    1:D     1 	                                (*VOLUME TABLES*)
+    84   0    1:D     1      UNITNUM = 0..MAXUNIT;
+    85   0    1:D     1      VID = STRING[VIDLENG];
+    86   0    1:D     1 
+    87   0    1:D     1 	                                (*DISK DIRECTORIES*)
+    88   0    1:D     1      DIRRANGE = 0..MAXDIR;
+    89   0    1:D     1      TID = STRING[TIDLENG];
+    90   0    1:D     1      FULL_ID = STRING[NAME_LEN];
+    91   0    1:D     1 
+    92   0    1:D     1      FILE_TABLE = ARRAY [SYSFILE] OF FULL_ID;
+    93   0    1:D     1 
+    94   0    1:D     1      FILEKIND = (UNTYPEDFILE,XDSKFILE,CODEFILE,TEXTFILE,
+    95   0    1:D     1 	         INFOFILE,DATAFILE,GRAFFILE,FOTOFILE,SECUREDIR);
+    96   0    1:D     1 
+    97   0    1:D     1      DIRENTRY = PACKED RECORD
+    98   0    1:D     1 	          DFIRSTBLK: INTEGER;   (*FIRST PHYSICAL DISK ADDR*)
+    99   0    1:D     1 	          DLASTBLK: INTEGER;    (*POINTS AT BLOCK FOLLOWING*)
+   100   0    1:D     1 	          CASE DFKIND: FILEKIND OF
+   101   0    1:D     1                     SECUREDIR,
+   102   0    1:D     1 	            UNTYPEDFILE: (*ONLY IN DIR[0]...VOLUME INFO*)
+   103   0    1:D     1 	               (FILLER1 : 0..2048; {for downward compatibility,13 bits}
+   104   0    1:D     1 			DVID: VID;              (*NAME OF DISK VOLUME*)
+   105   0    1:D     1 	                DEOVBLK: INTEGER;       (*LASTBLK OF VOLUME*)
+   106   0    1:D     1 	                DNUMFILES: DIRRANGE;    (*NUM FILES IN DIR*)
+   107   0    1:D     1 	                DLOADTIME: INTEGER;     (*TIME OF LAST ACCESS*)
+   108   0    1:D     1 	                DLASTBOOT: DATEREC);    (*MOST RECENT DATE SETTING*)
+   109   0    1:D     1 	            XDSKFILE,CODEFILE,TEXTFILE,INFOFILE,
+   110   0    1:D     1 	            DATAFILE,GRAFFILE,FOTOFILE:
+   111   0    1:D     1 	               (FILLER2 : 0..1024; {for downward compatibility}
+   112   0    1:D     1 			STATUS : BOOLEAN;        {for FILER wildcards}
+   113   0    1:D     1 			DTID: TID;              (*TITLE OF FILE*)
+   114   0    1:D     1 			DLASTBYTE: 1..FBLKSIZE; (*NUM BYTES IN LAST BLOCK*)
+   115   0    1:D     1 	                DACCESS: DATEREC)       (*LAST MODIFICATION DATE*)
+   116   0    1:D     1 	        END (*DIRENTRY*) ;
+   117   0    1:D     1 
+   118   0    1:D     1      DIRP = ^DIRECTORY;
+   119   0    1:D     1 
+   120   0    1:D     1      DIRECTORY = ARRAY [DIRRANGE] OF DIRENTRY;
+   121   0    1:D     1 
+   122   0    1:D     1 	                                (*FILE INFORMATION*)
+   123   0    1:D     1 
+   124   0    1:D     1      CLOSETYPE = (CNORMAL,CLOCK,CPURGE,CCRUNCH);
+   125   0    1:D     1      WINDOWP = ^WINDOW;
+   126   0    1:D     1      WINDOW = PACKED ARRAY [0..0] OF CHAR;
+   127   0    1:D     1      FIBP = ^FIB;
+   128   0    1:D     1 
+   129   0    1:D     1      FIB = RECORD
+   130   0    1:D     1 	     FWINDOW: WINDOWP;  (*USER WINDOW...F^, USED BY GET-PUT*)
+   131   0    1:D     1 	     FEOF,FEOLN: BOOLEAN;
+   132   0    1:D     1 	     FSTATE: (FJANDW,FNEEDCHAR,FGOTCHAR);
+   133   0    1:D     1 	     FRECSIZE: INTEGER; (*IN BYTES...0=>BLOCKFILE, 1=>CHARFILE*)
+   134   0    1:D     1 	     CASE FISOPEN: BOOLEAN OF
+   135   0    1:D     1 	       TRUE: (FISBLKD: BOOLEAN; (*FILE IS ON BLOCK DEVICE*)
+   136   0    1:D     1 	              FUNIT: UNITNUM;   (*PHYSICAL UNIT #*)
+   137   0    1:D     1 	              FVID: VID;        (*VOLUME NAME*)
+   138   0    1:D     1 	              FREPTCNT,         (* # TIMES F^ VALID W/O GET*)
+   139   0    1:D     1 	              FNXTBLK,          (*NEXT REL BLOCK TO IO*)
+   140   0    1:D     1 	              FMAXBLK: INTEGER; (*MAX REL BLOCK ACCESSED*)
+   141   0    1:D     1 	              FMODIFIED:BOOLEAN;(*PLEASE SET NEW DATE IN CLOSE*)
+   142   0    1:D     1 	              FHEADER: DIRENTRY;(*COPY OF DISK DIR ENTRY*)
+   143   0    1:D     1 	              CASE FSOFTBUF: BOOLEAN OF (*DISK GET-PUT STUFF*)
+   144   0    1:D     1 	                TRUE: (FNXTBYTE,FMAXBYTE: INTEGER;
+   145   0    1:D     1 	                       FBUFCHNGD: BOOLEAN;
+   146   0    1:D     1 	                       FBUFFER: PACKED ARRAY [0..FBLKSIZE] OF CHAR))
+   147   0    1:D     1 	   END (*FIB*) ;
+   148   0    1:D     1 
+   149   0    1:D     1 	                                (*USER WORKFILE STUFF*)
+   150   0    1:D     1 
+   151   0    1:D     1      INFOREC = RECORD
+   152   0    1:D     1 	         SYMFIBP,CODEFIBP: FIBP;        (*WORKFILES FOR SCRATCH*)
+   153   0    1:D     1 	         ERRSYM,ERRBLK,ERRNUM: INTEGER; (*ERROR STUFF IN EDIT*)
+   154   0    1:D     1 	         SLOWTERM,STUPID: BOOLEAN;      (*STUDENT PROGRAMMER ID!!*)
+   155   0    1:D     1 	         ALTMODE: CHAR;                 (*WASHOUT CHAR FOR COMPILER*)
+   156   0    1:D     1 	         GOTSYM,GOTCODE: BOOLEAN;       (*TITLES ARE MEANINGFUL*)
+   157   0    1:D     1 	         WORKVID,SYMVID,CODEVID: VID;   (*PERM&CUR WORKFILE VOLUMES*)
+   158   0    1:D     1 	         WORKTID,SYMTID,CODETID: TID    (*PERM&CUR WORKFILES TITLE*)
+   159   0    1:D     1 	       END (*INFOREC*) ;
+   160   0    1:D     1 
+   161   0    1:D     1 	                                (*CODE SEGMENT LAYOUTS*)
+   162   0    1:D     1 
+   163   0    1:D     1      SEG_RANGE = 0..MAX_SEG;
+   164   0    1:D     1      SEG_DESC = RECORD
+   165   0    1:D     1 	         DISKADDR: INTEGER;     (*REL BLK IN CODE...ABS IN SYSCOM^*)
+   166   0    1:D     1 	         CODELENG: INTEGER      (*# BYTES TO READ IN*)
+   167   0    1:D     1 	       END (*SEGDESC*) ;
+   168   0    1:D     1 
+   169   0    1:D     1 					(*DEBUGGER STUFF*)
+   170   0    1:D     1 
+   171   0    1:D     1      BYTERANGE = 0..255;
+   172   0    1:D     1      TRICKARRAY = RECORD        {Memory diddling for execerror}
+   173   0    1:D     1 		    CASE BOOLEAN OF
+   174   0    1:D     1 		      TRUE : (WORD : ARRAY [0..0] OF INTEGER); 
+   175   0    1:D     1 		      FALSE : (BYTE : PACKED ARRAY [0..0] OF BYTERANGE)
+   176   0    1:D     1 		    END;
+   177   0    1:D     1      MSCWP = ^ MSCW;            (*MARK STACK RECORD POINTER*)
+   178   0    1:D     1      MSCW = RECORD
+   179   0    1:D     1 	      STATLINK: MSCWP;  (*POINTER TO PARENT MSCW*)
+   180   0    1:D     1 	      DYNLINK: MSCWP;   (*POINTER TO CALLER'S MSCW*)
+   181   0    1:D     1 	      MSSEG,MSJTAB: ^TRICKARRAY;
+   182   0    1:D     1 	      MSIPC: INTEGER;
+   183   0    1:D     1 	      LOCALDATA: TRICKARRAY
+   184   0    1:D     1 	    END (*MSCW*) ;
+   185   0    1:D     1 
+   186   0    1:D     1 	                                (*SYSTEM COMMUNICATION AREA*)
+   187   0    1:D     1 	                                (*SEE INTERPRETERS...NOTE  *)
+   188   0    1:D     1 	                                (*THAT WE ASSUME BACKWARD  *)
+   189   0    1:D     1 	                                (*FIELD ALLOCATION IS DONE *)
+   190   0    1:D     1      SEG_ENTRY = RECORD
+   191   0    1:D     1 		   CODEUNIT: UNITNUM;
+   192   0    1:D     1 		   CODEDESC: SEGDESC
+   193   0    1:D     1 		 END;
+   194   0    1:D     1      SYSCOMREC = RECORD
+   195   0    1:D     1 	           IORSLT: IORSLTWD;    (*RESULT OF LAST IO CALL*)
+   196   0    1:D     1 	           XEQERR: INTEGER;     (*REASON FOR EXECERROR CALL*)
+   197   0    1:D     1 	           SYSUNIT: UNITNUM;    (*PHYSICAL UNIT OF BOOTLOAD*)
+   198   0    1:D     1 	           BUGSTATE: INTEGER;   (*DEBUGGER INFO*)
+   199   0    1:D     1 	           GDIRP: DIRP;         (*GLOBAL DIR POINTER,SEE VOLSEARCH*)
+   200   0    1:D     1 	           LASTMP,STKBASE,BOMBP: MSCWP;
+   201   0    1:D     1 	           MEMTOP,SEG,JTAB: INTEGER;
+   202   0    1:D     1 	           BOMBIPC: INTEGER;    (*WHERE XEQERR BLOWUP WAS*)
+   203   0    1:D     1 	           HLTLINE: INTEGER;    (*MORE DEBUGGER STUFF*)
+   204   0    1:D     1 	           BRKPTS: ARRAY [0..3] OF INTEGER;
+   205   0    1:D     1 	           RETRIES: INTEGER;    (*DRIVERS PUT RETRY COUNTS*)
+   206   0    1:D     1 	           EXPANSION: ARRAY [0..8] OF INTEGER;
+   207   0    1:D     1 	           HIGHTIME,LOWTIME: INTEGER;
+   208   0    1:D     1 	           MISCINFO: PACKED RECORD
+   209   0    1:D     1 	                       NOBREAK,STUPID,SLOWTERM,
+   210   0    1:D     1 	                       HASXYCRT,HASLCCRT,HAS8510A,HASCLOCK: BOOLEAN;
+   211   0    1:D     1 	                       USERKIND:(NORMAL, AQUIZ, BOOKER, PQUIZ);
+   212   0    1:D     1 	                       WORD_MACH, IS_FLIPT : BOOLEAN
+   213   0    1:D     1 			     END;
+   214   0    1:D     1 	           CRTTYPE: INTEGER;
+   215   0    1:D     1 	           CRTCTRL: PACKED RECORD
+   216   0    1:D     1 	                      RLF,NDFS,ERASEEOL,ERASEEOS,HOME,ESCAPE: CHAR;
+   217   0    1:D     1 	                      BACKSPACE: CHAR;
+   218   0    1:D     1 	                      FILLCOUNT: 0..255;
+   219   0    1:D     1                               CLEARSCREEN, CLEARLINE: CHAR;
+   220   0    1:D     1                               PREFIXED: PACKED ARRAY [0..15] OF BOOLEAN
+   221   0    1:D     1 	                    END;
+   222   0    1:D     1 	           CRTINFO: PACKED RECORD
+   223   0    1:D     1 	                      WIDTH,HEIGHT: INTEGER;
+   224   0    1:D     1 	                      RIGHT,LEFT,DOWN,UP: CHAR;
+   225   0    1:D     1 	                      BADCH,CHARDEL,STOP,BREAK,FLUSH,EOF: CHAR;
+   226   0    1:D     1 	                      ALTMODE,LINEDEL: CHAR;
+   227   0    1:D     1                               ALPHA_LOCK,ETX,PREFIX: CHAR;
+   228   0    1:D     1                               PREFIXED: PACKED ARRAY [0..15] OF BOOLEAN
+   229   0    1:D     1 	                    END;
+   230   0    1:D     1 {.fs#	           SEGTABLE: ARRAY [SEG_RANGE] OF SEG_ENTRY; }  { Apple II support }
+   231   0    1:D     1 {.fs}	           SEGTABLE: ARRAY [0..MAX_RSEG] OF SEG_ENTRY;  { resident seg table }
+   232   0    1:D     1 	         END (*SYSCOM*);
+   233   0    1:D     1 
+   234   0    1:D     1      MISCINFOREC = RECORD
+   235   0    1:D     1 	             MSYSCOM: SYSCOMREC
+   236   0    1:D     1 	           END;
+   237   0    1:D     1 
+   238   0    1:D     1 {.fs}  { for FREADDEC; copied from PASCALIO II.0.A UNIT interface }
+   239   0    1:D     1 {.fs}  DECMAX = INTEGER[36];
+   240   0    1:D     1 {.fs}  STUNT = RECORD CASE INTEGER OF
+   241   0    1:D     1 {.fs}		 2:(W2:INTEGER[4]);
+   242   0    1:D     1 {.fs}		 3:(W3:INTEGER[8]);
+   243   0    1:D     1 {.fs}		 4:(W4:INTEGER[12]);
+   244   0    1:D     1 {.fs}		 5:(W5:INTEGER[16]);
+   245   0    1:D     1 {.fs}		 6:(W6:INTEGER[20]);
+   246   0    1:D     1 {.fs}		 7:(W7:INTEGER[24]);
+   247   0    1:D     1 {.fs}		 8:(W8:INTEGER[28]);
+   248   0    1:D     1 {.fs}		 9:(W9:INTEGER[32]);
+   249   0    1:D     1 {.fs}		 10:(W10:INTEGER[36])
+   250   0    1:D     1 {.fs}	       END;
+   251   0    1:D     1 
+   252   0    1:D     1 
+   253   0    1:D     1 VAR
+   254   0    1:D     1     SYSCOM: ^SYSCOMREC;                 (*MAGIC PARAM...SET UP IN BOOT*)
+   255   0    1:D     2     GFILES: ARRAY [0..5] OF FIBP;       (*GLOBAL FILES, 0=INPUT, 1=OUTPUT*)
+   256   0    1:D     8     USERINFO: INFOREC;                  (*WORK STUFF FOR COMPILER ETC*)
+   257   0    1:D    54     EMPTYHEAP: ^INTEGER;                (*HEAP MARK FOR MEM MANAGING*)
+   258   0    1:D    55     INPUTFIB,OUTPUTFIB,                 (*CONSOLE FILES...GFILES ARE COPIES*)
+   259   0    1:D    55     SYSTERM,SWAPFIB: FIBP;              (*CONTROL AND SWAPSPACE FILES*)
+   260   0    1:D    59     SYVID,DKVID: VID;                   (*SYSUNIT VOLID & DEFAULT VOLID*)
+   261   0    1:D    67     THEDATE: DATEREC;                   (*TODAY...SET IN FILER OR SIGN ON*)
+   262   0    1:D    68 {.fs} { Note: do not change any variable above; interpreter accesses some }
+   263   0    1:D    68     DEBUGINFO: ^INTEGER;                (*DEBUGGERS GLOBAL INFO WHILE RUNIN*)
+   264   0    1:D    69     STATE: CMDSTATE;                    (*FOR GETCOMMAND*)
+   265   0    1:D    70     PL: STRING;                         (*PROMPTLINE STRING...SEE PROMPT*)
+   266   0    1:D   111     IPOT: ARRAY [0..4] OF INTEGER;      (*INTEGER POWERS OF TEN*)
+   267   0    1:D   116     FILLER: STRING[FILL_LEN];           (*NULLS FOR CARRIAGE DELAY*)
+   268   0    1:D   122     DIGITS: SET OF '0'..'9';
+   269   0    1:D   126     UNITABLE: ARRAY [UNITNUM] OF (*0 NOT USED*)
+   270   0    1:D   126 	        RECORD
+   271   0    1:D   126 	          UVID: VID;    (*VOLUME ID FOR UNIT*)
+   272   0    1:D   126 	          CASE UISBLKD: BOOLEAN OF
+   273   0    1:D   126 	            TRUE: (UEOVBLK: INTEGER)
+   274   0    1:D   126 	        END (*UNITABLE*) ;
+   275   0    1:D   204     FILENAME : FILE_TABLE;
+   276   0    1:D   264 
+   277   0    1:D   264 (*-------------------------------------------------------------------------*)
+   278   0    1:D   264 (* SYSTEM PROCEDURE FORWARD DECLARATIONS *)
+   279   0    1:D   264 (* THESE ARE ADDRESSED BY OBJECT CODE... *)
+   280   0    1:D   264 (*  DO NOT MOVE WITHOUT CAREFUL THOUGHT  *)
+   281   0    1:D   264 
+   282   0    2:D     1 PROCEDURE EXECERROR;
+   283   0    2:D     1   FORWARD;
+   284   0    3:D     1 PROCEDURE FINIT(VAR F: FIB; WINDOW: WINDOWP; RECWORDS: INTEGER);
+   285   0    3:D     4   FORWARD;
+   286   0    4:D     1 PROCEDURE FRESET(VAR F: FIB);
+   287   0    4:D     2   FORWARD;
+   288   0    5:D     1 PROCEDURE FOPEN(VAR F: FIB; VAR FTITLE: STRING;
+   289   0    5:D     3 	        FOPENOLD: BOOLEAN; JUNK: FIBP);
+   290   0    5:D     5   FORWARD;
+   291   0    6:D     1 PROCEDURE FCLOSE(VAR F: FIB; FTYPE: CLOSETYPE);
+   292   0    6:D     3   FORWARD;
+   293   0    7:D     1 PROCEDURE FGET(VAR F: FIB);
+   294   0    7:D     2   FORWARD;
+   295   0    8:D     1 PROCEDURE FPUT(VAR F: FIB);
+   296   0    8:D     2   FORWARD;
+   297   0    8:D     2 {.fs# PROCEDURE XSEEK; }
+   298   0    9:D     1 {.fs} PROCEDURE FSEEK(VAR F: FIB; RECNUM: INTEGER); { from PASCALIO }
+   299   0    9:D     3   FORWARD;
+   300   0   10:D     3 FUNCTION FEOF(VAR F: FIB): BOOLEAN;
+   301   0   10:D     4   FORWARD;
+   302   0   11:D     3 FUNCTION FEOLN(VAR F: FIB): BOOLEAN;
+   303   0   11:D     4   FORWARD;
+   304   0   12:D     1 PROCEDURE FREADINT(VAR F: FIB; VAR I: INTEGER);
+   305   0   12:D     3   FORWARD;
+   306   0   13:D     1 PROCEDURE FWRITEINT(VAR F: FIB; I,RLENG: INTEGER);
+   307   0   13:D     4   FORWARD;
+   308   0   13:D     4 {.fs# PROCEDURE XREADREAL; }
+   309   0   14:D     1 {.fs} PROCEDURE FREADREAL(VAR F: FIB; VAR X: REAL); { from PASCALIO }
+   310   0   14:D     3   FORWARD;
+   311   0   14:D     3 {.fs# PROCEDURE XWRITEREAL; }
+   312   0   15:D     1 {.fs} PROCEDURE FWRITEREAL(VAR F: FIB; X: REAL; W, D: INTEGER); { from PASCALIO }
+   313   0   15:D     6   FORWARD;
+   314   0   16:D     1 PROCEDURE FREADCHAR(VAR F: FIB; VAR CH: CHAR);
+   315   0   16:D     3   FORWARD;
+   316   0   17:D     1 PROCEDURE FWRITECHAR(VAR F: FIB; CH: CHAR; RLENG: INTEGER);
+   317   0   17:D     4   FORWARD;
+   318   0   18:D     1 PROCEDURE FREADSTRING(VAR F: FIB; VAR S: STRING; SLENG: INTEGER);
+   319   0   18:D     4   FORWARD;
+   320   0   19:D     1 PROCEDURE FWRITESTRING(VAR F: FIB; VAR S: STRING; RLENG: INTEGER);
+   321   0   19:D     4   FORWARD;
+   322   0   20:D     1 PROCEDURE FWRITEBYTES(VAR F: FIB; VAR A: WINDOW; RLENG,ALENG: INTEGER);
+   323   0   20:D     5   FORWARD;
+   324   0   21:D     1 PROCEDURE FREADLN(VAR F: FIB);
+   325   0   21:D     2   FORWARD;
+   326   0   22:D     1 PROCEDURE FWRITELN(VAR F: FIB);
+   327   0   22:D     2   FORWARD;
+   328   0   23:D     1 PROCEDURE SCONCAT(VAR DEST,SRC: STRING; DESTLENG: INTEGER);
+   329   0   23:D     4   FORWARD;
+   330   0   24:D     1 PROCEDURE SINSERT(VAR SRC,DEST: STRING; DESTLENG,INSINX: INTEGER);
+   331   0   24:D     5   FORWARD;
+   332   0   25:D     1 PROCEDURE SCOPY(VAR SRC,DEST: STRING; SRCINX,COPYLENG: INTEGER);
+   333   0   25:D     5   FORWARD;
+   334   0   26:D     1 PROCEDURE SDELETE(VAR DEST: STRING; DELINX,DELLENG: INTEGER);
+   335   0   26:D     4   FORWARD;
+   336   0   27:D     3 FUNCTION SPOS(VAR TARGET,SRC: STRING): INTEGER;
+   337   0   27:D     5   FORWARD;
+   338   0   28:D     3 FUNCTION FBLOCKIO(VAR F: FIB; VAR A: WINDOW; I: INTEGER;
+   339   0   28:D     6 	          NBLOCKS,RBLOCK: INTEGER; DOREAD: BOOLEAN): INTEGER;
+   340   0   28:D     9   FORWARD;
+   341   0   29:D     1 PROCEDURE FGOTOXY(X,Y: INTEGER);
+   342   0   29:D     3   FORWARD;
+   343   0   29:D     3 
+   344   0   29:D     3 (* NON FIXED FORWARD DECLARATIONS *)
+   345   0   29:D     3 {.fs} { Do not move these either, as interpreter accesses some for emulations }
+   346   0   29:D     3 
+   347   0   30:D     3 FUNCTION VOLSEARCH(VAR FVID: VID; LOOKHARD: BOOLEAN;
+   348   0   30:D     5 	           VAR FDIR: DIRP): UNITNUM;
+   349   0   30:D     6   FORWARD;
+   350   0   31:D     1 PROCEDURE WRITEDIR(FUNIT: UNITNUM; FDIR: DIRP);
+   351   0   31:D     3   FORWARD;
+   352   0   32:D     3 FUNCTION DIRSEARCH(VAR FTID: TID; FINDPERM: BOOLEAN; FDIR: DIRP): DIRRANGE;
+   353   0   32:D     6   FORWARD;
+   354   0   33:D     3 FUNCTION SCANTITLE(FTITLE: STRING; VAR FVID: VID; VAR FTID: TID;
+   355   0   33:D     6 	           VAR FSEGS: INTEGER; VAR FKIND: FILEKIND): BOOLEAN;
+   356   0   33:D    49   FORWARD;
+   357   0   34:D     1 PROCEDURE DELENTRY(FINX: DIRRANGE; FDIR: DIRP);
+   358   0   34:D     3   FORWARD;
+   359   0   35:D     1 PROCEDURE INSENTRY(VAR FENTRY: DIRENTRY; FINX: DIRRANGE; FDIR: DIRP);
+   360   0   35:D     4   FORWARD;
+   361   0   36:D     1 PROCEDURE HOMECURSOR;
+   362   0   36:D     1   FORWARD;
+   363   0   37:D     1 PROCEDURE CLEARSCREEN;
+   364   0   37:D     1   FORWARD;
+   365   0   38:D     1 PROCEDURE CLEARLINE;
+   366   0   38:D     1   FORWARD;
+   367   0   39:D     1 PROCEDURE PROMPT;
+   368   0   39:D     1   FORWARD;
+   369   0   40:D     3 FUNCTION SPACEWAIT(FLUSH: BOOLEAN): BOOLEAN;
+   370   0   40:D     4   FORWARD;
+   371   0   41:D     3 FUNCTION GETCHAR(FLUSH: BOOLEAN): CHAR;
+   372   0   41:D     4   FORWARD;
+   373   0   42:D     3 FUNCTION FETCHDIR(FUNIT:UNITNUM) : BOOLEAN;
+   374   0   42:D     4   FORWARD;
+   375   0   43:D     1 PROCEDURE COMMAND;
+   376   0   43:D     1   FORWARD;
+   377   0   43:D     1 
+   378   0   43:D     1 {.fs} { two more fixed forward declarations, to eliminate PASCALIO UNIT }
+   379   0   43:D     1 {.fs} { we do not insert them before VOLSEARCH to maintain compatibility }
+   380   0   43:D     1 {.fs} { with other builds; e.g. FILER uses VOLSEARCH etc. }
+   381   0   44:D     1 {.fs} PROCEDURE FREADDEC(VAR F: FIB; VAR D: STUNT; L: INTEGER);
+   382   0   44:D     4 {.fs}   FORWARD;
+   383   0   45:D     1 {.fs} PROCEDURE FWRITEDEC(VAR F: FIB; D: DECMAX; RLENG: INTEGER);
+   384   0   45:D    13 {.fs}   FORWARD;
+   385   0   45:D    13 
+   386   0   45:D    13 {$I GLOBALS.TEXT}
+   387   0   45:D    13 { --- FILER.VARS.TEXT --- }
+   388   0   45:D    13 
+   389   0   45:D    13 {**********************************************}
+   390   0   45:D    13 {                                              }
+   391   0   45:D    13 {           UCSD Pascal Filehandler            }
+   392   0   45:D    13 {                                              }
+   393   0   45:D    13 {    Release level:  II.0 February, 1979       }
+   394   0   45:D    13 {                                              }
+   395   0   45:D    13 {                                              }
+   396   0   45:D    13 {    Written by Roger T. Sumner                }
+   397   0   45:D    13 {      Release level I.4, Winter 1977          }
+   398   0   45:D    13 {                                              }
+   399   0   45:D    13 {    Written by Steven S Thomson               }
+   400   0   45:D    13 {      Release level F.5a Summer 1979          }
+   401   0   45:D    13 {      Release level II.0 Winter 1978-79       }
+   402   0   45:D    13 {                                              }
+   403   0   45:D    13 {    Institute for Information Systsems        }
+   404   0   45:D    13 {    UC San Diego, La Jolla, California        }
+   405   0   45:D    13 {                                              }
+   406   0   45:D    13 {    Kenneth L. Bowles, Director               }
+   407   0   45:D    13 {                                              }
+   408   0   45:D    13 {                                              }
+   409   0   45:D    13 {**********************************************}
+   410   0   45:D    13 
+   411   0   45:D    13 
+   412   0   45:D    13 {     Copyright (C) 1979 Regents of the University of California.     }
+   413   0   45:D    13 {     Permission to copy or distribute this software or documen-      }
+   414   0   45:D    13 {     tation in hard or soft copy granted only by written license     }
+   415   0   45:D    13 {     obtained from the Institute for Information Systems.            }
+   416   0   45:D    13 
+   417   0   45:D    13 
+   418   1    1:D     1 SEGMENT PROCEDURE FILEHANDLER(ZZZZZ,ZZZZZZ : INTEGER);
+   419   1    1:D     3 
+   420   1    1:D     3 CONST 
+   421   1    1:D     3   DIRLASTBLK    = 6;      DUPDIRLASTBLK = 10;     SHSTRLENG = 25;
+   422   1    1:D     3   MAXTITLE      = 40;     HALFMAXDIR    = 39;
+   423   1    1:D     3 
+   424   1    1:D     3   VOLONLINE     = 1013;   FILEUNBLKDEXP = 1020;   NOWRK         = 1027;
+   425   1    1:D     3   TEXTLOST      = 1014;   FILEBLKDEXP   = 1021;   NOWILD        = 1028;
+   426   1    1:D     3   CODELOST      = 1015;   FILEVOLEXP    = 1022;   BADFORM       = 1029;
+   427   1    1:D     3   FOUNDFILE     = 1016;   VOLEXP        = 1023;   ILLFILEVOL    = 1030;
+   428   1    1:D     3   BLKDEXP       = 1017;   FILEFULL      = 1024;   ILLCHANGE     = 1031;
+   429   1    1:D     3   UNBLKDEXP     = 1018;   WRKSAVED      = 1025;   BADDEST       = 1032;
+   430   1    1:D     3   FILEEXP       = 1019;   NODIR         = 1026;   BLKD          = 1033;
+   431   1    1:D     3 						  UNBLKD        = 1034;
+   432   1    1:D     3 
+   433   1    1:D     3 TYPE
+   434   1    1:D     3   UNTYPED  = FILE;
+   435   1    1:D     3 
+   436   1    1:D     3   TIDRANGE = 0..TIDLENG;
+   437   1    1:D     3 
+   438   1    1:D     3   MATCHES  = (FILEFOUND, NOFILES, FILESNOGOOD, ABORTIT);
+   439   1    1:D     3   LOCATION = (SOURCE,DESTINATION,NEITHER);
+   440   1    1:D     3   CHECKS   = (BADTITLE, BADUNIT, NOVOL, BADDIR,
+   441   1    1:D     3 	       BADFILE, UNBLKDVOL, OKDIR, OKFILE);
+   442   1    1:D     3 
+   443   1    1:D     3   CHCKS    = SET OF CHECKS;
+   444   1    1:D     3 
+   445   1    1:D     3   LONGSTRING  = STRING[255];
+   446   1    1:D     3   SHORTSTRING = STRING[SHSTRLENG];
+   447   1    1:D     3   STRNG       = STRING[MAXTITLE];
+   448   1    1:D     3 
+   449   1    1:D     3   ABLOCK      = ARRAY [0..255] OF INTEGER;
+   450   1    1:D     3 
+   451   1    1:D     3   BITMAP      = PACKED RECORD
+   452   1    1:D     3 		  DIRENTRY : PACKED ARRAY [DIRRANGE] OF BOOLEAN;
+   453   1    1:D     3 		  ENTRIES : DIRRANGE;
+   454   1    1:D     3 		END;
+   455   1    1:D     3 
+   456   1    1:D     3 
+   457   1    1:D     3 VAR
+   458   1    1:D     3   GBUFBLKS             : INTEGER;      { Blocks available in transfer buffer   }
+   459   1    1:D     4   SOURCEUNIT, DESTUNIT,                { Units related to source & dest. files }
+   460   1    1:D     4   GUNIT                                { Unit # that last volsearch returned   }
+   461   1    1:D     4 		       : UNITNUM;
+   462   1    1:D     7 
+   463   1    1:D     7   CH                   : CHAR;         { General purpose chararcter            }
+   464   1    1:D     8 
+   465   1    1:D     8   GDIR                 : DIRP;         { Pointer to the directory in use       }
+   466   1    1:D     9   LFIBP                : FIBP;         { Pointer to the header of file LFIB    }
+   467   1    1:D    10 
+   468   1    1:D    10   FAST,                                { SYSCOM^ [NOT SLOWTERM & (WIDTH > 79)] }
+   469   1    1:D    10   MARKING,                             { Must use STATUS bit in directory      }
+   470   1    1:D    10   QUESTION, WILDCARD,                  { Is wildcard option being used ?       }
+   471   1    1:D    10   TEXTSAVED, CODESAVED                 { Workfiles saved ?                     }
+   472   1    1:D    10 		       : BOOLEAN;
+   473   1    1:D    16 
+   474   1    1:D    16   LASTSTATE            : CHECKS;        { State of last call to scaninput      }
+   475   1    1:D    17   FOUND                : MATCHES;       { Result of dir. search for a file     }
+   476   1    1:D    18 
+   477   1    1:D    18   GBUF                 : WINDOWP;       { Pointer to the transfer buffer       }
+   478   1    1:D    19 
+   479   1    1:D    19   GKIND                : FILEKIND;      { Filetype (e.g., TEXT,CODE,DATA...)   }
+   480   1    1:D    20 
+   481   1    1:D    20   DIRMAP               : BITMAP;        { Keeps track of the files to be used  }
+   482   1    1:D    26                                         { in a wildcard operation              }
+   483   1    1:D    26 
+   484   1    1:D    26   BLOCKPTR             : ^ABLOCK;       { Pointer to one-block of data         }
+   485   1    1:D    27 
+   486   1    1:D    27   LFIB                 : UNTYPED;       { General purpose file                 }
+   487   1    1:D    67 
+   488   1    1:D    67   VOLNAME1, VOLNAME2,                   { Volume names of source & destination }
+   489   1    1:D    67                                         { files respectively, as inputted      }
+   490   1    1:D    67   DESTVID, SOURCEVID,                   { Explicit volume name associated with }
+   491   1    1:D    67                                         { source & dest units respectively     }
+   492   1    1:D    67   GVID,                                 { Last volname returned by scaniput    }
+   493   1    1:D    67   GVID2                                 { Last volname entered into scaniput   }
+   494   1    1:D    67                        : VID;
+   495   1    1:D    91 
+   496   1    1:D    91   SOURCETITLE,                          { Source file with exlicit volume name }
+   497   1    1:D    91   STRING2,STRING4,                      { Suffix strings to wildcards          }
+   498   1    1:D    91   GTID                                  { Last title returned by scaniput      }
+   499   1    1:D    91                        : TID;
+   500   1    1:D   123 
+   501   1    1:D   123   STRING1, STRING3     : SHORTSTRING;   { Prefix strings to wildcards          }
+   502   1    1:D   149   MONTHSTR             : STRING[48];    { Contains abbr. for the months        }
+   503   1    1:D   174   TYPESTR              : STRING[32];    { Contains abbr. for the file types    }
+   504   1    1:D   191   FROMWHERE, TOWHERE   : STRNG;         { Source & destination files           }
+   505   1    1:D   233   INSTRING             : LONGSTRING;    { Input string                         }
+   506   1    1:D   361 
+   507   1    1:D   361 { --- FILER.A.TEXT --- }
+   508   1    1:D   361 
+   509   1    1:D   361 {     Copyright (C) 1979 Regents of the University of California.     }
+   510   1    1:D   361 {     Permission to copy or distribute this software or documen-      }
+   511   1    1:D   361 {     tation in hard or soft copy granted only by written license     }
+   512   1    1:D   361 {     obtained from the Institute for Information Systems.            }
+   513   1    1:D   361 
+   514   1    1:D   361 {******************************************************************************}
+   515   1    1:D   361 {******************************************************************************}
+   516   1    1:D   361 
+   517   1    1:D   361   { This procdure is called in an infinite loop. Used to exit from when an     }
+   518   1    1:D   361   { error condition is encountered. Will return to main FILER prompt line      }
+   519   1    2:D     1   PROCEDURE CALLPROC;
+   520   1    2:D     1     FORWARD;
+   521   1    2:D     1 
+   522   1    2:D     1   { Trick procedure used to change a pointer to a UNTYPED file to a pointer to }
+   523   1    2:D     1   { the header of that file FIBP                                               }
+   524   1    3:D     3   FUNCTION GETPTR(VAR DUMMY : UNTYPED) : FIBP;  { DUMMY is placed on the stack }
+   525   1    3:D     4   VAR
+   526   1    3:D     4     TRIX : ARRAY [0..0] OF FIBP;                { TRIX is placed on the stack  }
+   527   1    3:0     0   BEGIN
+   528   1    3:1     0     GETPTR := TRIX[-1]                          { We access DUMMY as TYPE FIBP }
+   529   1    3:0     6   END;
+   530   1    3:0    22 
+   531   1    3:0    22 {******************************************************************************}
+   532   1    3:0    22 {******************************************************************************}
+   533   1    3:0    22 
+   534   1    3:0    22   { Initializes global variables for the FILER }
+   535   1    4:D     1   PROCEDURE INITGLOBALS;
+   536   1    4:0     0   BEGIN
+   537   1    4:1     0     GVID := '';
+   538   1    4:1     7     STRING1 := '';
+   539   1    4:1    15     STRING2 := '';
+   540   1    4:1    22     STRING3 := '';
+   541   1    4:1    29     STRING4 := '';
+   542   1    4:1    36     TOWHERE := '';
+   543   1    4:1    44     VOLNAME1 := '';
+   544   1    4:1    51     VOLNAME2 := '';
+   545   1    4:1    58     FROMWHERE := '';
+   546   1    4:1    66     SOURCEVID := '';
+   547   1    4:1    73     DESTVID := '';
+   548   1    4:1    80     SOURCEUNIT := 0;
+   549   1    4:1    83     DESTUNIT := 0;
+   550   1    4:1    86     FOUND := NOFILES;
+   551   1    4:1    89     WILDCARD := FALSE;
+   552   1    4:1    92     QUESTION := FALSE;
+   553   1    4:1    95     FILLCHAR(DIRMAP,SIZEOF(DIRMAP),0)
+   554   1    4:0   102   END;
+   555   1    4:0   114 
+   556   1    4:0   114 {-------------------------- FILER ERROR MESSAGES ------------------------------}
+   557   1    4:0   114 
+   558   1    4:0   114   { Writes out most FILER related and I/O errors. If NUMBER <> 0 and EXXIT }
+   559   1    4:0   114   { then this procedure will return to the FILER prompt line               }
+   560   1    5:D     1   PROCEDURE MESSAGES(NUMBER : INTEGER; EXXIT : BOOLEAN);
+   561   1    5:D     3   VAR
+   562   1    5:D     3     STR : STRING[40];
+   563   1    5:0     0   BEGIN
+   564   1    5:1     0     STR := '';
+   565   1    5:1     7 
+   566   1    5:1     7     {----------------- I/O ERRORS --------------------}
+   567   1    5:1     7     CASE NUMBER OF
+   568   1    5:1    10       1 : STR := 'Parity (CRC) error';
+   569   1    5:1    37       2 : STR := 'Bad unit number';
+   570   1    5:1    61       3 : STR := 'Bad I/O operation';
+   571   1    5:1    87       4 : STR := 'Timeout error';
+   572   1    5:1   109       5 : STR := 'Vol went off-line';
+   573   1    5:1   135       6 : STR := 'File lost in dir';
+   574   1    5:1   160       7 : STR := 'Bad file name';
+   575   1    5:1   182       8 : STR := 'No room on vol';
+   576   1    5:1   205       9 : STR := 'No such vol on-line';
+   577   1    5:1   233       10: STR := 'File not found';
+   578   1    5:1   256     END;
+   579   1    5:1   284 
+   580   1    5:1   284     {------------ FILER RELATED ERRORS ---------------}
+   581   1    5:1   284     CASE NUMBER OF
+   582   1    5:1   287       1013: STR := 'Vol already on-line';
+   583   1    5:1   315       1014: STR := 'Text file lost';
+   584   1    5:1   338       1015: STR := 'Code file lost';
+   585   1    5:1   361       1016: STR := 'File found';
+   586   1    5:1   380       1017,1033: STR := 'Blkd vol';
+   587   1    5:1   397       1018,1034: STR := 'Ublkd vol';
+   588   1    5:1   415       1019: STR := 'File name';
+   589   1    5:1   433       1020: STR := 'File/(unblkd vol)';
+   590   1    5:1   459       1021: STR := 'File/(blkd vol)';
+   591   1    5:1   483       1022: STR := 'File/vol';
+   592   1    5:1   500       1023: STR := 'Vol name';
+   593   1    5:1   517       1024: STR := 'Output file full';
+   594   1    5:1   542       1025: STR := 'Workfile is saved';
+   595   1    5:1   568       1026: STR := 'No directory on vol';
+   596   1    5:1   596       1027: STR := 'No workfile to save';
+   597   1    5:1   624       1028: STR := 'Wildcard not allowed';
+   598   1    5:1   653       1029: STR := 'Bad format (Wildcard <to> Non-Wildcard)';
+   599   1    5:1   701       1030: STR := 'Illegal file/vol name';
+   600   1    5:1   731       1031: STR := 'Illegal change (Vol <to> file) name';
+   601   1    5:1   775       1032: STR := 'Bad dest for files found'
+   602   1    5:1   777     END;
+   603   1    5:1   860     IF NUMBER IN [1017..1023] THEN
+   604   1    5:2   871       STR := CONCAT(STR,' expected');
+   605   1    5:1   906     CLEARLINE;
+   606   1    5:1   909     IF (NUMBER > 10) AND (NUMBER < 1000) OR SYSCOM^.MISCINFO.SLOWTERM THEN
+   607   1    5:2   929       WRITE('I/O error #',NUMBER)  { Misc. I/O error. Print out error # only }
+   608   1    5:1   958     ELSE
+   609   1    5:2   960       WRITE(STR);
+   610   1    5:1   969     IF EXXIT THEN
+   611   1    5:2   972       EXIT(CALLPROC)
+   612   1    5:0   976   END;
+   613   1    5:0   996 
+   614   1    5:0   996   { Checks for selected I/O errors. Will print out error and }
+   615   1    5:0   996   { return to FILER prompt line if one is found              }
+   616   1    6:D     1   PROCEDURE CHECKRSLT(RSLT : INTEGER);
+   617   1    6:0     0   BEGIN
+   618   1    6:1     0     IF (RSLT > 0) AND NOT (RSLT IN [13,14]) THEN
+   619   1    6:2    13       MESSAGES(RSLT,TRUE)
+   620   1    6:0    15   END;
+   621   1    6:0    30 
+   622   1    6:0    30 {------------------------ Widely used command sequences -----------------------}
+   623   1    6:0    30 
+   624   1    6:0    30   { Performs a writeln followed by a clearline }
+   625   1    7:D     1   PROCEDURE WRITEANDCLEAR;
+   626   1    7:0     0   BEGIN
+   627   1    7:1     0     WRITELN;
+   628   1    7:1     6     CLEARLINE
+   629   1    7:0     6   END;
+   630   1    7:0    22 
+   631   1    7:0    22   { Reads a character from INPUT. Returns true if the character was a ('Y','y')}
+   632   1    7:0    22   { false otherwise. Exits to prompt line if the character was an <ESC>. Will  }
+   633   1    7:0    22   { position cursor at start of next line if all went o.k.                     }
+   634   1    8:D     3   FUNCTION NGETCHAR(FLUSH : BOOLEAN) : BOOLEAN;
+   635   1    8:0     0   BEGIN
+   636   1    8:1     0     CH := GETCHAR(FLUSH);
+   637   1    8:1     8     IF (CH = SYSCOM^.CRTINFO.ALTMODE) THEN
+   638   1    8:2    20       EXIT(CALLPROC);
+   639   1    8:1    24     NGETCHAR := CH = 'Y';
+   640   1    8:1    29     IF NOT EOLN THEN
+   641   1    8:2    40       WRITELN
+   642   1    8:0    40   END;
+   643   1    8:0    58 
+   644   1    8:0    58   { Asks the user to type a space to continue. Will return to the FILER prompt }
+   645   1    8:0    58   { line if the user responds with an <ESC>. If FLUSH then precludes type-ahead}
+   646   1    9:D     1   PROCEDURE NSPACEWAIT(FLUSH : BOOLEAN);
+   647   1    9:0     0   BEGIN
+   648   1    9:1     0     IF SPACEWAIT(FLUSH) THEN
+   649   1    9:2     8       EXIT(CALLPROC)
+   650   1    9:0    12   END;
+   651   1    9:0    24 
+   652   1    9:0    24   { Used to update directory and checks the I/O result }
+   653   1   10:D     1   PROCEDURE UPDATEDIR;
+   654   1   10:0     0   BEGIN
+   655   1   10:1     0     WRITEDIR(SOURCEUNIT,GDIR);
+   656   1   10:1     5     CHECKRSLT(IORESULT)
+   657   1   10:0     7   END;
+   658   1   10:0    22 
+   659   1   10:0    22 {------------------ Miscellaneous Grundge Procedures --------------------------}
+   660   1   10:0    22 
+   661   1   10:0    22   { Removes spaces and unprintable characters from input string. }
+   662   1   10:0    22   { Changes all lower-case characters to upper-case              }
+   663   1   11:D     1   PROCEDURE EATSPACES(VAR STRG : LONGSTRING);
+   664   1   11:D     2   VAR
+   665   1   11:D     2     I : INTEGER;
+   666   1   11:D     3 
+   667   1   11:0     0   BEGIN
+   668   1   11:1     0     I := 1;
+   669   1   11:1     3     WHILE I <= LENGTH(STRG) DO
+   670   1   11:2    10       IF (ORD(STRG[I]) >= 33) AND (ORD(STRG[1]) <= 125) THEN
+   671   1   11:3    23         BEGIN
+   672   1   11:4    23 	  IF (STRG[I] >= 'a') AND (STRG[I] <= 'z') THEN
+   673   1   11:5    36 	    STRG[I] := CHR( ORD( STRG[I] ) - ORD( 'a' ) + ORD ('A' ));
+   674   1   11:4    46 	  I := I + 1
+   675   1   11:3    47 	END
+   676   1   11:2    51       ELSE
+   677   1   11:3    53 	DELETE(STRG,I,1);
+   678   1   11:1    61     IF STRG = '' THEN
+   679   1   11:2    69       EXIT(CALLPROC);
+   680   1   11:0    73   END;
+   681   1   11:0    88 
+   682   1   11:0    88   { Ascertains the correct block number for procedures to use at a given time }
+   683   1   11:0    88   { If a valid DEOVBLK exists on the present directory then the user will be  }
+   684   1   11:0    88   { asked if that value is the correct one. Otherwise a valid block must be   }
+   685   1   11:0    88   { entered. For a block to be valid it must be >= LASTBLK                    }
+   686   1   12:D     1   PROCEDURE GETBLOCKS(MESS1,MESS2,MESS3 : SHORTSTRING; LASTBLK: INTEGER; 
+   687   1   12:D     5 					VAR NBLOCKS: INTEGER);
+   688   1   12:D    45   VAR
+   689   1   12:D    45     OK : BOOLEAN;
+   690   1   12:0     0   BEGIN
+   691   1   12:1     0     OK := FALSE;
+   692   1   12:1    18     IF GDIR <> NIL THEN
+   693   1   12:2    23       IF GDIR^[0].DEOVBLK >= LASTBLK THEN
+   694   1   12:3    32 	BEGIN
+   695   1   12:4    32 	  CLEARLINE;
+   696   1   12:4    35 	  WRITE(MESS1,' ',GDIR^[0].DEOVBLK,' ',MESS2,' ? (Y/N) ');
+   697   1   12:4   100 	  OK := NGETCHAR(TRUE);
+   698   1   12:4   107 	  NBLOCKS := GDIR^[0].DEOVBLK
+   699   1   12:3   112 	END;
+   700   1   12:1   114     IF NOT OK THEN
+   701   1   12:2   119       BEGIN
+   702   1   12:3   119 	CLEARLINE;
+   703   1   12:3   122 	WRITE(MESS3,' ? ');
+   704   1   12:3   144 	READLN(NBLOCKS);
+   705   1   12:3   157 	IF NBLOCKS < LASTBLK THEN
+   706   1   12:4   163 	  BEGIN
+   707   1   12:5   163 	    CLEARLINE;
+   708   1   12:5   166 	    WRITE('Invalid #');
+   709   1   12:5   185 	    EXIT(CALLPROC)
+   710   1   12:4   189 	  END;
+   711   1   12:2   189       END
+   712   1   12:0   189   END;
+   713   1   12:0   202 
+   714   1   12:0   202   { Ascertains if the user really wants to destroy the directory of a disk  }
+   715   1   12:0   202   { If the user doesn't this procedure will return to the FILER prompt line }
+   716   1   13:D     1   PROCEDURE RISKVOLUME;
+   717   1   13:0     0   BEGIN
+   718   1   13:1     0     IF (LASTSTATE = OKDIR) AND (GDIR <> NIL) THEN
+   719   1   13:2     9       BEGIN
+   720   1   13:3     9 	CLEARLINE;
+   721   1   13:3    12 	WRITE('Destroy ',GVID,': ? ');
+   722   1   13:3    53 	IF NOT NGETCHAR(TRUE) THEN
+   723   1   13:4    61 	  EXIT(CALLPROC)
+   724   1   13:2    65       END
+   725   1   13:0    65   END;
+   726   1   13:0    78 
+   727   1   13:0    78 { --- FILER.B.TEXT --- }
+   728   1   13:0    78 
+   729   1   13:0    78 {     Copyright (C) 1979 Regents of the University of California.     }
+   730   1   13:0    78 {     Permission to copy or distribute this software or documen-      }
+   731   1   13:0    78 {     tation in hard or soft copy granted only by written license     }
+   732   1   13:0    78 {     obtained from the Institute for Information Systems.            }
+   733   1   13:0    78 
+   734   1   13:0    78 {----------------------- SPECIALIZED FILER ROUTINES ---------------------------}
+   735   1   13:0    78 
+   736   1   13:0    78   { Ascertains whether or not the proper disk is in the proper drive }
+   737   1   13:0    78   { If it is not will ask user to put the disk in the proper drive   }
+   738   1   13:0    78   { If the user does not do so this procedure will return to the     }
+   739   1   13:0    78   { FILER prompt line                                                }
+   740   1   14:D     1   PROCEDURE INSERTVOLUME(INTUNIT : INTEGER; VID1 : VID; CHECK : BOOLEAN);
+   741   1   14:D     8   VAR
+   742   1   14:D     8     OK : BOOLEAN;
+   743   1   14:D     9     OLDUNIT, NEWUNIT : VID;
+   744   1   14:D    17 
+   745   1   14:0     0   BEGIN { INSERTVOLUME }
+   746   1   14:1     0     OLDUNIT := '#  ';
+   747   1   14:1    15     IF (INTUNIT DIV 10) = 1 THEN
+   748   1   14:2    22       OLDUNIT[2] := '1';
+   749   1   14:1    27     OLDUNIT [3] := CHR(ORD('0') + INTUNIT MOD 10);
+   750   1   14:1    36     EATSPACES(OLDUNIT);
+   751   1   14:1    40     OK := CHECK;
+   752   1   14:1    43     IF CHECK THEN   { Need to make sure the disk is in the drive }
+   753   1   14:2    46       IF VOLSEARCH(VID1,TRUE,GDIR) <> INTUNIT THEN  { Volume in proper drive }
+   754   1   14:2    60 
+   755   1   14:2    60 	{ Kludge !!!!!! Force the OP-SYSTEM to look at the correct unit }
+   756   1   14:2    60 	{ If there are two vols with the same name on line it won't be  }
+   757   1   14:2    60 	{ able to find the one on the lower drive otherwise             }
+   758   1   14:2    60 
+   759   1   14:3    60 	BEGIN   { Volume was not in proper drive. Where is it ? }
+   760   1   14:4    60 	  NEWUNIT := OLDUNIT;
+   761   1   14:4    66 	  OK := VOLSEARCH(NEWUNIT,TRUE,GDIR) <> 0; { 0 means unit not found }
+   762   1   14:4    80 	  OK := OK AND (NEWUNIT = VID1)  { Is this the correct volume ? }
+   763   1   14:3    87 	END;
+   764   1   14:1    90     IF NOT OK THEN
+   765   1   14:1    94 
+   766   1   14:1    94       { Repeat the above after asking the user to put in the correct disk }
+   767   1   14:1    94 
+   768   1   14:2    94       BEGIN
+   769   1   14:3    94 	CLEARLINE;
+   770   1   14:3    97 	WRITELN('Put ',VID1,': in unit ',OLDUNIT);
+   771   1   14:3   155 	NSPACEWAIT(TRUE);
+   772   1   14:3   158 	IF CHECK THEN
+   773   1   14:4   161 	  BEGIN
+   774   1   14:5   161 	    OK := (VOLSEARCH(OLDUNIT,TRUE,GDIR) <> 0);
+   775   1   14:5   175 	    IF (NOT OK) OR (OLDUNIT <> VID1) THEN
+   776   1   14:6   186 	      EXIT(CALLPROC)
+   777   1   14:4   190 	  END
+   778   1   14:2   190       END
+   779   1   14:0   190   END { INSERTVOLUME };
+   780   1   14:0   202 
+   781   1   14:0   202   { Scans through DIRMAP for files to be deleted and updates the  }
+   782   1   14:0   202   { directory on the source unit correspondingly                  }
+   783   1   15:D     1   PROCEDURE ZAPENTRIES(DIRMAP : BITMAP; UPDATE : BOOLEAN);
+   784   1   15:D     9   VAR
+   785   1   15:D     9     LOC : INTEGER;
+   786   1   15:0     0   BEGIN
+   787   1   15:1     0     IF DIRMAP.ENTRIES > 0 THEN
+   788   1   15:2    14       BEGIN
+   789   1   15:2    14 
+   790   1   15:2    14 	{ Make sure that the correct disk is in the drive }
+   791   1   15:3    14 	INSERTVOLUME(SOURCEUNIT,SOURCEVID,TRUE);
+   792   1   15:3    20 
+   793   1   15:3    20 	IF GDIR <> NIL THEN
+   794   1   15:4    25 	  BEGIN
+   795   1   15:5    25 	    FOR LOC := GDIR^ [0].DNUMFILES DOWNTO 1 DO
+   796   1   15:6    41 	      IF DIRMAP.DIRENTRY [LOC] THEN
+   797   1   15:7    50 		DELENTRY(LOC,GDIR);  { Deletes file at LOC in the directory }
+   798   1   15:5    62 	    IF UPDATE THEN
+   799   1   15:6    65 	      UPDATEDIR              { Writes the directory out to disk     }
+   800   1   15:4    65 	  END
+   801   1   15:2    67       END;
+   802   1   15:0    67   END;
+   803   1   15:0    82 
+   804   1   15:0    82   { Purges the file requested by NAME from the directory. If the }
+   805   1   15:0    82   { file exists and MESS <> '' then will ask you to confirm      }
+   806   1   16:D     3   FUNCTION PURGEIT(NAME,MESS : SHORTSTRING):BOOLEAN;
+   807   1   16:D    31   VAR
+   808   1   16:D    31     GFIB : FILE;
+   809   1   16:0     0   BEGIN
+   810   1   16:1     0     RESET(GFIB,NAME);
+   811   1   16:1    31     PURGEIT := IORESULT = 0;
+   812   1   16:1    37     IF IORESULT = 0 THEN  { Result of 0 means that the file was found }
+   813   1   16:2    43       BEGIN
+   814   1   16:3    43 	IF MESS <> '' THEN
+   815   1   16:4    52 	  BEGIN
+   816   1   16:5    52 	    CLEARLINE;
+   817   1   16:5    55 	    WRITE(MESS,' ',NAME,' ? ');
+   818   1   16:5    94 	    IF NOT NGETCHAR(TRUE) THEN
+   819   1   16:6   102 	      BEGIN
+   820   1   16:7   102 		PURGEIT := FALSE;      { User does not wish to remove the file }
+   821   1   16:7   105 		EXIT(PURGEIT)
+   822   1   16:6   109 	      END
+   823   1   16:4   109 	  END;
+   824   1   16:3   109 	CLOSE(GFIB,PURGE);
+   825   1   16:3   115 	CHECKRSLT(IORESULT)
+   826   1   16:2   117       END;
+   827   1   16:0   119   END;
+   828   1   16:0   138 
+   829   1   16:0   138   { Lets user know what is being done to his file }
+   830   1   17:D     1   PROCEDURE PRINTMESS(VID1 : VID; TID1 : TID; DEST : SHORTSTRING);
+   831   1   17:0     0   BEGIN
+   832   1   17:1     0     CLEARLINE;
+   833   1   17:1    18     WRITE(VID1,':',TID1);
+   834   1   17:1    44     IF (LENGTH(DEST) + 31) > SYSCOM^.CRTINFO.WIDTH THEN
+   835   1   17:2    58       WRITEANDCLEAR
+   836   1   17:1    58     ELSE
+   837   1   17:2    62       IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+   838   1   17:3    73 	WRITE('':24-(LENGTH(VID1)+LENGTH(TID1)));
+   839   1   17:1    93     WRITELN(' --> ',DEST)
+   840   1   17:0   123   END;
+   841   1   17:0   136 
+   842   1   17:0   136 {----------------- COMMAND PARSERS & DIRECTORY SEARCH ROUTINES ----------------}
+   843   1   17:0   136 
+   844   1   17:0   136   { Ascertains the exact state of GTITLE. If that state does not correspond }
+   845   1   17:0   136   { with the acceptable states for that string then an appropriate error    }
+   846   1   17:0   136   { messages will be returned to the user and return to the FILER prompt    }
+   847   1   17:0   136   { line. Otherwise, will set LASTSTATE to the condition found              }
+   848   1   18:D     1   PROCEDURE SCANINPUT(GTITLE : STRNG; CHECK : CHCKS;
+   849   1   18:D     3 			 ERROR : INTEGER; WHERE : LOCATION; GETDIR : BOOLEAN);
+   850   1   18:D    27   VAR
+   851   1   18:D    27     NEWDIR : ^INTEGER;
+   852   1   18:D    28     GSEGS : INTEGER;
+   853   1   18:D    29 
+   854   1   19:D     1     PROCEDURE MAKECALL(ERR : INTEGER; STATE : CHECKS);
+   855   1   19:D     3     VAR
+   856   1   19:D     3       PRINTERROR : BOOLEAN;
+   857   1   19:D     4 
+   858   1   19:0     0     BEGIN
+   859   1   19:1     0       LASTSTATE := STATE;
+   860   1   19:1     3       IF (STATE IN CHECK) OR (ERROR = 0) THEN
+   861   1   19:2    17 	EXIT(SCANINPUT);
+   862   1   19:1    21       IF GTITLE = '' THEN
+   863   1   19:2    31 	EXIT(CALLPROC);
+   864   1   19:1    35       HOMECURSOR;
+   865   1   19:1    38       WRITEANDCLEAR;
+   866   1   19:1    40 
+   867   1   19:1    40       { Writes out the explicit volume name }
+   868   1   19:1    40       IF GTITLE [1] = '*' THEN
+   869   1   19:2    49 	BEGIN
+   870   1   19:3    49 	  DELETE(GTITLE,1,1);
+   871   1   19:3    57 	  IF GTITLE [1] = ':' THEN
+   872   1   19:4    66 	    DELETE(GTITLE,1,1);
+   873   1   19:3    74 	  WRITE(SYVID,':')
+   874   1   19:2    92 	END
+   875   1   19:1    92       ELSE
+   876   1   19:2    94 	IF GTITLE [1] = ':' THEN
+   877   1   19:3   103 	  WRITE(DKVID);
+   878   1   19:3   113 
+   879   1   19:1   113       WRITE(GTITLE);
+   880   1   19:1   123       IF SYSCOM^.CRTINFO.WIDTH >= 80 THEN
+   881   1   19:2   132 	WRITE(' - ')
+   882   1   19:1   145       ELSE
+   883   1   19:2   147 	WRITEANDCLEAR; { Write string in error }
+   884   1   19:1   149       MESSAGES(ERR,FALSE);              { Write the state of the string }
+   885   1   19:1   153 
+   886   1   19:1   153       { Was the user even close to the correct format }
+   887   1   19:1   153       CASE STATE OF
+   888   1   19:1   156 	BADTITLE : PRINTERROR := TRUE;
+   889   1   19:1   161 	NOVOL,BADUNIT,BADDIR : PRINTERROR := (ERROR=FILEEXP) AND (GTID='');
+   890   1   19:1   180 	UNBLKDVOL : PRINTERROR := ERROR IN [BLKDEXP,FILEEXP,FILEBLKDEXP];
+   891   1   19:1   202 	OKFILE,BADFILE : PRINTERROR := ERROR IN [BLKDEXP,UNBLKDEXP,VOLEXP];
+   892   1   19:1   224 	OKDIR : PRINTERROR := ERROR IN [UNBLKDEXP,FILEEXP,FILEUNBLKDEXP]
+   893   1   19:1   241       END;
+   894   1   19:1   270       IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+   895   1   19:2   281 	BEGIN
+   896   1   19:3   281 	  IF PRINTERROR THEN
+   897   1   19:4   284 	    BEGIN
+   898   1   19:5   284 	      IF SYSCOM^.CRTINFO.WIDTH < 80 THEN
+   899   1   19:6   293 		WRITEANDCLEAR
+   900   1   19:5   293 	      ELSE
+   901   1   19:6   297 		WRITE(', ');
+   902   1   19:5   309 	      MESSAGES(ERROR,FALSE)
+   903   1   19:4   313 	    END;
+   904   1   19:4   315 
+   905   1   19:4   315 	  { User may need to know which part of the string is in error }
+   906   1   19:3   315 	  IF WHERE = SOURCE THEN
+   907   1   19:4   322 	    WRITE(' <source>');
+   908   1   19:3   341 	  IF WHERE = DESTINATION THEN
+   909   1   19:4   348 	    WRITE(' <dest>');
+   910   1   19:2   365 	END;
+   911   1   19:1   365       EXIT(CALLPROC)
+   912   1   19:0   369     END;
+   913   1   19:0   382 
+   914   1   18:0     0   BEGIN { SCANINPUT }
+   915   1   18:1     0     GUNIT := 0;
+   916   1   18:1     8     IF SCANTITLE(GTITLE,GVID,GTID,GSEGS,GKIND) THEN { Break up input string }
+   917   1   18:2    25       BEGIN
+   918   1   18:3    25 	IF GETDIR THEN
+   919   1   18:4    28 	  MARK(NEWDIR);    { Will cause the present directory to dissappear }
+   920   1   18:3    32 	GVID2 := GVID;     { Save present GVID }
+   921   1   18:3    38 	GUNIT := VOLSEARCH(GVID,TRUE,GDIR);  { Searchs for proper volume }
+   922   1   18:3    50 	IF GDIR = NIL THEN   { Wasn't able to read a directory off the volume }
+   923   1   18:4    55 	  BEGIN
+   924   1   18:5    55 	    IF GUNIT = 0 THEN
+   925   1   18:6    60 	      MAKECALL(9,NOVOL);   { No such vol was on-line }
+   926   1   18:5    64 	    UNITCLEAR(GUNIT);
+   927   1   18:5    67 	    IF IORESULT <> 0 THEN
+   928   1   18:6    73 	      MAKECALL(2,BADUNIT); { Bad unit # given }
+   929   1   18:5    77 	    IF UNITABLE [GUNIT].UISBLKD THEN
+   930   1   18:6    86 	      MAKECALL(NODIR,BADDIR);  { Vol was blkd, but no dir was on it }
+   931   1   18:5    92 	    MAKECALL(UNBLKD,UNBLKDVOL) { Volume was not blocked }
+   932   1   18:4    96 	  END;
+   933   1   18:3    98 	IF GTID = '' THEN
+   934   1   18:4   107 	  MAKECALL(BLKD,OKDIR);  { Vol was blkd & the dir is ok }
+   935   1   18:3   113 	IF DIRSEARCH(GTID,TRUE,GDIR) <> 0 THEN
+   936   1   18:4   126 	  MAKECALL(FOUNDFILE,OKFILE);   { The file was found }
+   937   1   18:3   132 	MAKECALL(10,BADFILE) { The file was not found }
+   938   1   18:2   134       END;
+   939   1   18:1   136     MAKECALL(ILLFILEVOL,BADTITLE) { Illegal name (too long, or missing bracket }
+   940   1   18:0   140   END { SCANINPUT };
+   941   1   18:0   154 
+   942   1   18:0   154   { Directory search routine for finding the user requested files }
+   943   1   18:0   154   { On the first call to this routine all tables and neccessary   }
+   944   1   18:0   154   { bits in the directory will be updated to keep track of the    }
+   945   1   18:0   154   { nescessary files, without losing any. All files that are to   }
+   946   1   18:0   154   { be used in wildcard operations must be present on the initial }
+   947   1   18:0   154   { initial call to this routine                                  }
+   948   1   20:D     3   FUNCTION SEARCHDIR(MESSAGE : STRNG; VAR GINX : INTEGER;
+   949   1   20:D     5 			DEST, SCREENCLEAR, SWAPPING : BOOLEAN) : BOOLEAN;
+   950   1   20:D    29   VAR
+   951   1   20:D    29     X : INTEGER;
+   952   1   20:D    30     NEWSTRING : TID;
+   953   1   20:D    38 
+   954   1   20:D    38       { At this point a requested file has been found. In case that    }
+   955   1   20:D    38       { question is true we must see if the user still wants to use it }
+   956   1   21:D     1       PROCEDURE FOUNDFILE;
+   957   1   21:0     0       BEGIN
+   958   1   21:1     0 	WITH GDIR^ [GINX] DO
+   959   1   21:2     9 	  BEGIN
+   960   1   21:3     9 	    SOURCETITLE := DTID;
+   961   1   21:3    16 	    FROMWHERE := CONCAT(VOLNAME1,':',DTID);
+   962   1   21:3    53 	    CH := 'Y';
+   963   1   21:3    56 	    FOUND := FILEFOUND;     { Yes a usable file has been found }
+   964   1   21:3    59 	    IF (MESSAGE <> '') AND QUESTION THEN { Confirm operation }
+   965   1   21:4    71 	      BEGIN
+   966   1   21:5    71 		CLEARLINE;
+   967   1   21:5    74 		IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+   968   1   21:6    85 		  WRITE(MESSAGE,' ');
+   969   1   21:5   103 		WRITE(DTID,' ? ');
+   970   1   21:5   126 		CH := GETCHAR(FALSE);
+   971   1   21:5   134 		IF NOT EOLN THEN
+   972   1   21:6   145 		  WRITELN;
+   973   1   21:5   151 		IF CH = SYSCOM^.CRTINFO.ALTMODE THEN { User wants to abort }
+   974   1   21:5   163 
+   975   1   21:5   163 		  { Don't return to prompt line because of the R(emove command }
+   976   1   21:6   163 		  BEGIN
+   977   1   21:7   163 		    FOUND := ABORTIT;
+   978   1   21:7   166 		    EXIT(SEARCHDIR)
+   979   1   21:6   170 		  END
+   980   1   21:4   170 	      END
+   981   1   21:2   170 	  END;
+   982   1   21:1   170 	SEARCHDIR := CH = 'Y'
+   983   1   21:0   171       END;
+   984   1   21:0   188 
+   985   1   21:0   188   { Checks to see if the requested portion of the two strings match }
+   986   1   22:D     3   FUNCTION TESTSTR(STR : TID; START : INTEGER) : BOOLEAN;
+   987   1   22:D    13   VAR
+   988   1   22:D    13     TEMP : TID;
+   989   1   22:0     0   BEGIN
+   990   1   22:1     0     TEMP [0] := STR [0];
+   991   1   22:1    13     MOVELEFT(GDIR^ [X].DTID[START],TEMP[1],LENGTH(STR)); 
+   992   1   22:1    31     TESTSTR := TEMP = STR
+   993   1   22:0    33   END;
+   994   1   22:0    52 
+   995   1   20:0     0   BEGIN { SEARCHDIR }
+   996   1   20:1     0     SEARCHDIR := FALSE;
+   997   1   20:1     8     IF GINX = 0 THEN
+   998   1   20:2    14       BEGIN
+   999   1   20:3    14 	DEST := DEST AND UNITABLE [DESTUNIT].UISBLKD;
+  1000   1   20:3    25 	IF SCREENCLEAR AND WILDCARD THEN
+  1001   1   20:4    30 	  BEGIN
+  1002   1   20:5    30 	    CLEARSCREEN;
+  1003   1   20:5    33 	    WRITELN
+  1004   1   20:4    33 	  END
+  1005   1   20:3    39 	ELSE
+  1006   1   20:4    41 	  CLEARLINE;
+  1007   1   20:3    44 	FOUND := NOFILES;
+  1008   1   20:3    47 
+  1009   1   20:3    47 	{ Will it be nescessary to use the STATUS bits in the directory }
+  1010   1   20:3    47 	{ to keep proper track of the files                             }
+  1011   1   20:3    47 	MARKING := DEST AND (SOURCEVID = DESTVID);
+  1012   1   20:3    57 
+  1013   1   20:3    57 	{ Search directory for eligible source files }
+  1014   1   20:3    57 	FOR X := 1 TO GDIR^ [0].DNUMFILES DO
+  1015   1   20:4    75 	WITH GDIR^ [X] DO
+  1016   1   20:5    82 	  BEGIN
+  1017   1   20:6    82 	    STATUS := FALSE;
+  1018   1   20:6    90 	    IF (LENGTH(STRING1) + LENGTH(STRING2)) <= LENGTH(DTID) THEN
+  1019   1   20:7   109 	      IF TESTSTR(STRING1,1) AND 
+  1020   1   20:7   117 		TESTSTR(STRING2,LENGTH(DTID) - LENGTH(STRING2) + 1) THEN
+  1021   1   20:8   139 		  WITH DIRMAP DO
+  1022   1   20:9   139 		  BEGIN  { This file matches the nescessary strings }
+  1023   1   20:0   139 		    IF (STRING1=DTID) OR WILDCARD THEN
+  1024   1   20:1   152 		      BEGIN
+  1025   1   20:2   152 			STATUS := MARKING;
+  1026   1   20:2   160 			DIRENTRY [X] := TRUE;
+  1027   1   20:2   169 			ENTRIES := ENTRIES + 1;
+  1028   1   20:1   181 		      END;
+  1029   1   20:0   181 		    FOUND := FILESNOGOOD
+  1030   1   20:9   181 		  END;
+  1031   1   20:5   184 	  END;
+  1032   1   20:3   192 	IF MARKING THEN
+  1033   1   20:4   195 	  UPDATEDIR     { Must maintain the STATUS bits in the directory }
+  1034   1   20:2   195       END
+  1035   1   20:1   197     ELSE
+  1036   1   20:2   199       IF DEST THEN
+  1037   1   20:3   202 	GINX := GINX - 1;
+  1038   1   20:1   208     IF DIRMAP.ENTRIES > 0 THEN
+  1039   1   20:2   217     BEGIN
+  1040   1   20:3   217       IF SWAPPING THEN
+  1041   1   20:4   220 	INSERTVOLUME(SOURCEUNIT,SOURCEVID,TRUE); { Get source volume on-line }
+  1042   1   20:3   226       CH := 'N';
+  1043   1   20:3   229       WHILE (GINX < GDIR^[0].DNUMFILES) AND (CH <> 'Y') DO
+  1044   1   20:4   244 	WITH GDIR^ [GINX+1] DO
+  1045   1   20:5   253 	  BEGIN
+  1046   1   20:6   253 	    GINX := GINX + 1; { Look at the next directory entry }
+  1047   1   20:6   259 	    IF MARKING THEN
+  1048   1   20:7   262 	      BEGIN
+  1049   1   20:8   262 		DIRMAP.DIRENTRY [GINX] := STATUS;
+  1050   1   20:8   277 		IF STATUS THEN
+  1051   1   20:9   286 		  BEGIN
+  1052   1   20:0   286 		    STATUS := FALSE;   { Turn off status bit in directory }
+  1053   1   20:0   294 		    UPDATEDIR
+  1054   1   20:9   294 		  END
+  1055   1   20:7   296 	      END;
+  1056   1   20:6   296 	    IF DIRMAP.DIRENTRY [GINX] THEN
+  1057   1   20:7   306 	      BEGIN    { Source file for this entry is o.k. what about dest }
+  1058   1   20:8   306 		IF DEST THEN
+  1059   1   20:9   309 		  BEGIN
+  1060   1   20:0   309 		    NEWSTRING := COPY(DTID,LENGTH(STRING1) + 1,
+  1061   1   20:0   324 			    LENGTH(DTID) - LENGTH(STRING1) - LENGTH(STRING2));
+  1062   1   20:0   348 		    X := LENGTH(NEWSTRING) + 
+  1063   1   20:0   352 		      SCAN(LENGTH(STRING3),= '[',STRING3[1]) + LENGTH(STRING4);
+  1064   1   20:0   372 		    IF (X <= TIDLENG) AND ((X > 0) OR NOT WILDCARD) THEN
+  1065   1   20:0   386 
+  1066   1   20:0   386 		      { Destination file will be o.k. (its small enough ) }
+  1067   1   20:1   386 		      BEGIN
+  1068   1   20:2   386 			TOWHERE := CONCAT(VOLNAME2,':',STRING3,
+  1069   1   20:2   420 						   NEWSTRING,STRING4);
+  1070   1   20:2   438 			IF (STRING1 = DTID) OR WILDCARD THEN
+  1071   1   20:3   451 			  FOUNDFILE
+  1072   1   20:1   451 		      END
+  1073   1   20:0   453 		    ELSE
+  1074   1   20:1   455 		      PRINTMESS(SOURCEVID,DTID,'not proccessed');
+  1075   1   20:9   480 		  END
+  1076   1   20:8   480 		ELSE
+  1077   1   20:9   482 		  FOUNDFILE;  { No destination file is needed }
+  1078   1   20:8   484 		DIRMAP.DIRENTRY [GINX] := FALSE; { Turn off bit for this entry }
+  1079   1   20:8   493 		DIRMAP.ENTRIES := DIRMAP.ENTRIES - 1; { One less entry to do }
+  1080   1   20:7   505 	      END;
+  1081   1   20:5   505 	  END;
+  1082   1   20:2   507     END;
+  1083   1   20:1   507     IF FOUND = NOFILES THEN
+  1084   1   20:2   513       MESSAGES(ORD(INOFILE),FALSE);  { No requested files were found }
+  1085   1   20:1   517     IF FOUND = FILESNOGOOD THEN
+  1086   1   20:2   523       MESSAGES(BADDEST,FALSE); { The req. files found could not be used }
+  1087   1   20:0   529   END { SEARCHDIR };
+  1088   1   20:0   556 
+  1089   1   20:0   556   { Input string parser. Removes wildcard symbols. Sets WILDCARD and QUESTION }
+  1090   1   20:0   556   { Expands dollar signs. Sets SOURCEVID, DESTVID, SOURCEUNIT, DESTUNIT,      }
+  1091   1   20:0   556   { VOLNAME1, VOLNAME2, STRING1, STRING2, STRING3, STRING4                    }
+  1092   1   23:D     1   PROCEDURE CHECKFILE(MSG1,MSG2 : SHORTSTRING; DEFAULT,ERROR1 : INTEGER; 
+  1093   1   23:D     5 		     WILD,FILLE : BOOLEAN; CHECK1 : CHCKS);
+  1094   1   23:D    34   VAR
+  1095   1   23:D    34     SRCSTR : STRING;
+  1096   1   23:D    75 
+  1097   1   23:D    75     { Will scan up to the next ',' or to the end of the line. Does all '$' }
+  1098   1   23:D    75     { expansions. Parses string for wildcards, volname & filename. Makes   }
+  1099   1   23:D    75     { sure that the source and dest files are of the appropriate class and }
+  1100   1   23:D    75     { that needed volumes stay on line                                     }
+  1101   1   24:D     1     PROCEDURE PROCESSDATA(MSG:SHORTSTRING; FIRSTCALL:BOOLEAN; VAR VOLNAME:VID;
+  1102   1   24:D     4 		       VAR FIRSTSTR,SECONDSTR:SHORTSTRING; VAR WHERETO:STRNG);
+  1103   1   24:D    20     VAR
+  1104   1   24:D    20       STR,OLD : STRING;
+  1105   1   24:D   102       WHERE : LOCATION;
+  1106   1   24:D   103       X,I,LOC : INTEGER;
+  1107   1   24:D   106 
+  1108   1   24:D   106       { Makes sure that the structure before the last delimmiter is of the }
+  1109   1   24:D   106       { appropriate size & contains no special symbols. If for any reason  }
+  1110   1   24:D   106       { the string is not correct an error will be flagged and this        }
+  1111   1   24:D   106       { procedure will return to the FILER prompt line                     }
+  1112   1   25:D     1       PROCEDURE FINDDELIM(SIZE,MESSAGE : INTEGER; VAR STRIING : STRNG);
+  1113   1   25:D     4       VAR
+  1114   1   25:D     4 	ERROR : BOOLEAN;
+  1115   1   25:D     5 
+  1116   1   25:D     5 	{ Scans STRIING for the appropriate special symbol ['$','?','='] }
+  1117   1   26:D     3 	FUNCTION SCAN2(CH : CHAR) : BOOLEAN;
+  1118   1   26:0     0 	BEGIN
+  1119   1   26:1     0 	  SCAN2 := SCAN(LOC,= CH,STR[1]) >= LOC;
+  1120   1   26:0    18 	END;
+  1121   1   26:0    30 
+  1122   1   25:0     0       BEGIN { FINDDELIM }
+  1123   1   25:1     0 	ERROR := LOC > SIZE;          { Too long to be a legal entry }
+  1124   1   25:1     7 	IF (NOT ERROR) AND SCAN2('$') AND SCAN2('=') AND SCAN2('?') THEN
+  1125   1   25:2    29 	  BEGIN
+  1126   1   25:3    29 	    STRIING := COPY(STR,1,LOC);   { Returns correct part of the string }
+  1127   1   25:3    46 	    DELETE(STR,1,LOC);
+  1128   1   25:3    56 	    DELETE(STR,1,1);
+  1129   1   25:3    64 	    EXIT(FINDDELIM);              { No errors encountered }
+  1130   1   25:2    68 	  END;
+  1131   1   25:1    68 	CLEARLINE;
+  1132   1   25:1    71 	IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+  1133   1   25:2    82 	  WRITE(COPY(STR,1,LOC));
+  1134   1   25:1   103 	IF SYSCOM^.CRTINFO.WIDTH < 80 THEN   { Line will not fit in 40 chars. }
+  1135   1   25:2   112 	  WRITEANDCLEAR;
+  1136   1   25:1   114 	IF ERROR THEN
+  1137   1   25:2   117 	  WRITE('...too long <');
+  1138   1   25:1   140 	CASE MESSAGE OF
+  1139   1   25:1   143 	  1 : WRITE(' file name ');
+  1140   1   25:1   166 	  2 : WRITE(' scan string ');
+  1141   1   25:1   191 	  3 : WRITE(' vol name ');
+  1142   1   25:1   213 	END;
+  1143   1   25:1   226 	IF ERROR THEN
+  1144   1   25:2   229 	  BEGIN
+  1145   1   25:3   229 	    IF MESSAGE = 3 THEN
+  1146   1   25:4   234 	      WRITE(VIDLENG)
+  1147   1   25:3   242 	    ELSE
+  1148   1   25:4   244 	      WRITE(TIDLENG);
+  1149   1   25:3   252 	    WRITE(' - char. max >');
+  1150   1   25:2   276 	  END
+  1151   1   25:1   276 	ELSE
+  1152   1   25:2   278 	  WRITE('- Illegal format');
+  1153   1   25:1   304 	EXIT(CALLPROC)
+  1154   1   25:0   308       END { FINDDELIM };
+  1155   1   25:0   320 
+  1156   1   25:0   320       { Scan STR for special symbols ['$','=','?',','] }
+  1157   1   27:D     3       FUNCTION SCAN1(CH : CHAR) : INTEGER;
+  1158   1   27:0     0       BEGIN
+  1159   1   27:1     0 	SCAN1 := SCAN(LENGTH(STR), = CH,STR[1]);
+  1160   1   27:0    16       END;
+  1161   1   27:0    28 
+  1162   1   24:0     0     BEGIN
+  1163   1   24:0     0       { Need to get input string from user }
+  1164   1   24:1     0       IF INSTRING = '' THEN
+  1165   1   24:2    15 	BEGIN
+  1166   1   24:3    15 	  CLEARLINE;
+  1167   1   24:3    18 	  WRITE(MSG);
+  1168   1   24:3    27 	  IF FIRSTCALL AND FAST THEN
+  1169   1   24:4    32 	    IF FILLE THEN
+  1170   1   24:5    37 	      WRITE(' what file')
+  1171   1   24:4    57 	    ELSE
+  1172   1   24:5    59 	      WRITE(' what vol');
+  1173   1   24:3    78 	  WRITE(' ? ');
+  1174   1   24:3    91 	  READLN(INSTRING);
+  1175   1   24:3   109 	  EATSPACES(INSTRING)
+  1176   1   24:2   112 	END;
+  1177   1   24:2   114 
+  1178   1   24:2   114       { Copy input string into STR up to the first comma or end of line }
+  1179   1   24:1   114       LOC := SCAN(LENGTH(INSTRING), = ',',INSTRING[1]);
+  1180   1   24:1   130       IF LOC > 35 THEN
+  1181   1   24:2   136 	EXIT(CALLPROC);
+  1182   1   24:1   140       STR := COPY(INSTRING,1,LOC);
+  1183   1   24:1   157       DELETE(INSTRING,1,LOC);
+  1184   1   24:1   166       DELETE(INSTRING,1,1);
+  1185   1   24:1   174 
+  1186   1   24:1   174       { Parse volume name out of STR. Check to see if QUESTION is true }
+  1187   1   24:1   174       QUESTION := QUESTION OR (SCAN1('?') < LENGTH(STR));
+  1188   1   24:1   188       LOC := SCAN1(':');
+  1189   1   24:1   195       IF (STR [1] = '#') OR (LOC < LENGTH(STR)) THEN
+  1190   1   24:2   211 	FINDDELIM(VIDLENG,3,VOLNAME)
+  1191   1   24:1   214       ELSE
+  1192   1   24:2   218 	IF STR[1] = '*' THEN
+  1193   1   24:3   226 	  BEGIN
+  1194   1   24:4   226 	    DELETE(STR,1,1);
+  1195   1   24:4   233 	    VOLNAME := '*'
+  1196   1   24:3   234 	  END;
+  1197   1   24:1   237       WHERETO := CONCAT(VOLNAME,':');
+  1198   1   24:1   262 
+  1199   1   24:1   262       { Expand the '$' if one exists    }
+  1200   1   24:1   262       I := SCAN1('$');
+  1201   1   24:1   269       IF I < LENGTH(STR) THEN
+  1202   1   24:2   278 	BEGIN
+  1203   1   24:3   278 	  IF LENGTH(STR)+LENGTH(SRCSTR)-1 > 35 THEN
+  1204   1   24:4   294 	    EXIT(CALLPROC);    { Illegal expansion, too long }
+  1205   1   24:3   298 	  OLD := STR;
+  1206   1   24:3   304 	  STR[0] := CHR(LENGTH(SRCSTR)+LENGTH(STR)-1);
+  1207   1   24:3   320 	  MOVELEFT(SRCSTR[1],STR[I+1],LENGTH(SRCSTR));
+  1208   1   24:3   337 	  MOVELEFT(OLD[I+2],STR[I+1+LENGTH(SRCSTR)],LENGTH(OLD)-I-1);
+  1209   1   24:2   366 	END;
+  1210   1   24:2   366 
+  1211   1   24:2   366       { Scan for wildcards }
+  1212   1   24:1   366       SRCSTR := STR;
+  1213   1   24:1   373       LOC := SCAN1('=');
+  1214   1   24:1   380       IF LOC = LENGTH(STR) THEN
+  1215   1   24:2   389 	LOC := SCAN1('?');
+  1216   1   24:1   396       IF LOC < LENGTH(STR) THEN
+  1217   1   24:1   405 
+  1218   1   24:1   405 	{ Wilcard sysmbol is present. Parse remaining string accordingly }
+  1219   1   24:2   405 	IF WILD THEN
+  1220   1   24:3   410 	  BEGIN
+  1221   1   24:4   410 	    IF NOT (FIRSTCALL OR WILDCARD) THEN
+  1222   1   24:5   416 	      MESSAGES(BADFORM,TRUE);
+  1223   1   24:4   422 	    WILDCARD := TRUE;
+  1224   1   24:4   425 	    FINDDELIM(TIDLENG,2,FIRSTSTR);
+  1225   1   24:4   430 	    LOC := LENGTH(STR);
+  1226   1   24:4   436 	    FINDDELIM(TIDLENG,2,SECONDSTR)
+  1227   1   24:3   439 	  END
+  1228   1   24:2   441 	ELSE
+  1229   1   24:3   443 	  MESSAGES(NOWILD,TRUE)   { Wilcard operation is not allowed }
+  1230   1   24:1   447       ELSE
+  1231   1   24:1   451 
+  1232   1   24:1   451 	{ No wilcards. Remaining string is a standard filename }
+  1233   1   24:2   451 	BEGIN
+  1234   1   24:3   451 	  IF (NOT FIRSTCALL) AND WILDCARD AND (DEFAULT = 0) THEN
+  1235   1   24:3   463 
+  1236   1   24:3   463 	    { User used a wildcard symbol for the source file but not the }
+  1237   1   24:3   463 	    { destination file. Only cases that this is allowed is when   }
+  1238   1   24:3   463 	    { the user is listing the directory (i.e., DEFAULT <> 0) or   }
+  1239   1   24:3   463 	    { when the destination file is an unblkd-volume               }
+  1240   1   24:4   463 	    BEGIN
+  1241   1   24:5   463 	      SCANINPUT(CONCAT(VOLNAME2,':'),[],0,NEITHER,FALSE);
+  1242   1   24:5   494 	      IF LASTSTATE <> UNBLKDVOL THEN
+  1243   1   24:6   499 		MESSAGES(BADFORM,TRUE);
+  1244   1   24:4   505 	    END;
+  1245   1   24:3   505 	  FINDDELIM(SHSTRLENG,1,FIRSTSTR);
+  1246   1   24:3   510 	  WHERETO := CONCAT(WHERETO,FIRSTSTR)
+  1247   1   24:2   530 	END;
+  1248   1   24:1   532       IF NOT FIRSTCALL THEN
+  1249   1   24:1   536 
+  1250   1   24:1   536 	{ Set DESTUNIT & DESTVID to there proper values }
+  1251   1   24:2   536 	BEGIN
+  1252   1   24:3   536 	  SCANINPUT(WHERETO,[],0,WHERE,TRUE);
+  1253   1   24:3   546 	  DESTUNIT := GUNIT;
+  1254   1   24:3   549 	  DESTVID := GVID;
+  1255   1   24:3   555 
+  1256   1   24:3   555 	  { Make sure that the user hasn't removed the source disk }
+  1257   1   24:3   555 	  INSERTVOLUME(SOURCEUNIT,SOURCEVID,TRUE);
+  1258   1   24:2   561 	END
+  1259   1   24:1   561       ELSE
+  1260   1   24:2   563 	IF (INSTRING <> '') AND (DEFAULT <= 0) THEN
+  1261   1   24:3   579 	  WHERE := DESTINATION
+  1262   1   24:2   579 	ELSE
+  1263   1   24:3   584 	  WHERE := NEITHER;
+  1264   1   24:3   587 
+  1265   1   24:3   587       { Restore the directory etc. for the source volume }
+  1266   1   24:1   587       IF WILDCARD THEN
+  1267   1   24:2   590 	SCANINPUT(FROMWHERE,[OKDIR],BLKDEXP,SOURCE,TRUE)
+  1268   1   24:1   602       ELSE
+  1269   1   24:2   606 	SCANINPUT(FROMWHERE,CHECK1,ERROR1,SOURCE,TRUE);
+  1270   1   24:0   622     END;
+  1271   1   24:0   634 
+  1272   1   23:0     0   BEGIN { CHECKFILE }
+  1273   1   23:1     0     INITGLOBALS;
+  1274   1   23:1    12     SRCSTR := '';
+  1275   1   23:1    19     PROCESSDATA(MSG1,TRUE,VOLNAME1,STRING1,STRING2,FROMWHERE);
+  1276   1   23:1    34     SOURCEUNIT := GUNIT;
+  1277   1   23:1    37     SOURCEVID := GVID;
+  1278   1   23:1    43     IF DEFAULT > 0 THEN
+  1279   1   23:2    48       EXIT(CHECKFILE);
+  1280   1   23:1    52     IF (INSTRING = '') AND (DEFAULT < 0) THEN
+  1281   1   23:2    66       EXIT(CHECKFILE);
+  1282   1   23:1    70     PROCESSDATA(MSG2,FALSE,VOLNAME2,STRING3,STRING4,TOWHERE);
+  1283   1   23:0    84   END;
+  1284   1   23:0    96 
+  1285   1   23:0    96 { --- FILER.C.TEXT --- }
+  1286   1   23:0    96 
+  1287   1   23:0    96 {     Copyright (C) 1979 Regents of the University of California.     }
+  1288   1   23:0    96 {     Permission to copy or distribute this software or documen-      }
+  1289   1   23:0    96 {     tation in hard or soft copy granted only by written license     }
+  1290   1   23:0    96 {     obtained from the Institute for Information Systems.            }
+  1291   1   23:0    96 
+  1292   1   23:0    96 {------------ PROCEDURES FOR MOVING, MAKING AND CHANGING FILES ----------------}
+  1293   1   23:0    96 
+  1294   1   23:0    96   { Checks to see if file is endangered by the operation to be performed }
+  1295   1   28:D     3   FUNCTION FINDSAME(DOO : BOOLEAN):BOOLEAN;
+  1296   1   28:0     0   BEGIN
+  1297   1   28:1     0     FINDSAME := TRUE;
+  1298   1   28:1     3     IF (LASTSTATE = OKFILE) AND (DOO OR (SOURCETITLE <> GTID) OR
+  1299   1   28:1    14 					    (SOURCEVID <> GVID)) THEN
+  1300   1   28:2    24       FINDSAME := PURGEIT(CONCAT(GVID,':',GTID),'Remove old')
+  1301   1   28:0    68   END;
+  1302   1   28:0    86 
+  1303   1   28:0    86   { Allows the user to change the name of any file in the directory }
+  1304   1   28:0    86   { or the name of any blocked device                               }
+  1305   1   29:D     1   PROCEDURE CHANGER;
+  1306   1   29:D     1   VAR
+  1307   1   29:D     1     GFIB : UNTYPED;
+  1308   1   29:D    41     GFIBP : FIBP;
+  1309   1   29:D    42     IORSLT,LOC : INTEGER;
+  1310   1   29:D    44 
+  1311   1   29:0     0   BEGIN { CHANGER }
+  1312   1   29:1     0     REPEAT
+  1313   1   29:2    12       CHECKFILE('Change','Change to what',0,FILEBLKDEXP,TRUE,TRUE,
+  1314   1   29:2    44 						      [OKFILE,OKDIR]);
+  1315   1   29:2    52       IF ((STRING1 <> '') AND (STRING3 <> '')) OR WILDCARD THEN
+  1316   1   29:2    72 
+  1317   1   29:2    72 	{ Changing a filename }
+  1318   1   29:3    72 	BEGIN
+  1319   1   29:4    72 	  VOLNAME2 := VOLNAME1;   { Dest volname must be the same as source }
+  1320   1   29:4    78 	  TOWHERE := CONCAT(VOLNAME1,':');
+  1321   1   29:4   106 	  IF NOT WILDCARD THEN
+  1322   1   29:5   110 	    TOWHERE := CONCAT(TOWHERE,STRING3);  { Dest filename is in STRING3 }
+  1323   1   29:4   137 	  LOC := 0;
+  1324   1   29:4   140 	  WHILE SEARCHDIR('Change',LOC,TRUE,TRUE,FALSE) DO
+  1325   1   29:5   160 	    BEGIN
+  1326   1   29:6   160 	      RESET(GFIB,FROMWHERE);   { Opens file to be changed }
+  1327   1   29:6   170 	      CHECKRSLT(IORESULT);
+  1328   1   29:6   174 	      GFIBP := GETPTR(GFIB);   { Gets the pointer to the files header }
+  1329   1   29:6   182 	      SCANINPUT(TOWHERE,[BADFILE,OKFILE],FILEEXP,DESTINATION,TRUE);
+  1330   1   29:6   198 	      IF FINDSAME(FALSE) THEN
+  1331   1   29:7   205 		WITH GFIBP^ DO
+  1332   1   29:8   209 		  BEGIN
+  1333   1   29:9   209 		    FHEADER.DACCESS.YEAR := 100; { Let the OP-SYSTEM know }
+  1334   1   29:9   217 		    PRINTMESS(FVID,FHEADER.DTID,GTID);
+  1335   1   29:9   229 		    FHEADER.DTID := GTID;        { Change the filename }
+  1336   1   29:8   237 		  END;
+  1337   1   29:6   237 	      CLOSE(GFIB);
+  1338   1   29:6   243 	      CHECKRSLT(IORESULT)
+  1339   1   29:5   245 	    END
+  1340   1   29:3   247 	END
+  1341   1   29:2   249       ELSE
+  1342   1   29:3   251 	IF LENGTH(STRING1) + LENGTH(STRING3) = 0 THEN
+  1343   1   29:3   265 
+  1344   1   29:3   265 	  { Changing a volume name }
+  1345   1   29:4   265 	  BEGIN
+  1346   1   29:5   265 	    SCANINPUT(TOWHERE,[NOVOL,OKDIR],BLKDEXP,DESTINATION,TRUE);
+  1347   1   29:5   279 	    IF LASTSTATE = OKDIR THEN
+  1348   1   29:6   284 	      MESSAGES(VOLONLINE,TRUE); { Don't allow two vols with same name }
+  1349   1   29:6   290 
+  1350   1   29:6   290 	    { Allocate room for the directory & read it in }
+  1351   1   29:5   290 	    NEW(GDIR);
+  1352   1   29:5   297 	    UNITREAD(SOURCEUNIT,GDIR^,SIZEOF(DIRECTORY),DIRBLK);
+  1353   1   29:5   307 	    CHECKRSLT(IORESULT);
+  1354   1   29:5   311 	    GDIR^[0].DVID := GVID;  { Change the volume name }
+  1355   1   29:5   321 	    UNITWRITE(SOURCEUNIT,GDIR^,SIZEOF(DIRECTORY),DIRBLK);
+  1356   1   29:5   331 	    IORSLT := IORESULT;
+  1357   1   29:5   335 	    RELEASE(GDIR);
+  1358   1   29:5   339 	    CHECKRSLT(IORSLT);
+  1359   1   29:5   343 	    UNITABLE[SOURCEUNIT].UVID := GVID;   { Update the unitable }
+  1360   1   29:5   353 	    IF (SYVID = SOURCEVID) AND (SYSCOM^.SYSUNIT = SOURCEUNIT) THEN
+  1361   1   29:6   369 	      SYVID := GVID;   { Name of root device has been changed }
+  1362   1   29:5   376 	    IF DKVID = SOURCEVID THEN
+  1363   1   29:6   385 	      DKVID := GVID;              { Prefixed volume's name was changed }
+  1364   1   29:5   392 	    PRINTMESS(SOURCEVID,'',GVID)  { Tell user you did the change       }
+  1365   1   29:4   399 	  END
+  1366   1   29:3   401 	ELSE
+  1367   1   29:4   403 	  MESSAGES(ILLCHANGE,TRUE)      { Can't change a volname to a filename }
+  1368   1   29:1   407     UNTIL INSTRING = ''
+  1369   1   29:0   412   END {CHANGER} ;
+  1370   1   29:0   448 
+  1371   1   29:0   448   { Allows the user to remove any selected file from the directory }
+  1372   1   30:D     1   PROCEDURE REMOVER;
+  1373   1   30:D     1   VAR
+  1374   1   30:D     1     DELETIONS : BITMAP;
+  1375   1   30:D     7     LINE,LOC : INTEGER;
+  1376   1   30:D     9 
+  1377   1   30:0     0   BEGIN { REMOVER }
+  1378   1   30:1     0     REPEAT
+  1379   1   30:2     0       CHECKFILE('Remove','',1,FILEEXP,TRUE,TRUE,[OKFILE]);
+  1380   1   30:2    26       LINE := 0;    { Keeps track of what line of output your at }
+  1381   1   30:2    29       LOC := 0;
+  1382   1   30:2    32       FILLCHAR(DELETIONS,SIZEOF(DELETIONS),CHR(0)); { Init's bitmap }
+  1383   1   30:2    39       WHILE SEARCHDIR('Remove',LOC,FALSE,TRUE,FALSE) DO { Get filename }
+  1384   1   30:3    59 	BEGIN
+  1385   1   30:4    59 	  IF NOT QUESTION THEN
+  1386   1   30:5    63 	    BEGIN
+  1387   1   30:6    63 	      PRINTMESS(GVID,GDIR^[LOC].DTID,'removed');
+  1388   1   30:6    83 	      IF SYSCOM^.CRTINFO.HEIGHT = LINE THEN  { Don't scroll output }
+  1389   1   30:7    92 		BEGIN
+  1390   1   30:8    92 		  NSPACEWAIT(FALSE);
+  1391   1   30:8    95 		  CLEARSCREEN;
+  1392   1   30:8    98 		  LINE := 0
+  1393   1   30:7    98 		END;
+  1394   1   30:6   101 	      LINE := LINE+1;
+  1395   1   30:5   106 	    END;
+  1396   1   30:4   106 	  DELETIONS.ENTRIES := DELETIONS.ENTRIES + 1; { File to be removed   }
+  1397   1   30:4   118 	  DELETIONS.DIRENTRY [LOC] := TRUE  { Total # of files to be removed }
+  1398   1   30:3   124 	END;
+  1399   1   30:2   128       IF (FOUND IN [FILEFOUND,ABORTIT]) AND (DELETIONS.ENTRIES > 0) THEN
+  1400   1   30:3   143 	BEGIN
+  1401   1   30:4   143 	  CLEARLINE;
+  1402   1   30:4   146 	  WRITE('Update directory ? '); { Make user confirm the removal ! }
+  1403   1   30:4   175 	  IF NGETCHAR(TRUE) THEN
+  1404   1   30:5   182 	    ZAPENTRIES(DELETIONS,TRUE); { Will remove the selected files  }
+  1405   1   30:3   187 	END;
+  1406   1   30:1   187     UNTIL INSTRING = ''
+  1407   1   30:0   190   END {REMOVER} ;
+  1408   1   30:0   214 
+  1409   1   30:0   214   { Allows the user to transfer any file in the directory to another disk or }
+  1410   1   30:0   214   { to another file. Will also perform complete or partial binary transfers  }
+  1411   1   30:0   214   { of one disk to another                                                   }
+  1412   1   31:D     1   PROCEDURE TRANSFER;
+  1413   1   31:D     1   VAR
+  1414   1   31:D     1     LASTBLK,LOC : INTEGER;
+  1415   1   31:D     3 
+  1416   1   31:D     3     { Performs the actual transfer of the file from one location to another }
+  1417   1   32:D     1     PROCEDURE MOVEFILE;
+  1418   1   32:D     1     VAR
+  1419   1   32:D     1       RELBLK,NUMBLKS,NBLOCKS : INTEGER;
+  1420   1   32:D     4       FIRSTCALL,SINGLEDRIVE : BOOLEAN;
+  1421   1   32:D     6       GFIBP : FIBP;
+  1422   1   32:D     7       GFIB : UNTYPED;
+  1423   1   32:D    47 
+  1424   1   32:0     0     BEGIN
+  1425   1   32:1     0       RESET(GFIB,FROMWHERE); { Open source file }
+  1426   1   32:1    22       CHECKRSLT(IORESULT);
+  1427   1   32:1    26       GFIBP := GETPTR(GFIB); { Gets a pointer to the header of the source file }
+  1428   1   32:1    34       RELBLK := 0;           { Block relative to the source file }
+  1429   1   32:1    37       FIRSTCALL := TRUE;
+  1430   1   32:1    40       REPEAT
+  1431   1   32:2    40 	NUMBLKS := LASTBLK - RELBLK;   { Blocks left to transfer }
+  1432   1   32:2    47 	IF NUMBLKS > GBUFBLKS THEN  { GBUFBLKS = # of blks in transfer buffer }
+  1433   1   32:3    52 	  NUMBLKS := GBUFBLKS; { Unable to fit whole file in transfer buffer  }
+  1434   1   32:2    55 	NBLOCKS := BLOCKREAD(GFIB,GBUF^,NUMBLKS,RELBLK);
+  1435   1   32:2    70 	CHECKRSLT(IORESULT);   { NBLOCKS = # of blocks actually read }
+  1436   1   32:2    74 	IF FIRSTCALL THEN
+  1437   1   32:3    77 	  BEGIN
+  1438   1   32:4    77 	    FIRSTCALL := FALSE;
+  1439   1   32:4    80 	    SCANINPUT(TOWHERE,[NOVOL,BADDIR,BADFILE,UNBLKDVOL,OKDIR,OKFILE],
+  1440   1   32:4    89 					   FILEVOLEXP,DESTINATION,TRUE);
+  1441   1   32:4    96 	    IF ((GVID2 <> '') AND (GVID2 [1] = '#') AND (GUNIT = SOURCEUNIT) 
+  1442   1   32:4   113 		      AND UNITABLE [GUNIT].UISBLKD) OR (GUNIT = 0) THEN
+  1443   1   32:4   128 
+  1444   1   32:4   128 	      { Destination disk is not on-line at the moment }
+  1445   1   32:5   128 	      BEGIN
+  1446   1   32:6   128 		CLEARSCREEN;
+  1447   1   32:6   131 		IF GUNIT = 0 THEN
+  1448   1   32:7   136 		  WRITELN('Put in ',GVID,':')
+  1449   1   32:6   176 		ELSE
+  1450   1   32:7   178 		  WRITELN('Insert destination disk');
+  1451   1   32:6   217 		NSPACEWAIT(TRUE);
+  1452   1   32:6   220 
+  1453   1   32:6   220 		{ Make sure that the user put the volume on-line }
+  1454   1   32:6   220 		SCANINPUT(TOWHERE,[BADFILE,OKFILE,BADDIR,OKDIR,UNBLKDVOL],
+  1455   1   32:6   229 				      FILEVOLEXP,DESTINATION,TRUE);
+  1456   1   32:5   236 	      END;
+  1457   1   32:4   236 	    IF GUNIT IN [1,2] THEN
+  1458   1   32:5   242 	      CLEARSCREEN;     { Destination is the CONSOLE: }
+  1459   1   32:4   245 	    IF NOT FINDSAME(FALSE) THEN
+  1460   1   32:5   253 	      EXIT(MOVEFILE); { User doesn't wish to remove the duplicate file }
+  1461   1   32:4   257 	    IF NBLOCKS > DIRBLK THEN
+  1462   1   32:5   262 	      RISKVOLUME;     { Make sure that a disk isn't indangered }
+  1463   1   32:4   264 	    REWRITE(LFIB,TOWHERE); { Open destination file }
+  1464   1   32:4   274 	    CHECKRSLT(IORESULT);
+  1465   1   32:4   278 	     
+  1466   1   32:4   278 	    { Get a pointer to the header of the destination file }
+  1467   1   32:4   278 	    LFIBP := GETPTR(LFIB);
+  1468   1   32:4   286 
+  1469   1   32:4   286 	    IF NOT LFIBP^.FISBLKD AND GFIBP^.FISBLKD AND
+  1470   1   32:4   292 				   (GFIBP^.FHEADER.DFKIND = TEXTFILE) THEN
+  1471   1   32:5   303 	      BEGIN { Disk to character device don't transfer heading }
+  1472   1   32:6   303 		NBLOCKS := NBLOCKS-2;
+  1473   1   32:6   308 		MOVELEFT(GBUF^[FBLKSIZE+FBLKSIZE],GBUF^,NBLOCKS*FBLKSIZE)
+  1474   1   32:5   327 	      END;
+  1475   1   32:4   327 	    SINGLEDRIVE := (LFIBP^.FVID <> GFIBP^.FVID) AND
+  1476   1   32:4   335 					   (LFIBP^.FUNIT = GFIBP^.FUNIT)
+  1477   1   32:3   340 	  END
+  1478   1   32:2   343 	ELSE
+  1479   1   32:3   345 	  IF SINGLEDRIVE THEN { Allow user to insert destination disk }
+  1480   1   32:4   348 	    INSERTVOLUME(LFIBP^.FUNIT,LFIBP^.FVID,FALSE);
+  1481   1   32:2   356 	NUMBLKS := BLOCKWRITE(LFIB,GBUF^,NBLOCKS,RELBLK);
+  1482   1   32:2   371 	CHECKRSLT(IORESULT);
+  1483   1   32:2   375 	IF NBLOCKS <> NUMBLKS THEN
+  1484   1   32:3   380 	  MESSAGES(FILEFULL,TRUE);   { Wasn't able to write out all the blocks }
+  1485   1   32:2   386 	IF SINGLEDRIVE AND NOT EOF(GFIB) THEN
+  1486   1   32:2   398 	   { Allow user to insert source disk }
+  1487   1   32:3   398 	   INSERTVOLUME(LFIBP^.FUNIT,GFIBP^.FVID,FALSE);
+  1488   1   32:2   406 	RELBLK := RELBLK + NUMBLKS   { Increment relative block to the file }
+  1489   1   32:1   407       UNTIL (RELBLK = LASTBLK) OR EOF(GFIB);
+  1490   1   32:1   426       WITH LFIBP^,GFIBP^.FHEADER DO
+  1491   1   32:2   434 	BEGIN  { Make the headers to the two files the same }
+  1492   1   32:3   434 	  FHEADER.DLASTBYTE := DLASTBYTE;
+  1493   1   32:3   443 	  FHEADER.DFKIND := DFKIND;
+  1494   1   32:3   457 	  FHEADER.DACCESS := DACCESS;
+  1495   1   32:3   467 	  IF (DACCESS.MONTH = 0) AND (THEDATE.MONTH > 0) THEN
+  1496   1   32:4   487 	    FHEADER.DACCESS := THEDATE
+  1497   1   32:2   491 	END;
+  1498   1   32:1   496       CLOSE(LFIB,LOCK);
+  1499   1   32:1   502       CHECKRSLT(IORESULT);
+  1500   1   32:1   506       PRINTMESS(GFIBP^.FVID,GFIBP^.FHEADER.DTID,
+  1501   1   32:1   512 		      CONCAT(LFIBP^.FVID,':',LFIBP^.FHEADER.DTID));
+  1502   1   32:1   547       CLOSE(GFIB);
+  1503   1   32:0   553     END;
+  1504   1   32:0   576 
+  1505   1   31:0     0   BEGIN { TRANSFER }
+  1506   1   31:1     0     REPEAT
+  1507   1   31:2     0       CHECKFILE('Transfer','To where',0,FILEVOLEXP,TRUE,TRUE,
+  1508   1   31:2    28 			       [BADDIR,OKFILE,OKDIR,UNBLKDVOL]);
+  1509   1   31:2    36       LASTBLK := MAXINT;   { Will be set to the # of blocks to transfer }
+  1510   1   31:2    41       LOC := 0;
+  1511   1   31:2    44       IF (STRING1 = '') AND NOT WILDCARD THEN
+  1512   1   31:3    57 	BEGIN     { Disk to disk binary transfer }
+  1513   1   31:4    57 	  IF LASTSTATE IN [OKDIR,BADDIR] THEN
+  1514   1   31:5    63 	    GETBLOCKS('Transfer','blocks','# of blocks to transfer',1,LASTBLK);
+  1515   1   31:4   114 	  MOVEFILE
+  1516   1   31:3   114 	END
+  1517   1   31:2   116       ELSE
+  1518   1   31:3   118 	WHILE SEARCHDIR('Transfer',LOC,TRUE,TRUE,TRUE) DO
+  1519   1   31:4   140 	  MOVEFILE
+  1520   1   31:1   140     UNTIL INSTRING = '';
+  1521   1   31:0   154   END { TRANSFER };
+  1522   1   31:0   170 
+  1523   1   31:0   170   { Allows the user to create file(s) on the disk }
+  1524   1   33:D     1   PROCEDURE MAKEFILE;
+  1525   1   33:D     1   VAR
+  1526   1   33:D     1   GFIB : UNTYPED;
+  1527   1   33:D    41   GFIBP : FIBP;
+  1528   1   33:D    42 
+  1529   1   33:0     0   BEGIN { MAKEFILE }
+  1530   1   33:1     0     REPEAT
+  1531   1   33:2    12       CHECKFILE('Make','',1,FILEEXP,FALSE,TRUE,[BADFILE,OKFILE]);
+  1532   1   33:2    36       IF FINDSAME(TRUE) THEN       { Check for an existing file with this name }
+  1533   1   33:3    43 	BEGIN
+  1534   1   33:4    43 	  REWRITE(GFIB,FROMWHERE); { Open the file }
+  1535   1   33:4    53 	  CHECKRSLT(IORESULT);
+  1536   1   33:4    57 	  GFIBP := GETPTR(GFIB);   { Get a pointer to the header of the file }
+  1537   1   33:4    65 	  WITH GFIBP^ DO  { Need to be sure the file is of the correct size }
+  1538   1   33:5    69 	    FMAXBLK := FHEADER.DLASTBLK-FHEADER.DFIRSTBLK;
+  1539   1   33:4    83 	  CLOSE(GFIB,LOCK);
+  1540   1   33:4    89 	  CHECKRSLT(IORESULT);
+  1541   1   33:4    93 	  CLEARLINE;
+  1542   1   33:4    96 	  WRITELN(GVID,':',GTID,' made')
+  1543   1   33:3   143 	END
+  1544   1   33:1   143     UNTIL INSTRING = ''
+  1545   1   33:0   146   END {MAKEFILE} ;
+  1546   1   33:0   174 
+  1547   1   33:0   174 { --- FILER.D.TEXT --- }
+  1548   1   33:0   174 
+  1549   1   33:0   174 {     Copyright (C) 1979, Regents of the University of California.    }
+  1550   1   33:0   174 {     Permission to copy or distribute this software or documen-      }
+  1551   1   33:0   174 {     tation in hard or soft copy granted only by written license     }
+  1552   1   33:0   174 {     obtained from the Institute for Information Systems.            }
+  1553   1   33:0   174 
+  1554   1   33:0   174 {--------------------- WORKFILE MAINTANENCE PROCEDURES ------------------------}
+  1555   1   33:0   174 
+  1556   1   33:0   174   { Allows the user to save his workfile under any desired name }
+  1557   1   34:D     3   FUNCTION SAVEWORK : BOOLEAN;
+  1558   1   34:D     3   TYPE
+  1559   1   34:D     3     FILESTRG = STRING [4];
+  1560   1   34:D     3   VAR
+  1561   1   34:D     3     GS : SHORTSTRING;
+  1562   1   34:D    16     OK : BOOLEAN;
+  1563   1   34:D    17 
+  1564   1   35:D     3     FUNCTION SAVEIT(WHATFILE : FILESTRG; WHICH : FILEKIND;
+  1565   1   35:D     5 	VAR TITLE : TID; VAR SAVED,GOTIT  : BOOLEAN; MSG : INTEGER) : BOOLEAN;
+  1566   1   35:D    12     VAR
+  1567   1   35:D    12       GFIB : UNTYPED;
+  1568   1   35:D    52       GFIBP : FIBP;
+  1569   1   35:D    53 
+  1570   1   35:D    53     { Changes the name of the workfile to the name desired by the user }
+  1571   1   35:0     0     BEGIN { SAVEIT }
+  1572   1   35:1     0       SAVED := TRUE;
+  1573   1   35:1    20       WITH USERINFO DO
+  1574   1   35:2    20 	BEGIN
+  1575   1   35:3    20 	  RESET(GFIB,CONCAT('*SYSTEM.WRK.',WHATFILE));
+  1576   1   35:3    61 	  GFIBP := GETPTR(GFIB);
+  1577   1   35:3    69 	  WITH USERINFO, GFIBP^.FHEADER DO
+  1578   1   35:4    75 	  IF GFIBP^.FISOPEN THEN
+  1579   1   35:5    80 	    BEGIN
+  1580   1   35:6    80 	      DACCESS.YEAR := 100;
+  1581   1   35:6    88 	      TITLE := CONCAT(WORKTID,'.',WHATFILE);{ Change the workfile name }
+  1582   1   35:6   123 	      DTID := TITLE;    { Change the name of the file }
+  1583   1   35:6   130 	      SAVEIT := TRUE;
+  1584   1   35:6   133 	      CLOSE(GFIB,NORMAL)
+  1585   1   35:5   139 	    END
+  1586   1   35:4   139 	  ELSE
+  1587   1   35:5   141 	    BEGIN
+  1588   1   35:6   141 	      SAVEIT := FALSE;
+  1589   1   35:6   144 	      GOTIT := FALSE;
+  1590   1   35:6   147 	      MESSAGES(MSG,FALSE)  { Couldn't find the workfile }
+  1591   1   35:5   149 	    END
+  1592   1   35:2   151 	END
+  1593   1   35:0   151     END { SAVEIT };
+  1594   1   35:0   170 
+  1595   1   35:0   170     { Create input string to be sent to the T(ransfer command }
+  1596   1   36:D     1     PROCEDURE CONCATIT(STR : FILESTRG; SAVED : BOOLEAN);
+  1597   1   36:0     0     BEGIN
+  1598   1   36:1     0       IF NOT SAVED THEN
+  1599   1   36:2     9 	INSTRING := CONCAT(INSTRING,'*SYSTEM.WRK.',STR,',',
+  1600   1   36:2    73 					 GVID2,':',GTID,'.',STR,',')
+  1601   1   36:0   139     END;
+  1602   1   36:0   156 
+  1603   1   34:0     0   BEGIN { SAVEWORK }
+  1604   1   34:1     0     WITH USERINFO DO
+  1605   1   34:2     0       BEGIN
+  1606   1   34:3     0 	SAVEWORK := FALSE; { Will be set to true if saving to a different disk }
+  1607   1   34:3     3 	GTID := WORKTID;
+  1608   1   34:3    10 	GVID := WORKVID;
+  1609   1   34:3    17 	GVID2 := WORKVID;
+  1610   1   34:3    24 	IF TEXTSAVED AND CODESAVED THEN   { Error nothing to save }
+  1611   1   34:4    29 	  BEGIN
+  1612   1   34:5    29 	    WRITELN;
+  1613   1   34:5    35 	    IF GOTSYM OR GOTCODE THEN
+  1614   1   34:6    44 	      MESSAGES(WRKSAVED,TRUE);    { Workfile already saved }
+  1615   1   34:5    50 	    MESSAGES(NOWRK,TRUE);         { No workfile to save }
+  1616   1   34:4    56 	  END;
+  1617   1   34:3    56 	OK := FALSE;
+  1618   1   34:3    59 	IF WORKTID <> '' THEN { Already have a filename }
+  1619   1   34:4    69 	  BEGIN
+  1620   1   34:5    69 	    CLEARLINE;
+  1621   1   34:5    72 	    WRITE('Save as ',WORKVID,':',WORKTID,' ? ');
+  1622   1   34:5   131 	    OK := NGETCHAR(FALSE)
+  1623   1   34:4   132 	  END;
+  1624   1   34:3   138 	IF NOT OK THEN        { Need a new filename }
+  1625   1   34:4   142 	  CHECKFILE('Save as','',1,FILEEXP,FALSE,TRUE,
+  1626   1   34:4   161 				   [NOVOL,BADDIR,BADFILE,OKDIR,OKFILE]);
+  1627   1   34:3   169 	IF LENGTH(GTID) > TIDLENG-5 THEN
+  1628   1   34:4   179 	  MESSAGES(ILLFILEVOL,TRUE);   { Filename is too long }
+  1629   1   34:3   185 	IF GVID2 <> SYVID THEN
+  1630   1   34:4   194 	  BEGIN                        { Save to alternate disk }
+  1631   1   34:5   194 	    INSTRING := '';
+  1632   1   34:5   202 	    CONCATIT('TEXT',TEXTSAVED);
+  1633   1   34:5   212 	    CONCATIT('CODE',CODESAVED);
+  1634   1   34:5   222 	    DELETE(INSTRING,LENGTH(INSTRING),1);   { Remove trailing comma }
+  1635   1   34:5   234 	    SAVEWORK := TRUE;     { Will need to enter T(ransfer after leaving }
+  1636   1   34:5   237 	    EXIT(SAVEWORK)
+  1637   1   34:4   241 	  END;
+  1638   1   34:3   241 	WORKTID := GTID;          { Change title of worfile }
+  1639   1   34:3   248 	WORKVID := GVID;          { Change volume i.d. of worfile }
+  1640   1   34:3   255 	CLEARLINE;
+  1641   1   34:3   258 	IF NOT TEXTSAVED THEN
+  1642   1   34:4   262 	  BEGIN                   { Text file needs to be saved }
+  1643   1   34:5   262 	    IF SAVEIT('TEXT',TEXTFILE,SYMTID,TEXTSAVED,GOTSYM,TEXTLOST) THEN
+  1644   1   34:6   287 	      BEGIN
+  1645   1   34:7   287 		IF CODESAVED THEN { Remove old code existing file }
+  1646   1   34:8   290 		  IF PURGEIT(CONCAT('*',WORKTID,'.CODE'),'') THEN
+  1647   1   34:9   337 		    WRITE('Old code removed, ');
+  1648   1   34:7   365 		WRITE('Text file saved ')
+  1649   1   34:6   391 	      END;
+  1650   1   34:5   391 	    IF NOT CODESAVED THEN
+  1651   1   34:6   395 	      WRITE('& ')         { Will also need to save new codefile }
+  1652   1   34:4   407 	  END;
+  1653   1   34:3   407 	IF NOT CODESAVED THEN  { Save code file }
+  1654   1   34:4   411 	  IF SAVEIT('CODE',CODEFILE,CODETID,CODESAVED,GOTCODE,CODELOST) THEN
+  1655   1   34:5   436 	    WRITE('Code file saved')
+  1656   1   34:2   461       END
+  1657   1   34:0   461   END {SAVEWORK} ;
+  1658   1   34:0   476 
+  1659   1   34:0   476   { Informs the user if a workfile exists and if so }
+  1660   1   34:0   476   { what name it is associated with                 }
+  1661   1   37:D     1   PROCEDURE WHATWORK;
+  1662   1   37:0     0   BEGIN
+  1663   1   37:1     0     WRITEANDCLEAR;
+  1664   1   37:1     2     WITH USERINFO DO
+  1665   1   37:2     2       IF GOTSYM OR GOTCODE THEN          { There's a code or text file loaded }
+  1666   1   37:3    11 	BEGIN
+  1667   1   37:4    11 	  IF WORKTID = '' THEN
+  1668   1   37:5    21 	    WRITE('not named')
+  1669   1   37:4    40 	  ELSE
+  1670   1   37:5    42 	    WRITE('Workfile is ',WORKVID,':',WORKTID);
+  1671   1   37:4    92 	  IF NOT (TEXTSAVED AND CODESAVED) THEN
+  1672   1   37:5    98 	    WRITE(' (not saved)')
+  1673   1   37:3   120 	END
+  1674   1   37:2   120       ELSE
+  1675   1   37:3   122 	WRITE('No workfile')
+  1676   1   37:0   143   END {WHATWORK} ;
+  1677   1   37:0   156 
+  1678   1   37:0   156   { Clears the present workfile. Used in GETWORK & NEWWORK }
+  1679   1   38:D     1   PROCEDURE CLEARWORK;
+  1680   1   38:0     0   BEGIN
+  1681   1   38:1     0     WITH USERINFO DO
+  1682   1   38:2     0       BEGIN
+  1683   1   38:3     0 	GOTSYM := FALSE;
+  1684   1   38:3     4 	GOTCODE := FALSE;
+  1685   1   38:3     8 	WORKTID := '';
+  1686   1   38:3    16 	SYMTID := '';
+  1687   1   38:3    24 	CODETID := ''
+  1688   1   38:2    27       END
+  1689   1   38:0    32   END;
+  1690   1   38:0    44 
+  1691   1   38:0    44   { Clears the present workfile. If a SYSTEM.WRK exists will remove it }
+  1692   1   39:D     1   PROCEDURE NEWWORK(GIVEBLURB: BOOLEAN);
+  1693   1   39:D     2   VAR
+  1694   1   39:D     2     GFIB : FILE;
+  1695   1   39:0     0   BEGIN { NEWWORK }
+  1696   1   39:1     0     WITH USERINFO DO
+  1697   1   39:2    12       BEGIN
+  1698   1   39:3    12 	IF NOT (TEXTSAVED AND CODESAVED) THEN
+  1699   1   39:4    18 	  BEGIN     { Current workfile hasn't been saved verify its removal }
+  1700   1   39:5    18 	    CLEARLINE;
+  1701   1   39:5    21 	    WRITE('Throw away current workfile ? ');
+  1702   1   39:5    61 	    IF NOT NGETCHAR(FALSE) THEN
+  1703   1   39:6    69 	      EXIT(CALLPROC);
+  1704   1   39:4    73 	  END
+  1705   1   39:3    73 	ELSE
+  1706   1   39:4    75 	  IF GIVEBLURB THEN
+  1707   1   39:5    78 	    WRITELN;  { Wasn't called from GETWORK }
+  1708   1   39:5    84 
+  1709   1   39:5    84 	{ Remove all workfiles }
+  1710   1   39:3    84 	IF PURGEIT('*SYSTEM.WRK.TEXT','') THEN;
+  1711   1   39:3   112 	IF PURGEIT('*SYSTEM.WRK.CODE','') THEN;
+  1712   1   39:3   140 	IF PURGEIT('*SYSTEM.LST.TEXT','') THEN;
+  1713   1   39:3   168 
+  1714   1   39:3   168 	{ Check for a .BACK file in case user has a large file EDITOR }
+  1715   1   39:3   168 	IF PURGEIT(CONCAT(WORKTID,'.BACK'),'Remove') THEN;
+  1716   1   39:3   211 
+  1717   1   39:3   211 	TEXTSAVED := TRUE;
+  1718   1   39:3   214 	CODESAVED := TRUE;
+  1719   1   39:3   217 	IF GIVEBLURB THEN
+  1720   1   39:4   220 	  WITH USERINFO DO  { Inform the user of the status of the workfile }
+  1721   1   39:5   220 	    BEGIN
+  1722   1   39:6   220 	      CLEARLINE;
+  1723   1   39:6   223 	      WRITE('Workfile cleared');
+  1724   1   39:6   249 	      CLEARWORK;
+  1725   1   39:5   251 	    END
+  1726   1   39:2   251       END
+  1727   1   39:0   251   END { NEWWORK };
+  1728   1   39:0   270 
+  1729   1   39:0   270   { Allows the user to load a new file name into his workfile }
+  1730   1   40:D     1   PROCEDURE GETWORK;
+  1731   1   40:D     1   TYPE
+  1732   1   40:D     1     SHORT = STRING[5];
+  1733   1   40:D     1   VAR
+  1734   1   40:D     1     DONE,OK : BOOLEAN;
+  1735   1   40:D     3     X : INTEGER;
+  1736   1   40:D     4 
+  1737   1   40:D     4     { Checks to see whether or not the requested file to be loaded exists }
+  1738   1   41:D     3     FUNCTION CHECKIT(SUFFIX,MESS:SHORT; VAR TITLE:TID; VAR VOLID:VID) : BOOLEAN;
+  1739   1   41:0     0     BEGIN
+  1740   1   41:1     0       WITH USERINFO DO
+  1741   1   41:2    10       BEGIN
+  1742   1   41:3    10 	CHECKIT := FALSE;
+  1743   1   41:3    13 	SCANINPUT(CONCAT(WORKVID,':',WORKTID,SUFFIX),[OKFILE],0,NEITHER,TRUE);
+  1744   1   41:3    65 	IF LASTSTATE = OKFILE THEN
+  1745   1   41:4    70 	  BEGIN      { The requested file has been found }
+  1746   1   41:5    70 	    CHECKIT := TRUE;
+  1747   1   41:5    73 	    DONE := TRUE;
+  1748   1   41:5    77 	    TITLE := CONCAT(WORKTID,SUFFIX);
+  1749   1   41:5   102 	    VOLID := WORKVID;
+  1750   1   41:5   108 	    IF GOTSYM THEN
+  1751   1   41:6   113 	      WRITE('& ');
+  1752   1   41:5   125 	    WRITE(MESS)
+  1753   1   41:4   134 	  END
+  1754   1   41:2   134       END
+  1755   1   41:0   134     END;
+  1756   1   41:0   146 
+  1757   1   40:0     0   BEGIN { GETWORK }
+  1758   1   40:1     0     NEWWORK(FALSE);     { Clear existing workfile }
+  1759   1   40:1     3     CHECKFILE('Get','',1,FILEEXP,FALSE,TRUE,[BADFILE,OKFILE]);
+  1760   1   40:1    26     WITH USERINFO DO
+  1761   1   40:2    26     BEGIN
+  1762   1   40:3    26       CLEARWORK;  { Clearwork hasn't cleared workfile yet in case of nul input }
+  1763   1   40:3    28       WORKVID := GVID;
+  1764   1   40:3    35       WORKTID := GTID;
+  1765   1   40:3    42       X := LENGTH(WORKTID);
+  1766   1   40:3    49       OK := X <= TIDLENG-5;      { Can a '.TEXT' or '.CODE' suffix be added }
+  1767   1   40:3    56       CLEARLINE;
+  1768   1   40:3    59       REPEAT
+  1769   1   40:4    59 	DONE := NOT OK;
+  1770   1   40:4    63 	IF DONE AND (X > 5) THEN { '.TEXT' OR '.CODE' Suffix may already exist }
+  1771   1   40:5    70 	  IF (COPY(WORKTID,X-4,5)='.TEXT') OR (COPY(WORKTID,X-4,5)='.CODE') THEN
+  1772   1   40:6   121 	    DELETE(WORKTID,X - 4,5); { Remove '.TEXT' or '.CODE' suffix }
+  1773   1   40:4   131 	IF (LENGTH(WORKTID) <= TIDLENG-5) AND (WORKTID <> '') THEN
+  1774   1   40:5   151 	  BEGIN { See if file is in directory }
+  1775   1   40:6   151 	    GOTSYM := CHECKIT('.TEXT','Text ',SYMTID,SYMVID);
+  1776   1   40:6   180 	    GOTCODE := CHECKIT('.CODE','Code ',CODETID,CODEVID)
+  1777   1   40:5   202 	  END;
+  1778   1   40:4   209 	OK := FALSE
+  1779   1   40:3   209       UNTIL DONE;
+  1780   1   40:3   215       IF NOT (GOTSYM OR GOTCODE) THEN
+  1781   1   40:4   225 	BEGIN  { Wasn't able to find the file }
+  1782   1   40:5   225 	  CLEARWORK;
+  1783   1   40:5   227 	  WRITE('No ')
+  1784   1   40:4   240 	END;
+  1785   1   40:3   240       WRITE('file loaded')
+  1786   1   40:2   261     END
+  1787   1   40:0   261   END {GETWORK} ;
+  1788   1   40:0   276 
+  1789   1   40:0   276 { --- FILER.E.TEXT --- }
+  1790   1   40:0   276 
+  1791   1   40:0   276 {     Copyright (C) 1979, Regents of the University of California.    }
+  1792   1   40:0   276 {     Permission to copy or distribute this software or documen-      }
+  1793   1   40:0   276 {     tation in hard or soft copy granted only by written license     }
+  1794   1   40:0   276 {     obtained from the Institute for Information Systems.            }
+  1795   1   40:0   276 
+  1796   1   40:0   276 {------------------------ DIRECTORY RELATED ROUTINES --------------------------}
+  1797   1   40:0   276 
+  1798   1   40:0   276   { Allows the user to set the date in the DIRECTORY }
+  1799   1   42:D     1   PROCEDURE DATESET;
+  1800   1   42:D     1   CONST 
+  1801   1   42:D     1     DASH = '-';     { Only delimmiter allowed to separate fields in the date }
+  1802   1   42:D     1   VAR
+  1803   1   42:D     1     NUM : INTEGER;
+  1804   1   42:D     2 
+  1805   1   42:D     2     { Deletes input string up to the next field delimitter }
+  1806   1   43:D     1     PROCEDURE ZAPIT;
+  1807   1   43:0     0     BEGIN
+  1808   1   43:1     0       DELETE(INSTRING,1,SCAN(LENGTH(INSTRING),=DASH,INSTRING[1]));
+  1809   1   43:1    21       DELETE(INSTRING,1,1)
+  1810   1   43:0    29     END;
+  1811   1   43:0    42 
+  1812   1   43:0    42     { Translates number in character representaion into integer representation }
+  1813   1   43:0    42     { and checks to see if it is in the allowable range                        }
+  1814   1   44:D     3     FUNCTION GETNUMBER(MAX : INTEGER) : BOOLEAN;
+  1815   1   44:D     4     VAR
+  1816   1   44:D     4       X,STOP : INTEGER;
+  1817   1   44:0     0     BEGIN
+  1818   1   44:1     0       NUM := 0;
+  1819   1   44:1     4       STOP := SCAN(LENGTH(INSTRING),=DASH,INSTRING[1]);
+  1820   1   44:1    20       FOR X := 1 TO STOP DO
+  1821   1   44:2    31 	IF INSTRING[X] IN DIGITS THEN
+  1822   1   44:3    45 	  NUM := NUM*10+ORD(INSTRING[X])-ORD('0');
+  1823   1   44:1    68       GETNUMBER := (NUM > 0) AND (NUM <= MAX)
+  1824   1   44:0    78     END;
+  1825   1   44:0    96 
+  1826   1   42:0     0   BEGIN {DATESET}
+  1827   1   42:1     0     WITH THEDATE DO
+  1828   1   42:2     0       BEGIN
+  1829   1   42:3     0 	WRITELN('Date set: <1..31>-<Jan..Dec>-<00..99>');
+  1830   1   42:3    53 	IF MONTH <> 0 THEN { Write out present date if it is valid }
+  1831   1   42:4    63 	  WRITELN('Today is ',DAY,DASH,COPY(MONTHSTR,MONTH*3+1,3),DASH,YEAR);
+  1832   1   42:3   158 	WRITE('New date ? ');
+  1833   1   42:3   179 	READLN(INSTRING);
+  1834   1   42:3   197 	EATSPACES(INSTRING);
+  1835   1   42:3   202 	IF GETNUMBER(31) THEN
+  1836   1   42:4   209 	  DAY := NUM;   { A new day was found }
+  1837   1   42:3   216 	ZAPIT;  { Delete input string up to the next delimmiter }
+  1838   1   42:3   218 	IF INSTRING[0] > CHR(2) THEN
+  1839   1   42:4   227 	  BEGIN
+  1840   1   42:5   227 	    GVID [0] := CHR(3);
+  1841   1   42:5   232 	    MOVELEFT(INSTRING[1],GVID[1],3);
+  1842   1   42:5   242 	    FOR NUM := 2 TO 3 DO
+  1843   1   42:6   253 	      IF (GVID [NUM] >= 'A') AND (GVID [NUM] <= 'Z') THEN
+  1844   1   42:7   268 		GVID [NUM] := CHR( ORD(GVID [NUM]) - ORD('A') + ORD('a'));
+  1845   1   42:5   287 	    FOR NUM := 1 TO 12 DO
+  1846   1   42:6   298 	     IF COPY(MONTHSTR,NUM*3+1,3) = GVID THEN
+  1847   1   42:7   320 	       MONTH := NUM    { A new valid month has been given }
+  1848   1   42:4   325 	  END;
+  1849   1   42:3   334 	ZAPIT;  { Delete input string up to the next delimmiter }
+  1850   1   42:3   336 	IF GETNUMBER(99) THEN
+  1851   1   42:4   343 	  YEAR := NUM;  { A valid year has been given }
+  1852   1   42:3   350 	SCANINPUT(CONCAT(SYVID,':'),[OKDIR],0,NEITHER,TRUE);
+  1853   1   42:3   383 	IF (LASTSTATE = OKDIR) AND (GUNIT = SYSCOM^.SYSUNIT) THEN
+  1854   1   42:4   395 	  BEGIN { The root volume is on-line, write the date out to its dir. }
+  1855   1   42:5   395 	    GDIR^[0].DLASTBOOT := THEDATE;
+  1856   1   42:5   406 	    WRITEDIR(GUNIT,GDIR);
+  1857   1   42:4   411 	  END;
+  1858   1   42:3   411 	WRITE('The date is ',DAY,DASH,COPY(MONTHSTR,MONTH*3+1,3),DASH,YEAR)
+  1859   1   42:2   503     END
+  1860   1   42:0   503   END { DATESET } ;
+  1861   1   42:0   520 
+  1862   1   42:0   520   { Allows the user to see what & where his/her files are in the directory }
+  1863   1   45:D     1   PROCEDURE LISTDIR(DETAIL: BOOLEAN);
+  1864   1   45:D     2   VAR
+  1865   1   45:D     2     NOFILES,ALTFILE : BOOLEAN;
+  1866   1   45:D     4     OUT : TEXT;
+  1867   1   45:D   305     LISTED,LOC,LINE,LARGEST,FREEBLKS,USEDAREA,USEDBLKS: INTEGER;
+  1868   1   45:D   312 
+  1869   1   45:D   312     { Keeps track of what line of output we're at so we don't scroll listsing }
+  1870   1   46:D     1     PROCEDURE WRITELINE;
+  1871   1   46:0     0     BEGIN
+  1872   1   46:1     0       IF (LINE = SYSCOM^.CRTINFO.HEIGHT) OR (LINE = 0) THEN
+  1873   1   46:2    19 	BEGIN   { Write out volume name at top of each page of output }
+  1874   1   46:3    19 	  HOMECURSOR;
+  1875   1   46:3    22 	  CLEARLINE;
+  1876   1   46:3    25 	  IF NOT ((LINE = 0) OR QUESTION) THEN
+  1877   1   46:4    36 	    NSPACEWAIT(FALSE);  { Let user look at whats on the screen }
+  1878   1   46:3    39 	  IF (NOT UNITABLE[DESTUNIT].UISBLKD) OR QUESTION THEN
+  1879   1   46:4    51 	    CLEARSCREEN;        { Listing to console }
+  1880   1   46:3    54 	  WRITELN(OUT);
+  1881   1   46:3    60 	  WRITE(OUT,SOURCEVID,':');
+  1882   1   46:3    77 	  LINE := 2;
+  1883   1   46:3    82 	  IF ALTFILE THEN
+  1884   1   46:4    87 	    LINE := SYSCOM^.CRTINFO.HEIGHT; { List the heading only once }
+  1885   1   46:2    96 	END;
+  1886   1   46:1    96       WRITELN(OUT);
+  1887   1   46:1   102       LINE := LINE+1
+  1888   1   46:0   106     END {WRITELINE} ;
+  1889   1   46:0   124 
+  1890   1   46:0   124     { Writes out unused areas on the disk }
+  1891   1   47:D     1     PROCEDURE FREECHECK(FIRSTOPEN,NEXTUSED: INTEGER);
+  1892   1   47:D     3     VAR
+  1893   1   47:D     3       FREEAREA: INTEGER;
+  1894   1   47:D     4 
+  1895   1   47:0     0     BEGIN
+  1896   1   47:1     0       FREEAREA := NEXTUSED-FIRSTOPEN; { Finds space between last & next file  }
+  1897   1   47:1     5       IF FREEAREA > LARGEST THEN
+  1898   1   47:2    13 	LARGEST := FREEAREA;          { Is this the biggest space on the disk }
+  1899   1   47:1    18       FREEBLKS := FREEBLKS+FREEAREA;  { Running total of free blocks }
+  1900   1   47:1    28       IF (FREEAREA > 0) AND DETAIL THEN { Extended listing }
+  1901   1   47:2    37 	BEGIN
+  1902   1   47:3    37 	  WRITE(OUT,'< UNUSED >',FREEAREA:10,'':10);
+  1903   1   47:3    75 	  IF FAST THEN
+  1904   1   47:4    78 	    WRITE(OUT,FIRSTOPEN:6)
+  1905   1   47:3    86 	  ELSE
+  1906   1   47:4    88 	    WRITE(OUT,FIRSTOPEN:5);
+  1907   1   47:3    96 	  WRITELINE
+  1908   1   47:2    96 	END
+  1909   1   47:0    98     END {FREECHECK} ;
+  1910   1   47:0   110 
+  1911   1   45:0     0   BEGIN {LISTDIR}
+  1912   1   45:1     0     CHECKFILE('Dir listing of','',-1,FILEBLKDEXP,TRUE,FALSE,[OKDIR,OKFILE]);
+  1913   1   45:1    47     ALTFILE := TOWHERE <> '';   { Are we listing to CONSOLE: or not ? }
+  1914   1   45:1    57     IF ALTFILE THEN
+  1915   1   45:2    60       BEGIN
+  1916   1   45:3    60 	SCANINPUT(TOWHERE,[BADFILE,OKFILE,UNBLKDVOL],FILEUNBLKDEXP,DESTINATION
+  1917   1   45:3    72 				,TRUE);
+  1918   1   45:3    76 	SCANINPUT(FROMWHERE,[OKDIR,OKFILE],FILEBLKDEXP,SOURCE,TRUE)
+  1919   1   45:2    90       END
+  1920   1   45:1    92     ELSE
+  1921   1   45:2    94       TOWHERE := '#2:';         { We are listing to the CONSOLE:              }
+  1922   1   45:1   105     REWRITE(OUT,TOWHERE);       { Change output to appropriate device         }
+  1923   1   45:1   115     CHECKRSLT(IORESULT);
+  1924   1   45:1   119     LISTED := 0;                { Total # of files listed                     }
+  1925   1   45:1   123     LOC := 0;
+  1926   1   45:1   127     LINE := 0;                  { Output line # to avoid scrolling of listing }
+  1927   1   45:1   131     LARGEST := 0;               { Largest free area on the disk               }
+  1928   1   45:1   135     FREEBLKS := 0;              { Total # of free blocks on the disk          }
+  1929   1   45:1   139     USEDAREA := 0;              { Size of file listed                         }
+  1930   1   45:1   143     USEDBLKS := GDIR^[0].DLASTBLK;  { Total # of blocks being used            }
+  1931   1   45:1   151     NOFILES := FALSE;
+  1932   1   45:1   154     IF STRING1 = '' THEN
+  1933   1   45:2   164       BEGIN  { In case of empty dir the # of UNUSED blocks will be displayed }
+  1934   1   45:3   164 	NOFILES := NOT WILDCARD AND (GDIR^ [0].DNUMFILES = 0);
+  1935   1   45:3   177 	WILDCARD := TRUE;
+  1936   1   45:2   180       END;
+  1937   1   45:1   180     IF WILDCARD THEN
+  1938   1   45:2   183       WRITELINE   { Correction for good looking output }
+  1939   1   45:1   183     ELSE
+  1940   1   45:2   187       LINE := SYSCOM^.CRTINFO.HEIGHT+1; { Single file req. don't write heading }
+  1941   1   45:1   197     IF NOT NOFILES THEN
+  1942   1   45:2   201       WHILE SEARCHDIR('List',LOC,FALSE,FALSE,FALSE) DO { Get file to be listed }
+  1943   1   45:3   220 	BEGIN
+  1944   1   45:4   220 	IF UNITABLE[DESTUNIT].UISBLKD AND (NOT QUESTION) THEN
+  1945   1   45:4   232 
+  1946   1   45:4   232 	  { Writing directory out to a blocked device }
+  1947   1   45:5   232 	  IF LISTED = 0 THEN { First call to procedure }
+  1948   1   45:6   239 	    BEGIN
+  1949   1   45:7   239 	      WRITEANDCLEAR;
+  1950   1   45:7   241 	      WRITE('Writing')
+  1951   1   45:6   258 	    END
+  1952   1   45:5   258 	  ELSE
+  1953   1   45:6   260 	    WRITE('.');
+  1954   1   45:4   268 	LISTED := LISTED + 1;
+  1955   1   45:4   276 	WITH GDIR^[LOC] DO
+  1956   1   45:5   285 	  BEGIN
+  1957   1   45:6   285 	    FREECHECK(GDIR^[LOC-1].DLASTBLK,DFIRSTBLK);{ Check for free blocks }
+  1958   1   45:6   300 	    USEDAREA := DLASTBLK-DFIRSTBLK; { Area used }
+  1959   1   45:6   312 	    USEDBLKS := USEDBLKS+USEDAREA;  { Running total of used blocks }
+  1960   1   45:6   322 	    WRITE(OUT,DTID,'':TIDLENG-LENGTH(DTID)+1,USEDAREA:4,DACCESS.DAY:3
+  1961   1   45:6   371 		 ,'-',COPY(MONTHSTR,DACCESS.MONTH*3+1,3),'-',DACCESS.YEAR:2);
+  1962   1   45:6   434 	    IF DETAIL THEN                  { Extended listing }
+  1963   1   45:7   437 	      IF FAST THEN
+  1964   1   45:8   440 		WRITE(OUT,DFIRSTBLK:6,DLASTBYTE:6,'':2,
+  1965   1   45:8   470 			      COPY(TYPESTR,ORD(DFKIND)*4+1,4),'file')
+  1966   1   45:7   514 	      ELSE
+  1967   1   45:8   516 		WRITE(OUT,DFIRSTBLK:5,' ',COPY(TYPESTR,ORD(DFKIND)*4+1,4));
+  1968   1   45:6   564 	    WRITELINE
+  1969   1   45:5   564 	  END
+  1970   1   45:3   566       END;
+  1971   1   45:1   568     IF (FOUND IN [FILEFOUND,ABORTIT]) OR NOFILES THEN
+  1972   1   45:2   577       BEGIN
+  1973   1   45:3   577 	IF WILDCARD THEN
+  1974   1   45:4   580 	BEGIN
+  1975   1   45:5   580 	  FREECHECK(GDIR^[LOC].DLASTBLK,GDIR^[0].DEOVBLK);
+  1976   1   45:5   594 	  WRITE(OUT,LISTED,'/',GDIR^[0].DNUMFILES,' files');
+  1977   1   45:5   637 	  IF FAST THEN
+  1978   1   45:6   640 	    WRITE(OUT,'<listed/in-dir>, ',USEDBLKS,' blocks used');
+  1979   1   45:5   696 	  WRITE(OUT,', ',FREEBLKS,' unused',', ',LARGEST,' in largest');
+  1980   1   45:5   772 	  IF ALTFILE THEN
+  1981   1   45:6   775 	    WRITELN(OUT)
+  1982   1   45:4   780 	END;
+  1983   1   45:3   780 	CHECKRSLT(IORESULT);
+  1984   1   45:3   784 	CLOSE(OUT,LOCK);
+  1985   1   45:3   790 	CHECKRSLT(IORESULT);
+  1986   1   45:2   794       END
+  1987   1   45:0   794   END {LISTDIR} ;
+  1988   1   45:0   822 
+  1989   1   45:0   822   { Lists the volumes that are on-line }
+  1990   1   48:D     1   PROCEDURE LISTVOLS;
+  1991   1   48:0     0   BEGIN
+  1992   1   48:1     0     WRITELN;
+  1993   1   48:1     6     WRITELN('Vols on-line:');
+  1994   1   48:1    35     GUNIT := VOLSEARCH(GVID,TRUE,GDIR); { Update unitable }
+  1995   1   48:1    47     FOR GUNIT := 1 TO MAXUNIT DO
+  1996   1   48:2    58      WITH UNITABLE[GUNIT] DO
+  1997   1   48:3    66       IF UVID <> '' THEN { Volume is on-line }
+  1998   1   48:4    74 	BEGIN
+  1999   1   48:5    74 	  WRITE(GUNIT:3);
+  2000   1   48:5    82 	  IF UISBLKD THEN
+  2001   1   48:6    86 	    WRITE(' # ') { Blocked device   }
+  2002   1   48:5    99 	  ELSE
+  2003   1   48:6   101 	    WRITE('':3); { Unblocked device }
+  2004   1   48:5   111 	  WRITELN(UVID,':')
+  2005   1   48:4   133 	END;
+  2006   1   48:1   140     WRITELN('Root vol is - ',SYVID,':');   { Booted volume }
+  2007   1   48:1   188     WRITELN('Prefix is   - ',DKVID,':')    { Prefixed volume }
+  2008   1   48:0   236   END;
+  2009   1   48:0   250 
+  2010   1   48:0   250   { Creates an empty directory on a disk }
+  2011   1   49:D     1   PROCEDURE ZEROVOLUME;
+  2012   1   49:D     1   VAR
+  2013   1   49:D     1     LDE: DIRENTRY;
+  2014   1   49:D    14 
+  2015   1   49:0     0   BEGIN { ZEROVOLUME }
+  2016   1   49:1     0     FILLCHAR(LDE,SIZEOF(LDE),CHR(0));
+  2017   1   49:1     7     LDE.DLASTBLK := DIRLASTBLK; { Leave room for directory and bootstrap }
+  2018   1   49:1    10     CHECKFILE('Zero dir of','',1,BLKDEXP,FALSE,FALSE,[OKDIR,BADDIR]);
+  2019   1   49:1    39     RISKVOLUME;     { Does the disk already have a directory on it ? }
+  2020   1   49:1    41     WRITE('Duplicate dir ? ');  { Does the user want a backup directory ? }
+  2021   1   49:1    67     IF NGETCHAR(TRUE) THEN
+  2022   1   49:2    74       LDE.DLASTBLK := DUPDIRLASTBLK;
+  2023   1   49:1    77     GETBLOCKS('Are there','blks on the disk','# of blocks on the disk',
+  2024   1   49:1   134 				       LDE.DLASTBLK,LDE.DEOVBLK);
+  2025   1   49:1   139     REPEAT
+  2026   1   49:2   139       WRITE('New vol name ? ');
+  2027   1   49:2   164       READLN(INSTRING);
+  2028   1   49:2   182       EATSPACES(INSTRING);
+  2029   1   49:2   187       IF (INSTRING [LENGTH(INSTRING)] <> ':') AND (INSTRING <> '') THEN
+  2030   1   49:3   209 	INSTRING := CONCAT(INSTRING,':');
+  2031   1   49:2   242       SCANINPUT(INSTRING,[NOVOL,OKDIR],BLKDEXP,NEITHER,TRUE);
+  2032   1   49:2   256       WRITE(GVID,': correct ? ');
+  2033   1   49:1   287     UNTIL NGETCHAR(TRUE);
+  2034   1   49:1   294     WITH LDE DO
+  2035   1   49:2   294     BEGIN
+  2036   1   49:3   294       DFKIND := UNTYPEDFILE;  { Directories must be of this type             }
+  2037   1   49:3   300       DVID := GVID;           { Enters name of directory                     }
+  2038   1   49:3   306       DLASTBOOT := THEDATE;   { Used to set the system date upon booting     }
+  2039   1   49:3   313       INSERTVOLUME(SOURCEUNIT,SOURCEVID,TRUE);   { Don't kill the wrong disk }
+  2040   1   49:3   319       UNITWRITE(SOURCEUNIT,LDE,SIZEOF(LDE),DIRBLK);
+  2041   1   49:3   328       CHECKRSLT(IORESULT);
+  2042   1   49:3   332       WRITE(DVID,': zeroed')
+  2043   1   49:2   359     END
+  2044   1   49:0   359   END {ZEROVOLUME} ;
+  2045   1   49:0   374 
+  2046   1   49:0   374 {----------------------- FILE MAINTANENCE PROCEDURES --------------------------}
+  2047   1   49:0   374 
+  2048   1   49:0   374   { Informs the user of files endangered by bad blocks }
+  2049   1   50:D     1   PROCEDURE PRINTFILES;
+  2050   1   50:D     1   VAR
+  2051   1   50:D     1     I : INTEGER;
+  2052   1   50:0     0   BEGIN
+  2053   1   50:1     0     IF DIRMAP.ENTRIES > 0 THEN
+  2054   1   50:2     9       BEGIN    { There are files endangered by bad blocks }
+  2055   1   50:3     9 	WRITELN('File(s) endangered:');
+  2056   1   50:3    44 	FOR I := 0 TO MAXDIR DO
+  2057   1   50:4    55 	  IF DIRMAP.DIRENTRY [I] THEN
+  2058   1   50:5    64 	    WITH GDIR^ [I] DO
+  2059   1   50:6    70 	      BEGIN
+  2060   1   50:7    70 		IF I = 0 THEN
+  2061   1   50:8    75 		  WRITE('Directory','':7) { There's a bad blk in the directory }
+  2062   1   50:7   104 		ELSE
+  2063   1   50:8   106 		  WRITE(DTID,'':16-LENGTH(DTID));   { Write out the files name }
+  2064   1   50:7   132 		WRITELN(DFIRSTBLK:6,DLASTBLK:6)
+  2065   1   50:6   156 	      END
+  2066   1   50:2   156       END
+  2067   1   50:0   163   END;
+  2068   1   50:0   180 
+  2069   1   50:0   180   { Determines what file a block is in or between }
+  2070   1   51:D     1   PROCEDURE WHICHFILE(VAR BADBLK:INTEGER; MARK : BOOLEAN);
+  2071   1   51:D     3   VAR
+  2072   1   51:D     3     X : INTEGER;
+  2073   1   51:0     0   BEGIN
+  2074   1   51:1     0     IF GDIR <> NIL THEN
+  2075   1   51:2     5       BEGIN
+  2076   1   51:3     5 	FOR X := 0 TO GDIR^ [0].DNUMFILES DO
+  2077   1   51:4    21 	  IF GDIR^ [X].DLASTBLK > BADBLK THEN
+  2078   1   51:5    31 	    BEGIN             { The block must be in this file if any at all }
+  2079   1   51:6    31 	      IF NOT MARK THEN
+  2080   1   51:7    35 		BADBLK := X   { For K(runch this is all we want to know   }
+  2081   1   51:6    36 	      ELSE
+  2082   1   51:7    40 		IF GDIR^ [X].DFIRSTBLK <= BADBLK THEN
+  2083   1   51:8    50 		  BEGIN       { The block is in this file mark it as such }
+  2084   1   51:9    50 		    DIRMAP.ENTRIES := DIRMAP.ENTRIES + 1;
+  2085   1   51:9    62 		    DIRMAP.DIRENTRY [X] := TRUE
+  2086   1   51:8    68 		  END;
+  2087   1   51:6    70 	      EXIT(WHICHFILE)
+  2088   1   51:5    74 	    END;
+  2089   1   51:3    81 	IF NOT MARK THEN 
+  2090   1   51:4    85 	  BADBLK := GDIR^ [0].DNUMFILES + 1    { Well need this for K(runch }
+  2091   1   51:2    92       END
+  2092   1   51:0    95   END;
+  2093   1   51:0   110 
+  2094   1   51:0   110   { Scans the blocks on a disk for read errors }
+  2095   1   52:D     1   PROCEDURE BADBLOCKS;
+  2096   1   52:D     1   VAR
+  2097   1   52:D     1     A : ABLOCK;
+  2098   1   52:D   257     BLK,TOTAL, NBLOCKS : INTEGER;
+  2099   1   52:D   260 
+  2100   1   52:0     0   BEGIN { BADBLOCKS }
+  2101   1   52:1     0     CHECKFILE('Bad block scan of','',1,BLKDEXP,FALSE,FALSE,[OKDIR,BADDIR]);
+  2102   1   52:1    35     GETBLOCKS('Scan for','blocks','Scan for how many blocks',1,NBLOCKS);
+  2103   1   52:1    88     TOTAL := 0;
+  2104   1   52:1    92     FOR BLK := 0 TO NBLOCKS-1 DO
+  2105   1   52:2   113       BEGIN
+  2106   1   52:3   113 	UNITREAD(GUNIT,A,FBLKSIZE,BLK);
+  2107   1   52:3   126 	IF IORESULT <> 0 THEN
+  2108   1   52:4   132 	  BEGIN                   { An error was found in reading the block   }
+  2109   1   52:5   132 	    TOTAL := TOTAL + 1;
+  2110   1   52:5   140 	    WHICHFILE(BLK,TRUE);  { Was the bad block in a file ?             }
+  2111   1   52:5   146 	    WRITELN('Block ',BLK,' is bad')
+  2112   1   52:4   195 	  END
+  2113   1   52:2   195       END;
+  2114   1   52:1   205     WRITELN(TOTAL,' bad blocks'); { Print out the files with bad blks in them }
+  2115   1   52:1   242     PRINTFILES
+  2116   1   52:0   242   END {BADBLOCKS} ;
+  2117   1   52:0   258 
+  2118   1   52:0   258   { Compares successive reads & writes for equality. If they are equivelent }
+  2119   1   52:0   258   { declares that the block is O.K. otherwise declares the block as being   }
+  2120   1   52:0   258   { bad and allows the user to mark the affected blocks as such             }
+  2121   1   53:D     1   PROCEDURE XBLOCKS;
+  2122   1   53:D     1   VAR
+  2123   1   53:D     1     NEWDIR : ^INTEGER;
+  2124   1   53:D     2     BAD : ARRAY [0..HALFMAXDIR] OF RECORD
+  2125   1   53:D     2 	    FIRST,LAST : INTEGER
+  2126   1   53:D     2 	  END;
+  2127   1   53:D    82     BLK,LASTBLOCK,LOC,FIRSTBLK,LASTBLK : INTEGER;
+  2128   1   53:D    87     LDE : DIRENTRY;
+  2129   1   53:D   100     A,B : ABLOCK;
+  2130   1   53:D   612 
+  2131   1   53:0     0   BEGIN { XBLOCKS }
+  2132   1   53:1     0     CHECKFILE('Examine blocks on','',1,BLKDEXP,FALSE,FALSE,[OKDIR,BADDIR]);
+  2133   1   53:1    35     CLEARLINE;
+  2134   1   53:1    38     WRITE('Block-range ? ');
+  2135   1   53:1    62     READ(FIRSTBLK);
+  2136   1   53:1    70     IF EOLN THEN
+  2137   1   53:2    80       LASTBLK := FIRSTBLK
+  2138   1   53:1    80     ELSE
+  2139   1   53:2    86       BEGIN
+  2140   1   53:3    86 	READ(LASTBLK);
+  2141   1   53:3    94 	IF NOT EOLN THEN
+  2142   1   53:4   105 	  WRITELN;
+  2143   1   53:3   111 	LASTBLK := ABS(LASTBLK)
+  2144   1   53:2   114       END;
+  2145   1   53:1   116     IF GDIR <> NIL THEN
+  2146   1   53:2   121       IF LASTBLK >= GDIR^ [0].DEOVBLK THEN
+  2147   1   53:3   131 	LASTBLK := GDIR^ [0].DEOVBLK-1;  { Don't want to SEEK past end of disk }
+  2148   1   53:1   140     IF (FIRSTBLK < 0) OR (FIRSTBLK > LASTBLK) THEN
+  2149   1   53:2   152       EXIT(XBLOCKS);                     { Invalid block range                 }
+  2150   1   53:1   156     CLEARSCREEN;
+  2151   1   53:1   159     WRITELN;
+  2152   1   53:1   165     FOR BLK := FIRSTBLK TO LASTBLK DO
+  2153   1   53:2   182       WHICHFILE(BLK,TRUE);     { Determine what files are in the block-range }
+  2154   1   53:1   195     IF DIRMAP.ENTRIES > 0 THEN
+  2155   1   53:2   204       BEGIN
+  2156   1   53:3   204 	PRINTFILES;            { Print what files are indangered }
+  2157   1   53:3   206 	WRITE('Fix them ? ');
+  2158   1   53:3   227 	IF NOT NGETCHAR(TRUE) THEN
+  2159   1   53:4   235 	  EXIT(CALLPROC)
+  2160   1   53:2   239       END;
+  2161   1   53:1   239     FILLCHAR(BAD,SIZEOF(BAD),0);
+  2162   1   53:1   248     FILLCHAR(DIRMAP,SIZEOF(DIRMAP),0);
+  2163   1   53:1   255     LOC := 0;
+  2164   1   53:1   258     LASTBLOCK := -10;
+  2165   1   53:1   262     FOR BLK := FIRSTBLK TO LASTBLK DO
+  2166   1   53:2   279       BEGIN
+  2167   1   53:3   279 	WRITE('Block ',BLK);
+  2168   1   53:3   304 	UNITREAD(GUNIT,A,FBLKSIZE,BLK);
+  2169   1   53:3   317 	UNITWRITE(GUNIT,A,FBLKSIZE,BLK);
+  2170   1   53:3   330 	IF IORESULT = 0 THEN
+  2171   1   53:4   336 	  UNITREAD(GUNIT,B,FBLKSIZE,BLK);
+  2172   1   53:3   348 	IF (IORESULT = 0) AND (A = B) THEN
+  2173   1   53:4   364 	  WRITELN(' may be ok')
+  2174   1   53:3   390 	ELSE
+  2175   1   53:4   392 	  BEGIN
+  2176   1   53:5   392 	    WRITELN(' is bad');
+  2177   1   53:5   415 	    WHICHFILE(BLK,TRUE);   { Is the bad block in a file ? }
+  2178   1   53:5   420 	    IF GDIR <> NIL THEN
+  2179   1   53:6   425 	      IF BLK > GDIR^ [0].DLASTBLK THEN
+  2180   1   53:7   435 		BEGIN  { Calculate the # of BAD.xxxx.BAD files & where they go }
+  2181   1   53:8   435 		  IF LASTBLOCK+1 <> BLK THEN
+  2182   1   53:9   444 		    BEGIN
+  2183   1   53:0   444 		      BAD [0].FIRST := BAD [0].FIRST + 1;
+  2184   1   53:0   460 		      LOC := LOC + 1;
+  2185   1   53:0   466 		      IF LOC > (MAXDIR+DIRMAP.ENTRIES-GDIR^ [0].DNUMFILES) THEN
+  2186   1   53:1   485 			CHECKRSLT(ORD(INOROOM)); { No room to add BAD.xxxx.BAD }
+  2187   1   53:0   488 		      BAD [LOC].FIRST := BLK
+  2188   1   53:9   496 		    END;
+  2189   1   53:8   499 		  BAD [LOC].LAST := BLK;
+  2190   1   53:8   508 		  LASTBLOCK := BLK
+  2191   1   53:7   508 		END
+  2192   1   53:4   512 	  END
+  2193   1   53:2   512       END;
+  2194   1   53:1   520     IF BAD [0].FIRST = 0 THEN
+  2195   1   53:2   530       EXIT(XBLOCKS);
+  2196   1   53:1   534     PRINTFILES;  { Write out files that will be removed if directory is marked }
+  2197   1   53:1   536     WRITE('Mark bad blocks  ?');
+  2198   1   53:1   564     IF DIRMAP.ENTRIES > 0 THEN
+  2199   1   53:2   573       WRITE(' (files will be removed !)');
+  2200   1   53:1   609     WRITE(' (Y/N) ');
+  2201   1   53:1   626     IF NOT NGETCHAR(TRUE) THEN
+  2202   1   53:2   634       EXIT(CALLPROC);
+  2203   1   53:1   638     ZAPENTRIES(DIRMAP,FALSE);  { Remove files with bad blocks inside of them }
+  2204   1   53:1   643     WITH LDE DO
+  2205   1   53:2   643       BEGIN
+  2206   1   53:3   643 	DFKIND := XDSKFILE;
+  2207   1   53:3   649 	DLASTBYTE := FBLKSIZE;
+  2208   1   53:3   654 	DACCESS := THEDATE;
+  2209   1   53:3   661 	DTID := 'BAD.xxxxx.BAD'
+  2210   1   53:2   663       END;
+  2211   1   53:1   681     FOR BLK := 1 TO BAD [0].FIRST DO
+  2212   1   53:2   701       WITH LDE,BAD[BLK] DO
+  2213   1   53:3   710 	BEGIN
+  2214   1   53:4   710 	  DFIRSTBLK := FIRST;
+  2215   1   53:4   716 	  DLASTBLK := LAST+1;
+  2216   1   53:4   724 	  FOR LOC := 4 DOWNTO 0 DO
+  2217   1   53:5   739 	    BEGIN   { Makes the starting block # part of the file name }
+  2218   1   53:6   739 	      DTID[9-LOC] := CHR(FIRST DIV IPOT[LOC] + ORD('0'));
+  2219   1   53:6   761 	      FIRST := FIRST MOD IPOT[LOC]
+  2220   1   53:5   777 	    END;
+  2221   1   53:4   788 	  LOC := GDIR^[0].DNUMFILES;
+  2222   1   53:4   796 	  WHILE DFIRSTBLK < GDIR^[LOC].DLASTBLK DO
+  2223   1   53:5   807 	    LOC := LOC - 1;
+  2224   1   53:4   815 	  INSENTRY(LDE,LOC+1,GDIR);   { Add the BAD.xxxx.BAD file }
+  2225   1   53:3   825 	END;
+  2226   1   53:1   833     UPDATEDIR;     { Write out the new directory }
+  2227   1   53:1   835     WRITE('Bad blocks marked')
+  2228   1   53:0   862   END {XBLOCKS} ;
+  2229   1   53:0   888 
+  2230   1   53:0   888   { Allows the user to open up the largest free space available on the }
+  2231   1   53:0   888   { disk at any desired location                                       }
+  2232   1   54:D     1   PROCEDURE KRUNCH;
+  2233   1   54:D     1   TYPE
+  2234   1   54:D     1     WAY = (FOURWARD,REVERSE);   { Direction files are being moved }
+  2235   1   54:D     1 
+  2236   1   54:D     1   VAR
+  2237   1   54:D     1     GINX,SPLIT,FIRSTBLK,NBLOCKS,RELBLOCK,CHUNKSIZE : INTEGER;
+  2238   1   54:D     7     REBOOT: BOOLEAN;
+  2239   1   54:D     8 
+  2240   1   54:D     8     { Does the calculations for moving the files }
+  2241   1   55:D     1     PROCEDURE KRUNCHIT(DIRECTION : WAY; VAR STARTING,OTHER : INTEGER; 
+  2242   1   55:D     4 					    STOPPING : INTEGER);
+  2243   1   55:D     5 
+  2244   1   55:D     5       { Does the actual moving of the files from one location to the next }
+  2245   1   56:D     1       PROCEDURE MOVEIT(INOUT : SHORTSTRING; BLOCK : INTEGER);
+  2246   1   56:D    16       VAR
+  2247   1   56:D    16 	BLK,X,START,STOP : INTEGER;
+  2248   1   56:D    20 
+  2249   1   56:0     0       BEGIN
+  2250   1   56:1     0 	START := RELBLOCK;  { Relative block of the file to start moving from }
+  2251   1   56:1    10 	STOP := START+CHUNKSIZE;  { Last rel. block in the file to be moved   }
+  2252   1   56:1    18 	IF DIRECTION = REVERSE THEN
+  2253   1   56:2    25 	  BEGIN      { Must negate logic params given are negative & reversed }
+  2254   1   56:3    25 	    START := -STOP;
+  2255   1   56:3    29 	    STOP := -RELBLOCK
+  2256   1   56:2    29 	  END;
+  2257   1   56:1    35 	X := 0;
+  2258   1   56:1    38 	WITH GDIR^[GINX] DO
+  2259   1   56:2    46 	  FOR BLK := BLOCK+START TO BLOCK+STOP-1 DO
+  2260   1   56:3    66 	    BEGIN        { Do consecutive reads or writes }
+  2261   1   56:4    66 	      IF INOUT = 'Read' THEN
+  2262   1   56:5    79 		UNITREAD(GUNIT,GBUF^[X],FBLKSIZE,BLK)
+  2263   1   56:4    92 	      ELSE
+  2264   1   56:5    94 		UNITWRITE(GUNIT,GBUF^[X],FBLKSIZE,BLK);
+  2265   1   56:4   107 	      IF IORESULT <> 0 THEN
+  2266   1   56:5   113 		BEGIN    { Tell user where in the file an error occurred }
+  2267   1   56:6   113 		  WRITE(INOUT,' error, rel ',BLK-BLOCK,', abs ',BLK);
+  2268   1   56:6   180 		  EXIT(KRUNCH)
+  2269   1   56:5   184 		END;
+  2270   1   56:4   184 	      X := X+FBLKSIZE
+  2271   1   56:3   186 	    END
+  2272   1   56:0   192       END;
+  2273   1   56:0   216 
+  2274   1   55:0     0     BEGIN
+  2275   1   55:1     0     WITH GDIR^[GINX] DO
+  2276   1   55:2     8       IF DFKIND <> XDSKFILE THEN
+  2277   1   55:3    18 	BEGIN
+  2278   1   55:4    18 	  WRITE('Moving ');
+  2279   1   55:4    35 	  IF DIRECTION = FOURWARD THEN
+  2280   1   55:5    40 	    WRITE('forward')
+  2281   1   55:4    57 	  ELSE
+  2282   1   55:5    59 	    WRITE('back');
+  2283   1   55:4    73 	  WRITELN(' ',DTID);
+  2284   1   55:4    97 	  IF DTID = 'SYSTEM.PASCAL' THEN
+  2285   1   55:5   120 	    REBOOT := GVID = SYVID;        { Is this being done on root disk ? }
+  2286   1   55:4   130 	  NBLOCKS := DLASTBLK-DFIRSTBLK;   { Number of blocks in the file      }
+  2287   1   55:4   138 	  RELBLOCK := 0;                   { Relative block to the files       }
+  2288   1   55:4   142 	  REPEAT
+  2289   1   55:5   142 	    CHUNKSIZE := NBLOCKS;          { # of blocks left to move          }
+  2290   1   55:5   148 	    IF CHUNKSIZE > GBUFBLKS THEN
+  2291   1   55:6   155 	      CHUNKSIZE := GBUFBLKS;       { The buffer isn't big enough       }
+  2292   1   55:5   159 	    NBLOCKS := NBLOCKS - CHUNKSIZE;{ Blocks left to move               }
+  2293   1   55:5   169 	    MOVEIT('Read',STARTING);       { Start reading the file            }
+  2294   1   55:5   180 	    MOVEIT('Write',STOPPING);      { Write it out somewhere else       }
+  2295   1   55:5   191 	    RELBLOCK := RELBLOCK+CHUNKSIZE;
+  2296   1   55:4   201 	  UNTIL NBLOCKS = 0;
+  2297   1   55:4   208 	  IF DIRECTION = REVERSE THEN
+  2298   1   55:5   213 	    OTHER := STOPPING - (DLASTBLK - DFIRSTBLK)   { New DFIRSTBLK }
+  2299   1   55:4   220 	  ELSE
+  2300   1   55:5   224 	    OTHER := STOPPING + (DLASTBLK - DFIRSTBLK);  { New DLASTBLK }
+  2301   1   55:4   233 	  STARTING := STOPPING;
+  2302   1   55:4   236 	  UPDATEDIR
+  2303   1   55:3   236 	END
+  2304   1   55:0   238     END;
+  2305   1   55:0   254 
+  2306   1   54:0     0   BEGIN { KRUNCH }
+  2307   1   54:1     0     CHECKFILE('Crunch','',1,BLKDEXP,FALSE,FALSE,[OKDIR]);
+  2308   1   54:1    24     GETBLOCKS('From end of disk, block','','Starting at block #',
+  2309   1   54:1    75 					       GDIR^ [0].DLASTBLK,SPLIT);
+  2310   1   54:1    84     WHICHFILE(SPLIT,FALSE);    { Which files go which direction ? }
+  2311   1   54:1    89     REBOOT := FALSE; { Will be set to true if *SYSTEM.PASCAL is moved }
+  2312   1   54:1    92     SYSCOM^.MISCINFO.NOBREAK := TRUE; { Ignore all break chars. during Krunch }
+  2313   1   54:1   101     CLEARSCREEN;
+  2314   1   54:1   104     WRITELN;
+  2315   1   54:1   110     FOR GINX := 1 TO SPLIT-1 DO
+  2316   1   54:2   123       WITH GDIR^ [GINX] DO     { Move these files towards the first block }
+  2317   1   54:3   129 	IF DFIRSTBLK > GDIR^ [GINX-1].DLASTBLK THEN
+  2318   1   54:4   141 	  KRUNCHIT(FOURWARD,DFIRSTBLK,DLASTBLK,GDIR^ [GINX-1].DLASTBLK);
+  2319   1   54:1   162     FIRSTBLK := GDIR^[0].DEOVBLK;
+  2320   1   54:1   169     FOR GINX := GDIR^[0].DNUMFILES DOWNTO SPLIT DO
+  2321   1   54:2   185       WITH GDIR^ [GINX] DO     { Move these files towards the last block  }
+  2322   1   54:3   191 	BEGIN
+  2323   1   54:4   191 	  IF DLASTBLK < FIRSTBLK THEN
+  2324   1   54:5   197 	    KRUNCHIT(REVERSE,DLASTBLK,DFIRSTBLK,FIRSTBLK);
+  2325   1   54:4   205 	  FIRSTBLK := DFIRSTBLK
+  2326   1   54:3   205 	END;
+  2327   1   54:1   216     WRITELN(GVID,': crunched');
+  2328   1   54:1   251     IF REBOOT THEN
+  2329   1   54:2   254       BEGIN { *SYSTEM.PASCAL was moved }
+  2330   1   54:3   254 	WRITELN('Please re-boot');
+  2331   1   54:3   284 	REPEAT UNTIL FALSE
+  2332   1   54:2   284       END;
+  2333   1   54:1   287     SYSCOM^.MISCINFO.NOBREAK := FALSE
+  2334   1   54:0   294   END { KRUNCH };
+  2335   1   54:0   314 
+  2336   1   54:0   314 {---------------------------- DRIVER ROUTINE ----------------------------------}
+  2337   1   54:0   314 
+  2338   1   54:0   314   { This procedure is the main calling segment. It is invoked in an infinite }
+  2339   1   54:0   314   { loop by the main FILER SEGMENT.                                          }
+  2340   1    2:D     1   PROCEDURE CALLPROC;
+  2341   1    2:D     1   VAR
+  2342   1    2:D     1     X,Y : INTEGER;
+  2343   1    2:D     3     OK : BOOLEAN;
+  2344   1    2:D     4 
+  2345   1    2:D     4     { Calls OP-SYSTEM prompt routine }
+  2346   1   57:D     1     PROCEDURE PROMPTEM(STR : STRING);
+  2347   1   57:0     0     BEGIN
+  2348   1   57:1     0       PL := STR;
+  2349   1   57:1    12       PROMPT;
+  2350   1   57:1    15       CH := GETCHAR(NOT OK);
+  2351   1   57:1    26       OK := CH IN [' ','?','B'..'E','G','K'..'N','P'..'T','V'..'X','Z']
+  2352   1   57:0    27     END;
+  2353   1   57:0    60 
+  2354   1    2:0     0   BEGIN
+  2355   1    2:1     0     INITGLOBALS;
+  2356   1    2:1     2     INSTRING := '';
+  2357   1    2:1    10     OK := TRUE;
+  2358   1    2:1    13     REPEAT
+  2359   1    2:2    13       IF FAST THEN
+  2360   1    2:3    16 	PROMPTEM(
+  2361   1    2:3    16 'Filer: G(et, S(ave, W(hat, N(ew, L(dir, R(em, C(hng, T(rans, D(ate, Q(uit [B]')
+  2362   1    2:2    96       ELSE
+  2363   1    2:3   100 	PROMPTEM('Filer: G, S, N, L, R, C, T, D, Q [B]');
+  2364   1    2:2   141       IF CH = '?' THEN
+  2365   1    2:3   146 	IF FAST THEN
+  2366   1    2:4   149 	  PROMPTEM(
+  2367   1    2:4   149 'Filer: B(ad-blks, E(xt-dir, K(rnch, M(ake, P(refix, V(ols, X(amine, Z(ero [B]')
+  2368   1    2:3   229 	ELSE
+  2369   1    2:4   233 	  PROMPTEM('Filer: W, B, E, K, M, P, V, X, Z [B]')
+  2370   1    2:1   272     UNTIL OK;
+  2371   1    2:1   277     HOMECURSOR;
+  2372   1    2:1   280     CLEARLINE;
+  2373   1    2:1   283     IF CH IN [' ','B','D','Q','V','Z'] THEN
+  2374   1    2:2   302       CLEARSCREEN;
+  2375   1    2:1   305     FOR X := 1 TO 11 DO
+  2376   1    2:2   316     WITH UNITABLE[X] DO
+  2377   1    2:3   324       IF UVID <> '' THEN
+  2378   1    2:4   332 	FOR Y := X+1 TO 12 DO
+  2379   1    2:5   345 	  IF UVID = UNITABLE[Y].UVID THEN
+  2380   1    2:6   356 	    BEGIN
+  2381   1    2:7   356 	      WRITEANDCLEAR;
+  2382   1    2:7   358 	      WRITE('Warning units ',X,' & ',Y,' have the same name');
+  2383   1    2:7   440 	      WRITEANDCLEAR
+  2384   1    2:6   440 	    END;
+  2385   1    2:1   456     CASE CH OF
+  2386   1    2:1   459       'L' : LISTDIR(FALSE);
+  2387   1    2:1   464       'E' : LISTDIR(TRUE);
+  2388   1    2:1   469       'G' : GETWORK;
+  2389   1    2:1   473       'N' : NEWWORK(TRUE);
+  2390   1    2:1   478       'C' : CHANGER;
+  2391   1    2:1   482       'R' : REMOVER;
+  2392   1    2:1   486       'T' : TRANSFER;
+  2393   1    2:1   490       'S' : IF SAVEWORK THEN TRANSFER;
+  2394   1    2:1   500       'P' : BEGIN
+  2395   1    2:3   500 	      CHECKFILE('Prefix titles by','',1,VOLEXP,FALSE,
+  2396   1    2:3   527 				  FALSE,[NOVOL,BADDIR,OKDIR,UNBLKDVOL]);
+  2397   1    2:3   534 	      DKVID := GVID;
+  2398   1    2:3   541 	      CLEARLINE;
+  2399   1    2:3   544 	      WRITE('Prefix is ',DKVID,':')
+  2400   1    2:2   582 	    END;
+  2401   1    2:1   584       'W' : WHATWORK;
+  2402   1    2:1   588       'M' : MAKEFILE;
+  2403   1    2:1   592       'V' : LISTVOLS;
+  2404   1    2:1   596       'B' : BADBLOCKS;
+  2405   1    2:1   600       'Z' : ZEROVOLUME;
+  2406   1    2:1   604       'X' : XBLOCKS;
+  2407   1    2:1   608       'K' : KRUNCH;
+  2408   1    2:1   612       'D' : DATESET;
+  2409   1    2:1   616       'Q' : EXIT(FILEHANDLER)
+  2410   1    2:1   620     END
+  2411   1    2:0   680   END;
+  2412   1    2:0   706 
+  2413   1    2:0   706 {-------------------------- MAIN SEGMENT ROUTINE ------------------------------}
+  2414   1    2:0   706 
+  2415   1    1:0     0 BEGIN {FILEHANDLER}
+  2416   1    1:1     0   WITH USERINFO DO
+  2417   1    1:2    12     BEGIN      { Initialize workfiles }
+  2418   1    1:3    12       TEXTSAVED := NOT GOTSYM OR (GOTSYM AND (SYMTID <> 'SYSTEM.WRK.TEXT'));
+  2419   1    1:3    46       CODESAVED := NOT GOTCODE OR (GOTCODE AND (CODETID <> 'SYSTEM.WRK.CODE'))
+  2420   1    1:2    77     END;
+  2421   1    1:1    80   FAST := (SYSCOM^.CRTINFO.WIDTH >= 80) AND (NOT SYSCOM^.MISCINFO.SLOWTERM);
+  2422   1    1:1    99   MARK(GBUF);  { Set up transfer buffer }
+  2423   1    1:1   103   GBUFBLKS := 0;
+  2424   1    1:1   106   REPEAT
+  2425   1    1:2   106     NEW(BLOCKPTR);
+  2426   1    1:2   113     GBUFBLKS := GBUFBLKS+1;
+  2427   1    1:2   118 
+  2428   1    1:2   118   { Leave room for FILER variables to keep from stack overflowing }
+  2429   1    1:1   118   UNTIL ((MEMAVAIL > 0) AND (MEMAVAIL < (SIZEOF(DIRECTORY)+SIZEOF(FIB)+1024)))
+  2430   1    1:1   137        OR (GBUFBLKS = 63); { Block I/O limitation }
+  2431   1    1:1   143 
+  2432   1    1:1   143   { Abbreviations for the months & file types }
+  2433   1    1:1   143   MONTHSTR := '???JanFebMarAprMayJunJulAugSepOctNovDec?????????';
+  2434   1    1:1   199   TYPESTR := '    Bad CodeTextInfoDataGrafFoto';
+  2435   1    1:1   239 
+  2436   1    1:1   239   REPEAT { Call driving routine in an infinite loop }
+  2437   1    1:2   239     CALLPROC;
+  2438   1    1:2   241 
+  2439   1    1:2   241     { In case we aborted from transfer and left a temp file }
+  2440   1    1:2   241     IF UNITABLE[DESTUNIT].UISBLKD THEN
+  2441   1    1:3   250       CLOSE(LFIB,PURGE)
+  2442   1    1:2   256     ELSE
+  2443   1    1:3   258       CLOSE(LFIB)
+  2444   1    1:1   264   UNTIL FALSE
+  2445   1    1:0   264 END;
+  2446   1    1:0   290 
+  2447   0    1:0     0 BEGIN
+  2448   0    1:0     0 END.

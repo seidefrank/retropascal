@@ -1,0 +1,82 @@
+                                 USUS Volume 10
+                This disk contains the submissions of Bob Wilson
+                                        
+BTRE.FILE.TEXT    30   This file contains the main program and the 
+                        documentation for the B-tree program.  
+BTREE.STD.TEXT     8      an include file
+BTREE.DCLR.TEXT   10 
+BTREE.INIT.TEXT   12 
+BTREE.GET.TEXT    28 
+BTRE.FIND1.TEXT   22 
+BTRE.FIND2.TEXT   22 
+BTREE.DEL1.TEXT   22 
+BTREE.DEL2.TEXT   32 
+BTREE.PRNT.TEXT   26 
+BTREE.DOIT.TEXT   30      the last include file
+BENCHMARK.TEXT    28   Jon Bondy's benchmark with some added goodies
+BENCHMARK1.TEXT   18      an include file 
+NEW.BFS.TEXT      22   This is interesting, but I don't know what it is!
+KRUSKAL.TEXT      22      ditto
+KRUSKAL.1.TEXT    28        an include file
+CATALOG.TEXT      26   This is an improved version of the disk archiver which
+                             was published in the May '81 Byte
+CATALOG.2.TEXT    10      an include file
+CATALOG.1.TEXT    24        ditto
+VOL10.DOC.TEXT    10   You're reading it
+20/20 files<listed/in-dir>, 436 blocks used, 58 unused, 58 in largest
+
+__________________________________________________________________________
+
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 10 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Notes on the programs on this disk
+
+                                     BTREE
+
+     The Btree program on this disk in an example of a btree implementation. 
+It is also a demo address list database although the demo is trivial.  There
+was a program called ADDRESS on the first release of this disk, but it has
+been omitted when I discovered that it was just an early version of BTREE.
+
+                                   BENCHMARK
+
+     This is Jon Bondy's benchmark with some added functions.  This benchmark 
+is particularly interesting because it shows you quite graphically which p-
+system constructs take the most time.  One that isn't here is long integer 
+operations which can run VERY slowly.  A 36 digit long integer divide can run 
+as slow as 4 per second on an LSI-11.  Also some of the results of string 
+operations are highly dependant on the data being processed, so beware.  POS 
+runs particularly slowly when there are several occurances of part of the
+first operand in the second operand such as:
+
+     pos ( 'ab', 'aaaaaaaaaaaaaaaaaaaaab' );
+
+                              KRUSKAL and NEW.BFS
+
+     I'll be damned if I know what these are, they solve some algorithm which 
+is way over my head.
+
+                                    CATALOG
+
+     This is a handy disk archiver program which first appeared in the May '81 
+issue of Byte.  It is published here with the permission of both the author 
+and Byte Publications.  Bob Wilson reworked it as the original was reputed to 
+have several serious bugs.  I have worked over Bob's version as I couldn't get 
+it to work on my hard disk and it had some other additional problems.  If you 
+have used the original, your database will still work, but a database which 
+you generate with this version may generate value range errors if used with 
+the original version.
+

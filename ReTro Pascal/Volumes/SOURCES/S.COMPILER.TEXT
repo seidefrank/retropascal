@@ -1,0 +1,54 @@
+
+(* SWAPPING PASCAL COMPILER *)
+
+{.fs} {$L L.COMPILER.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+{$C COPYRIGHT (C) 1979 REGENTS UCSD II.0.A.1. COMPILER II.801}
+
+(************************************************)
+(*                                              *)
+(*        UCSD  PASCAL  COMPILER                *)
+(*                                              *)
+(*    BASED ON ZURICH P2 PORTABLE               *)
+(*    COMPILER, EXTENSIVLY                      *)
+(*    MODIFIED BY ROGER T. SUMNER               *)
+(*    SHAWN FANNING AND ALBERT A. HOFFMAN       *)
+(*    1976..1979                                *)
+(*                                              *)
+(*    RELEASE LEVEL: I.3 AUGUST, 1977		*)
+(*                   I.4 JANUARY, 1978          *)
+(*                   I.5 SEPTEMBER, 1978        *)
+(*                  II.0 JANUARY, 1979          *)
+(*						*)
+(*    INSTITUTE FOR INFORMATION SYSTEMS         *)
+(*    UC SAN DIEGO, LA JOLLA, CA 92093          *)
+(*                                              *)
+(*    KENNETH L. BOWLES, DIRECTOR               *)
+(*                                              *)
+(*    COPYRIGHT (C) 1979, REGENTS OF THE	*)
+(*    UNIVERSITY OF CALIFORNIA, SAN DIEGO	*)
+(*                                              *)
+(************************************************)
+
+{.fs# (*$T+*) (*$S+*)} { no need, we have enough memory now }
+(*$U-*)
+
+PROGRAM PASCALSYSTEM;  (* VERSION II.0  1-31-79 *)
+
+{.fs}
+{ The source exceeds the editor's maximum file size.                          }
+{ The original source came in parts, which we regroup and rename to begin     }
+{ with the same characters as the main source, for better grouping.           }
+{ The filenames of the original parts are given inside the soruce files.      }
+
+{$I S.COMP1BEG} { global variables and types; initialization                  }
+{$I S.COMP2TYP} { declaration part begin; parsing of type expressions         }
+{$I S.COMP3DEC} { parsing of declarations (USES..PROC); decl. part main       }
+{$I S.COMP4GEN} { body part begin; byte-code generation; identifier exprsns   }
+{$I S.COMP5CLL} { procedure and function calls incl. built-ins                }
+{$I S.COMP6BDY} { expressions, statements, body part main                     }
+{$I S.COMP7SEP} { separate-compilation related: linker info, unit part        }
+{$I S.COMP8BLK} { utils, scanner, symbol table, code writing, main            }
+{.fs}
+
+BEGIN (* SYSTEM *)
+END.

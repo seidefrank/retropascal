@@ -1,0 +1,373 @@
+(*$S+*)
+(*$C Copyright (c) 1982 Great Western Software  all rights reserved*)
+
+(* This is a startup program which will run under version IV.0 only.
+   It uses KERNEL to access SYSCOMREC where great and wonderous things
+   can be done.  KERNEL is distributed as KERNEL.CODE with the IV.0 
+   system.
+   
+   The program allows you to set the date just like with the F(iler,
+   preset the prefix (with the help of COMMANDIO) and displays a somewhat
+   silly salutation message.  The message is H-19 dependant as it uses
+   the graphics character set of the H-19.
+   
+   Install this program as SYSTEM.STARTUP and you're in business.
+   
+   George Schreyer
+   
+*)
+   
+program put_date;
+uses kernel, commandio;
+const prompt_line = 21;
+
+type date_string = string [ 10 ];
+     
+var  datex      : daterec;
+     x,y : integer;
+     day_string,
+     month_string,
+     year_string : string;
+     temp_date,date       : string;
+     iday,
+     imonth,
+     iyear      : integer;
+     k          : integer;
+     file_length: integer;
+     dirx       : directory;
+     dum_buff   : packed array [ 0..23 ] of char;
+       {this array fills up 24 bytes of memory just above the allocation
+        for dirx so that the blockread of exactly four blocks will not
+        overwrite something important.}
+     disk       : file;
+     done,quit       : boolean;
+     volid : string;
+     
+procedure eeol;
+begin
+  with syscom^ do
+     begin
+        if crtctrl.prefixed[2] then write ( crtinfo.prefix );
+        write ( crtctrl.eraseeol );
+     end;
+end;
+
+procedure eeos;
+begin
+  with syscom^ do
+     begin
+        if crtctrl.prefixed[3] then write ( crtinfo.prefix );
+        write ( crtctrl.eraseeos );
+     end;
+end;
+
+procedure get_date (var date : daterec );
+begin
+   date := thedate;
+end;
+
+procedure p_date (date : daterec  );
+begin
+ thedate := date;
+end;
+
+procedure int_to_str ( number : integer;
+                     var strg : string );
+var ch : char;
+    neg : boolean;
+    i : integer;
+begin
+   strg := '00000';
+   neg := false;
+   if number < 0 then
+      begin
+         neg := true;
+         number := number * ( -1 );
+      end;
+   for i := 1 to 5 do
+      begin
+         ch := chr ( ( number mod 10 ) + ( ord ( '0' ) ) );
+         number := number div 10;
+         strg [ 6 - i ] := ch;
+      end;
+   while pos( '0', strg ) = 1 do delete ( strg, 1, 1 );
+   if strg = '' then strg := '0'
+   else if neg then strg := concat ( '-',strg );
+end;
+
+procedure decode_date(day,month,year:integer);
+   begin
+    case month of
+      1: month_string:='Jan';
+      2: month_string:='Feb';
+      3: month_string:='Mar';
+      4: month_string:='Apr';
+      5: month_string:='May';
+      6: month_string:='Jun';
+      7: month_string:='Jul';
+      8: month_string:='Aug';
+      9: month_string:='Sep';
+      10:month_string:='Oct';
+      11:month_string:='Nov';
+      12:month_string:='Dec'
+    end;
+    daystring := '';
+    yearstring := '';
+    int_to_str(day,daystring);
+    int_to_str(year,yearstring);
+ end;
+
+procedure str_to_int( var data : string;
+                    var number : integer;
+                    var was_integer: boolean);
+{converts input string to a positive integer}
+var i : integer;
+
+begin
+   was_integer := true;
+   number := 0;
+   i := 0;
+   if data <> '' then
+      repeat
+           i := i + 1;
+           if data [i] in ['0'..'9'] then
+              number := 10 * number + (ord(data[i]) - ord('0'))
+           else was_integer := false;
+      until ( not was_integer ) or ( i = length(data))
+   else was_integer := false;
+end;
+
+procedure check_month ( month_string : string;
+                        var month    : integer );
+var i : integer;
+begin
+   month := 0;
+   if length ( month_string ) > 0 then
+      begin
+         for i := 1 to length ( month_string ) do
+           if month_string [ i ] in [ 'a'..'z' ] then
+              month_string [ i ] := chr ( ord ( month_string [ i ] ) - 32 );
+         if month_string = 'JAN' then month := 1;
+         if month_string = 'FEB' then month := 2;
+         if month_string = 'MAR' then month := 3;
+         if month_string = 'APR' then month := 4;
+         if month_string = 'MAY' then month := 5;
+         if month_string = 'JUN' then month := 6;
+         if month_string = 'JUL' then month := 7;
+         if month_string = 'AUG' then month := 8;
+         if month_string = 'SEP' then month := 9;
+         if month_string = 'OCT' then month := 10;
+         if month_string = 'NOV' then month := 11;
+         if month_string = 'DEC' then month := 12;
+      end;
+end;
+              
+procedure space_wait;
+var ch : char;
+begin
+   write ( ' <space> to continue ' );
+   repeat
+      read ( keyboard, ch );
+   until ( ch = ' ' ) and ( not eoln ( keyboard ) );
+   gotoxy ( 0, prompt_line + 1 );
+   eeol;
+end;
+
+function take_apart_date ( var date    : date_string;
+                            var day     : integer;
+                            var month   : integer;
+                            var year    : integer ): boolean;
+var i : integer;
+    day_ok, month_ok, year_ok : boolean;
+    temp : string [ 1 ];
+
+begin
+   year_ok := true;
+   day_ok := true;
+   monthok := true;
+   take_apart_date := true;
+   day_string := '';
+   month_string := '';
+   year_string := '';
+   temp := ' ';
+   i := 1;
+   repeat
+      temp [ 1 ] := date [ i ];
+      if i in [ 1, 2 ] then
+         begin
+            if ( i = 2 ) and 
+               ( not ( ord ( temp [ 1 ] ) in 
+                  [ ord ( '0' )..ord ( '9' ) ] ) ) then
+               begin
+                  day_string := concat ( '0', day_string );
+                  date := concat ( '0', date );
+               end
+            else
+               day_string := concat ( day_string, temp );
+         end;
+      if i in [ 4, 5, 6 ] then
+         month_string := concat ( month_string , temp );
+      if i in [ 8, 9, 10 ] then 
+         year_string := concat ( year_string, temp );
+      i := succ ( i );
+   until i > length ( date );
+   if length ( day_string ) > 0 then
+      str_to_int ( day_string, day, day_ok );
+   if ( day_ok ) and ( day in [ 1..31 ] ) then
+      begin
+         if length ( month_string ) > 0 then 
+            check_month ( month_string, month );
+         if month in [ 1..12 ] then
+            begin
+               if length ( year_string ) > 0 then
+                  str_to_int ( year_string, year, year_ok );
+               if ( not ( year in [ 0..99 ] ) ) or
+                  ( not year_ok ) then 
+                  begin
+                     write ( 'year invalid ' );
+                     space_wait;
+                     take_apart_date := false;
+                     date := '';
+                     year := 100;
+                  end;
+            end
+         else  
+            begin
+               write ( ' month invalid ' );
+               space_wait;
+               take_apart_date := false;
+               date := '';
+               month := 0;
+            end;
+      end
+   else
+      begin
+         write ( 'day invalid ' );
+         space_wait;
+         take_apart_date := false;
+         date := '';
+         day := 0;
+      end;
+end;
+
+procedure banner;  {just a silly message using H-19 graphics,
+                        delete this whole procedure or write your
+                        own if you don't have an H-19}
+
+PROCEDURE FINISH;
+BEGIN
+GOTOXY( x + 16, y + 3 );
+WRITE('W e l c o m e');
+GOTOXY( x + 21, y + 5 );
+WRITE('t o');
+GOTOXY( x + 10, y + 7 );
+WRITE('George''s Computer Center');
+GOTOXY( x , y + 12 );
+WRITE('UCSD Pascal p-system version IV.01 presiding');
+END;
+
+procedure write_a ( x, y, n : integer );
+var j : integer;
+begin
+   gotoxy ( x, y );
+   for j := 1 to n do write ( 'a' );
+end;
+
+procedure write_bar ( x, y, n : integer );
+var j : integer;
+begin
+gotoxy ( x, y );
+for j := 1 to n do 
+   begin
+      write ( chr ( 96 ), chr ( 10 ), chr ( 8 ) );
+   end;
+end;
+
+BEGIN
+WRITELN(CHR(27),'t');  {sets keypad shifted mode}
+WRITELN(CHR(27),'x5'); 
+WRITELN(CHR(27),'F');
+x := 17;
+y := 3;
+gotoxy ( x, y );
+write ( 'f' );
+write_a ( x + 1, y, 42 );
+write ( 'c' );
+gotoxy ( x + 2, y + 1 );
+write ( 'f' );
+write_a ( x + 3, y + 1, 38 );
+write ( 'c' );
+write_a ( x + 1, y + 10, 42 );
+write ( 'd' );
+write_a ( x + 3, y + 9, 38 );
+write ( 'd' );
+write_bar ( x, y + 1, 9 );
+write ( 'e' );
+write_bar ( x + 2, y + 2, 7 );
+write ( 'e' );
+write_bar ( x + 43, y + 1, 9 );
+write_bar ( x + 41, y + 2, 7 );
+WRITE(CHR(27),'G');
+FINISH;
+WRITE(CHR(27),'y5');
+volid := '#5';
+done := redirect ( concat ( 'P=',volid ) );
+gotoxy ( x + 15 , y + 14 );
+write ( 'Prefix is ', volid, ':' );
+END;
+
+procedure write_date_to_disk;
+begin
+   reset ( disk, '*' );
+   k := blockread ( disk, dirx, 4, 2 );
+   dirx[0].dlastboot := datex;
+   k := blockwrite ( disk, dirx, 4, 2 );
+   close ( disk, lock );
+end;
+
+begin
+   gotoxy ( 0, 0 );
+   eeos;
+   banner;
+   quit := false;
+   file_length := 0;
+   get_date ( datex );
+   with datex do
+      begin
+         iday := day;
+         imonth := month;
+         iyear := year;
+         decode_date ( iday, imonth, iyear );
+      end;
+   date := concat ( day_string, '-', month_string, '-', year_string );
+   if pos ( '-', date ) = 2 then date := concat ( '0', date );
+   with datex do
+      begin
+         if not take_apart_date ( date, iday, imonth, iyear ) then
+            begin
+               write ( 'date in memory invalid' );
+               exit ( program );
+            end;
+         gotoxy ( 0,prompt_line -1 );
+         writeln ( 'Today is ', date );
+         write ( imonth, '  ', iday, '  ', iyear );
+         repeat
+            gotoxy ( 0, prompt_line );
+            eeol;
+            write ( 'New date ? ' );
+            readln ( temp_date );
+            if length ( temp_date ) = 0 then exit ( program );
+            if take_apart_date ( temp_date, iday, imonth, iyear ) then
+               begin
+                  day := iday;
+                  month := imonth;
+                  year := iyear;
+                  p_date ( datex );
+                  quit := true;
+                  write_date_to_disk;
+               end;
+         until quit;
+      end;
+end.
+
+

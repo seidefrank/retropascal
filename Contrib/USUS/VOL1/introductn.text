@@ -1,0 +1,191 @@
+Introduction.
+
+     The UCSD Pascal language system is one of the most sophisticated
+microcomputer software systems available today.  Because of the ease with
+which one can write and maintain high quality programs of most types, from
+systems software to business applications to games, the UCSD system promises
+to be the vanguard of an enormous interest in Pascal in the coming decade. 
+Already a number of other Pascal implementations have appeared for
+microprocessors, though none so complete.  However, by the time you have 
+received this disk, several full-standard native-code compilers will have been 
+released for microprocessors.
+
+     UCSD Pascal compiles its programs to P-code, designed for a hypothetical
+16-bit stack machine that must be emulated in software on most
+microprocessors.  Even though this P-code interpretation system runs three
+times slower than assembly language, it is much faster than any other
+interpretive language available for micros, and has the additional advantage
+that P-code occupies approximately one third the space of native machine
+language.  (Now, however, at least two manufacturers have produced computers
+that execute P-code directly, as their machine language, offering extremely
+rapid execution.)  In addition, once the P-code interpreter has been
+installed, programs written in UCSD Pascal may be run on any microprocessor
+without modification.  Even the disk formats are the same, except for the
+minifloppies used for the Apple, North Star, or TRS-80.  So disk software in 
+source or object form may be freely shared among users of such diverse
+machines as a PDP-11 or an 8080.  
+
+The Pascal Users Group.
+
+     It would seem natural for a large users group to arise to share software.
+To date, however, only the original Pascal Users Group ("PUG") serves this
+function.  The PUG sprang into existence in 1976 to serve as a forum for the 
+then few hundred Pascal programmers.  Primarily, they support the standard
+language based on the Jensen and Wirth Pascal User Manual and Report, discuss
+the horrors certain programmers would like to add to the language to make it
+fit their needs, and report on available Pascal implementations and programmer
+opportunities.  Only secondarily does the PUG disseminate software (based on
+Jensen and Wirth Pascal), although since 1978 the PUG has published several
+superb "software tools", such as automatic formatters to print programs
+clearly and a large and extremely sophisticated text formatter.  They can be
+reached c/o Rick Shaw, Digital Equipment Corporation, 5775 Peachtree Dunwoody 
+Road, Atlanta, Georgia 30342.  A subscription is now $6 per academic year.  I
+suggest you start your collection from the 1977-1978 year.  (Back issues are
+available at $10 per academic year.)
+
+     The PUG newsletter presents several difficulties to the user of UCSD
+Pascal who wishes to share software.  First, relatively little software is
+published, albeit that which does appear is of high quality.  Second, the
+programs must be adapted for UCSD Pascal.  It turns out that this task is
+trivial, and concerns primarily disk i/o.  Third, the programs are a little
+slower because the nonstandard UCSD functions like strings aren't used;
+strings run more quickly on a UCSD system than the character-by-character
+approach needed by standard Pascal.  The overwhelming problem, however, is
+that the Pascal Users Group publication, the "Pascal News," appears only on
+PAPER (yecch!).  And even if they did use machine-readable media, most members
+run large computers that talk to each other via tape.  So you have to type the
+software into the machine on your own.  I can assure you, having done it, that
+this is no mean task.
+
+A UCSD Pascal Users Group on machine-readable media.
+
+     In the interests of promoting the more widespread use of Pascal and
+building up a sizable program base, Datamed Research has announced the
+formation of a UCSD Pascal users' group.  It takes a form similar to the CP/M
+Users Group: all offerings will be on 8-inch, single density, IBM-compatible
+soft-sectored floppies, offered virtually at cost ($10 per disk).  Software
+will be donated by interested users. Software donors will receive a free disk
+volume of their choice in acknowledgement of their donation.  For software to
+be accepted for distribution it MUST (a) work (no known bugs) and (b) come
+with at least adequate documentation on the disk. Further, with rare
+exceptions it must be supplied in source code to allow other users to adapt it
+to their systems.  
+
+     There is one exception to the requirement for source code.  If you were 
+developing a sophisticated program that you hoped to sell, but needed
+assistance in discovering remaining bugs and system incompatibilities, you
+might donate the interim P-code to the users group.  Then, users who first
+discovered a particular problem or gave other feedback you considered
+valuable would receive an incentive such as a discount on the completed
+program.  In the meantime, users would benefit from a program that worked most 
+of the time.
+
+     Potential sources of Pascal software abound; by no means must you donate
+only original work.  There is a mountain of public-domain Basic software that
+is easily adapted to Pascal.  In the process, you can usually spruce up the
+program a good deal, because Pascal is so much easier to work with than
+Basic.  It will be important, in addition, for the users to begin a library of
+Pascal procedures and functions to handle the more common programming
+problems.  For example, we need a set of mathematical functions for complex
+variables, statistical functions, and basic business software support
+(routines to translate integers into dollars and cents and vice versa) to
+realize the full power of the langwage.  I am presently writing a program
+which will automate the production of CRT screen masks and (more exciting)
+handle data input from the CRT directly.  This program will accept in
+simplified form the desired CRT mask directly from the system editor, plus
+needed data about the variables to be typed in by the user.  The program will
+generate Pascal source code for incorporation into your applications programs
+and handle automatically things like goof proofing (preventing the program
+from crashing if the wrong`types of data are entered), variable declarations,
+saving the CRT mask data within the procedure or on the disk as you wished,
+etc.
+
+     By the way, since it is relatively trivial to transfer text from the UCSD
+disk format (similar to the PDP-11 RT11 format) to CP/M, all volumes will also
+be available on CP/M disks for those using CP/M-compatible Pascal.  However,
+you will be on your own to get the programs to fit into your memory (remember
+that native code versions are three times larger) and adapted to your system.
+We will be happy, though, to accept Pascal software on CP/M disks if it can be
+readily adapted to the UCSD system.
+
+     Software already in the hopper as of February 15, 1980, includes:
+
+     1.  The powerful pretty printer and formatting programs, to beautify
+Pascal source code, from the Pascal News Vol 13.
+
+     2.  A Pascal driver for a D.C. Hayes modem, so your computers can talk 
+with one another.  This should not be hard to modify for other modems.  Two 
+versions of this program have been prepared by different authors.
+
+     3.  A file printer offering several options in page headings and page
+numbering, as well as single to quad line spacing.  Good for programs and
+manuscripts.
+
+     4.  An assortment of games, ranging from CHASE to SKYLANES.  (As of yet,
+no STARTREK.)
+
+     5.  Two programs in Pascal to convert UCSD-format disks to the CP/M 
+format, and vice versa.
+
+     6.  A nifty restructuring of the 8080/Z-80 interpreter and BIOS to
+support disks formatted with 512-byte blocks (single or double density), for
+a 23% greater disk capacity and a breathtaking increasw in disk access speed,
+as well as a slight shrinkage of the interpreter.  The modified BIOS accepts
+128- byte and 512-byte sectored disks transparently, although you have to
+reboot if you change disk density.  In addition, the BIOS contains complete 
+cursor-handling routines for a dumb terminal such as an ADM-3A.
+
+     Note that this offering will be on two disks:  one of UCSD format 
+(interpreter sources, including <only> changes made to the original) and the 
+other CP/M compatible, so your CP/M-based assemblers and editors can work on 
+the code.  (However, the CP/M disk will be translated to UCSD format for those 
+without CP/M.  Not recommended, however.)
+
+     7.  If you've tried to get up UCSD Pascal in a CP/M environment, you've
+noticed that the UCSD system is considerably more demanding of your BIOS than
+was CP/M.  We have notes on providing the extra functions required, plus many
+of the aspects of the 8080/Z-80 implementation not documented.
+
+     
+Possible future directions.
+
+     Since there is little question that Pascal will grow by leaps and bounds, 
+the major question is how to keep up with the machine-readable formats
+required by the various micros and minis utilizing Pascal.  For now, we are 
+limited to standard 8-inch floppies, and if there were enough demand I would 
+consider distributing the volumes in hard-copy form at a modest increase in 
+price for those who could not utilize full-size disks.  But perhaps there are
+others with the hardware capabilities of transferring programs from one
+format to another (e.g., to North Star or Apple disks) or who are willing to
+copy the smaller disks for distribution.  If we can provide these services,
+then other formats could be distributed as well.
+
+     Although programs would be the main emphasis, I hope to have other
+features on the disks as well as software.  Information on programming tips
+would certainly be a useful addition.  For example, there are a number of
+"hidden gotchas" in the UCSD system, as well as features that are inadequately
+documented.  Also, I don't think it's clear just which programming
+techniques are the most portable from system to system.  For example,
+including a PAGE (OUTPUT) within a program in my system clears my screen or
+causes a formfeed on the printer.  It does nothing in systems that do not
+recognize an ASCII formfeed character (12 decimal).  One could clear the
+screen on ANY UCSD system by jumping to the bottom of the screen, doing 24
+WRITELN's, then jumping to the upper left of the screen.  Is there an easier
+way that will always work?
+
+     Finally, we should share algorithms and reviews of commercial Pascal
+software.
+
+     
+For further information.
+
+     You can find out more about the present status of the users group by
+sending a self-addressed, stamped envelope to the following address:
+
+     UCSD Pascal Users Group
+     DATAMED RESEARCH
+     1433 Roscomare Road
+     Los Angeles, CA 90024
+
+     Alternatively, 8-inch floppies can be ordered at $10 per volume.  Make
+sure you specify UCSD or CP/M format.

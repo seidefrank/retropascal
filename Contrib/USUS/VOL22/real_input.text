@@ -1,0 +1,78 @@
+
+{
+  This unit was reconstructed from a function in the program LEVEL_CURVES in
+  the file, CONTOUR.TEXT, to replace a missing unit, EDS_STUFF, in the
+  Grundler submissions. The function INPUT_VALUE was written by Edward J.
+  Grundler (ca. Aug 1979). If the unit is not used with the Grundler programs
+  it may be necessary to edit the lines marked (*****) to fit the console
+  display requirements of your program.
+ }
+UNIT REAL_INPUT;
+
+INTERFACE
+  USES {$U GRAPH.LIBRARY} SCREEN_STUFF;  (*****)
+
+FUNCTION INPUT_VALUE:REAL;
+
+IMPLEMENTATION
+
+FUNCTION INPUT_VALUE{:REAL};
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+      OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+          OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(RLF,'READ ERROR, TRY AGAIN ',CEOL)   (*****)
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+        EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+END.

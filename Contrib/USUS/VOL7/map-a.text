@@ -1,0 +1,842 @@
+
+{ MAP-A }
+
+(*
+PROCEDURE DEBUG(N: INTEGER);
+  VAR INCH: CHAR; CHT: PACKED ARRAY[0..0] OF CHAR;
+BEGIN { DEBUG }
+  IF DEBUGON THEN
+    IF N IN DEBUGSET THEN
+      BEGIN WRITELN('*** ', N, ', CH=', CH, ', ORD(CH)=', ORD(CH),
+          ', NEXT=', NEXT, ', LAST=', LAST, ', LEXTYP=', 
+          ORD(LEXTYP), ', LEXLEN=', LEXLEN);
+        WRITELN('LEXSTR=', LEXSTR:LEXLEN);
+        REPEAT
+          UNITREAD(2, CHT[0], 1); INCH := CHT[0];
+          IF INCH = 'X' THEN
+            DEBUGON := FALSE
+          ELSE IF INCH = 'Q' THEN
+            EXIT(MAP)
+          ELSE IF INCH = 'R' THEN
+            BEGIN WRITE('REMOVE WHICH BREAKPOINT: '); READLN(N);
+              DEBUGSET := DEBUGSET - [N]
+            END
+          ELSE IF INCH = 'L' THEN
+            WRITELN(INLINE:LAST)
+          ELSE IF INCH = 'B' THEN { set breakpoint }
+            BEGIN WRITE('SET WHICH BREAKPOINT: '); READLN(N);
+              DEBUGSET := DEBUGSET + [N]
+            END
+          ELSE IF INCH = 'T' THEN
+            WITH CTAB[CTOP] DO
+              BEGIN WRITE('CNAME: ', CNAME);
+                CASE CTYP OF
+                  TIN: WRITE(', INTEGER: ', CI);
+                  TRE: WRITE(', REAL:    ', CR);
+                  TCH: BEGIN 
+                         WRITELN(', STRING : CFIRST=', CFIRST, ', CLEN=',CLEN);
+                         FOR N := CFIRST TO CFIRST+CLEN-1 DO
+                           WRITE(CSTR[N]);
+                       END;
+                  TBL: IF CB THEN
+                         WRITE(', BOOLEAN: TRUE')
+                       ELSE
+                         WRITE(', BOOLEAN: FALSE');
+                  TOT: WRITE(', TOT:     ', CO);
+                END { CASE };
+                WRITELN;
+              END;
+        UNTIL INCH = 'G';
+      END;
+END;  { DEBUG }
+*)
+
+procedure arith;
+  var
+    op  : lex;
+begin { arith }
+  term;
+  if (lextyp in [lexor,lexadd,lexsub]) and (not typeis([terr])) then
+    if ((lextyp = lexor) and typeis([tbl])) 
+        or ((lextyp in [lexadd,lexsub]) and typeis([tin,tre])) then
+      begin over(ctop, maxcons);
+        while lextyp in [lexor,lexadd,lexsub] do
+          begin ctop := ctop + 1; op := lextyp; getkey; term;
+            if (op = lexor) and typeis([tbl]) then
+              with ctab[ctop-1] do
+                cb := cb or ctab[ctop].cb
+            else
+              if (op in [lexadd,lexsub]) and typeis([tin,tre]) then
+                with ctab[ctop-1] do
+                  if (ctyp = tin) and (ctab[ctop].ctyp = tin) then
+                    case op of
+                      lexadd: ci := ci + ctab[ctop].ci;
+                      lexsub: ci := ci - ctab[ctop].ci
+                    end
+                  else
+                    begin forcereal;
+                      case op of
+                        lexadd: cr := cr + ctab[ctop].cr;
+                        lexsub: cr := cr - ctab[ctop].cr
+                      end
+                    end
+              else
+                if ctab[ctop].ctyp <> terr then 
+                  experror('arith-  bad type');
+            ctop := ctop - 1;
+          end
+      end
+end;  { arith }
+
+procedure ckformal{name: alfa; var found: boolean};
+  var
+    a   : aptr;
+begin { ckformal }
+  found := false;
+  if mtop > 0 then
+    begin a := mstack[mtop].margs;
+      while (a <> nil) and (not found) do
+        begin
+          with a^ do
+            if aform = name then
+              begin found := true; pushback; mtop := mtop + 1;
+                with mstack[mtop] do
+                  begin margs := nil; mnext := afirst; mlast := alast;
+                    matop := atop;
+                  end;
+                getch;
+              end;
+          a := a^.anext;
+        end;
+      if found then gettok
+    end
+end;  { ckformal }
+
+procedure ckmacro{name: alfa; var found: boolean};
+  var
+    d   : drng; { index to defined macros }
+begin { ckmacro }
+  d := dtop; defs[0].dname := name;
+  while defs[d].dname <> name do d := d - 1;
+  if d > 0 then
+    begin found := true;
+      if d <= nsysmac then dosysmac(d)
+      else
+        begin over(mtop, maxcalls);
+          with mstack[mtop+1], defs[d] do
+            begin margs := nil; mnext := dfirst; mlast := dlast;
+              matop := atop; while ch = blank do getch;
+              if ch = lparen then
+                begin getch; getactuals(dargs, margs);
+                  if ch <> rparen then
+                    error('ckmacro-  right paren expected');
+                end
+              else error('ckmacro-  left paren expected')
+            end;
+          mtop := mtop + 1; getch;
+        end;
+      gettok;
+    end;
+end;  { ckmacro }
+
+procedure closefile;
+begin { close }
+  close(infile);
+  ftop := ftop - 1;
+  if ftop >= 0 then
+    with fstack[ftop] do
+      openfile(ffcb, infile, ffcb.inlfn);
+end;  { close }
+
+procedure convrt;
+  var
+    i   : integer;
+    c   : char;
+    sign: boolean;
+    xxx : packed array[1..5] of char;
+    temp: string[36];
+begin { convrt }
+  with ctab[ctop] do
+    case ctyp of
+      tin:
+        begin str(ci, temp); lexlen := length(temp);
+          moveleft(temp[1], lexstr[1], lexlen);
+          lextyp := lexint; 
+        end;
+      terr:;
+      tot:
+        begin moveleft(co[1], lexstr[1], alfaleng); lextyp := lexalpha;
+          while lexstr[lexlen] = blank do lexlen := lexlen - 1;
+        end;
+      tch:
+        begin lextyp := lexst; lexstr[1] := quote;
+          moveleft(cstr[cfirst], lexstr[2], clen);
+          lexlen := clen + 2; lexstr[lexlen] := quote
+        end;
+      tbl:
+        begin lextyp := lexalpha;
+          if cb then
+            begin xxx := 'TRUE ';moveleft(xxx[1], lexstr[1], 4);lexlen := 4 end
+          else 
+            begin xxx := 'FALSE';moveleft(xxx[1], lexstr[1], 5);lexlen := 5 end
+        end;
+      tre:
+        begin error('convrt-  real conversion not implemented');
+        end;
+    end;
+end;  { convrt }
+
+procedure convrti;
+  var
+    i   : integer;
+    l   : lnrng;
+begin { convrti }
+  with ctab[ctop] do
+    begin ctyp := tin; ci := 0;
+      for l := 1 to lexlen do
+        ci := 10 * ci + ord(lexstr[l])-ord(zero);
+    end;
+end;  { convrti }
+
+procedure convrtr;
+  var
+    i   : lnrng;
+begin { convrtr }
+(* reset(dummy);
+  for i := 1 to lexlen do write(dummy, lexstr[i]);
+  writeln(dummy, blank);
+  reset(dummy);
+  with ctab[ctop] do
+    begin ctyp := tre; read(dummy, cr) end; *)
+  error('convrtr - not implemented');
+end;  { convrtr }
+
+procedure convrts;
+  var
+    l   : lnrng;
+begin { convrts }
+  with ctab[ctop] do
+    begin ctyp := tch; clen := lexlen-2; cfirst := cstop + 1;
+      over(cstop+clen,maxcstr);
+      moveleft(lexstr[2], cstr[cfirst], clen);
+      cstop := cstop + clen;
+    end;
+end;  { convrts }
+
+procedure docodeif;
+  var
+    a   : dsrng;        { save area for dtop upon entry }
+    ctr : integer;      { left parent count }
+begin { docodeif }
+  getkey; over(ctop,maxcons); ctop := ctop + 1; expression;
+  ctop := ctop - 1; a := atop;
+  if lextyp <> lexcomma then
+    experror('docodeif-  comma expected')
+  else
+    with ctab[ctop+1] do
+      if ctyp = tbl then
+        if cb then
+          begin over(mtop, maxcalls);
+            with mstack[mtop+1] do
+              begin margs := nil; mlast := atop - 1; getcdparm;
+                mnext := atop; matop := a;
+              end;
+            mtop := mtop + 1; getch
+          end
+        else
+          begin ctr := 1;
+            while ctr > 0 do
+              begin
+                if ch = newline then
+                  begin
+                    if (mtop = 0) and (ftop = 0) and 
+                        (fstack[0].ffcb.endfile) then
+                      begin error('docodeif-  unexpected end of file');
+                        exit(map)
+                      end
+                  end
+                else
+                  if ch = rparen then ctr := ctr - 1
+                  else if ch = lparen then ctr := ctr + 1;
+                getch
+              end
+          end
+      else
+        if ctyp <> terr then
+          error('docodeif-  type error. boolean needed.')
+end;  { docodeif }
+
+procedure dodefine;
+begin { dodefine }
+  gettok;
+  if lextyp <> lexalpha then
+    error('dodefine-  name expected')
+  else
+    begin over(dtop, maxdefs); dtop := dtop + 1;
+      with defs[dtop] do
+        begin dname[1] := dollar; moveleft(lexstr[1], dname[2], alfaleng-1);
+          dfirst := dstop + 1; dlast := dstop; gettok;
+          if lextyp = lexlparen then
+            begin gettok; getformals(dargs); gettok end
+          else dargs := nil
+        end;
+      if lextyp <> lexcomma then
+        begin error('dodefine-  missing comma'); dtop := dtop - 1 end
+      else
+        getbody;
+    end;
+end;  { dodefine }
+
+procedure doinclude;
+  var
+    name: lfnstring;
+begin { doinclude }
+  {$R- disable string range checks }
+  getbsu;
+  if lextyp <> lexalpha then error('doinclude-  bad file name')
+  else
+    begin lexstr[0] := chr(lexlen);
+      moveleft(lexstr[1], name[1], lexlen);
+      getkey;
+      if lextyp <> lexrparen then
+        error('doinclude-  right paren expected');
+      open(name)
+    end;
+end;  { doinclude }
+
+procedure doindex;
+  var
+    i   : lnrng;
+begin { doindex }
+  over(ctop, maxcons);
+  ctop := ctop + 1;
+  getkey;
+  if lextyp = lexrparen then
+    with ctab[ctop] do
+      begin ctyp := tin; ci := 0 end
+  else expression;
+  if lextyp <> lexrparen then error('doindex-  right paren expected')
+  else
+    begin pushback;
+      with ctab[ctop] do
+        if not (ctyp in [terr,tin]) then 
+          error('doindex-  type error. integer needed')
+        else if ctyp = tin then
+          begin index := index + 1; ci := ci + index; convrt;
+            over(mtop, maxcalls); mtop := mtop + 1;
+            with mstack[mtop] do
+              begin margs := nil; mnext := atop; mlast := atop - 1;
+                matop := atop;
+                for i := lexlen downto 1 do
+                  begin mnext := mnext - 1;
+                    defstr[mnext] := lexstr[i];
+                  end;
+                getch
+              end
+          end
+    end;
+  ctop := ctop - 1;
+end;  { doindex }
+
+procedure dooptions;
+  var
+    i   : integer;
+begin { dooptions }
+  gettok;
+  while not (lextyp in [lexrparen,lexeof]) do
+    begin
+      if lextyp = lexalpha then
+        if toupper(lexstr[1]) in ['R', 'P', 'N', 'L', 'E'] then
+          case lexstr[1] of
+            'P', 'R':
+              begin
+                while not (ch in ['0'..'9', ')']) do getch;
+                i := 0;
+                while ch in ['0'..'9'] do
+                  begin i := 10 * i + ord(ch) - ord('0'); getch end;
+                if (mincol <= i) and (i <= maxcol) then
+                  case toupper(lexstr[1]) of
+                    'P': prcopt := i;
+                    'R': rcopt := i
+                  end { case };
+              end;
+            'N':
+              if lexlen >= 3 then
+                if toupper(lexstr[3]) = 'L' then listopt := false
+                else if toupper(lexstr[3]) = 'E' then expropt := false;
+            'L': listopt := true;
+            'E': expropt := true
+          end
+        else error('dooptions-  error in option list')
+      else if lextyp <> lexcomma then error('dooptions-  comma expected');
+      gettok
+    end;
+end;  { dooptions }
+
+procedure dosysmac{d: drng}; { which macro }
+begin { dosysmac }
+  gettok;
+  if lextyp <> lexlparen then error('dosysmac-  left paren expected')
+  else
+    case d of
+      sysinc:    doinclude;
+      syscodeif: docodeif;
+      sysindex:  doindex;
+      sysdefine: dodefine;
+      sysoption: dooptions;
+    end
+end;  { dosysmac }
+
+procedure error{err: errmsg};
+  var i: lnrng;
+begin { error }
+  need(2);
+  if listopt then
+    writeln(space, errflag, space:next-1, arrow)
+  else
+    writeln(' AT LINE:', line:2, ' (pascal line:', pline:2, ')');
+  writeln(space, errprefix, err); nerrors := nerrors + 1;
+end;  { error }
+
+procedure evalfns{f: fns};
+begin { evalfns }
+  case f of
+    fabs: evalabs;
+    fatn: evalatn;
+    fchr: evalchr;
+    fcos: evalcos;
+    fexp: evalexp;
+    flen: evallen;
+    fln:  evalln;
+    fodd: evalodd;
+    ford: evalord;
+    frou: evalrou;
+    fsin: evalsin;
+    fsqr: evalsqr;
+    fstr: evalstr;
+    ftru: evaltru
+  end { case };
+end;  { evalfns }
+
+procedure evalabs;
+begin { evalabs }
+  with ctab[ctop] do
+    if typeis([tre,tin]) then
+      case ctyp of
+        tin: ci := abs(ci);
+        tre: cr := abs(cr);
+      end
+    else
+      experror('evalabs-  type error. Number needed.');
+end;  { evalabs }
+
+procedure evalatn;
+begin { evalatn }
+  writeln('--UNIMP--17');
+end;  { evalatn }
+
+procedure evalchr;
+  var
+    i   : integer;
+begin { evalchr }
+  with ctab[ctop] do
+    if ctyp = tin then
+      begin i := ci; ctyp := tch; over(cstop, atop);
+        cstop := cstop + 1; clen := 1; cstr[cstop] := chr(i);
+        cfirst := cstop
+      end
+    else experror('evalchr- type error. Number needed.');
+end;  { evalchr }
+
+procedure evalcos;
+begin { evalcos }
+  writeln('--UNIMP--19');
+end;  { evalcos }
+
+procedure evalexp;
+begin { evalexp }
+  writeln('--UNIMP--20');
+end;  { evalexp }
+
+procedure evallen;
+  var
+    i   : integer;
+begin { evallen }
+  with ctab[ctop] do
+    if ctyp = tch then
+      begin i := clen; cstop := cfirst - 1; ctyp := tin; ci := i end
+    else experror('evallen-  type error. String needed.');
+end;  { evallen }
+
+procedure evalln;
+begin { evalln }
+  writeln('--UNIMP--22');
+end;  { evalln }
+
+procedure evalodd;
+  var
+    i   : integer;
+begin { evalodd }
+ with ctab[ctop] do
+   if ctyp = tin then
+     begin i := ci; ctyp := tbl; cb := odd(i) end
+   else
+     error('evalodd-  type error. Number expected');
+end;  { evalodd }
+
+procedure evalord;
+  var
+    c   : char;
+begin { evalord }
+  with ctab[ctop] do
+    if ctyp = tch then
+      if clen = 1 then
+        begin c := cstr[cfirst]; ctyp := tin; ci := ord(c) end
+      else experror('evalord-  ord requires 1 char arg')
+    else experror('evalord-  type error. Char needed');
+end;  { evalord }
+
+procedure evalrou;
+  var
+    r   : real;
+begin { evalrou }
+  with ctab[ctop] do
+    if ctyp = tre then
+      begin  r := cr; ctyp := tin; ci := round(r) end
+    else
+      error('evalrou-  type error. Real number expected');
+end;  { evalrou }
+
+procedure evalsin;
+begin { evalsin }
+  writeln('--UNIMP--26');
+end;  { evalsin }
+
+procedure evalsqr;
+begin { evalsqr }
+  with ctab[ctop] do
+    if typeis([tre,tin]) then
+      case ctyp of
+        tin: ci := sqr(ci);
+        tre: cr := sqr(cr);
+      end { case }
+    else experror('evalsqr-  type error. Number needed');
+end;  { evalsqr }
+
+procedure evalstr;
+  var astring: string[10];
+begin { evalstr }
+  with ctab[ctop] do
+    if ctyp <> tin then experror('evalstr-  type error. Integer needed')
+    else
+      begin ctyp := tch; str(ci, astring);
+        clen := length(astring); cfirst := cstop + 1;
+        over(cfirst+clen, atop);
+        moveleft(astring[1], cstr[cfirst], clen);
+        cstop := cstop + clen;
+      end;
+end;  { evalstr }
+
+procedure evaltru;
+  var
+    r   : real;
+begin { evaltru }
+  with ctab[ctop] do
+    if ctyp = tre then
+      begin r := cr; ctyp := tin; ci := trunc(r) end
+    else experror('evaltru- type error. Real needed');
+end;  { evaltru }
+
+procedure experror{err: errmsg};
+begin { experror }
+  error(err); ctab[ctop].ctyp := terr; flush;
+end;  { experror }
+
+procedure expression;
+begin { expression }
+  relate;
+  if typeis([tch]) then
+    begin over(ctop, maxcons); ctop := ctop + 1;
+      while lextyp in [lexst,lexalpha] do
+        begin relate;
+          if typeis([tch]) then
+            with ctab[ctop-1] do
+              clen := clen + ctab[ctop].clen
+          else if not typeis([terr]) then
+            experror('expression-  invalid operand type')
+        end;
+      ctop := ctop - 1;
+    end;
+end;  { expression }
+
+procedure factor;
+  var
+    op  : lex;
+begin { factor }
+  if lextyp in [lexnot,lexsub] then
+    begin op := lextyp; getkey; factor;
+      with ctab[ctop] do
+        if typeis([tbl]) and (op = lexnot) then
+          cb := not cb
+        else
+          if typeis([tin,tre]) and (op = lexsub) then
+            case ctyp of
+              tin: ci := -ci;
+              tre: cr := -cr;
+            end
+          else
+            if ctyp <> terr then
+              begin ctyp := terr; error('factor-  type conflict') end
+      end
+    else
+      if lextyp = lexlparen then
+        begin getkey; expression;
+          if not typeis([terr]) then
+            if lextyp <> lexrparen then
+              experror('factor-  right paren expected')
+            else getkey
+        end
+      else
+        variable
+end;  { factor }
+
+procedure findcon{name: alfa; var found: boolean};
+  var
+    c   : crng;
+    i, f   : integer;
+begin { findcon }
+  c := cvalid; ctab[0].cname := name;
+  while ctab[c].cname <> name do c := c - 1;
+  if c > 0 then
+    begin ctab[ctop] := ctab[c];
+      with ctab[ctop] do
+        if ctyp = tch then
+          begin over(cstop+clen, maxcstr); cfirst := cstop + 1;
+            f := ctab[c].cfirst;
+            for i := 0 to clen-1 do
+              begin cstop := cstop + 1;
+                cstr[cstop] := cstr[f + i]
+              end
+          end;
+      found := true
+    end;
+end;  { findcon }
+
+procedure flookup{name: alfa; var fun: fns; var found: boolean};
+  var
+    f   : fnrng;
+begin { flookup }
+  funct[0].fnnme := name; f := maxfns;
+  while funct[f].fnnme <> name do f := f - 1;
+  found := f <> 0;
+  if found then
+    fun := funct[f].fntyp;
+end;  { flookup }
+
+procedure flush;
+begin { flush }
+  while not (lextyp in [lexeof,lexsemi]) do getkey;
+end;  { flush }
+
+procedure forcereal;
+  var
+    i   : integer;
+begin { forcereal }
+  with ctab[ctop] do
+    if ctyp = tin then begin i := ci; ctyp := tre; cr := i end;
+  with ctab[ctop-1] do
+    if ctyp = tin then begin i := ci; ctyp := tre; cr := i end;
+end;  { forcereal }
+
+procedure getactuals{f: fptr; var act: aptr};
+begin { getactuals }
+  if f = nil then { if no formals then no actuals }
+  else
+    begin new(act);
+      with act^, f^ do
+        begin aform := fname; alast := atop - 1; getparm;
+          afirst := atop; if ch = comma then getch;
+          getactuals(fnext, anext)
+        end;
+    end;
+end;  { getactuals }
+
+procedure getbody;
+  var
+    ctr : integer;      { left paren counter }
+begin { getbody }
+  if ch = rparen then
+    with defs[dtop] do
+      begin getch; dlast := dstop; dfirst := dstop + 1 end
+  else
+    begin ctr := 1;
+      with defs[dtop] do
+        begin
+          while ctr > 0 do
+            begin over(dstop, atop); dstop := dstop + 1;
+              defstr[dstop] := ch; dlast := dstop;
+              if ch = rparen then ctr := ctr - 1
+              else
+                if ch = lparen then ctr := ctr + 1
+                else
+                  if (ch = newline) and (ftop = 0) and
+                      fstack[0].ffcb.endfile then
+                    begin error('getbody-  unexpected eof'); exit(map) end;
+              getch
+            end;
+          defstr[dlast] := blank { replace trailing ")" }
+        end
+    end
+end;  { getbody }
+
+procedure getbsu;
+  var
+    name        : alfa;
+    found       : boolean;
+begin { getbsu }
+  gettok;
+  while lextyp = lexmac do
+    begin moveleft(lexstr[1], name[1], alfaleng);
+      ckformal(name, found);
+      if not found then
+        begin ckmacro(name, found);
+          if not found then
+            begin error('getbsu-  undefined macro call'); gettok end
+        end;
+    end;
+end;  { getbsu }
+
+procedure getcdparm;
+  var
+    ctr : integer;
+    d   : dsrng;
+begin { getcdparm }
+  d := dstop; ctr := 0;
+  while (ctr > 0) or (ch <> rparen) do
+    begin over(d, atop); d := d + 1; defstr[d] := ch;
+      if ch = lparen then ctr := ctr + 1
+      else if ch = rparen then ctr := ctr - 1;
+      getch
+    end;
+  if d > dstop then
+    begin over(d, atop); d := d + 1; defstr[d] := blank;
+      while d > dstop do
+        begin atop := atop - 1; defstr[atop] := defstr[d]; d := d - 1;
+        end
+    end;
+end;  { getcdparm }
+
+procedure getch;
+begin { getch }
+  if mtop > 0 then
+    while (mstack[mtop].mnext > mstack[mtop].mlast) and (mtop > 0) do
+      begin atop := mstack[mtop].matop; mtop := mtop - 1 end;
+  if mtop > 0 then
+    with mstack[mtop] do
+      begin ch := defstr[mnext]; mnext := mnext + 1 end
+  else
+    begin
+      if next > last then getline;
+      ch := inline[next]; next := next + 1;
+    end;
+end;  { getch }
+
+procedure getformals{var f: fptr};
+begin { getformals }
+  if lextyp <> lexalpha then f := nil
+  else
+    begin new(f); 
+      with f^ do
+        begin fname[1] := dollar; 
+          moveleft(lexstr[1], fname[2], alfaleng-1);
+          gettok;
+          if lextyp = lexcomma then
+            begin gettok; getformals(fnext) end
+          else fnext := nil
+        end;
+    end
+end;  { getformals }
+
+procedure getkey;
+  var
+        name    : alfa; { name of constant }
+        k       : krng; { pointer to keywords }
+begin { getkey }
+  getbsu;
+  if lextyp = lexalpha then
+    begin moveleft(lexstr[1], name[1], alfaleng);
+      keywd[0].kname := name; k := maxkeys;
+      while keywd[k].kname <> name do k := k - 1;
+      if k > 0 then lextyp := keywd[k].klex
+    end;
+end;  { getkey }
+
+procedure getline;
+  var
+    i           : integer;
+    mode        : (skipping,nonblank,endline,endfile);
+begin { getline }
+  while fstack[ftop].ffcb.endfile and (ftop > 0) do closefile;
+  {$R- disable string range checks }
+  if fstack[ftop].ffcb.endfile then
+    begin next := 1; last := 0; inline[next] := newline; 
+      inline[0] := chr(next)
+    end
+  else
+    with fstack[ftop] do
+      begin if listopt then
+          begin
+            writeln('UNIMP');
+          end
+        else
+          repeat
+            if not ffcb.endfile then
+              begin getstring(ffcb, infile, inline);
+                if not onscreen then
+                  begin
+                    if (line mod 50) = 0 then
+                      begin writeln; write('<', line:4, '> ') end;
+                    write('.');
+                  end;
+                line := line + 1; fline := fline + 1;
+                next := 1; insert(blank, inline, length(inline)+1);
+                last := length(inline);
+                mode := skipping;
+                repeat
+                  if next > last then
+                    mode := endline
+                  else if inline[next] <> blank then
+                    mode := nonblank
+                  else next := next + 1;
+                until mode <> skipping;
+              end
+            else
+              begin next := 1; last := 0; inline[next] := newline; 
+                inline[0] := chr(next); mode := endfile;
+              end;
+          until mode <> endline;
+        inline[last+1] := newline; {$R+}
+      end;
+end;  { getline }
+
+procedure getparm;
+  var
+    ctr : integer;
+    d   : dsrng;
+begin { getparm }
+  d := dstop; ctr := 0;
+  while (ctr > 0) or not (ch in [comma,rparen]) do
+    begin over(d, atop); d := d + 1; defstr[d] := ch;
+      if ch = lparen then ctr := ctr + 1
+      else if ch = rparen then ctr := ctr - 1;
+      getch;
+    end;
+  if d > dstop then
+    begin over(d, atop); d := d + 1; defstr[d] := blank;
+      while d > dstop do
+        begin { move parm to right }
+          atop := atop - 1; defstr[atop] := defstr[d]; d := d - 1
+        end;
+    end;
+end;  { getparm }
+

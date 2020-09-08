@@ -1,0 +1,525 @@
+
+PROGRAM DISKREAD;
+
+(*$I-,R-*)
+(*$C DISKREAD BY ROGER L. SOLES - GEORGIA INSTITUTE OF TECHNOLOGY *)
+
+CONST 
+
+      STATUS = 2;
+      PROMPT = 4;
+      MAXBLOCKS = 493; (* NUMBER OF BLOCKS ON DISK *)
+
+TYPE 
+     CRTCOMMAND = (ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT,LEADIN);
+
+VAR 
+    MODE: (ASCII, HEX);
+    ST: STRING;
+    CH,BELL: CHAR;
+    UNITNUM,BLOCKNUM: INTEGER;
+    I,J,K: INTEGER;
+    BUF: PACKED ARRAY [0..511] OF 0..255;
+    CRTINFO:   PACKED ARRAY[CRTCOMMAND] OF CHAR;
+    PREFIXED:  ARRAY[CRTCOMMAND] OF BOOLEAN;
+
+PROCEDURE GETCRTINFO;
+
+(* READ SYSTEM.MISCINFO AND GET CRT CONTROL CHARACTER INFO *)
+
+VAR 
+
+    BUFFER: PACKED ARRAY[0..511] OF CHAR;
+    BYTE: INTEGER;
+    F: FILE;
+
+BEGIN
+  RESET(F,'*SYSTEM.MISCINFO');
+  I := BLOCKREAD(F,BUFFER,1);
+  CLOSE(F);
+  BYTE := ORD(BUFFER[72]);       (* PREFIX INFORMATION BYTE *)
+  CRTINFO[LEADIN] := BUFFER[62];
+  PREFIXED[LEADIN] := FALSE;
+  CRTINFO[ERASEOS] := BUFFER[64];
+  PREFIXED[ERASEOS] := ODD(BYTE DIV 8);
+  CRTINFO[ERASEOL] := BUFFER[65];
+  PREFIXED[ERASEOL] := ODD(BYTE DIV 4);
+  CRTINFO[RIGHT] := BUFFER[66];
+  PREFIXED[RIGHT] := ODD(BYTE DIV 2);
+  CRTINFO[UP] := BUFFER[67];
+  PREFIXED[UP] := ODD(BYTE);
+  CRTINFO[LEFT] := BUFFER[68];
+  PREFIXED[LEFT] := ODD(BYTE DIV 32);
+  CRTINFO[DOWN] := CHR(10);
+  PREFIXED[DOWN] := FALSE;
+END; (* GETCRTINFO *)
+
+PROCEDURE CRT(C: CRTCOMMAND);
+
+(* CRT COMMANDS ARE: ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT *)
+
+BEGIN
+  IF PREFIXED[C]
+    THEN
+      UNITWRITE(1,CRTINFO[LEADIN],1,0,12);
+  UNITWRITE(1,CRTINFO[C],1,0,12);
+END; (* CRT *)
+
+PROCEDURE PRINTBYTE(BYTE: INTEGER);
+
+(* PRINT A BYTE AS A HEXSTRING *)
+
+BEGIN
+  IF BYTE > 255
+    THEN
+      BEGIN
+        PRINTBYTE(BYTE DIV 256);
+        PRINTBYTE(BYTE MOD 256);
+      END
+    ELSE
+      BEGIN
+        IF (BYTE DIV 16) IN [0..9]
+          THEN
+            WRITE(CHR((BYTE DIV 16) + ORD('0')))
+          ELSE
+            WRITE(CHR((BYTE DIV 16) - 10 + ORD('A')));
+        IF (BYTE MOD 16) IN [0..9]
+          THEN
+            WRITE(CHR((BYTE MOD 16) + ORD('0')))
+          ELSE
+            WRITE(CHR((BYTE MOD 16) - 10 + ORD('A')));
+      END;
+END; (* PRINTBYTE *)
+
+FUNCTION CVI(ASCII:STRING): INTEGER;
+
+(* CONVERT AN INPUT STRING, EITHER DECIMAL OR HEX, TO AN INTEGER *)
+
+VAR 
+    BASE,MPY,X,RV: INTEGER;
+
+BEGIN
+  BASE := 10;
+  IF POS('$',ASCII) <> 0
+    THEN
+      BASE := 16;
+  MPY := 1;
+  RV := 0;
+  FOR X:=LENGTH(ASCII) DOWNTO 1 DO
+    CASE BASE OF
+      10 : BEGIN
+             IF ASCII[X] IN ['0'..'9']
+               THEN
+                 BEGIN
+                   RV := RV+(MPY*(ORD(ASCII[X])-ORD('0')));
+                   MPY := MPY*10;
+                 END;
+           END;
+      16 : BEGIN
+             IF ASCII[X] IN ['0'..'9']
+               THEN
+                 BEGIN
+                   RV := RV+(MPY*(ORD(ASCII[X])-ORD('0')));
+                   MPY := MPY*16;
+                 END;
+             IF ASCII[X] IN ['A'..'F']
+               THEN
+                 BEGIN
+                   RV := RV+(MPY*(ORD(ASCII[X])-ORD('A')+10));
+                   MPY := MPY*16;
+                 END;
+             IF ASCII[X] IN ['a'..'f']
+               THEN
+                 BEGIN
+                   RV := RV+(MPY*(ORD(ASCII[X])-ORD('a')+10));
+                   MPY := MPY*16;
+                 END;
+           END;
+    END; (* CASE OF *)
+  CVI := RV;
+END; (* CVI *)
+
+PROCEDURE BASECALC (VAR X,Y,BYTE: INTEGER);
+
+(* CALCULATE THE SCREEN BASE ADDRESS FOR ANY BYTE OF THE BUFFER *)
+
+VAR 
+    TEMP: INTEGER;
+
+BEGIN
+  Y := (BYTE DIV 32) + 7;
+  TEMP := (BYTE MOD 32) DIV 8;
+  CASE TEMP OF
+    0: X := (BYTE MOD 8) * 2 + 6;
+    1: X := (BYTE MOD 8) * 2 + 25;
+    2: X := (BYTE MOD 8) * 2 + 44;
+    3: X := (BYTE MOD 8) * 2 + 63;
+  END; (* CASE OF *)
+END; (* BASECALC *)
+
+PROCEDURE DISHEX;
+
+(* DISPLAY THE BUFFER IN HEX *)
+
+VAR 
+    X,Y,I: INTEGER;
+
+BEGIN
+  I := 0;
+  REPEAT
+    BASECALC(X,Y,I);
+    GOTOXY(X,Y);
+    FOR J:=0 TO 7 DO
+      PRINTBYTE(BUF[I+J]);
+    I := I+8;
+  UNTIL I >= 511;
+END; (* DISHEX *)
+
+PROCEDURE DISASCII;
+
+(* DISPLAY THE BUFFER IN ASCII - ONLY VALID ASCII CODES ARE DISPLAYED *)
+
+VAR 
+    CH: CHAR;
+    X,Y,I: INTEGER;
+
+BEGIN
+  I := 0;
+  REPEAT
+    BASECALC(X,Y,I);
+    GOTOXY(X,Y);
+    FOR J:=0 TO 7 DO
+      BEGIN
+        CH := CHR(BUF[I+J]);
+        IF NOT( CH IN [' '..'}'])
+          THEN
+            CH := ' ';
+        WRITE(CH:2);
+      END;
+    I := I+8;
+  UNTIL I >= 511;
+END; (* DISASCII *)
+
+PROCEDURE DISBLOCK;
+
+(* DISPLAY CURRENT BLOCK NUMBER IN DECIMAL AND HEX *)
+
+BEGIN
+  GOTOXY(8,STATUS);
+  WRITE(BLOCKNUM:3,'  $');
+  PRINTBYTE(BLOCKNUM DIV 256);
+  PRINTBYTE(BLOCKNUM MOD 256);
+END; (* DISBLOCK *)
+
+PROCEDURE DISUNIT;
+
+(* DISPLAY CURRENT UNIT NUMBER IN DECIMAL AND HEX *)
+
+BEGIN
+  GOTOXY(71,STATUS);
+  WRITE(UNITNUM:2,'  $');
+  PRINTBYTE(UNITNUM);
+END; (* DISUNIT *)
+
+PROCEDURE DISMODE;
+
+(* DISPLAY CURRENT DISPLAY MODE *)
+
+BEGIN
+  GOTOXY(37,STATUS);
+  CASE MODE OF
+    ASCII: WRITE('ASCII');
+    HEX:   WRITE(' HEX ');
+  END; (* CASE OF *)
+END; (* DISMODE *)
+
+PROCEDURE DISPLAY(I: INTEGER);
+
+(* DISPLAY A BYTE IN THE BUFFER IN THE CURRENT DISPLAY MODE *)
+
+VAR 
+    X,Y: INTEGER;
+
+BEGIN
+  BASECALC(X,Y,I);
+  GOTOXY(X,Y);
+  CASE MODE OF
+    ASCII: BEGIN
+             CH := CHR(BUF[I]);
+             IF NOT(CH IN [' '..'}'])
+               THEN
+                 CH := ' ';
+             WRITE(CH:2);
+           END;
+    HEX  : PRINTBYTE(BUF[I]);
+  END; (* CASE OF *)
+END; (* DISPLAY *)
+
+PROCEDURE CHANGE;
+
+(* CHANGE VALUE OF A BYTE IN THE BUFFER - INPUT HEX OR DECIMAL *)
+
+VAR 
+    DONE: BOOLEAN;
+
+BEGIN
+  WRITE('ADDRESS: ');
+  READLN(ST);
+  I := CVI(ST);
+  DONE := FALSE;
+  REPEAT
+    GOTOXY(0,PROMPT);
+    CRT(ERASEOL);
+    WRITE('(');
+    PRINTBYTE(I);
+    WRITE(') = ');
+    PRINTBYTE(BUF[I]);
+    WRITE(': ');
+    READLN(ST);
+    IF LENGTH(ST) = 0
+      THEN
+        DONE := TRUE
+      ELSE
+        BEGIN
+          K := CVI(ST) MOD 256;
+          BUF[I] := K;
+          DISPLAY(I);
+        END;
+    I := I+1;
+    IF I > 511
+      THEN
+        DONE := TRUE;
+  UNTIL DONE;
+END; (* CHANGE *)
+
+PROCEDURE STRINGCHANGE;
+
+(* CHANGE BYTES IN THE BUFFER - INPUT ASCII STRING *)
+
+BEGIN
+  WRITE('ADDRESS: ');
+  READLN(ST);
+  I := CVI(ST) MOD 512;
+  GOTOXY(0,PROMPT);
+  CRT(ERASEOL);
+  WRITE('(');
+  PRINTBYTE(I);
+  WRITE('): ');
+  READLN(ST);
+  IF LENGTH(ST) <> 0
+    THEN
+      FOR J:=0 TO LENGTH(ST)-1 DO
+        BEGIN
+          K := I+J;
+          BUF[K] := ORD(ST[J+1]);
+          DISPLAY(K);
+        END;
+END; (* STRINGCHANGE *)
+
+PROCEDURE MEMORYUPDATE;
+
+(* CHANGE A BLOCK OF VALUES IN THE BUFFER - INPUT HEX OR DECIMAL *)
+
+VAR 
+    VALUE: INTEGER;
+
+BEGIN
+  WRITE('STARTING ADDRESS: ');
+  READLN(ST);
+  I := CVI(ST) MOD 512;
+  GOTOXY(0,PROMPT);
+  CRT(ERASEOL);
+  WRITE('ENDING ADDRESS: ');
+  READLN(ST);
+  J := CVI(ST) MOD 512;
+  IF I > J
+    THEN
+      EXIT(MEMORYUPDATE);
+  GOTOXY(0,PROMPT);
+  CRT(ERASEOL);
+  WRITE('BYTE: ');
+  READLN(ST);
+  VALUE := CVI(ST) MOD 256;
+  FOR K:=I TO J DO
+    BEGIN
+      BUF[K] := VALUE;
+      DISPLAY(K);
+    END;
+END; (* MEMORYUPDATE *)
+
+PROCEDURE INIT;
+
+(* INITIALIZE THE SCREEN, THIS NEED NO BE DONE AGAIN! *)
+
+BEGIN
+  BELL := CHR(7);
+  BLOCKNUM := 0;
+  UNITNUM := 4;
+  MODE := HEX;
+  GOTOXY(0,0);
+  CRT(ERASEOS);
+  WRITELN('Roger L. Soles Disk Block Read/Write/Modify':61);
+  GOTOXY(0,STATUS);
+  WRITE('BLOCK:');
+  GOTOXY(64,STATUS);
+  WRITE('UNIT:');
+  GOTOXY( 5,5);
+  WRITE('00');
+  GOTOXY(21,5);
+  WRITE('07');
+  GOTOXY(24,5);
+  WRITE('08');
+  GOTOXY(40,5);
+  WRITE('0F');
+  GOTOXY(43,5);
+  WRITE('10');
+  GOTOXY(59,5);
+  WRITE('17');
+  GOTOXY(62,5);
+  WRITE('18');
+  GOTOXY(78,5);
+  WRITE('1F');
+  GOTOXY(5,6);
+  FOR I:=5 TO 80 DO
+    WRITE('_');
+  FOR I:=0 TO 15 DO
+    BEGIN
+      GOTOXY(0,I+7);
+      PRINTBYTE(I*2);
+      WRITE('0 |');
+    END;
+  DISBLOCK;
+  DISUNIT;
+  DISMODE;
+  FOR I:=0 TO 511 DO
+    BUF[I] := 0;
+END; (* INIT *)
+
+PROCEDURE COMMAND;
+
+(* GET AND PROCESS A COMMAND - ADD MORE HERE *)
+
+VAR 
+    DONE: BOOLEAN;
+
+BEGIN
+
+  DONE := FALSE;
+
+  REPEAT
+
+    GOTOXY(0,PROMPT);
+    CRT(ERASEOL);
+    READ(CH);
+    CRT(LEFT);
+    CASE CH OF
+      'A','a' :  BEGIN (* DISPLAY BUFFER IN ASCII *)
+                   IF MODE <> ASCII
+                     THEN
+                       BEGIN
+                         MODE := ASCII;
+                         DISMODE;
+                         DISASCII;
+                       END;
+                END;
+      'H','h' :  BEGIN (* DISPLAY BUFFER IN HEX *)
+                   IF MODE <> HEX
+                     THEN
+                       BEGIN
+                         MODE := HEX;
+                         DISMODE;
+                         DISHEX;
+                       END;
+                END;
+      'R','r' :  BEGIN (* READ CURRENT UNIT/BLOCK *)
+                   UNITREAD(UNITNUM,BUF,512,BLOCKNUM);
+                   IF IORESULT = 0
+                     THEN
+                       BEGIN
+                         CASE MODE OF
+                           ASCII: DISASCII; (* DISPLAY ASCII *)
+                           HEX:   DISHEX; (* DISPLAY HEX *)
+                         END; (* CASE OF *)
+                       END
+                     ELSE
+                       BEGIN
+                         GOTOXY(0,PROMPT);
+                         CRT(ERASEOL);
+                         WRITE(BELL,'I/O ERROR: Please check unit status');
+                         READLN;
+                       END;
+                END;
+      'W','w' :  BEGIN (* WRITE CURRENT UNIT/BLOCK *)
+                   WRITE('Update disk block ? ');
+                   READ(CH);
+                   IF CH IN ['Y','y']
+                     THEN
+                       BEGIN
+                         UNITWRITE(UNITNUM,BUF,512,BLOCKNUM);
+                         IF IORESULT <> 0
+                           THEN
+                             BEGIN
+                               GOTOXY(0,PROMPT);
+                               CRT(ERASEOL);
+                               WRITE(BELL,'I/O ERROR: Please check unit status'
+                               );
+                               READLN;
+                             END;
+                       END;
+                END;
+      ';','+' :  BEGIN (* INCREASE BLOCK *)
+                   BLOCKNUM := BLOCKNUM + 1;
+                   IF BLOCKNUM > MAXBLOCKS
+                     THEN
+                       BLOCKNUM := 0;
+                   DISBLOCK;
+                END;
+      '=','-' :  BEGIN (* DECREASE BLOCK *)
+                   BLOCKNUM := BLOCKNUM - 1;
+                   IF BLOCKNUM < 0
+                     THEN
+                       BLOCKNUM := MAXBLOCKS;
+                   DISBLOCK;
+                END;
+      'B','b' :  BEGIN (* SET BLOCK NUMBER *)
+                   WRITE('BLOCK: ');
+                   READLN(ST);
+                   BLOCKNUM := CVI(ST);
+                   IF BLOCKNUM > MAXBLOCKS
+                     THEN
+                       BLOCKNUM := MAXBLOCKS;
+                   IF BLOCKNUM < 0
+                     THEN
+                       BLOCKNUM := 0;
+                   DISBLOCK;
+                END;
+      'U','u' :  BEGIN (* SET UNIT NUMBER *)
+                   WRITE('UNIT: ');
+                   READLN(ST);
+                   UNITNUM := CVI(ST);
+                   IF NOT(UNITNUM IN [4,5,9..12])
+                     THEN
+                       UNITNUM := 4;
+                   DISUNIT;
+                END;
+      'C','c' :  CHANGE; (* BLOCK CHANGE *)
+      'S','s' :  STRINGCHANGE; (* STRING CHANGE *)
+      'M','m' :  MEMORYUPDATE; (* MEMORY UPDATE *)
+      'Q','q' :  BEGIN (* QUIT PROGRAM *)
+                   GOTOXY(0,0);
+                   CRT(ERASEOS);
+                   DONE := TRUE;
+                END;
+    END; (* CASE OF *)
+
+  UNTIL DONE;
+
+END; (* COMMAND *)
+
+BEGIN (* MAIN PROGRAM *)
+
+  GETCRTINFO;
+  INIT;
+  COMMAND;
+
+END.

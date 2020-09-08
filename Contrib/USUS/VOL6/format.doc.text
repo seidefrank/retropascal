@@ -1,0 +1,437 @@
+
+     
+                              FORMAT DOCUMENTATION
+
+     The following text accompanied the program listing in Pascal News, No. 13 
+(December 1978).  For further comments, see "PRETTY.DOC.TEXT" elsewhere on 
+this disk.
+
+     
+     
+What Format Does
+
+     Format is a flexible prettyprinter for Pascal programs.  It takes as 
+input a syntactically correct Pascal program and produces as output an 
+equivalent but reformatted Pascal program.  The resulting program consists of 
+the same sequence of Pascal symbols and comments, but they are rearranged with 
+respect to line boundaries and columns for readability.
+
+     Format maintains consistent spacing between symbols, breaks control and 
+data structures onto new lines if necessary, indents lines to reflect the 
+syntactic level of statements and declarations, and more.  Miscellaneous 
+features, such as supplying line numbers and automatic comments or deleting
+all unnecessary blanks to save space, are described below.
+
+     The flexibility of Format is accomplished by allowing you to supply 
+various directives (options) which override the default values.  Rather than 
+being a rigid prettyprinter which decides for you how your program is to be 
+formatted, you have the ability to control how formatting is done, not only 
+prior to execution, but also during execution through the use of prettyprinter 
+directives embedded in your program.
+
+     Experience with Format over the last three years has shown that most 
+users can find a set of values for the directives which produce satisfactory 
+results.  The default values are typical.
+
+     
+How To Use Format
+
+     The use of Format will vary from implementation to implementation, but 
+will involve one major input file containing a Pascal program and one output 
+file for the reformatted program.  Additionally it may be possible to supply 
+the initial values of directives to Format when it begins execution.
+[NOTE to UCSD users: I did not implement this feature, though it should be
+easy to do.]
+
+     Directives to Format may always be specified in the program itself inside 
+comments with a special syntax.  Thus the first line of a program is an ideal 
+spot for a comment containing directives.  Subsequent use of embedded 
+directives allows you to change the kind of formatting for different sections 
+of your program.  The syntax of these special comments is given below (The 
+syntax is given using "EBNF"--Extended Backus-Naur Form--see Communications 
+ACM, November, 1977, page 822.):
+
+DirectiveComment = "(*" DirectiveList "*)" |
+                       "(*$" CompilerOptionList CommentText DirectiveList"*)".
+
+   
+   DirectiveList = "["  Directive  {"," Directive}  "]"  CommentText.
+
+       Directive = Letter Setting.
+
+          Letter = "A"| "B"| "C"| "D"| "E"| "F"| "G"| "H"|
+                   "I"| "L"| "N"| "P"| "R"| "S"| "W".
+
+         Setting = Switch | Value | Range.
+
+          Switch = "+" | "-".
+
+           Value = "=" Unsigned Integer.
+      
+           Range = "="UnsignedInteger "-" UnsignedInteger ["<" | ">"].
+      
+ UnsignedInteger = Digit(Digit).
+
+     CommentText = (Any character except "]" or close-comment).
+
+Note:  As defined above, a Directive may be within a comment specifying a 
+Pascal CompilerOptionList.  On most implementations this is a "$" followed by 
+a series of letters and values ("+", "-", or digits), separated by commas.  
+See your local manual.
+
+Examples of DirectiveComments:
+
+     (*[A=15, E=3, N=1,1<]*) - good for publication quality.
+     (*[G-0, W=1-100, C+]*) - good for compact storage.
+     (*$U+ [R=1-72, I=2]*) - an example of a DirectiveList with a
+                             CompilerOptionList.
+
+     
+Directives to Format.
+
+A=n  Align declarations.
+        The A directive forces the alignment of ":" and "=" in declarations.  
+        If A is set to a value greater than O, then n should be equal to the
+        maximum identifier length for that section of your program.  The A
+        directive visually clarifies the declaration part of your program.  
+        See example below.
+        Default:  A=O (no alignment).
+
+ B+ or B-  Bunch statements and declarations reasonably.
+        B+ will place as many statements or declarations onto one line as will 
+        fit within the specified write margins (W directive) subject to read-
+        ability constraints.  Bunching (B+) when the display is off (D-) has 
+        no effect.  In general, B+ saves paper and prevents your program from
+        becoming overly stretched in the vertical direction.  See example  
+        below.
+        Default:  B- (one statement or statement part per line).
+  
+C+ or C-  Fully Compress program.
+        C+ removes all non-essential blanks, end-of-lines, and comments from 
+        your program.  A compilable, packed program will be written within the
+        specified write margins (W directive).  The number of spaces specified
+        by the G directive will still be written between symbols.  C+ might 
+        save some space on long-term storage media such as disk; you might 
+        store a program in compressed form and expand it later by reformatting
+        with C-.
+        Default:  C-.
+
+D+ or D-  Turn Display on or off.
+        D allows you to selectively display portions of your program during 
+        formatting.  Therefore, D must be switched on and off with directives
+        which are appropriately placed in your program.  D is perhaps useful
+        to obtain program fragments for publication (such as one or more pro-
+        cedures) without having to print the whole program.
+        Default:  D+.
+        
+E=n  Supply END comments.
+        The E directive generates comments after "END" symbols if none are 
+        already there.  Common Pascal coding styles frequently employ these
+        comments.  E=1 creates comments after the "END" symbol in compound
+        statements which are within structured statements, as well as those
+        constituting procedure and function bodies.  The comments take the 
+        form:  (*StatementPart*) or (*ProcedureName*).  E=2  creates comments
+        after the "BEGIN" and "END" symbols constituting procedure and func-
+        tion bodies only.  E=O creates no comments at all.  E=3 means E=1
+        and E=2.  See example below.
+        Default:  E=2.
+        
+F+ or F-  Turn Formatting on or off.
+        F allows you to format selected portions of your program.  F- causes
+        Format to copy the input program directly with no changes.  Therefore
+        by switching F on and off with directives which are appropriately
+        placed in your program, you can preserve text which is already 
+        properly formatted (such as comments).
+        Default:  F+ (of course!).
+        
+G=n  Specify symbol Gap.
+        The G directive determines the number of spaces placed between Pascal
+        symbols during formatting.  G=O still places one space between two 
+        identifiers and reserved words.  The symbols [] () , and : are handled 
+        independently of G.  
+        Default:  G=1.
+        
+I=n  Specify Indent tab. 
+        I indents each nesting level of statements and declarations a given
+        number of columns.  Using  I=2  or  I=1 helps prevent excessively-
+        narrow lines within the specified write margins (W directive) where 
+        there are heavily-nested constructs.  
+        Default:  I=3.
+        
+L=n  Specify Line-wraparound indent tab.
+        L  determines the indentation of the remainder of statements or 
+        declarations which are too long to fit on one line.
+        Default:  L=3.
+        
+N=x-y< or N=x-y>  Generate line-numbers on the left or right.
+        The N directive indicates the starting line-number (x) and the incre-
+        ment (y) for each succeeding line-number.  If y > O then line-numbers
+        are written outside the specified write margins for the formatted pro-
+        gram in sequential order starting at x; y = O shuts off line-number-
+        ing.  "<" writes up to 4-digit, right-justified line numbers together 
+        with a trailing space ot the left of each line.  ">" writes 6-digit, 
+        zero-filled line numbers to the right of each line.  Use the N 
+        directive along with the W directive.
+        Default:  N=0-0> (no line numbers).
+        
+P=n  Specify spacing between Procedure and function declarations.
+        The P directive determines the number of blank lines to be placed 
+        between procedure and function declarations.  n>2 makes procedures and 
+        functions visually stand out.
+        Default:  P=2.
+        
+R=x-y  Specify Read margins.
+        The R directive indicates which columns are significant when Format 
+        reads from the input file.  R allows Format to accept files which have 
+        line numbers in the first (x-1) columns or after the y~h column.
+        Default:  R=1-999 (large enough to read end-of-line in most cases).
+        
+S=n  Specify Statement separation.
+        The S directive determines the number of spaces between statements 
+        bunched on the same line by the use of the B+ directive.  Note that 
+        this directive is in effect only if B+ is used.
+        Default:  S=3.
+        
+W=x-y  Specify Write margins.
+        The W directive indicates which columns are used for writing the 
+        reformatted program on the output file.  Any line numbers generated (N 
+        directive) are written outside these margins.
+        Default:  N=1-72.
+        
+
+
+EXAMPLES
+        
+
+The A directive.
+        
+Here is a sample program fragment before using Format:
+     
+     PROGRAM SAMPLE(OUTPUT);
+     CONST A=6; ABC='LETTERS'; THREE=3;
+     TYPE RANGE=1..6;
+     COLOR=(RED,BLUE);
+     VAR
+     I,I2,I33,I444,I555:RANGE;
+     YES,NO,MAYBE:BOOLEAN;
+     BEGIN END.
+     
+Here is the output from Format with all defaults set:
+     
+     PROGRAM SAMPLE(OUTPUT);
+     
+     CONST
+        A = 6;
+        ABC = 'LETTERS';
+        THREE = 3;
+     
+     TYPE
+        RANGE = 1 .. 6;
+        COLOR =
+           (RED, BLUE);
+           
+     VAR
+        I, I2, I33, I444, I5555: RANGE;
+        YES, NO, MAYBE: BOOLEAN;
+        
+     BEGIN
+     END (*SAMPLE*).
+     
+Here is the output from Format with an added A=5 directive:
+
+     (*[A=5] ALIGN DECLARATIONS.  *)
+     PROGRAM SAMPLE(OUTPUT);
+     
+     CONST
+            A = 6;
+          ABC = 'LETTERS';
+        THREE = 3;
+     
+     TYPE
+        RANGE = 1 .. 6;
+        COLOR = (RED, BLUE);
+           
+     VAR
+             I, 
+            I2, 
+           I33, 
+          I444, 
+         I5555: RANGE;
+           YES, 
+            NO, 
+         MAYBE: BOOLEAN;
+        
+     BEGIN
+     END (*SAMPLE*).
+     
+     
+The B Directive.
+
+If the input to Format is:
+
+     PROGRAM T(OUTPUT);
+     CONST INCREMENT = 5;
+     VAR I,J,N:INTEGER;
+     BEGIN
+     N:=0;
+     J:=3; I:=SQR(N); N:=N+INCREMENT;
+     IF N>73 THEN BEGIN DOTHIS; DOTHAT END ;
+     IF N>5 THEN  IF J>6 THEN DOSOMETHINGELSE;
+     END.
+     
+then the output from Format (using the default, B-) is:
+
+     PROGRAM T(OUTPUT);
+     
+     CONST
+        INCREMENT = 5;
+      
+     VAR
+        I,J,N:INTEGER;
+     
+     BEGIN
+        N:=0;
+        J:=3; 
+        I:=SQR(N); 
+        N:=N + INCREMENT;
+        IF N>73 THEN
+           BEGIN
+              DOTHIS; 
+              DOTHAT
+           END;
+        IF N>5 THEN
+           IF J>6 THEN
+              DOSOMETHINGELSE;
+     END (*T*).
+     
+and the output from Format with B directives embedded is:
+
+     (*[B+] BUNCH STATEMENTS.  *)
+     PROGRAM T(OUTPUT);
+     
+     CONST
+        INCREMENT = 5;
+      
+     VAR
+        I,J,N:INTEGER;
+     
+     BEGIN
+        N:=0;   J:=3;   I:=SQR(N);   N:=N + INCREMENT;
+        IF N>73   THEN BEGIN DOTHIS;   DOTHAT END;
+     (*[B-] UNBUNCH.  *)
+        IF N>5 THEN
+           IF J>6 THEN
+              DOSOMETHINGELSE;
+     END (*T*).
+     
+
+The E Directive.
+
+Suppose that a Pascal program fragment looked like:
+
+     PROCEDURE SAMPLE;
+       PROCEDURE INNER;
+       BEGIN END;
+     BEGIN
+       IF X=3 THEN
+                 BEGIN X := 1; I := I+1
+                 END
+              ELSE
+                BEGIN X := X+I; I := 0
+                END;
+       WHILE (CH <> 'X') AND FLAG1 DO
+         BEGIN I := I+3; INNER END; END;
+         
+ then using Format with E=3 produces:
+ 
+     PROCEDURE SAMPLE;
+       
+       
+       PROCEDURE INNER;
+       
+       
+          BEGIN 
+          END (*INNER*);
+     
+     
+     BEGIN (*SAMPLE*)
+        IF X=3 
+        THEN
+           BEGIN
+              X := 1; 
+              I := I+1
+           END (*IF*)
+        ELSE
+           BEGIN
+              X := X+I; 
+              I := 0
+           END (*ELSE*);
+        WHILE (CH <> 'X') AND FLAG1 DO
+           BEGIN
+              I := I+3; 
+              INNER 
+           END (*WHILE*); 
+     END (*SAMPLE*);
+         
+         
+ How Format Works.
+ 
+     Format parses your program by performing syntax analysis similar to the 
+Pascal compiler:  recursive descent within nested declarations and statements. 
+It gathers characters into a buffer in which the indenting count of each 
+character is maintained.  The characters are being continually emptied from 
+the buffer as new ones are added.
+
+     Format has limited error-recovery facilities, and no results are 
+guaranteed if a syntactically incorrect program is input.
+
+     The bane of most Pascal prettyprinters is the treatment of comments.  
+Format considers them in the context of a declaration or statement.  Therefore 
+using comments like:
+
+     CONST LS=6 (*LINESIZE*);
+
+is a good idea because Format will carry the comment along with the 
+declaration.  Similarly:
+
+     BEGIN (* 'Z' < CH <= ' ' *)
+
+is also okay.
+
+     Stand-alone comments, however, receive rough treatment from Format.  The 
+first line of such comments is always left justified and placed on a separate 
+line.  See the F directive.  Thus:
+
+     CONST LS=6; (*LINESIZE*)
+
+will be reformatted as:
+
+     CONST
+        LS = 6;
+     (*LINESIZE*)
+
+     Proper treatment of comments is certainly an area of future development 
+for Format.
+
+     
+Error Messages.
+
+     Format issues the following error messages:
+
+1.  " *** 'PROGRAM' EXPECTED."
+     The Pascal program you fed to Format did not contain a Standard Pascal 
+program declaration.
+
+2.  " *** ERRORS FOUND IN PASCAL PROGRAM."
+     Your program is syntactically incorrect.  The output from Format probably 
+does not contain all of the text from your input file.  The cause could be any 
+syntactic error, most commonly unmatched "BEGIN-END" pairs or the lack of 
+semicolons, string quotation marks, or the final period.
+
+3.  " *** STRING TOO LONG."
+     Your program contains a character string (including both the quotes) 
+which is wider than the specified write margins (W directive).
+
+4.  " *** NO PROGRAM FOUND TO FORMAT."
+     The input file is empty.
+

@@ -1,0 +1,1293 @@
+{$L #5:MNTLST.TEXT}
+
+PROGRAM MAINTAIN;
+
+{  Once a data base has been defined, this set of procedures maintains the
+     data base by adding, examining, changing and deleting the various 
+     data base records. }
+ 
+  Uses {$U sh.screen.unit} SCREEN40;
+  
+  const MAX_INT  = 32767;  (* maximum integer & number of records *)
+        BLANKS            = '              ' ;
+        ERROR_COL         =     0 ;
+        ERROR_LINE        =    23 ;
+        MAXFRAC           =     4 ;
+        MAXWHOLE          =     9 ;
+        MAX_CALC_TEXT     =    40 ;
+        MAX_VALUE_DIGITS  =    14 ;
+        STARS             = '**************' ;
+        ZEROS             = '00000000000000' ;
+        ROUNDING_FACTOR   =     0 ;
+        
+  type STRING5   = String[5];
+       STRING23  = String[23];
+       STRING40  = String[40];
+       STRING255 = String[255];
+       INTEGER14 = Integer[14];
+       ASTRING           = STRING ;
+       SIXWORDINT        = INTEGER[ 20 ] ;
+       THREEWORDINT      = INTEGER[  8 ] ;
+       T_SCREEN_COLUMN   = 0 .. 79 ;
+       T_SCREEN_LINE     = 0 .. 23 ;
+       T_CALC                      = RECORD
+         CALC_TEXT                 : STRING[ MAX_CALC_TEXT ] ;
+         END ; { T_CALC }
+       
+       T_VALUE                     = RECORD
+         VALUE                     : STRING[ MAX_VALUE_DIGITS ] ;
+         DECIMAL_POSITION          : INTEGER ;
+         END ; { T_VALUE }
+  
+  var
+    GET_FIELDS,MAINT_FIELDS    : SCREEN_ARR;  { Array to hold data fields }
+    GET_PROMPTS,MAINT_PROMPTS  : PROMPT_ARR;  { Array to hold screen prompts }
+    DATA_RESULTS,    { 0 If data file exist }
+    DEFI_RESULTS,    { 0 If data base definition exist }
+    GET_RESULTS,     { 0 If 'GET.SCRN' loaded }
+    RESULTS,
+    FIELD_ROW,FIELD_COL,FIELD_LEN,FIELD_MIN,
+    COPY_INDEX,COPY_LENGTH,INDEX,MAX_RECORDS,ERRCOL,ERROW,
+    DB_RECNO,REC_LEN,CURRENT_BLOCK   : Integer;
+    EXXIT,EXIT_KEY,CH,FIELD_JUS,FIELD_NA : Char;
+    FIELD_FLD : STRINGFL;
+    EXAMINE_FLAG,FIELD_SKIP,CALCULATIONS : Boolean;
+    PROMPTLINE,OPTLINE: String;
+    VOLUME    : String[7];  { Data base volume }
+    NAME      : String[10]; { Data base Name }
+    DB_NAME   : String[18]; { Volumn + Data Base Name }
+    DATA_NAME : STRING23; { Data file name }
+    DEFI_NAME : STRING23; { Data Base Definition file name }
+    STR_RECNO : String[5];
+    IO_REC    : Packed record      { String to hold data base record }
+                case Integer of
+                  1: (A: Packed Array[0..255] of 0..255);
+                  2: (B: STRING255);
+                end;
+    NUM_FIELDS : integer;  { number of screen fields }
+    DATA_FILE : File;
+    Digitset : Set of Char;
+    Operators : Set of Char;
+    Longintzero : threewordint;
+    Max         : Threewordint;
+    Multipler   : Threewordint;
+                  
+Procedure MESSAGE(M_ROW,M_COL :Integer; MSG :String; DING: Boolean);
+  Forward;
+
+Procedure RECORD_LENGTH(var S_ARRAY :SCREEN_ARR);
+  Forward;
+
+Segment Procedure INIT_FLOAT ;
+CONST
+  ONE_HUNDRED            = 100 ;
+  TEN                    =  10 ;
+VAR
+  I                      : INTEGER ;
+  INT                    : INTEGER ;
+  ONE                    : INTEGER ;
+BEGIN
+
+  DIGITSET  := [ '0' .. '9' ] ;
+  OPERATORS := ['+','-','*','/','^','(',')','#','=',' '];
+  
+  { NOTE: The following strange code is placed here to get around a compiler
+          requirement that reals be present in order for the compiler to 
+          compile a LongInteger constant.
+  }
+  ONE :=   1 ;
+  INT :=  10 ;
+  MAX := INT ;
+  FOR I := 1 TO 14-1 DO
+    MAX := MAX * INT ;        { Compute 1E14 }
+  MAX       := MAX - ONE ;    { Compute (1E14)-1, the largest VALUE allowed. }
+  
+  MULTIPLER := INT ;
+  FOR I := 1 TO 5-1 DO
+    MULTIPLER := MULTIPLER * INT ; { Compute 1E5, used to shift and align 
+                                     digits around the implied decimal point. }
+  
+  { See above note about compiler needing reals to compile a longinteger const }
+  LONGINTZERO := MAX - MAX ;
+
+END ; { INIT_FLOAT }
+
+Segment Procedure NUMTOSTR (       VAR ANS          : ASTRING ;
+                               NUM          : THREEWORDINT ;
+                               BEFORE, AFTER: INTEGER ) ;
+{   Dale Ander  May 28, 1980
+  NUMTOSTR takes the Longinteger in NUM and creates a string representation
+  of it and puts this string into ANS.  The form of the string is dependant
+  upon the values of BEFORE and AFTER.  BEFORE is the number of digits
+  to put before the decimal point and AFTER is the number after.
+}
+VAR
+  I, L                   : INTEGER ;
+  MINUSZERO              : BOOLEAN ;
+
+BEGIN
+  IF NUM>=MAX THEN NUM:=0; { SEP 28 TO HANDLE OVERFLOW NUMBERS }
+  IF NOT (BEFORE IN [1..MAXWHOLE])
+    THEN
+      BEFORE := MAXWHOLE ;
+  BEFORE := BEFORE + 1 ;                    { Allow room for sign.    }
+  IF NOT (AFTER IN [0..MAXFRAC])
+    THEN
+      AFTER := MAXFRAC ;
+  
+  
+  STR( NUM, ANS ) ;                         { Convert NUM to a string }
+  IF NUM >= 0                               { Put space instead of minus sign }
+    THEN
+      ANS := CONCAT( ' ', ANS ) ;
+  L := LENGTH( ANS ) - MAXFRAC ;
+  IF L < 3
+    THEN
+      BEGIN
+      INSERT( COPY( ZEROS, 1, 3-L ), ANS, 2 ) ;
+      L := LENGTH( ANS ) - MAXFRAC ;
+      END ;
+  
+  { Remove part of fraction not needed }
+  DELETE( ANS, L+AFTER, MAXFRAC - AFTER + 1 ) ;
+  
+  IF BEFORE - L + 1 > 0                     { Insert leading blanks   }
+    THEN
+      INSERT( COPY( BLANKS, 1, BEFORE - L + 1 ), ANS, 1 )
+    ELSE
+      { If field is not wide enough for number then return *'s        }
+      IF BEFORE < L - 1
+        THEN
+          ANS := COPY( STARS, 1, BEFORE + AFTER ) ;
+  
+  IF NUM < 0                                { Look for -0 case        }
+    THEN
+      BEGIN
+      I := 1 ;
+      L := LENGTH( ANS ) ;
+      REPEAT
+        I := I + 1 ;
+        MINUSZERO := ANS[I] IN DIGITSET ;
+      UNTIL ( I = L ) OR NOT MINUSZERO ;
+      END ; { IF NUM < 0 }
+  
+  IF AFTER > 0                              { Put in decimal point    }
+    THEN
+      INSERT( '.', ANS, LENGTH( ANS ) - AFTER + 1 ) ;
+
+END ; { OF NUMTOSTR }
+
+
+
+Segment Function FIGURE (    VAR Z                  : THREEWORDINT ;
+                         X, Y               : THREEWORDINT ;
+                         OP                 : CHAR )
+                                            : BOOLEAN   ;
+{ Dale Ander May 28, 1980
+  This function calculates Z given X and Y and the operation in OP.  It
+  is assumed that both X and Y have an 'implied' decimal point in them
+  and that they have (Maxfrac+1) digits to the right of this 'implied'
+  decimal point.  The answer, Z, is to also have this implied decimal point
+  in the same position.  If an overflow occurs it returns false and sets Z
+  to 9's.  Otherwise it return true.
+}
+
+VAR
+  I, POWER               : INTEGER ;
+  
+  ANS                    : SIXWORDINT ;
+
+BEGIN
+  CASE OP OF
+    '+' : ANS := X + Y ;
+    '-' : ANS := X - Y ;
+    '*' : ANS := (X * Y + ROUNDING_FACTOR) DIV MULTIPLER ;
+    '/' : IF Y <> 0
+            THEN
+              ANS := (X * MULTIPLER) DIV Y
+            ELSE
+              IF X = 0
+                THEN
+                  ANS := 0
+                ELSE
+                  ANS := MAX + 1 ;
+    '^' : BEGIN
+          Y := Y DIV MULTIPLER ;
+          IF (Y < 0) OR (Y > MAXINT)
+            THEN
+              ANS := MAX + 1
+            ELSE
+              IF Y = 0
+                THEN
+                  ANS := MULTIPLER
+                ELSE
+                  BEGIN
+                  POWER := TRUNC( Y ) ;
+                  I := 1 ;
+                  ANS := X ;
+                  WHILE (I < POWER) AND (ANS < MAX) DO
+                    BEGIN
+                    ANS := (ANS * X) DIV MULTIPLER ;
+                    I   := I + 1 ;
+                    END
+                  END
+          END ;
+    END ; { CASE }
+    
+    IF ANS > MAX
+      THEN
+        BEGIN
+        Z := MAX ;
+        FIGURE := FALSE ;
+        END
+      ELSE
+        BEGIN
+        Z := ANS ;
+        FIGURE := TRUE ;
+        END ;
+END ; { OF FIGURE }
+
+Segment Procedure INT_TO_STR (INT : INTEGER ; VAR OUT : STRING)  ;
+BEGIN
+  STR( INT, OUT);
+END;  { INT_TO_STR }
+
+Segment Procedure VALUE (        RETURN_INTEGER     : BOOLEAN ;
+                         INSTRING           : ASTRING ;
+                     VAR REALANS            : THREEWORDINT ;
+                     VAR INTANS             : INTEGER ) ;
+VAR
+  WSUM, FSUM             : THREEWORDINT ;
+  NEGATIVE               : BOOLEAN ;
+  PTR                    : INTEGER ;
+  CH                     : CHAR ;
+
+PROCEDURE GETCHAR ;
+BEGIN
+  CH  := INSTRING[ PTR ] ;
+  PTR := PTR + 1 ;
+END ; { GETCHAR }
+
+PROCEDURE SUM(       VAR ANS                : THREEWORDINT ;
+                         DIGITS             : INTEGER ) ;
+VAR
+  COUNT, ORDZERO         : INTEGER ;
+
+BEGIN
+  COUNT   := 0 ;
+  ANS     := 0 ;
+  ORDZERO := ORD('0') ;
+  WHILE (CH IN DIGITSET) AND (COUNT < DIGITS) DO
+    BEGIN
+    COUNT := COUNT + 1 ;
+    ANS   := 10 * ANS + ORD( CH ) - ORDZERO ;
+    GETCHAR ;
+    END ;
+END ; { SUM }
+
+BEGIN
+  NEGATIVE := FALSE ;
+  FSUM     := 0 ;
+  WSUM     := 0 ;
+  EATSPL( INSTRING ) ;
+  EATSPR( INSTRING ) ;
+  INSTRING := CONCAT( INSTRING, ' ' ) ;
+  PTR      := 1 ;
+  
+  GETCHAR ;
+  
+  IF CH IN ['+', '-']
+    THEN
+      BEGIN
+      NEGATIVE := CH = '-' ;
+      GETCHAR
+      END ;
+  
+  SUM( WSUM, MAXWHOLE ) ;                   { GET WHOLE PART OF NUMBER         }
+
+  IF CH = '.'
+    THEN
+      BEGIN
+      { Put trailing zeroes on }
+      INSERT( COPY( ZEROS, 1, MAXFRAC+1 ), INSTRING, LENGTH( INSTRING ) ) ;
+      GETCHAR ;                             { Skip period                      }
+      SUM( FSUM, MAXFRAC + 1 ) ;
+      END ;
+  
+      
+  IF RETURNINTEGER 
+    THEN
+      BEGIN
+      INTANS  := TRUNC( WSUM ) ;
+      REALANS := - 77 ;
+      IF NEGATIVE
+        THEN
+          INTANS := -INTANS ;
+      END
+    ELSE
+      BEGIN
+      REALANS := WSUM * MULTIPLER + FSUM ;
+      INTANS  := -77 ;
+      IF NEGATIVE
+        THEN
+          REALANS := -REALANS ;
+      END ;
+
+
+END ; { OF VALUE }
+
+Segment Function INTVALUE (S: STRING; var NUM: integer): boolean ;
+var
+  I: integer;
+  NUML: threewordint;
+begin
+  INTVALUE:=false;
+  I:=1;
+  NUML:=0;
+  EATSPL(S); EATSPR(S);
+  if length(S)=0 then exit(INTVALUE);
+  for I:=1 to length(S) do
+    if S[I] in DIGITSET then
+      NUML:=10*NUML+ord(S[I])-ord('0')
+    else exit(INTVALUE);
+  if NUML>MAX_INT then exit(INTVALUE);
+  NUM:=trunc(NUML);
+  INTVALUE:=true;
+end;  { INTVALUE }
+
+  
+  
+Segment Procedure INITIALIZE;
+  {Procedure initilizes everything to begin maintaining the data base.}
+   var I: Integer;
+   begin  {INITIALIZE}
+    for I:=1 to SCREEN_FIELDS do
+     with GET_FIELDS[I] do 
+      begin {Init fields}
+       S_ROW:=END_SCREEN;  S_COL:=15;  S_MIN:=0;  S_TYP:='V';
+       S_JUS:='L';  S_NA:='S';  S_DEF:='';  S_FLD:=''; S_SKIP:=false;
+      end; {Init fields}
+    with GET_FIELDS[1] do
+     begin
+      S_ID:='VOL';  S_ROW:=8;  S_LEN:=7;
+     end;
+    with GET_FIELDS[2] do
+     begin
+      S_ID:='NAME';  S_ROW:=10;  S_LEN:=10;
+     end;
+    for I:=1 to PROMPT_FIELDS do
+     with GET_PROMPTS[I] do
+      begin
+       P_ROW:=END_SCREEN;  P_COL:=0;  P_FLD:='';
+      end; {with/for}
+    with GET_PROMPTS[1] do
+     begin
+      P_ROW:=0;  P_COL:=25;  P_FLD:='MAINTAIN A DATA BASE';
+     end;
+    with GET_PROMPTS[2] do
+     begin
+      P_ROW:=1;  P_COL:=25;  P_FLD:='====================';
+     end;
+    with GET_PROMPTS[3] do
+     begin
+      P_ROW:=2;  P_COL:=25;  P_FLD:='Version IV.0';
+     end;
+    with GET_PROMPTS[4] do
+     begin
+      P_ROW:=8;  P_FLD:='Volume    :';
+     end;
+    with GET_PROMPTS[5] do
+     begin
+      P_ROW:=10;  P_FLD:='Name      :';
+     end;
+    with GET_PROMPTS[6] do
+     begin
+      P_ROW:=12;  P_FLD:='Type      :    SCRN and TEXT';
+     end;
+    ERASE_EOS(0,0);
+    PROMPTLINE:='Rec # <_____>,Add,Mash';
+    OPTLINE:='Store,Examine,Change,Delete,Quit ?';
+    for I:=1 to 22 do  if not(PROMPTLINE[I] in['A'..'Z'])
+                          then PROMPTLINE[I]:=chr(ord(PROMPTLINE[I])+128);
+    for I:=1 to 33 do  if not(OPTLINE[I] in['A'..'Z'])
+                          then OPTLINE[I]:=chr(ord(OPTLINE[I])+128);
+    FIELD_LEN:=5;  FIELD_MIN:=0;
+    ERRCOL:=40;    ERROW:=23;
+    FIELD_JUS:='L'; FIELD_NA :='N';
+    FIELD_FLD:='0'; FIELD_SKIP:=FALSE;
+    DB_RECNO:=1;
+    CURRENT_BLOCK:=-1;
+    EXAMINE_FLAG:=True;
+    Init_Float;
+  end;   {INITIALIZE}
+  
+  Segment Procedure GET_DATA_BASE;
+{Procedure gets the Data Base Definition form the disk or initilizes
+   a new data base file.}
+  
+
+Procedure CREATE(var CREATE_NAME:STRING23;
+                   var CREATE_LENGTH,NUMBER_RECORDS,CREATE_RESULTS:Integer);
+  { Procedure creates and initilizes a file to hold data base records. }
+   
+   var NO_BLOCKS : Integer;
+       buffer: packed array[0..1023] of 0..255;
+       off_set: integer;
+       check: integer;
+
+   begin {CREATE}
+    CREATE_RESULTS:=1;
+    fillchar(IO_REC.A[0],sizeof(IO_REC),chr(00));
+    NO_BLOCKS:=NUMBER_RECORDS div (1024 div REC_LEN)+1;
+    (*$i-*)
+    rewrite(data_file,CREATE_NAME);
+    if IO_RESULT<>0 then exit(create);
+    fillchar(IO_REC.A[4],CREATE_LENGTH-5,' ');
+    IO_REC.A[0]:=CREATE_LENGTH;
+    IO_REC.A[1]:=16;
+    IO_REC.A[2]:=32;
+    IO_REC.A[3]:=126;
+    IO_REC.A[CREATE_LENGTH-1]:=42;
+    IO_REC.A[CREATE_LENGTH]:=13;
+    fillchar(BUFFER[0],sizeof(BUFFER),chr(00));
+    check:=blockwrite(data_file,buffer,2); (* text file prefix *)
+    if CHECK<>2 then begin
+      close(data_file);
+      exit(create);
+    end;
+    off_set:=0;
+    while off_set+create_length <= 1023 do begin
+      moveleft(io_rec.a[1],buffer[off_set],create_length);
+      off_set:=off_set+create_length;
+    end;
+    index:=1;
+    while index <= no_blocks do begin
+      check:=blockwrite(data_file,buffer,2);
+      if check<>2 then begin
+        close(data_file);
+        exit(create);
+      end;
+      index:=index+1;
+    end;  (* while *)
+    (*$i+*)
+    close(data_file,LOCK);
+    CREATE_RESULTS:=0;
+   end; {CREATE}
+
+  Procedure GET_DATA_FILE;
+  { Procedure checks for data base data file.  If no data file exist
+           then the operator can create one. }
+   
+   var
+     RIGHT: BOOLEAN;
+   begin {GET DATA FILE}
+   {$I-}
+    reset(DATA_FILE,DATA_NAME);
+   {$I+}
+    if IO_RESULTS <> 0
+      then
+       begin
+        ERASE_EOL(0,MAX_ROW);
+        write('Create new data base Y/N ? Y');
+        gotoxy(27,MAX_ROW);
+        read(Keyboard,CH);
+        if CH in [' ','Y','y']
+          then 
+           begin {make the file}
+            ERASE_EOL(0,MAX_ROW);
+            write('Maximum number of records ?');
+            REPEAT
+              FIELD_ROW:=MAX_ROW; FIELD_COL:=29;
+              FIELD_FLD:='0'; FIELD_SKIP:=FALSE;
+              FIELD(FIELD_ROW,FIELD_COL,ERROW,ERRCOL,FIELD_LEN,FIELD_MIN,EXXIT,
+                FIELD_JUS,FIELD_NA,FIELD_FLD,FIELD_SKIP);
+              RIGHT:=INTVALUE(FIELD_FLD,MAX_RECORDS); { MAR 11 }
+              IF NOT RIGHT THEN 
+                MESSAGE(MAX_ROW,40,'ERROR: Incorrect number of records',TRUE);
+            UNTIL RIGHT;
+            MESSAGE(MAX_ROW,40,'STATUS: Creating Data File',False);
+            CREATE(DATA_NAME,REC_LEN,MAX_RECORDS,RESULTS);
+            if RESULTS<>0
+              then
+               begin
+                MESSAGE(MAX_ROW,40,'ERROR: Unable to create text data file',
+                  True);
+                DATA_RESULTS:=1;
+               end
+             else DATA_RESULTS:=0;
+            end
+           else DATA_RESULTS:=1;
+         end
+       else
+         begin
+          close(DATA_FILE);
+          DATA_RESULTS:=0;
+         end;
+  end; {GET DATA FILE}
+
+begin  {GET_DATA_BASE}  
+  DISPLAY_PROMPTS(GET_PROMPTS,0,0,0,23);
+  DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+  repeat
+    MESSAGE(4,0,
+      'Copyright (C) 1981 by Texas Instruments Corporate Engineering Center',
+      false);
+    MESSAGE(5,0,
+     'All rights reserved as per the Computer Software Copyright Act of 1980',
+      false);
+    MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',False);
+    SCREEN(GET_FIELDS,true,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+    if EXIT_KEY=ESC_KEY then exit(MAINTAIN);
+    VOLUME:=GET_FIELDS[FIND('VOL',GET_FIELDS)].S_FLD;
+    EATSPR(VOLUME);
+    NAME:=GET_FIELDS[FIND('NAME',GET_FIELDS)].S_FLD;
+    EATSPL(NAME);
+    DB_NAME:=concat(VOLUME,':',NAME);
+    DEFI_NAME:=concat(DB_NAME,'.SCRN');
+    DATA_NAME:=concat(DB_NAME,'.TEXT');
+    DATA_RESULTS:=0;
+    GET_FILE(DEFI_NAME,MAINT_FIELDS,MAINT_PROMPTS,RESULTS);
+    if RESULTS=0
+      then
+        begin
+          RECORD_LENGTH(MAINT_FIELDS);
+          if REC_LEN>255 then begin
+            message(MAX_ROW,40,'ERROR: Defined screen is too long',true);
+            DATA_RESULTS:=1;
+          end;
+{         if CALCULATIONS then begin
+            message(MAX_ROW,40,'ERROR: Calculated fields in screen',true);
+            DATA_RESULTS:=1;
+          end; }
+          if DATA_RESULTS=0 THEN GET_DATA_FILE;
+        end
+      else begin
+        MESSAGE(MAX_ROW,40,'ERROR: Unknown Data Base',True);
+        DATA_RESULTS:=1;
+      end;
+    if DATA_RESULTS=0  then exit(GET_DATA_BASE);
+  until False;
+end;   {GET_DATA_BASE}
+
+  {$P}
+{                                                                              }
+{    Perform the calculations.                                                 }
+{                                                                              }
+
+
+SEGMENT PROCEDURE DO_CALC ;
+
+VAR
+  RESULT                : INTEGER ;
+  CALC                  : T_CALC ;
+  TEMP_STRING           : STRING ;
+  OUTANS                : STRING ;
+  DONE                  : BOOLEAN ;
+  OVERFLOW              : BOOLEAN ;
+  UNDEFINED             : BOOLEAN ;
+  INDX                  : INTEGER ;
+
+PROCEDURE ERR(NUM: INTEGER);
+VAR 
+  ERR_TEXT              : STRING ;
+  C                     : CHAR ;
+BEGIN
+  CASE NUM OF
+    1: ERR_TEXT := 'ERROR: OVERFLOW occurred' ;
+    2: ERR_TEXT := 'WARNING: Undefined Field in Calculation';
+    3: ERR_TEXT := 'ERROR: Calculation Value too large';
+  END;
+  message(max_row-1,40,err_text,true);
+  erase_eol(40,max_row);
+  write('Press SPACE to continue');
+  read(keyboard,c);
+  if eof(keyboard) then reset(keyboard);
+  erase_eol(40,max_row-1);
+  erase_eol(40,max_row);
+END;   (* of err *)
+
+PROCEDURE DOIT ;
+VAR
+  ANSWER                : THREEWORDINT ;
+  CURRENT_CALC_LINE     : INTEGER ;
+  C_STRING              : STRING ;
+  RESULT                : INTEGER ;
+
+PROCEDURE DOMATH;
+TYPE
+     TOKENKINDS = (CONSTV, EOFV, LPARENV, MINUSV, PLUSV, UPARROWV, RPARENV,
+                   VALUEV, SLASHV, STARV, EQV);
+VAR
+     SCANRSLT: THREEWORDINT;
+     TOKENTYPE: TOKENKINDS;
+     PT: INTEGER;
+     
+PROCEDURE SCANNER;
+VAR
+     NUM: INTEGER;
+     CH: CHAR;
+
+
+PROCEDURE GETVALUE;
+VAR
+  REQ_INT               : INTEGER ;
+  VALSTR                : STRING;
+  ENDOFNUM              : INTEGER ;
+  N                     : INTEGER;
+  CH                    : CHAR;
+  NUMERIC               : BOOLEAN;
+BEGIN
+(*  get name or number value *)
+  NUMERIC:=TRUE;
+  ENDOFNUM := PT + 1;
+  WHILE NOT (C_STRING[ENDOFNUM] IN OPERATORS) DO
+    ENDOFNUM:=ENDOFNUM+1;
+  VALSTR:=COPY(C_STRING,PT,ENDOFNUM-PT);
+  PT := ENDOFNUM;
+
+(* determine if a constant *)
+  for n:=1 to length(valstr) do
+    if not((valstr[n] in digitset) or (valstr[n]='.'))
+      then numeric:=false;
+
+(* get value of number *)
+  IF NUMERIC THEN BEGIN
+    VALUE( FALSE, VALSTR, SCANRSLT, REQ_INT ) ;
+    TOKENTYPE := CONSTV;
+  END
+  ELSE BEGIN  (* NOT NUMERIC *)
+    N:=FIND(VALSTR,MAINT_FIELDS);
+    IF N<>0 THEN 
+      VALUE(FALSE,MAINT_FIELDS[N].S_FLD,SCANRSLT,REQ_INT)
+    ELSE BEGIN
+      VALUE(FALSE,'0',SCANRSLT,REQ_INT);
+      UNDEFINED:=TRUE;
+    END;
+    TOKENTYPE:=VALUEV;
+  END;  (* NOT NUMERIC *)
+END;   (* getvalue *)
+
+BEGIN  (* SCANNER *)
+  IF C_STRING[ PT ] = ' ' 
+    THEN
+      REPEAT 
+        PT := PT + 1 
+      UNTIL C_STRING[ PT ] <> ' '; (* get non blank *)
+  CH := C_STRING[ PT ];
+  IF NOT (CH IN OPERATORS)
+    THEN
+      GETVALUE
+    ELSE
+      BEGIN
+        CASE CH OF
+          '+': TOKENTYPE:=PLUSV;
+          '-': TOKENTYPE:=MINUSV;
+          '*': TOKENTYPE:=STARV;
+          '/': TOKENTYPE:=SLASHV;
+          '^': TOKENTYPE:=UPARROWV;
+          '(': TOKENTYPE:=LPARENV;
+          ')': TOKENTYPE:=RPARENV;
+          '#': TOKENTYPE:=EOFV;
+          '=': TOKENTYPE:=EQV
+        END;
+        PT := PT + 1
+      END;
+  IF TOKENTYPE = EOFV THEN PT := PT - 1;
+END;   (* of scanner *)
+
+PROCEDURE EXPRESSION( VAR ANS: THREEWORDINT );
+VAR
+     SAVEOP: CHAR;
+     CHANGESIGN: BOOLEAN;
+     RESULT: THREEWORDINT;
+
+PROCEDURE PARENEXPRESSION( VAR ANS: THREEWORDINT );
+BEGIN
+  SCANNER;            (* throw away left paren  *)
+  EXPRESSION( ANS );
+  SCANNER             (* throw away right paren *)
+END;    (* of parenexpression *)
+
+PROCEDURE PRIMARY( VAR ANS: THREEWORDINT );
+BEGIN   (* PRIMARY *)
+  IF TOKENTYPE IN [ CONSTV, VALUEV ] THEN
+    BEGIN
+      { The following statement is used to remove the requirement that
+        DECOPS be included in this segment.  The original line of code follows
+        and is commented out. }
+      IF NOT FIGURE( ANS,LONGINTZERO,SCANRSLT,'+') THEN ERR(1);
+     {ANS := SCANRSLT;}
+      SCANNER
+    END
+  ELSE
+    IF TOKENTYPE = LPARENV THEN PARENEXPRESSION( ANS )
+END;    (* of primary *)
+
+PROCEDURE FACTOR( VAR ANS: THREEWORDINT );
+VAR
+     RESULT: THREEWORDINT;
+
+BEGIN   (* FACTOR *)
+  PRIMARY( ANS );
+  WHILE TOKENTYPE = UPARROWV DO
+    BEGIN
+      SCANNER;
+      PRIMARY( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,'^') THEN ERR(1);
+    END
+END;    (* of factor *)
+
+PROCEDURE TERM( VAR ANS: THREEWORDINT );
+VAR
+     SAVEOP: CHAR;
+     RESULT: THREEWORDINT;
+
+BEGIN   (* TERM *)
+  FACTOR( ANS );
+  WHILE TOKENTYPE IN [ STARV, SLASHV ] DO
+    BEGIN
+      IF TOKENTYPE = STARV THEN SAVEOP := '*' ELSE SAVEOP := '/';
+      SCANNER;
+      FACTOR( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,SAVEOP) THEN ERR(1);
+    END
+END;    (* of term *)
+
+BEGIN   (* EXPRESSION *)
+  IF TOKENTYPE IN [ PLUSV, MINUSV ] THEN
+    BEGIN
+      CHANGESIGN := TOKENTYPE = MINUSV;
+      SCANNER
+    END
+  ELSE CHANGESIGN := FALSE;
+  TERM( ANS );
+  IF CHANGESIGN THEN
+    IF FIGURE(ANS,LONGINTZERO,ANS,'-') THEN;  (* do the unary minus *)
+  WHILE TOKENTYPE IN [ PLUSV, MINUSV ] DO
+    BEGIN
+      IF TOKENTYPE = PLUSV THEN SAVEOP := '+' ELSE SAVEOP := '-';
+      SCANNER;
+      TERM( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,SAVEOP) THEN ERR(1);
+    END
+END;   (* of expression *)
+
+
+BEGIN  (* DOMATH *)
+  PT := 1;
+  SCANNER;
+  EXPRESSION( ANSWER );
+  NUMTOSTR(OUTANS,ANSWER,MAXWHOLE,MAXFRAC); { MAR 9 }
+END;   (* of domath *)
+
+BEGIN
+
+
+    EATSPR( CALC.calc_text ) ;
+    c_string:=concat(calc.calc_text,'#');
+    DOMATH;
+
+END;   (* of doit *)
+
+{------------------------------------------------------------------------------}
+
+
+BEGIN  { get the calculation string }
+
+  done:=false;
+  overflow:=false;
+  undefined:=false;
+  indx:=1;
+  while (not done) and (indx <= screen_fields) do
+    with maint_fields[indx] do begin
+      if s_row=end_screen then done:=true
+      else
+        if s_typ in ['C','c'] then begin
+          calc.calc_text:=s_def;
+          (*$r-*)
+          s_fld[0]:=chr(s_len);
+          (*$r+*)
+          doit;
+          eatspl(outans); eatspr(outans);
+          (*$r-*)
+          
+          (* remove trailing blanks *)
+          while outans[length(outans)]='0' do
+            delete(outans,length(outans),1);
+          if outans[length(outans)]='.' 
+            then delete(outans,length(outans),1);
+          
+          result:=pos('.',outans); {Sep 22}
+          if length(outans)>s_len then  {truncate if necessary Sep 22}
+            if (result>0) and (result-1<=s_len) then begin
+              while length(outans)>s_len do delete(outans,length(outans),1);
+              if outans[length(outans)]='.'
+                then delete(outans,length(outans),1);
+            end
+            else begin
+              outans:='0';
+              overflow:=true;
+            end;
+          fillchar(s_fld[1],s_len,' ');
+          if s_jus in ['R','r'] then
+            moveleft(outans[1],s_fld[s_len-length(outans)+1],length(outans))
+          else
+            moveleft(outans[1],s_fld[1],length(outans));
+          (*$r+*)
+        end;  (* if s_type *)
+      indx:=indx+1;
+    end;
+  if overflow then err(3);
+  if undefined then err(2);
+END;  {docalc}
+  
+
+Segment Procedure ACCESS_DATA_BASE;
+ { Procedure performs all the adds, examines and deletes for the data base }
+  
+ var
+   BUFFER : Packed array[0..511] of 0..255;
+   DEFAULT_REC : STRING255;
+
+Segment Procedure READ_WRITE(RW_COMMAND: Char; var REC_NO,REC_LEN,
+                                                     IO_RET_CODE:Integer);
+  
+  var IO_BLOCKS,START_POSITION,TWO_BLOCK,START_REC,BYTE_TWO_BLOCK,
+      BLOCK_NO,REC_NUM,FIRST_MOV_LEN,CHAR_OFFSET: Integer;
+  
+  begin {READ_WRITE}
+ {$I-}
+   IO_RET_CODE:=-1;
+   REC_NUM:=REC_NO-1;
+   if REC_NUM<0 then REC_NUM:=0;
+   TWO_BLOCK:=REC_NUM div (1023 div REC_LEN);  (* 1024 correction Dec 5 1980 *)
+   START_REC:=TWO_BLOCK*(1023 div REC_LEN);  (* 1024 correction Dec 5 1980 *)
+   BYTE_TWO_BLOCK:=(REC_NUM-START_REC)*REC_LEN;
+   BLOCK_NO:=(TWO_BLOCK*2)+2;
+   if BYTE_TWO_BLOCK>=512  (* = correction Dec 5 1980 *)
+     then
+      begin
+       BLOCK_NO:=BLOCK_NO+1;
+       CHAR_OFFSET:=BYTE_TWO_BLOCK-512;
+      end
+     else CHAR_OFFSET:=BYTE_TWO_BLOCK;
+   if CHAR_OFFSET+REC_LEN>512
+     then
+      begin
+       if CURRENT_BLOCK<>BLOCK_NO
+         then
+          begin
+           IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end;
+       FIRST_MOV_LEN:=512-CHAR_OFFSET;
+       if RW_COMMAND='W'
+         then
+           begin
+            moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],FIRST_MOV_LEN);
+            IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+            if IO_BLOCKS=0 then exit(READ_WRITE);
+           end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],FIRST_MOV_LEN);
+       BLOCK_NO:=BLOCK_NO+1;
+       IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+       if IO_BLOCKS=0 then exit(READ_WRITE);
+       if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[FIRST_MOV_LEN+1],BUFFER[0],REC_LEN-FIRST_MOV_LEN);
+           IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end
+         else moveleft(BUFFER[0],IO_REC.A[FIRST_MOV_LEN+1],REC_LEN-FIRST_MOV_LEN);
+      end
+    else
+     begin
+      if CURRENT_BLOCK<>BLOCK_NO
+        then
+         begin
+          IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+          if IO_BLOCKS=0 then exit(READ_WRITE);
+         end;
+      if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],REC_LEN);
+           IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],REC_LEN);
+     end;
+    CURRENT_BLOCK:=BLOCK_NO;
+    if IO_REC.A[3]=0 then exit(READ_WRITE);
+    IO_RET_CODE:=0;
+    IO_REC.A[0]:=REC_LEN;
+  {$I+}
+  end;  {READ_WRITE}
+
+  Procedure DISPLAY_RECNO;
+  { Procedure displays the current record number on the screen. }
+  
+    begin {DISPLAY RECNO}
+      int_to_str(DB_RECNO,STR_RECNO);
+     if length(STR_RECNO)<5 then 
+       STR_RECNO:=concat(STR_RECNO,copy(UNDERLINE,1,5-length(STR_RECNO)));
+     gotoxy(7,MAX_ROW-1);
+     write(STR_RECNO);
+    end; {DISPLAY RECNO}
+
+  Procedure LOAD_SCREEN(LOAD_COMMAND :Char; var RECORD_STRING: STRING255);
+  { Procedure load the screen array from a record obtained from the disk 
+       file. }
+   
+   var LOAD_INDEX,T_INDEX : Integer;
+   
+   begin {LOAD_SCREEN}
+    COPY_INDEX := 4;
+    LOAD_INDEX:=1;
+    while LOAD_INDEX <= NUM_FIELDS  do
+     with MAINT_FIELDS[LOAD_INDEX] do
+      begin
+       COPY_LENGTH:=S_LEN;
+       if (LOAD_COMMAND = 'A') or
+          ((LOAD_COMMAND = 'D') and (S_ID = COPY(S_DEF,2,LENGTH(S_DEF)-2)))
+         then S_FLD:=copy(RECORD_STRING,COPY_INDEX,COPY_LENGTH)
+         else
+          begin 
+            IF (S_DEF = '') OR (S_DEF = COPY(UNDERLINE,1,1))
+              THEN
+               BEGIN
+                 S_FLD := ' ';
+                 FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX);
+               END
+              ELSE  { s_def<>''  Mar 12 }
+                if s_def[1]<>'[' then begin
+                  s_fld:=' ';
+                  FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX)
+                end
+                else begin { s_def[1]='[' }
+                  t_index:=find(copy(s_def,2,length(s_def)-2),maint_fields);
+                  if t_index=0 then s_fld:=s_def
+                    else s_fld:=maint_fields[t_index].s_fld;
+                end;
+          end;
+        COPY_INDEX:=COPY_INDEX + COPY_LENGTH;
+        LOAD_INDEX:=LOAD_INDEX + 1;
+      end; {with/while}
+   end; {LOAD SCREEN}
+
+  Procedure BUILD_RECORD;
+  { Procedure builds records to be placed on the disk. }
+  
+   begin {BUILD RECORD}
+    IO_REC.A[0]:=3;  
+    for INDEX:=1 to NUM_FIELDS do  { Jan 5 To correct value range error }
+       IO_REC.B:=concat(IO_REC.B,MAINT_FIELDS[INDEX].S_FLD);
+    (*get rid of leftover low-intensity underscores *)
+    for index:=1 to length(io_rec.b) do 
+      if io_rec.a[index]=223 then io_rec.a[index]:=32;  (* blank *)
+    IO_REC.A[0]:=REC_LEN;
+    IO_REC.A[1]:=16; (* dle *)
+    IO_REC.A[2]:=32; (* space *)
+    IO_REC.A[3]:=42; (* * *)
+    IO_REC.A[REC_LEN-1]:=42;
+    IO_REC.A[REC_LEN]:=13; (* carriage return *)
+   end; {BUILD RECORD}
+  
+Procedure ADD;
+  { Procdure finds the first next blank record and allows the operator
+       to add a new record. }
+    
+    var 
+      BLANK_INDEX:Integer;
+      
+    begin
+      ERASE_EOL(0,MAX_ROW);
+      write('Add Mode, <ENTER> to Add, <ESC> to quit');
+      for BLANK_INDEX := 1 to 255 do  insert(' ',DEFAULT_REC,BLANK_INDEX);
+      repeat
+        repeat
+          (* file max=32767 records  Oct 30 *)
+          if db_recno<0 then begin
+            ERASE_EOL(34,MAX_ROW);
+            MESSAGE(MAX_ROW,40,'ERROR: Unable to find blank record',True);
+            db_recno:=max_int;
+            exit(ADD);
+          end;
+          READ_WRITE('R',DB_RECNO,REC_LEN,RESULTS);
+          if RESULTS <> 0
+            then 
+              begin 
+                ERASE_EOL(34,MAX_ROW);
+                MESSAGE(MAX_ROW,40,'ERROR: Unable to find blank record',True);
+                exit(ADD);
+              end;
+          DISPLAY_RECNO;
+          DB_RECNO := DB_RECNO + 1;
+        until (IO_REC.A[3] = 0) or (IO_REC.A[3] = 126);   
+        DB_RECNO := DB_RECNO -1;
+        LOAD_SCREEN('D',DEFAULT_REC);
+        DISPLAY_SCREEN(MAINT_FIELDS,0,0,0,23);
+        SCREEN(MAINT_FIELDS,true,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+        if EXIT_KEY=ESC_KEY  then begin
+          ERASE_EOL(0,MAX_ROW);
+          exit(ADD);
+        end;
+        if calculations then begin
+          docalc; { Mar 9 }
+          display_screen(maint_fields,0,0,0,23);
+        end;
+        BUILD_RECORD;
+        READ_WRITE('W',DB_RECNO,REC_LEN,RESULTS);
+        DEFAULT_REC:=IO_REC.B;
+      until False;
+    end;
+  (*xL-*)
+  (* Removed Jan 5
+  Procedure INDEX_SET;
+  { Procedure sets the index on a specific key in the data base. }
+
+    begin
+      MESSAGE(MAX_ROW,40,'ERROR: Inoperative selection',True);
+    end;
+  *)
+  Procedure RECNO;
+  { Procedure allows the operative to set the physical record number in
+     the data base. }
+  
+    begin
+      EXAMINE_FLAG:=False;
+      FIELD_ROW := 22;  FIELD_COL := 7;
+      int_to_str(DB_RECNO,FIELD_FLD);
+      FIELD(FIELD_ROW,FIELD_COL,ERROW,ERRCOL,FIELD_LEN,FIELD_MIN,EXXIT,
+        FIELD_JUS,FIELD_NA,FIELD_FLD,FIELD_SKIP);
+      if not intvalue(field_fld,db_recno) then begin { Mar 11 }
+        message(max_row,40,'ERROR: Incorrect record number',true);
+        exit(recno);
+      end;
+      if DB_RECNO<1 then DB_RECNO:=1;
+      DISPLAY_RECNO;
+    end;
+       
+  Procedure STORE;
+  { Procedure allows operator to store records in the data base. }
+  
+    begin
+      BUILD_RECORD;
+      READ_WRITE('W',DB_RECNO,REC_LEN,RESULTS);
+      if RESULTS = 0  then EXAMINE_FLAG := True
+        else MESSAGE(MAX_ROW,40,'ERROR: Unable to add record',True);
+    end;
+    
+  Procedure EXAMINE;
+  
+  { Procedure allows the operator to examine records in the data base. }
+    
+    begin
+      if EXAMINE_FLAG then 
+        if DB_RECNO<max_int then DB_RECNO:=DB_RECNO+1;
+      DISPLAY_RECNO;
+      READ_WRITE('R',DB_RECNO,REC_LEN,RESULTS);
+      if RESULTS <> 0
+        then begin
+          MESSAGE(MAX_ROW,40,'ERROR: Unable to read record',True);
+          EXAMINE_FLAG:=FALSE;
+        end
+        else
+          begin
+            EXAMINE_FLAG:=True;
+            LOAD_SCREEN('A',IO_REC.B);
+            DISPLAY_SCREEN(MAINT_FIELDS,0,0,0,23);
+          end;
+    end;
+    
+   Procedure DELETE(DISPLAY: boolean);
+  { Procedure allows the operator to delete records from the data base. }
+  
+    begin
+      fillchar(IO_REC.A[0],REC_LEN,' ');
+      IO_REC.A[0] := REC_LEN;
+      IO_REC.A[1] := 16;
+      IO_REC.A[2] := 32;
+      IO_REC.A[3] := 126;
+      IO_REC.A[REC_LEN-1] := 42;
+      IO_REC.A[REC_LEN] := 13;
+      READ_WRITE('W',DB_RECNO,REC_LEN,RESULTS);
+      if RESULTS <> 0
+        then MESSAGE(MAX_ROW,40,'ERROR: Unable to delete record',True)
+        else if DISPLAY then
+          begin
+            LOAD_SCREEN('A',IO_REC.B);
+            DISPLAY_SCREEN(MAINT_FIELDS,0,0,0,23);
+          end;
+      end;
+    
+  Procedure COMPRESS;
+  { Compresses all records to the front of the file }
+  (*$g+*)
+  label 1;
+  
+  var
+    NEXT,BLANK: integer;
+    DONE: boolean;
+    RESULT: integer;
+      
+  begin { compress }
+    message(max_row,40,'Mash in Progress',false);
+    blank:=1;
+    done:=false;
+    repeat { find blank record }
+      read_write('R',blank,rec_len,result);
+      if result<>0 then goto 1;
+      if io_rec.a[3]=ord('~') then done:=true
+      else if blank=max_int then goto 1
+        else blank:=blank+1;
+    until done;
+    next:=blank+1;
+    done:=false;
+    while not done do begin  
+      repeat   { find record }
+        read_write('R',next,rec_len,result);
+        if result<>0 then goto 1;
+        if io_rec.a[3]=ord('*') then done:=true
+        else if next=max_int then goto 1
+        else next:=next+1;
+      until done;
+      read_write('W',blank,rec_len,result);
+      if result<>0 then begin
+        message(max_row,40,'Data file has uncorrectible error!',true);
+        exit(compress);
+      end;
+      done:=false;
+      blank:=blank+1;
+      db_recno:=next;
+      delete(false);
+      if next=max_int then done:=true
+      else next:=next+1;
+    end;  (* while *)
+1:
+    db_recno:=1; { display record 1 }
+    examine_flag:=false;
+    examine;
+    message(max_row,40,'Mash Complete   ',false);
+  (*$g-*)
+  end;  { compress }
+  
+begin  {ACCESS_DATA_BASE}
+      ERASE_EOS(0,0);
+      (*i-*)
+      reset(DATA_FILE,DATA_NAME);
+      if IO_RESULT <> 0
+        then 
+          begin
+            MESSAGE(MAX_ROW,40,'ERROR: Unable to re-open data file',True);
+            exit(MAINTAIN);
+          end;
+      (*i+*)
+      READ_WRITE('R',DB_RECNO,REC_LEN,RESULTS);
+      if RESULTS <> 0
+        then MESSAGE(MAX_ROW,40,'ERROR: Unable to read first record',True)
+        else LOAD_SCREEN('A',IO_REC.B);
+      DISPLAY_PROMPTS(MAINT_PROMPTS,0,0,0,23);
+      DISPLAY_SCREEN(MAINT_FIELDS,0,0,0,23);
+      gotoxy(0,MAX_ROW-1);  writeln(PROMPTLINE);
+      DISPLAY_RECNO;
+      repeat
+        gotoxy(0,MAX_ROW);  write(OPTLINE);
+        read(Keyboard,CH);
+        if CH=ESC_KEY  
+          then exit(MAINTAIN) 
+          else ERASE_EOL(LENGTH(OPTLINE),MAX_ROW);
+        if CH in['a'..'z'] then CH:=chr(ord(CH)+ord('A')-ord('a'));
+        if not (CH IN['S','M','R','A','E','C','D','Q'])
+          then MESSAGE(MAX_ROW,40,'ERROR: Invalid Selection',True)
+          else
+            case CH of
+              'M' :  COMPRESS;
+              'R' :  RECNO;
+              'S' :  STORE;
+              'A' :  ADD;
+              'E' :  EXAMINE;
+              'C' :  BEGIN  { Mar 9 }
+                      SCREEN(MAINT_FIELDS,true,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+                      if calculations then begin  { Mar 11 }
+                        docalc;
+                        display_screen(maint_fields,0,0,0,23);
+                      end;
+                     END;
+              'D' :  DELETE(true);
+              'Q' :  exit(ACCESS_DATA_BASE);
+             end;
+      until False;
+    end;   {ACCESS_DATA_BASE}
+
+Procedure FORMAT_RECNO(var RECNO_FIELD :STRING5);
+  var RECNO_INDEX: Integer;
+  begin {FORMAT RECNO}
+   for RECNO_INDEX:=1 to length(RECNO_FIELD) do
+    if RECNO_FIELD[RECNO_INDEX] in ['+','-','.']
+      then RECNO_FIELD[RECNO_INDEX]:=' ';
+   RECNO_INDEX:=pos(' ',RECNO_FIELD);
+   if RECNO_INDEX=0 then RECNO_INDEX:=length(RECNO_FIELD)
+     else RECNO_INDEX:=RECNO_INDEX-1;
+   if RECNO_INDEX=0 then RECNO_FIELD:='1'
+     else RECNO_FIELD:=copy(RECNO_FIELD,1,RECNO_INDEX);
+  end; {FORMAT RECNO}
+    
+  Procedure BELL;
+    begin {BELL}
+      write(ALARM_BELL);
+    end; {BELL}
+    
+  Procedure RECORD_LENGTH{var S_ARRAY :SCREEN_ARR};
+  { Function to find the length of the record defined by the data base
+       definition.}
+  { For the first release this will also check to see if there are any 
+       fields defined as calculated.  These will be marked as in error. }
+   var
+     DONE: boolean; { Jan 5 To correct end_screen problem }
+
+   begin {RECORD LENGTH}
+    REC_LEN:=0;
+    DONE:=false; { Jan 5 }
+    INDEX:=1;
+    CALCULATIONS:=false;
+    while not DONE do 
+      if MAINT_FIELDS[INDEX].S_ROW=END_SCREEN then DONE:=true 
+      else begin
+        REC_LEN:=REC_LEN+MAINT_FIELDS[INDEX].S_LEN;
+        if MAINT_FIELDS[INDEX].S_TYP IN ['C','c']
+          then CALCULATIONS:=true;
+        DONE := INDEX = SCREEN_FIELDS;
+        INDEX:=INDEX+1;
+      end;
+    REC_LEN:=REC_LEN+5;
+    NUM_FIELDS:=INDEX-1; { Jan 5/Mar 12 }
+   end; {RECORD LENGTH}
+  
+  Procedure MESSAGE{M_ROW,M_COL :Integer; MSG :String; DING: Boolean};
+  { Procedure displays messages at the message row and column. }
+  
+    begin {MESSAGE}
+      gotoxy(M_COL,M_ROW);  write(MSG);
+      if DING then write(ALARM_BELL);
+    end; {MESSAGE}
+  
+  Procedure EAT_SPACES(var TEMP :String; LEFT_EAT,RIGHT_EAT :Boolean);
+  { Procedure to remove the spaces from either or both sides of a string. }
+  
+    begin {EAT SPACES}
+     if LEFT_EAT then EATSPL(TEMP);
+     if RIGHT_EAT then EATSPR(TEMP);
+    end; {EAT SPACES}
+    
+  
+begin  {MAINTAIN}
+  INITIALIZE;
+  GET_DATA_BASE;
+  ACCESS_DATA_BASE;
+  close(DATA_FILE,lock);
+end.   {MAINTAIN}
+
+
+

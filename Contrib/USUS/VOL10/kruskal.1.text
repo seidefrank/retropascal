@@ -1,0 +1,347 @@
+(* included from kruskal.text*)
+
+procedure UNION(I,J:integer);
+(************************************************************************ 
+*                                                                       * 
+*                                                                       * 
+*  This procedure takes two disjointed sets and joins them.  procedure  *   
+*  FIND must be used to find the parent nodes for the disjoined sets.   *
+*  Each parent or root node "parent value" has a negative number which  * 
+*  represents the number of elements in that set.                       *
+*                                                                       * 
+*  For example if we have an element J calling FIND(J) will return      * 
+*  the value of the root node (i.e. which node in the array is the root *
+*  node for the set in J is contained).  The array "PARENT" is used to  *
+*  indicate which elements are in which sets.  If I,J,K,L,M are all     * 
+*  elements in "X" such that X={I,J,K,L,M,...} then PARENT(I),          *
+*  PARENT(J), PARENT(K), etc will all have the same value X.  PARENT(X) * 
+*  will have a negative number which indicates the number of set        *
+*  elements.                                                            *
+*                                                                       * 
+*  In "procedure KRUSKAL" the array "PARENT" is initialized so that     *
+*  each slot = -1.  (That way each node is in its own set of size 1.)   *
+*  The first line in "UNION" determines what the size of the new set    *
+*  will be.                                                             * 
+*                                                                       *
+*  Next the smaller set is determined so that the union may be pre-     * 
+*  formed more efficiently  (shade of a greedy algorithm!!).            *
+*                                                                       * 
+*  Then the smaller set is joined to the larger set by setting the      * 
+*  value of the root node of the smaller set to the location of the     *
+*  root node of the larger set.                                         *
+*                                                                       * 
+*  Last the value of the larger root node is set to the negative value  *
+*  equal to the number of elements in the new set.                      * 
+*                                                                       * 
+*  It should be noted that another way of doing this which would allow  *
+*  for more efficient determinations of the inclusion of an element in  *
+*  a given set would be to set the value of "PARENT" of each set member *
+*  to the location of the root node.                                    *
+*                                                                       *
+*                                                                       *
+************************************************************************)
+var  X:integer; 
+begin
+  X:=PARENT[I] + PARENT[J];
+  if TRACEOPTION then begin
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER);
+      writeln(PRINTER,'UNION(',I,',',J,')'); 
+      writeln(PRINTER,'PARENT[',I,']=',PARENT[I]);
+      writeln(PRINTER,'PARENT[',J,']=',PARENT[J]);
+      writeln(PRINTER,'X=',X);
+      end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then begin
+      writeln;
+      writeln('UNION(',I,',',J,')');
+      writeln('PARENT[',I,']=',PARENT[I]); 
+      writeln('PARENT[',J,']=',PARENT[J]);
+      writeln('X=',X);
+    end;{if CRT or BOTH}
+  end;{if TRACEOPTION} 
+  if PARENT[I]>PARENT[J] then begin 
+    PARENT[I]:=J;
+    PARENT[J]:=X
+  end 
+  else begin
+    PARENT[J]:=I;
+    PARENT[I]:=X; 
+  end;
+  if TRACEOPTION then begin
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER,'PARENT[',I,']=',PARENT[I]); 
+      writeln(PRINTER,'PARENT[',J,']=',PARENT[J]);
+      writeln(PRINTER,'X=',X);
+    end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then begin
+      writeln('PARENT[',I,']=',PARENT[I]); 
+      writeln('PARENT[',J,']=',PARENT[J]);
+      writeln('X=',X);
+      SPACEBAR;
+      writeln;
+    end;{if CRT or BOTH} 
+  end;{if TRACEOPTION} 
+end;{UNION} 
+
+procedure FIND(I:integer;var L:integer); 
+{************************************************************************ 
+*                                                                       * 
+*  This procedure uses the technique of "collasping" the tree to the    *
+*  root node.  In plain english since the value of all roots nodes is   *
+*  <0, it examines the value of each parent until it finds a negative   * 
+*  value and thus the root node of the element in question has been     * 
+*  found.                                                               *
+*                                                                       * 
+*  The most important part of the procedure is the first while loop.    *
+*  A quick examination will reveal the loop repeats until PARENT(J)<0   *
+*  at which time the loop is terminated an "J" is the value of the      * 
+*  location of the root node of the set/element.                        *
+*                                                                       *
+*  The second while loop sets the value of PARENT(<element>) to the     * 
+*  location of the set root for all elements in the set above element   *
+*  "J" to the location of the root node.  (see comments for "UNION")    *
+*                                                                       * 
+************************************************************************}
+var J,K,TEMP:integer; 
+begin
+  if TRACEOPTION and (HARDCOPY or BOTH) then write(PRINTER,'FIND(',I,')='); 
+  if TRACEOPTION and (CRT or BOTH) then write('FIND(',I,')=');
+  J:=I;
+  while PARENT[J]>0 do J:=PARENT[J];
+  K:=I;
+  while K<>J do begin
+    TEMP:=PARENT[K];
+    PARENT[K]:=J;
+    K:=TEMP;
+  end;{while}
+  L:=J;
+  if TRACEOPTION then begin
+    if HARDCOPY or BOTH then writeln(PRINTER,L); 
+    if CRT or BOTH then writeln(L);
+  end;{if TRACEOPTION}
+end;{FIND} 
+
+procedure ADJUST(I,ARRAYSIZE:integer);
+{************************************************************************
+*                                                                       * 
+*  This along with HEAPIFY produces a low to high HEAP                  *
+*                                                                       * 
+************************************************************************}
+label 1;
+var  J:integer;
+     ITEM:PRICE; 
+begin 
+  J:=2*I;
+  if TRACEOPTION then begin
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER,'ADJUST(',I,',',ARRAYSIZE,')'); 
+      writeln(PRINTER,'J=',J,'   ARRAYSIZE=',ARRAYSIZE); 
+    end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then begin
+      writeln('ADJUST(',I,',',ARRAYSIZE,')');
+      writeln('J=',J,'   ARRAYSIZE=',ARRAYSIZE); 
+      {SPACEBAR;}
+      writeln;
+    end;{if CRT or BOTH} 
+  end;{if TRACEOPTION} 
+  ITEM:=COST[I]; 
+  while (J<=ARRAYSIZE) do begin
+    if (J<ARRAYSIZE) and (COST[J].HOWMUCH>COST[J+1].HOWMUCH) then J:=J+1;
+    if ITEM.HOWMUCH >=COST[J].HOWMUCH then begin
+      COST[J div 2]:=COST[J];
+      J:=J*2;
+    end {if}
+    else goto 1 
+  end;{while} 
+1:COST[J div 2]:=ITEM;
+end;{ADJUST}
+
+procedure HEAPIFY(ARRAYSIZE:integer);
+var  I:integer;
+begin
+  if HARDCOPY or BOTH then begin
+    writeln(PRINTER);
+    writeln(PRINTER,'HEAPIFY(',ARRAYSIZE,')');
+    writeln(PRINTER);
+  end;
+  if CRT or BOTH then begin
+    writeln;
+    writeln('HEAPIFY(',ARRAYSIZE,')'); 
+    SPACEBAR;
+    writeln;
+  end; 
+  for I:=((ARRAYSIZE*ARRAYSIZE) div 2) downto 1 do
+    ADJUST(I,ARRAYSIZE*ARRAYSIZE);
+end;{HEAPIFY}
+
+procedure PRINTHEAP; 
+var  I:integer;
+begin
+  I:=1;
+  while COST[I].EDGE[1]<>0 do begin
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER,'COST[',I,'].HOWMUCH=',COST[I].HOWMUCH); 
+    end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then begin
+      writeln('COST[',I,'].HOWMUCH=',COST[I].HOWMUCH);
+    end;{if CRT or BOTH}
+    I:=I+1;
+  end;{while}
+  if CRT or BOTH then begin
+    SPACEBAR;
+    writeln;
+  end;{if CRT or BOTH}
+  if HARDCOPY or BOTH then begin 
+    writeln(PRINTER);
+  end;{if HARDCOPY or BOTH}
+end;{PRINTHEAP}
+
+procedure KRUSKAL(var COST:A1;ARRAYSIZE:integer;var T:A2;var MINCOST:integer); 
+var  I,J,K,L,R,U,V:integer; 
+     NODE:PRICE;{this is used rather than COST[I] to ensure it is not
+                   inadvertently changed}
+begin 
+  if TRACEOPTION then PRINTHEAP;
+  HEAPIFY(ARRAYSIZE);
+  if TRACEOPTION then PRINTHEAP;
+  CLEARSCREEN;
+  if DETAIL then EXAMINE;
+  for I:=1 to ARRAYSIZE do PARENT[I]:=-1;
+  I:=0;
+  MINCOST:=0;
+  L:=ARRAYSIZE*ARRAYSIZE;
+  for R:=L downto 2 do begin
+    while (I<ARRAYSIZE-1) and (L<>0) do begin 
+{************************************************************************
+*                                                                       * 
+*  The next three lines remove the edge with the smallest cost, replace *
+*  it with one of infinite value (i.e. one which does not exist), and   * 
+*  then forms a new "low-high" heap with the lowest cost on top.        *
+*                                                                       *
+************************************************************************}
+      NODE:=COST[1]; 
+      COST[1]:=COST[L];
+      if TRACEOPTION then begin
+        CLEARSCREEN;
+        with NODE do begin 
+          if HARDCOPY or BOTH then begin
+            writeln(PRINTER);
+            writeln(PRINTER,'...NODE...');
+            writeln(PRINTER,'EDGE[1] = ',EDGE[1]); 
+            writeln(PRINTER,'EDGE[2] = ',EDGE[2]);
+            writeln(PRINTER,'HOWMUCH = ',HOWMUCH);
+          end;{if HARDCOPY or BOTH}
+          if CRT or BOTH then begin
+            writeln;
+            writeln('...NODE...');
+            writeln('EDGE[1] = ',EDGE[1]);
+            writeln('EDGE[2] = ',EDGE[2]); 
+            writeln('HOWMUCH = ',HOWMUCH);
+            SPACEBAR; 
+            writeln;
+          end;{if CRT or BOTH}
+        end;{with NODE} 
+        PRINTHEAP; 
+      end;{if TRACEOPTION}
+      ADJUST(1,L);
+      if DETAIL then EXAMINE;
+      if TRACEOPTION then PRINTHEAP; 
+      with NODE do begin 
+        {we determine the node ends of the edge}
+        U:=EDGE[1]; 
+        V:=EDGE[2];
+        {we find the root nodes for each end node}
+        FIND(U,J);
+        FIND(V,K); 
+        if J<>K then begin
+        {if J=K then edge is already included in the solution set}
+          I:=I+1; {increments the solution set to the next array slot}
+          {we assign the edge to the solution set}
+          T[I,1]:=U; 
+          T[I,2]:=V;
+          {we compute the cost for the solution to this point}
+          MINCOST:=MINCOST+HOWMUCH; 
+          if TRACEOPTION then begin
+            if HARDCOPY or BOTH then begin
+              writeln(PRINTER,'J=',J,'  K=',K,'  I=',I); 
+              writeln(PRINTER,'T[',I,',1]=',T[I,1]);
+              writeln(PRINTER,'T[',I,',2]=',T[I,2]);
+              writeln(PRINTER,'MINCOST=',MINCOST);
+            end;{if HARDCOPY or BOTH}
+            if CRT or BOTH then begin
+              writeln('J=',J,'  K=',K,'  I=',I);
+              writeln('T[',I,',1]=',T[I,1]);
+              writeln('T[',I,',2]=',T[I,2]);
+              writeln('MINCOST=',MINCOST);
+            end;{if CRT or BOTH}
+          end;{if TRACEOPTION}
+          {we join the nodes into a set}
+          UNION(J,K); 
+        end;{if J<>K}
+      end;{with NODE} 
+    end;{while} 
+  end;{for R}
+  if I<>ARRAYSIZE-1 then begin 
+    CLEARSCREEN;
+    PRINTAT(0,12,'NO SPANNING TREE'); 
+    SPACEBAR;
+    QUIT;
+  end;{if I<>n-1}
+end;{KRUSKAL} 
+
+procedure INITIALIZE;
+var  I:integer;
+begin
+  for I:=1 to 2500 do begin
+    COST[I].PATH:=false;
+    COST[I].EDGE[1]:=0;
+  end;
+end;{INITIALIZE} 
+
+procedure TRACE;
+var  CH:char;
+begin
+  CRT:=false;
+  HARDCOPY:=false;
+  BOTH:=false;
+  CLEARSCREEN; 
+  PRINTAT(0,12,'Do you want to trace the program?  ');
+  if YES then begin
+    TRACEOPTION:=true;
+    PRINTAT(0,14,'Trace program on Printer, CRT or Both?  (P/C/B)  ');
+    CH:=READKEY(['C','B','P','c','b','p']);
+    case CH of
+      'c','C':CRT:=true; 
+      'b','B':BOTH:=true;
+      'p','P':HARDCOPY:=true;
+    end;{case}
+    PRINTAT(0,16,'Trace program in detail?  (Y/N)'  );
+    if YES then DETAIL:=true
+    else DETAIL:=false;
+  end {if YES} 
+  else TRACEOPTION:=false; 
+end;{TRACE}
+
+procedure TITLE; 
+var   S:string;
+      I,J:integer;
+begin 
+  S:='MINIMUM SPAN KRUSKAL'; 
+  PRINTAT(37-length(S) div 2,2,S); 
+  S:='written by';
+  PRINTAT(37-length(S) div 2,3,S); 
+  S:='R. M. Wilson';
+  PRINTAT(37-length(S) div 2,4,S); 
+  S:='Copyright by';
+  PRINTAT(37-length(S) div 2,13,S);
+  S:='HI-COUNTRY DATA SYSTEMS';
+  PRINTAT(37-length(S) div 2,15,S); 
+  S:='P.O. Box 4258';
+  PRINTAT(37-length(S) div 2,16,S); 
+  S:='Woodland Park, CO 80863-4258';
+  PRINTAT(37-length(S) div 2,17,S); 
+  S:='March 1981'; 
+  PRINTAT(37-length(S) div 2,18,S); 
+end; {TITLE} 
+
+

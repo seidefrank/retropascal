@@ -1,0 +1,610 @@
+  FUNCTION INSERTVOLUME(INTUNIT : INTEGER; VID1 : VID; 
+				    CHECK : BOOLEAN) : BOOLEAN;
+   VAR
+    OLDUNIT, NEWUNIT : VID;
+    OK : BOOLEAN;
+  
+  BEGIN { INSERTVOLUME }
+    OLDUNIT := '#  ';
+    IF (INTUNIT DIV 10) = 1 THEN
+      OLDUNIT [2] := '1';
+    OLDUNIT [3] := CHR(ORD('0') + INTUNIT MOD 10);
+    EATSPACES(OLDUNIT);
+    NEWUNIT := OLDUNIT;
+    INSERTVOLUME := TRUE;
+    OK := FALSE;
+    IF CHECK THEN { Check if there's a valid directory on-line }
+      IF VOLSEARCH(VID1,TRUE,GDIR) = INTUNIT THEN
+	OK := TRUE
+      ELSE
+	IF VOLSEARCH(NEWUNIT,TRUE,GDIR) <> 0 THEN
+	  IF NEWUNIT = VID1 THEN  { Valid directory on line }
+	    OK := TRUE;
+    IF NOT OK THEN { Need to insert correct volume }
+      BEGIN
+	IF CHECK THEN
+	  WRITE(OUTPUT,'Put ',VID1,': in unit ',OLDUNIT)
+	ELSE
+	  WRITE(OUTPUT,'Put in ',VID1,':');
+	CLWRITELN('');
+	CLEARLINE;
+	IF SPACEWAIT(TRUE) THEN
+	  INSERTVOLUME := FALSE { User wishes to abort }
+	ELSE
+	  IF CHECK THEN { Check if there's a valid directory on-line }
+	    INSERTVOLUME := (VOLSEARCH(OLDUNIT,TRUE,GDIR) <> 0) AND 
+		    (OLDUNIT = VID1);  { Valid directory on line }
+      END
+  END { INSERTVOLUME };
+  FUNCTION SCANINPUT(GTITLE : STRNG; CHECK : CHCKS;
+			 ERROR,WHERE : ERRANGE) : BOOLEAN;
+  
+  VAR
+    DUMMY : ^INTEGER;
+    GSEGS : INTEGER;
+  
+    PROCEDURE MAKECALL(ERR : ERRANGE; ERRS : ERRORS; SAVETEST : CHECKS);
+    
+    BEGIN
+      SCANINPUT := SAVETEST IN CHECK; { Was GTITLE of an acceptable state }
+      IF NOT (SAVETEST IN CHECK) THEN { If not scaninput is false }
+	IF (GTITLE <> '') AND (ERROR <> 0) THEN
+	  BEGIN
+	    IF GTITLE [1] = ':' THEN
+	      GTITLE := CONCAT(DKVID,GTITLE);
+	    IF GTITLE [1] = '*' THEN
+	      BEGIN
+		DELETE(GTITLE,1,1);
+		IF GTITLE <> '' THEN
+		  IF GTITLE [1] = ':' THEN
+		    DELETE(GTITLE,1,1);
+		GTITLE := CONCAT(SYVID,':',GTITLE)
+	      END;
+	    HOMECURSOR;
+	    CLWRITELN('');
+	    WRITE(OUTPUT,GTITLE,' - '); { Write string in error }
+	    MESSAGES(ERR);		{ Write the state of the string }
+	    IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN { Not a slow terminal }
+	      BEGIN
+		IF ERROR IN ERRS THEN	{ It's appropriate to write out what }
+		  BEGIN			{ state(s) was/were expected }
+		    WRITE(OUTPUT,', ');
+		    MESSAGES(ERROR)
+		  END;
+		IF WHERE <> 0 THEN { Where did the error occur }
+		  IF WHERE < 0 THEN
+		    WRITE(OUTPUT,' <source>')
+		  ELSE
+		    WRITE(OUTPUT,' <destination>')
+	      END;
+	    CLEARLINE
+	  END
+    END;
+      
+      
+  BEGIN { SCANINPUT }
+    EATSPACES(GTITLE); { Remove spaces and non-printable characters }
+    IF SCANTITLE(GTITLE,GVID,GTID,GSEGS,GKIND) THEN { Break up input string }
+      BEGIN
+	MARK(DUMMY);   { Force the reading of a new directory. Kludge }
+		       { for when two disks on-line have the same name }
+	GVID2 := GVID; { Save present GVID. Used in savework }
+	GUNIT := VOLSEARCH(GVID,TRUE,GDIR);	{ Search for proper volume }
+	IF GUNIT = 0 THEN
+	  MAKECALL(9,[80,81,82,83,84],NOVOL)	{ No such volume was on-line }
+	ELSE
+	  IF GDIR = NIL THEN
+	    IF UNITABLE [GUNIT].UISBLKD THEN
+	      MAKECALL(69,[82],BADDIR)		{ Volume was blocked, but no }
+	    ELSE				{ directory was on it }
+	      MAKECALL(78,[80,82,84],UNBLKDVOL) { Volume was not blocked }
+	  ELSE
+	    IF DIRSEARCH(GTID,TRUE,GDIR) <> 0 THEN
+	      MAKECALL(70,[80,81,86],OKFILE)	{ File was found }
+	    ELSE
+	      IF GTID = '' THEN
+		MAKECALL(79,[81,82,83],OKDIR)	{ Volume was blocked & the }
+	      ELSE				{ directory is ok }
+		MAKECALL(10,[80,81,86],BADFILE) { Volume was blocked & ok, but }
+      END					{ the file was not found }
+    ELSE
+      IF GVID = '' THEN
+	MAKECALL(53,[82],BADTITLE) { File name was to long }
+      ELSE
+	MAKECALL(52,[80,81,86],BADTITLE) { Volume name was to long }
+  END { SCANINPUT };
+  
+  
+  FUNCTION SEARCHDIR(MESSAGE : STRNG; VAR GINX : INTEGER;
+				     NODEST, SCREENCLEAR : BOOLEAN) : BOOLEAN;
+   VAR
+    DONE : BOOLEAN;
+  
+    FUNCTION SEARCHFILE(SEARCHTITLE : TID) : BOOLEAN;
+    
+    VAR
+      LENTITLE,LENSTART,LENSTOP : INTEGER;
+      TEMP : TID;
+      
+    BEGIN { SEARCHFILE }
+      NEWSTRING := '';
+      LENTITLE := LENGTH(SEARCHTITLE); { Filename to be checked }
+      LENSTART := LENGTH(STRING1);     { Starting string to be matched }
+      LENSTOP := LENGTH(STRING2);      { Ending string to be matched }
+      SEARCHFILE := FALSE;
+      IF (LENSTART + LENSTOP) <= LENTITLE THEN
+	BEGIN			 { String1 & string2 will not overlap }
+	  TEMP[0] := STRING1[0];
+		  { Set TEMP equal to the first LENSTART char. of SEARCHTITLE }
+	  MOVELEFT(SEARCHTITLE[1],TEMP[1],LENSTART); 
+	  IF TEMP = STRING1 THEN { They match. Everything is o.k. }
+	    BEGIN
+	      TEMP[0] := STRING2[0];
+	      
+	      { Set temp equal to the last lenstop char. of SEATCHTITLE }
+	      MOVELEFT(SEARCHTITLE[LENTITLE - LENSTOP + 1],TEMP[1],LENSTOP);
+	      IF TEMP = STRING2 THEN { They match. Everything is still o.k. }
+		BEGIN
+		  { Set NEWSTRING equal to the string left between }
+		  { START1 $ START2 in SEARCHTITLE }
+		  NEWSTRING := COPY(SEARCHTITLE,LENSTART + 1,
+				      LENTITLE - LENSTART - LENSTOP);
+		  IF LENGTH(NEWSTRING) + LENGTH(STRING3) + LENGTH(STRING4)
+			      > TIDLENG THEN { Resulting string is too long }
+		    NEWSTRING := ''
+		  ELSE
+		    BEGIN   { Create new destination filename }
+		      FILENAM2 := CONCAT(STRING3,NEWSTRING,STRING4);
+		      SEARCHFILE := (FILENAM2 <> '') OR NODEST;
+		      TOWHERE := CONCAT(VOLNAME2,':',FILENAM2)
+		    END
+		END
+	    END
+	END
+    END { SEARCHFILE };
+    
+  
+  BEGIN { SEARCHDIR }
+    DONE := FALSE;
+    SEARCHDIR := TRUE;
+    IF GINX = 0 THEN
+      BEGIN
+	IF SCREENCLEAR THEN
+	  CLEARSCREEN;
+	WRITELN(OUTPUT);
+	FOUND := FALSE;
+	IF SCANINPUT(FROMWHERE,[OKDIR],80,0) THEN
+	  BEGIN
+	    SAVEUNIT := GUNIT;
+	    SAVEVID := GDIR^[0].DVID { For future calls to this routine }
+	  END
+	ELSE
+	  BEGIN { Directory wasn't found leave }
+	    SEARCHDIR := FALSE;
+	    EXIT(SEARCHDIR)
+	  END
+      END;
+    IF INSERTVOLUME(SAVEUNIT,SAVEVID,TRUE) THEN
+      REPEAT
+	GINX := GINX + 1; { Look at the next directory entry }
+	WHILE (NOT DONE) AND (GINX <= GDIR^[0].DNUMFILES) DO
+	  IF SEARCHFILE(GDIR^[GINX].DTID) THEN
+	    DONE := TRUE { File has been found that matches }
+	  ELSE
+	    GINX := GINX+1; { Look at the next file }
+	IF DONE THEN { File was found that matches }
+	  BEGIN
+	    FILENAM1 := GDIR^[GINX].DTID;
+	    FROMWHERE := CONCAT(VOLNAME1,':',FILENAM1); { Set source file name }
+	    FOUND := TRUE;
+	    IF (MESSAGE <> '') AND QUESTION THEN { Confirm operation }
+	      BEGIN
+		IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+		  WRITE(MESSAGE);
+		WRITE(OUTPUT,FILENAM1,' ? ');
+		CH := NGETCHAR(FALSE);
+		IF CH = SYSCOM^.CRTINFO.ALTMODE THEN { User wants to abort }
+		  BEGIN
+		    FOUND := FALSE;
+		    SEARCHDIR := FALSE
+		  END
+		ELSE
+		  IF CH IN ['Y','P'] THEN { User wants to continue operation }
+		    IF CH = 'P' THEN { User wants to send a form-feed to dest. }
+		      BEGIN
+			CH := CHR(12);
+			IF SCANINPUT(TOWHERE,[UNBLKDVOL],0,0) THEN
+			  BEGIN
+			    UNITWRITE(GUNIT,CH,SIZEOF(CH));
+			    IF NOT INSERTVOLUME(SAVEUNIT,SAVEVID,TRUE) THEN
+			      BEGIN
+				FOUND := FALSE;
+				SEARCHDIR := FALSE
+			      END
+			  END
+		      END
+		    ELSE
+		  ELSE
+		    DONE := FALSE { Go on to next file }
+	      END
+	  END
+	ELSE
+	  BEGIN { Completed search through directory }
+	    SEARCHDIR := FALSE;
+	    DONE := TRUE;
+	    IF NOT FOUND THEN { No files matched. Write error message }
+	      IF CHECKRSLT(ORD(INOFILE)) THEN;
+	  END
+      UNTIL DONE
+    ELSE
+      BEGIN
+	FOUND := FALSE;
+	SEARCHDIR := FALSE
+      END
+  END { SEARCHDIR };
+      
+      
+  FUNCTION CHECKFILE(MSG,MESSAGE : SHORTSTRING; DEFAULT : INTEGER; WILD,WHAT :
+	     BOOLEAN; CHECK1 : CHCKS; ERROR1,ERROR2 : ERRANGE) : BOOLEAN;
+  
+  VAR
+    SAVEVID : VID;
+    TEMPSTRING : LONGSTRING;
+    CHECK2 : CHCKS;
+    SAVEUNIT, I, LOCATION : INTEGER;
+    
+    PROCEDURE ERROR (NUMBER : ERRANGE);
+    
+    BEGIN { ERROR }
+      MESSAGES(NUMBER);
+      INSTRING := '';
+      CLEAR;
+      EXIT(CHECKFILE)
+    END { ERROR };
+    
+    
+    FUNCTION LOOK(CH1,CH2 : CHAR) : BOOLEAN;
+    
+    { Check for spacial characters CH1 & CH2 in TEMPSTRING. If either one }
+    { exists LOOK is set to true and LOCOTION is set to the location of the }
+    { character preceding either CH1 or CH2. }
+    
+    BEGIN { LOOK }
+      LOOK := FALSE;
+      I := LENGTH(TEMPSTRING);
+      LOCATION := I;
+      IF I <> 0 THEN
+	BEGIN
+	  LOCATION := SCAN(I, = CH1,TEMPSTRING[1]);
+	  IF LOCATION = I THEN
+	    LOCATION := SCAN(I, = CH2,TEMPSTRING[1]);
+	  LOOK := (LOCATION < I)
+	END
+    END { LOOK };
+    
+    
+    PROCEDURE FINDDELIM(SIZE,MESSAGE : INTEGER; VAR STRIING : STRNG);
+    
+    VAR
+      LERROR : INTEGER;
+      
+    BEGIN { FINDDELIM }
+      IF LOCATION <= (SIZE + 10) THEN
+	STRIING := COPY(TEMPSTRING,1,LOCATION) { For error message }
+      ELSE
+	STRIING := ''; { LOCATION is way too long }
+      IF LOCATION <= SIZE THEN
+	BEGIN
+	  { Delete proper portion of source string }
+	  IF LOCATION < LENGTH(TEMPSTRING) THEN
+	    DELETE(TEMPSTRING,1,LOCATION+1)
+	  ELSE
+	    TEMPSTRING := '';
+	 	  LERROR := 1; { There's an error. Illegal character }
+	  IF SCAN(LOCATION,= '$',STRIING[1]) = LOCATION THEN
+	    IF SCAN(LOCATION,= '=',STRIING[1]) = LOCATION THEN
+	      IF SCAN(LOCATION,= '?',STRIING[1]) = LOCATION THEN
+		LERROR := 0 { Everythings o.k. }
+	END
+      ELSE
+	LERROR := -1; { There's an error. Strings too long }
+      IF LERROR <> 0 THEN { Error condition }
+	BEGIN
+	  IF (NOT SYSCOM^.MISCINFO.SLOWTERM) AND (STRIING <> '') THEN
+	    BEGIN
+	      WRITE(OUTPUT,STRIING); { Write string that's in error }
+	      IF LERROR < 0 THEN
+		WRITE(OUTPUT,'...too long <');
+	      CASE MESSAGE OF
+		1 : MESSAGES(64);
+		2 : MESSAGES(65);    { Write type of string }
+		3 : MESSAGES(66);
+	      END;
+	      IF LERROR < 0 THEN
+		BEGIN
+		  IF MESSAGE = 3 THEN
+		    WRITE(OUTPUT,VIDLENG)
+		  ELSE			    { Write length expected if string }
+		    WRITE(OUTPUT,TIDLENG);  { was too long }
+		  ERROR(68)
+		END
+	      ELSE
+		ERROR(67)	{ Write appropriate error message }
+	    END
+	  ELSE
+	    ERROR(0)
+	END
+    END { FINDDELIM };
+    
+    
+    PROCEDURE FINDVOL(VAR VOLNAME : VID);
+    
+    BEGIN
+      TEMPSTRING := INSTRING;
+      
+      { Search for a comma in TEMPSTRING. If one exists, TEMPSTRING is set }
+      { to the string up to that point & INSTRING is set to the string }
+      { following the comma }
+      IF LOOK(',',',') THEN;
+      TEMPSTRING := COPY(INSTRING,1,LOCATION);
+      IF LOCATION < LENGTH(INSTRING) THEN
+	DELETE(INSTRING,1,LOCATION + 1)
+      ELSE
+	INSTRING := '';
+      
+      IF NOT QUESTION THEN { Check if user wishes to verify operations }
+	QUESTION := SCAN(LENGTH(TEMPSTRING),= '?',
+			     TEMPSTRING[1]) < LENGTH(TEMPSTRING);
+      
+      { Check for volume name in TEMPSTRING }
+      IF LOOK(':',':') THEN
+	FINDDELIM(VIDLENG,3,VOLNAME) { Colon found, preceding is volume name }
+      ELSE
+	IF TEMPSTRING[1] = '*' THEN { Volume refers to booted device }
+	  BEGIN
+	    DELETE(TEMPSTRING,1,1);
+	    VOLNAME := '*'
+	  END
+	ELSE
+	  IF TEMPSTRING [1] = '#' THEN	 { Pound sign, TEMPSTRING }
+	    FINDDELIM(VIDLENG,3,VOLNAME) { is a volume name }
+    END;
+    
+    
+    PROCEDURE FINDWILD(VAR STR1,STR2 : TID);
+    
+    BEGIN
+      { Set scan strings for wildcards }
+      FINDDELIM(TIDLENG,2,STR1);
+      LOCATION := LENGTH(TEMPSTRING);
+      FINDDELIM(TIDLENG,2,STR2);
+      
+      IF (LENGTH(STR2) + LENGTH(STR1)) > TIDLENG THEN
+	BEGIN	 { Combined scan strings are to long }
+	  WRITE(OUTPUT,'Only ',TIDLENG,
+		     ' char. total allowed in a wildcard search');
+	  ERROR(0)
+	END
+    END;
+    
+    
+    PROCEDURE SCANNER;
+    
+      PROCEDURE CHECKSOURCE(I : INTEGER);
+      
+      VAR
+	OK : BOOLEAN;
+      
+      BEGIN
+	OK := FALSE;
+	IF I > 0 THEN { Check to see if the disk was removed }
+	  IF INSERTVOLUME(SAVEUNIT,SAVEVID,TRUE) THEN
+	    I := -1; { The proper disk is now in place }
+	IF I <= 0 THEN
+	 	  { Check source file for proper format }
+	  IF WILDCARD THEN
+	    IF SCANINPUT(FROMWHERE,CHECK2,ERROR2,I) THEN
+	      OK := TRUE
+	    ELSE
+	  ELSE
+	    IF SCANINPUT(FROMWHERE,CHECK1,ERROR1,I) THEN
+	      OK := TRUE;
+	
+	IF NOT OK THEN
+	  ERROR(0) { Wrong disk in drive or bad formatting, abort }
+      END;
+    
+    BEGIN { SCANNER }
+      { For wildcards only. Appropriate state for destination }
+      IF ERROR2 = 0 THEN
+	CHECK2 := []
+      ELSE
+	CHECK2 := [OKDIR];
+      
+      FINDVOL(VOLNAME1); { Find volume name }
+      IF LOOK('=','?') THEN { Check for wildcards }
+	BEGIN
+	  IF WILD THEN
+	    WILDCARD := TRUE { Everythings o.k. }
+	  ELSE
+	    ERROR(40); { Wildcards not allowed }
+	  FINDWILD(STRING1,STRING2) { Set scan strings in for source file }
+	END
+      ELSE
+	FINDDELIM(SHSTRLENG,1,FILENAM1); { Not a wildcard. Set source filename }
+      FROMWHERE := CONCAT(VOLNAME1,':',FILENAM1); { Set source string }
+      
+      { Check out the source string for proper formatting }
+      IF (INSTRING <> '') AND (DEFAULT <= 0) THEN
+	I := -1
+      ELSE
+	I := 0;
+      CHECKSOURCE(I);
+      SAVEUNIT := GUNIT;
+      SAVEVID := GVID;
+      
+      IF DEFAULT <= 0 THEN { Source & Destination strings required or allowed }
+	BEGIN
+	  IF (INSTRING = '') AND (DEFAULT = 0) THEN { Source string required }
+	    BEGIN
+	      WRITE(OUTPUT,MESSAGE);
+	      CLEARLINE;
+	      READLN(INPUT,INSTRING);
+	      EATSPACES(INSTRING); { Remove spaces & non-printable char. }
+	      IF INSTRING = '' THEN { Null input, abort }
+		ERROR(0);
+	      TOUPPER(INSTRING,1,LENGTH(INSTRING)) { Change to upper-case }
+	    END
+	  ELSE
+	    IF INSTRING = '' THEN { Destination string not req. & not present }
+	      BEGIN
+		CHECKFILE := TRUE;
+		EXIT(CHECKFILE)
+	      END;
+	  FINDVOL(VOLNAME2); { Find destination volume name }
+	  IF TEMPSTRING = '$' THEN
+	    BEGIN
+	      { Special case. Destination filename same as source filename }
+	      STRING3 := STRING1; { Copy source scan strings }
+	      STRING4 := STRING2;
+	      FILENAM2 := FILENAM1 { Copy source filename }
+	    END
+	  ELSE
+	    IF LOOK('=','?') THEN { Check for wildcards }
+	      BEGIN
+		IF NOT WILDCARD THEN { Wildcards not allowed, abort }
+		  ERROR(42);
+		FINDWILD(STRING3,STRING4) { Set dest. replacement strings }
+	      END
+	    ELSE
+	      BEGIN
+		IF WILDCARD AND (DEFAULT = 0) THEN
+		  { Special case, wildcard to unblocked volume }
+		  IF NOT SCANINPUT(CONCAT(VOLNAME2,':'),[UNBLKDVOL],0,0) THEN
+		    ERROR(41); { Error wildcard to none wildcard }
+		FINDDELIM(SHSTRLENG,1,FILENAM2) { Set destination filename }
+	      END;
+	  TOWHERE := CONCAT(VOLNAME2,':',FILENAM2); { Set destination string }
+	  CHECKSOURCE(1) { Is the source disk still in the drive }
+	END;
+      CHECKFILE := TRUE
+    END { SCANNER };
+   
+ 
+  BEGIN { CHECKFILE }
+    CLEAR; { Clear most global strings & booleans }
+    CHECKFILE := FALSE;
+    IF INSTRING = '' THEN { Nothing present to process }
+      BEGIN
+	WRITE(OUTPUT,MSG);
+	IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+	  IF WHAT THEN
+	    WRITE(OUTPUT,' what file')
+	  ELSE
+	    WRITE(OUTPUT,' what vol');
+	WRITE(' ? ');
+	CLEARLINE;
+	READLN(INPUT,INSTRING);
+	EATSPACES(INSTRING); { Remove spaces & non-printable characters }
+      END;
+    TOUPPER(INSTRING,1,LENGTH(INSTRING)); { Change to upper-case }
+    IF INSTRING <> '' THEN
+      SCANNER
+  END { CHECKFILE };
+ 
+ 
+  PROCEDURE WHATWORK;
+  
+  BEGIN
+    WITH USERINFO DO
+      BEGIN
+	CLWRITELN('');
+	IF GOTSYM OR GOTCODE THEN { There's a code or text file loaded }
+	  BEGIN
+	    WRITE(OUTPUT,'Workfile is ');
+	    IF WORKTID <> '' THEN
+	      WRITE(OUTPUT,WORKTID)
+	    ELSE
+	      WRITE(OUTPUT,'not named');
+	    IF NOT (SYMSAVED AND CODESAVED) THEN
+	      WRITE(OUTPUT,' (not saved)')
+	  END
+	ELSE
+	  WRITE(OUTPUT,'No workfile');
+	CLEARLINE
+      END
+  END {WHATWORK} ;
+ 
+ 
+  PROCEDURE CLEARWORK;
+  
+  { Used in NEWWORK & GETWORK to clear the workfile }
+  BEGIN
+    WITH USERINFO DO
+      BEGIN
+	GOTSYM := FALSE;
+	GOTCODE := FALSE;
+	WORKTID := '';
+	SYMTID := '';
+	CODETID := ''
+      END
+  END;
+  
+  
+  PROCEDURE NEWWORK(GIVEBLURB: BOOLEAN);
+  
+  BEGIN { NEWWORK }
+    CH := 'Y';
+    WITH USERINFO DO
+      BEGIN
+	IF NOT (SYMSAVED AND CODESAVED) THEN
+	  BEGIN		{ Current workfile hasn't been saved }
+	    WRITE('Throw away current workfile ? ');
+	    CH := NGETCHAR(FALSE)
+	  END
+	ELSE
+	  IF GIVEBLURB THEN
+	    CLWRITELN('');
+	IF CH = 'Y' THEN { Everythings o.k. remove old workfile }
+	  BEGIN
+	    IF NOT SYMSAVED THEN { Text file exists, remove it }
+	      BEGIN
+		GS := '*SYSTEM.WRK.TEXT';
+		FOPEN(GFIB,GS,TRUE,NIL);
+		FCLOSE(GFIB,CPURGE)
+	      END;
+	    IF NOT CODESAVED THEN { Code file exists, remove it }
+	      BEGIN
+		GS := '*SYSTEM.WRK.CODE';
+		FOPEN(GFIB,GS,TRUE,NIL);
+		FCLOSE(GFIB,CPURGE)
+	      END;
+	    IF NOT (SYMSAVED AND CODESAVED) THEN { Remove *SYSTEM.LST.TEXT }
+	      BEGIN
+		GS := '*SYSTEM.LST.TEXT';
+		FOPEN(GFIB,GS,TRUE,NIL);
+		IF GFIB.FISOPEN THEN
+		  FCLOSE(GFIB,CPURGE)
+	      END;
+	    GS := CONCAT('*',WORKTID,'.BACK');
+	    IF SCANINPUT(GS,[OKFILE],0,0) THEN { A .back file exists }
+	      BEGIN
+		WRITE(OUTPUT,'Remove ',WORKTID,'.BACK ? ');
+		IF 'Y' = NGETCHAR(TRUE) THEN { Remove .back file }
+		  BEGIN
+		    FOPEN(GFIB,GS,TRUE,NIL);
+		    FCLOSE(GFIB,CPURGE)
+		  END
+	      END;
+	    SYMSAVED := TRUE;
+	    CODESAVED := TRUE;
+	    IF GIVEBLURB THEN
+	      BEGIN
+		WRITE(OUTPUT,'Workfile cleared');
+		CLEARLINE;
+		CLEARWORK
+	      END
+	  END
+      END
+  END { NEWWORK };
+                                          

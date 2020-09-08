@@ -1,0 +1,63 @@
+SEPARATE UNIT SCREENCONTROL;
+
+  INTERFACE
+
+    PROCEDURE ClearScreen;
+    PROCEDURE EraseEOL;
+    PROCEDURE GoAndClearLine (y: integer);
+    PROCEDURE EraseEOS;
+
+    FUNCTION Yes (Prompt: string) : boolean;
+
+
+  IMPLEMENTATION
+
+PROCEDURE ClearScreen;
+BEGIN
+  Page (Output)
+END;
+
+
+PROCEDURE EraseEOL;
+VAR ch: PACKED ARRAY [0..1] OF integer;
+BEGIN
+  ch [0] := 21;
+  Unitwrite (1,ch,1)
+END;
+
+
+PROCEDURE GoAndClearLine;
+BEGIN
+  Gotoxy (0,y);
+  EraseEOL
+END;
+
+
+PROCEDURE EraseEOS;
+VAR ch: PACKED ARRAY [0..1] OF integer;
+BEGIN
+  ch [0] := 22;
+  Unitwrite (1,ch,1)
+END;
+
+
+FUNCTION Yes { (Prompt: string) : boolean };
+VAR ch: char;
+BEGIN
+  Write (Prompt, ' (Y/N)?  ');
+  REPEAT Read (keyboard, ch) UNTIL (ch IN ['Y', 'y', 'N', 'n']);
+  CASE ch OF
+    'Y', 'y': BEGIN
+                Writeln ('Yes');
+                Yes := true
+              END;
+    'N', 'n': BEGIN
+                Writeln ('No');
+                Yes := false
+              END
+   END {case}
+END;
+
+
+END. (*end of unit*)
+

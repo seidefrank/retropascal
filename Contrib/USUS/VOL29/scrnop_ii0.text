@@ -1,0 +1,269 @@
+{$S+}
+{$I *GLOBAL.II0 }
+
+
+{                       SCREENOPS 
+{
+{                       Version C1
+{
+{  This unit implements a subset of the Softech definition of SCREENOPS for
+{  version II.0 systems.  
+{
+{  WARNING - Not all SCREENOPS functions are currently implemented.
+{
+{  The INTERFACE section of this code is copyrighted by Softech Microsystems.
+{                                                                       }
+{$C (C) Copyright 1982, 1984 by John Dykstra.  All rights reserved.}
+
+
+SEPARATE UNIT screenops;
+  
+  INTERFACE
+  
+
+CONST
+    sc_fill_len = 11;
+    sc_eol = 13;  
+
+TYPE
+    sc_chset        = SET OF CHAR;
+    sc_misc_rec     = PACKED RECORD
+                        height, width : 0..255;
+                        can_break, slow, xy_crt, lc_crt,
+                        can_upscroll, can_downscroll : BOOLEAN;
+                      END;
+    sc_date_rec     = PACKED RECORD
+                        month : 0..12;
+                        day :   0..31;
+                        year :  0..99;
+                      END;
+    sc_info_type    = PACKED RECORD
+                        sc_version : STRING;
+                        sc_date : sc_date_rec;
+                        spec_char : sc_chset; {Characters not to echo}
+                        misc_info : sc_misc_rec;
+                      END;
+    sc_long_string  = STRING[255];
+    sc_scrn_command = (sc_whome, sc_eras_s, sc_erase_eol, sc_clear_lne,
+                       sc_clear_scn, sc_up_cursor, sc_down_cursor,
+                       sc_left_cursor, sc_right_cursor);
+    sc_key_command  = (sc_backspace_key, sc_dc1_key, sc_eof_key, sc_etx_key,
+                       sc_escape_key, sc_del_key, sc_up_key, sc_down_key, 
+                       sc_left_key, sc_right_key, sc_not_legal);
+    sc_choice       = (sc_get, sc_give);
+    sc_window       = PACKED ARRAY [0..0] OF CHAR;
+    sc_tx_port      = RECORD
+                        row, col,             { screen relative}
+                        height, width,        { size OF txport (zero based)}
+                        cur_x, cur_y  : INTEGER;
+                                     {cursor positions relative to the txport }
+                      END;
+                    
+  PROCEDURE sc_use_info(do_what:sc_choice; VAR t_info:sc_info_type);
+  PROCEDURE sc_use_port(do_what:sc_choice; VAR t_port:sc_tx_port);
+  PROCEDURE sc_erase_to_eol(x,line:INTEGER);
+  PROCEDURE sc_left;
+  PROCEDURE sc_right;
+  PROCEDURE sc_up;
+  PROCEDURE sc_down;
+  PROCEDURE sc_getc_ch(VAR ch:CHAR; return_on_match:sc_chset);
+  PROCEDURE sc_clr_screen;
+  PROCEDURE sc_clr_line (y:INTEGER);
+  PROCEDURE sc_home;
+  PROCEDURE sc_eras_eos (x,line:INTEGER);
+  PROCEDURE sc_goto_xy(x, line:INTEGER);
+  PROCEDURE sc_clr_cur_line;
+  FUNCTION  sc_find_x:INTEGER;
+  FUNCTION  sc_find_y:INTEGER;
+  FUNCTION  sc_scrn_has(what:sc_scrn_command):BOOLEAN;
+  FUNCTION  sc_has_key(what:sc_key_command):BOOLEAN;
+  FUNCTION  sc_map_crt_command(VAR k_ch:CHAR):sc_key_command;
+  FUNCTION  sc_prompt(line :sc_long_string; x_cursor,y_cursor,x_pos,
+                       where:INTEGER; return_on_match:sc_chset; 
+                       no_char_back:BOOLEAN; break_char:CHAR):CHAR;
+  FUNCTION sc_check_char(VAR buf:sc_window; VAR buf_index,bytes_left:INTEGER)
+                         :BOOLEAN;
+  FUNCTION space_wait(flush:BOOLEAN):BOOLEAN;
+  PROCEDURE sc_init;
+    
+  IMPLEMENTATION
+  
+  PROCEDURE sc_use_info { do_what:sc_choice; VAR t_info:sc_info_type };
+  
+    BEGIN
+    IF do_what = sc_get THEN
+      BEGIN
+      t_info.sc_version := 'II.0 emulation by John Dykstra';
+      t_info.sc_date := thedate;
+      t_info.spec_char := [];
+      t_info.misc_info.height := 23;
+      t_info.misc_info.width := 79;
+      t_info.misc_info.can_break := FALSE;        {  ?  }
+      t_info.misc_info.slow := FALSE;
+      t_info.misc_info.xy_crt := TRUE;            {  ?  }
+      t_info.misc_info.lc_crt := FALSE;           {  ?  }
+      t_info.misc_info.can_upscroll := TRUE;
+      t_info.misc_info.can_downscroll := TRUE;
+      END;      {  IFEND  }
+    END;
+  
+  
+  PROCEDURE sc_use_port { do_what:sc_choice; VAR t_port:sc_tx_port };
+
+    BEGIN
+    END;
+  
+  
+  PROCEDURE sc_erase_to_eol { x,line:INTEGER };
+
+    BEGIN
+    GOTOXY ( x, line );
+    WRITE ( OUTPUT, syscom ^ .crtctrl. eraseeol );
+    END;
+    
+    
+  PROCEDURE sc_left;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ . crtctrl . backspace );
+    END;
+
+    
+  PROCEDURE sc_right;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ . crtctrl . ndfs );
+    END;
+
+    
+  PROCEDURE sc_up;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ . crtctrl . rlf  );
+    END;
+
+    
+  PROCEDURE sc_down;
+
+    CONST
+      ch_lf = 10;
+    
+    BEGIN
+    WRITE ( OUTPUT, CHR ( ch_lf )  );
+    END;
+
+    
+  PROCEDURE sc_getc_ch { VAR ch:CHAR; return_on_match:sc_chset };
+
+    BEGIN
+    END;
+
+    
+  PROCEDURE sc_clr_screen;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ .crtctrl.clearscreen );
+    END;
+
+    
+  PROCEDURE sc_clr_line  { y:INTEGER };
+
+    BEGIN
+    GOTOXY ( 0, y );
+    WRITE ( OUTPUT, syscom ^ . crtctrl . clearline );
+    END;
+
+    
+  PROCEDURE sc_home;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ . crtctrl . home );
+    END;
+
+    
+  PROCEDURE sc_eras_eos  { x,line:INTEGER };
+
+    BEGIN
+    GOTOXY ( x, line );
+    WRITE ( OUTPUT, syscom ^ . crtctrl . eraseeos );
+    END;
+
+    
+  PROCEDURE sc_goto_xy { x, line:INTEGER };
+
+    BEGIN
+    GOTOXY ( x, line );
+    END;
+
+    
+  PROCEDURE sc_clr_cur_line;
+
+    BEGIN
+    WRITE ( OUTPUT, syscom ^ . crtctrl . clearline );
+    END;
+
+    
+  FUNCTION  sc_find_x { :INTEGER };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION  sc_find_y { :INTEGER };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION  sc_scrn_has { what:sc_scrn_command } { :BOOLEAN };
+
+    BEGIN
+    sc_scrn_has := TRUE;
+    END;
+
+    
+  FUNCTION  sc_has_key { what:sc_key_command } { :BOOLEAN };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION  sc_map_crt_command { VAR k_ch:CHAR } { :sc_key_command };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION  sc_prompt { line :sc_long_string; x_cursor,y_cursor,x_pos,
+                 where:INTEGER; return_on_match:sc_chset; 
+                 no_char_back:BOOLEAN; break_char:CHAR } { :CHAR };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION sc_check_char { VAR buf:sc_window; VAR buf_index,bytes_left:INTEGER }
+                   { :BOOLEAN };
+
+    BEGIN
+    END;
+
+    
+  FUNCTION space_wait { flush:BOOLEAN } {:BOOLEAN };
+
+    BEGIN
+    END;
+
+    
+  PROCEDURE sc_init;
+
+    BEGIN
+    END;
+    
+  END;
+  
+  
+  BEGIN
+  END.
+  
+  

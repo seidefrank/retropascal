@@ -1,0 +1,44 @@
+*               SCRIPT CONV_TEST
+*
+*  This script provides a primitive test that CONVERS is installed
+*  and executing properly.  Execute the script by starting CONVERS,
+*  and entering:
+*
+*       CONV_TEST, DISPLAY_COMMANDS=YES, DISPLAY_LINK=YES
+*
+*  to the prompt.
+*
+*  The comments below tell what to expect as CONVERS executes.
+*
+*  The following Pause commands should each execute in approximately
+*  one second.
+pause
+*
+Pause
+*
+PAUSE
+*
+*  The following statements define some variables, and then execute
+*  a WHILE loop three times.  Among other things, this tests that the
+*  seek_line function of TEXTIO is working.
+*
+define, switch1=true, switch2=true
+while, $VALUE ( switch1 )
+  define, switch1 = $VALUE ( switch2 )
+  define, switch2 = false
+whilend
+*
+*  The following command should wait for a carrier to be detected.  If
+*  no carrier is provided in approximately 30 seconds, it should abort.
+*
+wait
+*
+*  The following commands send some junk over the link, and then wait
+*  for a (highly improbable) reply.  This may catch some drastic errors
+*  in the installation.  For a more effective test, write your own scripts
+*  based on the system with which you are communicating.
+*
+send, 'Transmitted test text'
+Match, 'Say what?', ANYWHERE
+return
+

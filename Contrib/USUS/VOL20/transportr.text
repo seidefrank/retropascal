@@ -1,0 +1,868 @@
+{Version 002                 06 Dec 82      KGB
+    Block disk access to improve efficiency of transfer.}
+    
+{$I-}
+PROGRAM disk_xfr;
+
+{***********************************************************************
+*     Copyright (C) 1982 K. G. Balke, Associates                       *
+*          All rights reserved.                                        *
+***********************************************************************}
+
+{$C (C) 1982 K. G. Balke, Associates}
+
+
+  CONST
+    bell = 7;
+    max_msg = 30;
+                                  {Length of longest informational
+                                  message.}
+    
+    tank_size = 20;
+                                  {Number of blocks in disk holding tank.}
+    
+    tran_titl = 'FILE TRANSPORTER';
+    
+  TYPE
+    file_tank = PACKED ARRAY [1 .. tank_size, 0 .. 511] OF CHAR;
+                                  {Disk file tank array.}
+    
+  VAR
+    done:                    BOOLEAN;
+                                  {True if current iteration is complete.}
+                                  
+    file_name:               STRING [23];
+                                  {Name of file being read or written.}
+                                  
+    mdem_baud:               INTEGER;
+                                  {Divisor to achieve desired baud rate
+                                  from modem port.  Value 13 corresponds to
+                                  9600 baud.  Faster rates not supported by
+                                  Escort.}
+    
+    xfr_bufr:                PACKED ARRAY [0 .. 514] OF CHAR;
+                                  {Space for transfer of file blocks
+                                  between Escort and Host.  Consists of
+                                  type character, then up to 513 bytes of
+                                  data.
+                                  
+                                  The initial character may be a status
+                                  report or a file transfer directive.  An
+                                  initial status report is a binary integer
+                                  between 1 and 5; a file transfer
+                                  directive is one of 'A', 'B', 'C', 'D',
+                                  'E', 'G', 'R' or 'W'.}
+    
+    xfr_file:                FILE;
+                                  {Untyped file for file transfer.}
+    
+{************************************************************************
+*  The following external procedures are assembler subroutines found in *
+*  the sxfr.svcs file.                                                  *
+************************************************************************}
+    
+  PROCEDURE mdem_init
+                                  {Initialize the modem RS232 port for
+                                  communication.}
+                                  
+     (divisor:               INTEGER);
+                                  {Clock divisor for producing the desired
+                                  Baud rate at 8MHz crystal (4MHz clock
+                                  rate).}
+    
+    EXTERNAL;
+    
+  PROCEDURE mdem_clr;
+                                  {Turn off the handshaking lines to the
+                                  Host and place the modem port in Mode
+                                  Instruction mode for next conversation.}
+    
+    EXTERNAL;
+    
+  PROCEDURE read_msg
+                                  {Read a complete message from the modem
+                                  port according to the transfer protocol. 
+                                  Report result.}
+                                  
+   (VAR
+      msg);
+                                  {Block to receive the message.  Must be
+                                  514 bytes long.}
+    
+    EXTERNAL;
+    
+  FUNCTION wrt_msg
+                                  {Send a complete message to the modem
+                                  port according to the transfer protocol. 
+                                  Report result.}
+                                  
+     (ln:                    INTEGER;
+                                  {Active length of message (bytes).}
+                                  
+    VAR
+      msg):
+                                  {Block containing message.  Maximum size
+                                  is 514 bytes.}
+                                  
+                             INTEGER;
+                                  {Port-level result of write.}
+    
+    EXTERNAL;
+    
+    
+  PROCEDURE head_scrn
+     (t:                     STRING);
+    
+    BEGIN {head_scrn}
+      WRITE (CHR (27), '*', t);
+      t := '(C) 1982 K. G. Balke, Assoc.';
+      GO_TO_X_Y (80 - LENGTH (t), 0);
+      WRITE (t)
+    END {head_scrn};
+    
+    
+  PROCEDURE err_prcsr
+                                  {Diagnose all host device read or write
+                                  errors and set global flow booleans if
+                                  necessary. (done & terminate)}
+                                  
+     (error:                 INTEGER);
+                                  {This is the error number as returned by a
+                                  read or write operation.}
+                                  
+    
+    BEGIN {err_prcsr}
+      IF error > 0 THEN
+        BEGIN
+      
+                                  {Close transfer file in case it is open
+                                  on entry.}
+          CLOSE (xfr_file);
+      
+                                  {Analyze error and diagnose.}
+          CASE error OF
+            1:                        {Line error.}
+              BEGIN
+                GO_TO_X_Y (10, 23);
+                WRITE ('Transmission failure.       ')
+              END;
+    
+            2:                        {Line interrupt.}
+              BEGIN
+                GO_TO_X_Y (10, 23);
+                WRITE ('Host interrupt.                 ')
+              END;
+    
+            3:                        {Line dropped by Host.}
+              BEGIN
+                done := true;
+                GO_TO_X_Y (10, 23);
+                WRITE ('Line dropped.               ')
+              END;
+    
+            4:                        {Host has paused for own reasons.}
+              BEGIN
+                GO_TO_X_Y (10, 23);
+                WRITE ('Host paused.                ')
+              END;
+    
+            5:                        {Operator has intervened.}
+              BEGIN
+                mdem_clr;
+                GO_TO_X_Y (10, 23);
+                WRITE ('Operator intervened.        ');
+                EXIT (PROGRAM)
+              END;
+          END
+        END
+
+    END {err_prcsr};
+    
+  
+  PROCEDURE proto_err;
+                                  {Improper protocol has been discovered so
+                                  send a an io_error 3 to the host.}
+                                  
+    BEGIN {proto_err}
+      xfr_bufr [0] := 'A';
+      xfr_bufr [1] := CHR (3);
+      err_prcsr (wrt_msg (2, xfr_bufr))
+    END {proto_err};
+    
+    
+  FUNCTION good_file
+                                  {Determine whether the given name is a
+                                  legal p-System file name.}
+                                  
+     (fn:                    STRING):
+                                  {File name to test.}
+                                  
+                             BOOLEAN;
+                                  {True if name is acceptable.}
+    
+    VAR
+      cln_ct:                INTEGER;
+                                  {Number of colons in name.}
+                                  
+      i:                     INTEGER;
+                                  {Running index over file name.}
+                                  
+      last_cln:              INTEGER;
+                                  {Position of last colon in name.}
+                                  
+      name_rslt:             BOOLEAN;
+                                  {True if file name is acceptable to
+                                  current point in processing.}
+      
+    BEGIN {good_file}
+      
+                                  {Initialize volume name validation count
+                                  and index.}
+      cln_ct := 0;
+      last_cln := 0;
+      
+                                  {File name must be non-null.}
+      name_rslt := LENGTH (fn) > 0;
+      
+      IF name_rslt THEN
+        
+                                  {Scan for invalid character or missing
+                                  file name component.}
+        FOR i := 1 TO LENGTH (fn) DO
+          BEGIN
+            
+                                  {Look first for invalid character.}
+            IF NOT (fn [i] IN ['!' .. '#', '%' .. '+', '-' .. '<',
+              '>', '@' .. '~']) THEN
+              name_rslt := false
+            
+            ELSE
+              
+                                  {Character acceptable.  Be certain that
+                                  colon is followed by file name, and that
+                                  there is only one colon in name.}
+              IF fn [i] = ':' THEN
+                BEGIN
+                  cln_ct := cln_ct + 1;
+                  last_cln := i
+                END
+          END;
+      
+      good_file := name_rslt AND (cln_ct < 2) AND (last_cln < 
+        LENGTH (fn));
+    END {good_file};
+    
+    
+  PROCEDURE rpt_flr
+                                  {Report a failure to the Host in standard
+                                  protocol as supplied in parameters.}
+                                  
+     (h:                     CHAR;
+                                  {Expected response of Escort to Host.}
+                                  
+      r:                     INTEGER);
+                                  {Result value to report.}
+    
+    VAR
+      msg_bufr:              PACKED ARRAY [0 .. 1] OF CHAR;
+                                  {Space for forming acknowledgement
+                                  message.}
+                                  
+      msg_rslt:              INTEGER;
+                                  {Result of write to Host.}
+      
+    BEGIN {rpt_flr}
+      msg_bufr [0] := h;
+      msg_bufr [1] := CHR (r);
+      err_prcsr (wrt_msg (2, msg_bufr))
+    END {rpt_flr};
+    
+    
+  PROCEDURE dir_mode;
+  
+    BEGIN
+    END;
+    
+    
+  PROCEDURE eras_mode;
+
+    VAR
+      problem:               INTEGER;
+      
+    BEGIN {eras_mode}
+      
+                                  {Begin initial acknowledgement message.}
+      xfr_bufr [0] := 'A';
+      
+                                  {Attempt file open if file name is
+                                  acceptable.}
+      IF ORD (xfr_bufr [1]) < 24 THEN
+        BEGIN
+
+                                  {File name is short enough to fit in
+                                  string for use in RESET.  Move it into
+                                  reset string; if it is valid, attempt
+                                  open and report result.}
+{$R-}
+          MOVE_LEFT (xfr_bufr [1], file_name [0], ORD (xfr_bufr [1]) + 1);
+{$R^}
+          IF good_file (file_name) THEN
+            BEGIN
+              RESET (xfr_file, file_name);
+              xfr_bufr [1] := CHR (IO_RESULT);
+              IF IO_RESULT = 0 THEN
+                CLOSE (xfr_file, PURGE)
+            END
+          
+          ELSE
+                                  
+                                  {Report unacceptable file name.}
+            xfr_bufr [1] := CHR (7)
+        END
+      
+      ELSE
+        
+                                  {Report file name too long to analyze.}
+        xfr_bufr [1] := CHR (7);
+
+                                  {Write acknowledgement to Host.  Ignore
+                                  result.}
+      problem := wrt_msg (2, xfr_bufr)
+    END {eras_mode};
+
+
+  PROCEDURE writ_mode;
+
+    PROCEDURE xfr_in;
+                                  {Follow the transfer protocol for writing
+                                  a file transmitted from the Host to the
+                                  open write file.}
+      
+      VAR
+        tank:                file_tank;
+                                  {Disk transfer tank.}
+                                  
+        tank_idx:            INTEGER;
+                                  {Count of blocks in tank.}
+                                  
+        xfr_rslt:            INTEGER;
+                                  {Result of block transfer operation.}
+        
+      FUNCTION wrt_tank
+                                  {Write the current tank full to the
+                                  file.}
+                                  
+       (ct:                  INTEGER):
+                                  {Number of blocks in tank.}
+                                  
+                             BOOLEAN;
+                                  {True if tank written successfully.}
+        
+        VAR
+          bloks:             INTEGER;
+                                  {Number of blocks actually written.}
+          
+        BEGIN {wrt_tank}
+          wrt_tank := true;
+          bloks := BLOCK_WRITE (xfr_file, tank, ct);
+          IF (bloks < ct) OR (IO_RESULT > 0) THEN
+            
+                                  {There is a file write error.  Inform
+                                  Host and terminate file transfer.}
+            BEGIN
+              wrt_tank := false;
+              done := true;
+              rpt_flr ('A', IO_RESULT)
+            END
+        END {wrt_tank};
+        
+        
+      BEGIN {xfr_in}
+        done := false;
+        tank_idx := 0;
+        REPEAT
+          
+                                  {Send request for next block.}
+          xfr_bufr [0] := 'G';
+          xfr_rslt := wrt_msg (1, xfr_bufr);
+          
+                                  {Diagnose transmission errors.}
+          IF xfr_rslt > 0 THEN
+            BEGIN
+              CLOSE (xfr_file);
+              err_prcsr (xfr_rslt);
+              EXIT (xfr_in)
+            END
+          
+          ELSE
+            
+                                  {Transmission of block request
+                                  successful.  Wait for Host response and
+                                  process.}
+            BEGIN
+              read_msg (xfr_bufr);
+              IF xfr_bufr [0] = 'B' THEN
+                
+                                  {The expected protocol has been followed.
+                                  Now interpret the IO_RESULT in the second
+                                  byte.}
+                BEGIN
+                  IF xfr_bufr [1] = CHR (0) THEN
+                    
+                                  {Read at Host end successful, and block
+                                  present for writing to file.}
+                    BEGIN
+                      tank_idx := tank_idx + 1;
+                      MOVE_LEFT (xfr_bufr [2], tank [tank_idx], 512);
+                      IF tank_idx = tank_size THEN
+                        IF wrt_tank (tank_idx) THEN
+                          tank_idx := 0
+                        ELSE
+                          EXIT (xfr_in)
+                    END
+                  
+                  ELSE
+                    IF xfr_bufr [1] = CHR (13) THEN
+                      
+                                  {File transfer completed.  Lock file and
+                                  wait for next command from Host.}
+                      BEGIN
+                        IF tank_idx > 0 THEN
+                          IF wrt_tank (tank_idx) THEN
+                            ;
+                        CLOSE (xfr_file, LOCK);
+                        EXIT (xfr_in)
+                      END
+                    
+                    ELSE
+                      IF xfr_bufr [1] < ' ' THEN
+                        
+                                  {Serial line failure.  Diagnose and stop
+                                  file write.}
+                        BEGIN
+                          CLOSE (xfr_file);
+                          err_prcsr (ORD (xfr_bufr [1]));
+                          EXIT (xfr_in)
+                        END
+                      
+                      ELSE
+                        
+                                  {Protocol error.  Diagnose to Host and
+                                  wait for next command.}
+                        BEGIN
+                          CLOSE (xfr_file);
+                          rpt_flr ('A', 3);
+                          EXIT (xfr_in)
+                        END
+                END
+              
+              ELSE
+                
+                                  {Protocol not followed correctly. 
+                                  Diagnose to Host and terminate writing.}
+                BEGIN
+                  done := true;
+                  CLOSE (xfr_file);
+                  rpt_flr ('A', 3)
+                END
+            END
+        UNTIL done
+      END {xfr_in};
+      
+    BEGIN {writ_mode}
+      
+                                  {Attempt file creation if file name is
+                                  acceptable.}
+      IF ORD (xfr_bufr [1]) < 24 THEN
+        BEGIN
+
+                                  {File name is short enough to fit in
+                                  string for use in RESET.  Move it into
+                                  reset string; if it is valid, attempt
+                                  open and report result.}
+{$R-}
+          MOVE_LEFT (xfr_bufr [1], file_name [0], ORD (xfr_bufr [1]) + 1);
+{$R^}
+          IF good_file (file_name) THEN
+            BEGIN
+              RESET (xfr_file, file_name);
+              CASE IO_RESULT OF
+                0:                {File already exists.}
+                  BEGIN
+                    CLOSE (xfr_file);
+                    rpt_flr ('A', 11)
+                  END;
+                  
+                10:               {Expected result--no such file.}
+                  BEGIN
+                    REWRITE (xfr_file, file_name);
+                    IF IO_RESULT > 0 THEN
+                      rpt_flr ('A', IO_RESULT)
+                    ELSE
+                      xfr_in
+                  END;
+                  
+                1, 5, 6, 7, 8, 9, 16:
+                                  {Expected errors.}
+                  rpt_flr ('A', IO_RESULT)
+              END;
+            END
+          
+          ELSE
+                                  
+                                  {Report unacceptable file name.}
+            rpt_flr ('A', IO_RESULT)
+        END
+      
+      ELSE
+        
+                                  {Report file name too long to analyze.}
+        rpt_flr ('A', IO_RESULT)
+    END {writ_mode};
+
+
+  PROCEDURE read_mode;
+                                  {Analyze a request to read a file,
+                                  following standard protocol and
+                                  diagnosing failures.}
+    
+    VAR
+      problem:               INTEGER;
+                                  {Receives the result of a wrt_msg.}
+                                  
+    PROCEDURE xfr_out;
+                                  {Send successive blocks from the open
+                                  file until done or an error occurs.}
+                                  
+      VAR
+        i:                   INTEGER;
+                                  {Running index over blocks in tank.}
+                                  
+        tank:                file_tank;
+                                  {Available material from file for
+                                  transfer to host.}
+                                  
+        tank_idx:            INTEGER;
+                                  {Number of blocks read from file.}
+                                  
+        xfr_rslt:            INTEGER;
+                                  {Space for IO_RESULT around any
+                                  operations which may change it.}
+        
+      FUNCTION read_tank
+                                  {Read the next tank full of data from the
+                                  file for transmission to host.}
+                                  
+       (VAR
+          ct:                INTEGER):
+                                  {Number of blocks read.}
+                             
+                             BOOLEAN;
+                                  {True if transfer successful.}
+        
+        BEGIN {read_tank}
+          read_tank := true;
+          ct := BLOCK_READ (xfr_file, tank, tank_size);
+          IF ct < tank_size THEN
+            BEGIN
+              IF IO_RESULT > 0 THEN
+                BEGIN
+                  read_tank := false;
+                  ct := 0
+                END;
+              
+              IF ct = 0 THEN
+                CLOSE (xfr_file)
+            END
+        END {read_tank};
+        
+        
+      BEGIN {xfr_out}
+        read_msg (xfr_bufr);
+        
+        REPEAT
+                                  
+          IF read_tank (tank_idx) THEN
+            IF tank_idx > 0 THEN
+              FOR i := 1 TO tank_idx DO
+                BEGIN
+                                  {Analyze and process transmission
+                                  failures or operator intervention.}
+                  IF xfr_bufr [0] < ' ' THEN
+                    BEGIN
+                      err_prcsr (ORD (xfr_bufr [0]));
+                      EXIT (xfr_out)
+                    END
+                  
+                  ELSE
+                    IF xfr_bufr [0] = 'G' THEN
+                        
+                                          {The host has requested a block so
+                                          attempt to read one for it.}
+                      BEGIN
+                        xfr_bufr [0] := 'B';
+                        xfr_bufr [1] := CHR (0);
+                        MOVE_LEFT (tank [i], xfr_bufr [2], 512);
+                        err_prcsr (wrt_msg (514, xfr_bufr));
+                        read_msg (xfr_bufr)
+                      END
+                    
+                    ELSE
+                                  {Host did not request a block from the
+                                  open file.}
+                      BEGIN
+                        proto_err;
+                        EXIT (xfr_out)
+                      END
+                END
+            
+            ELSE
+              BEGIN
+                xfr_bufr [0] := 'B';
+                xfr_bufr [1] := CHR (13);
+                err_prcsr (wrt_msg (2, xfr_bufr));
+                EXIT (xfr_out)
+              END
+          
+          ELSE
+            BEGIN
+              xfr_bufr [0] := 'B';
+              xfr_bufr [1] := CHR (IO_RESULT);
+              err_prcsr (wrt_msg (2, xfr_bufr));
+              EXIT (xfr_out)
+            END
+        UNTIL false;
+      
+      END {xfr_out};
+      
+      
+    BEGIN {read_mode}
+      
+                                  {Begin initial acknowledgement message.}
+      xfr_bufr [0] := 'A';
+      
+                                  {Attempt file open if file name is
+                                  acceptable.}
+      IF ORD (xfr_bufr [1]) < 24 THEN
+        BEGIN
+
+                                  {File name is short enough to fit in
+                                  string for use in RESET.  Move it into
+                                  reset string; if it is valid, attempt
+                                  open and report result.}
+{$R-}
+          MOVE_LEFT (xfr_bufr [1], file_name [0], ORD (xfr_bufr [1]) + 1);
+{$R^}
+          IF good_file (file_name) THEN
+            BEGIN
+              RESET (xfr_file, file_name);
+              xfr_bufr [1] := CHR (IO_RESULT)
+            END
+          
+          ELSE
+                                  
+                                  {Report unacceptable file name.}
+            xfr_bufr [1] := CHR (7)
+        END
+      
+      ELSE
+        
+                                  {Report file name too long to analyze.}
+        xfr_bufr [1] := CHR (7);
+
+                                  {Write acknowledgement to Host.}
+      problem := wrt_msg (2, xfr_bufr);
+      
+                                  {Complete read response protocol if no
+                                  error has occurred so far.}
+      IF (problem = 0) AND (xfr_bufr [1] = CHR (0)) THEN
+        xfr_out
+      
+      ELSE
+        err_prcsr (problem);
+      
+      CLOSE (xfr_file)
+    END {read_mode};
+    
+    
+  PROCEDURE note_obsv
+                                  {Place a note on the screen informing an
+                                  interested observer what the system is
+                                  doing.}
+                                  
+     (msg:                   STRING);
+                                  {Message to display.}
+    
+    VAR
+      msg_strng:             STRING;
+      
+    BEGIN {note_obsv}
+      
+                                  {Construct a message string whose length
+                                  is independent of the message to clear
+                                  out residual characters.}
+{$R-}
+      FILL_CHAR (msg_strng [1], max_msg, ' ');
+      MOVE_LEFT (msg [1], msg_strng [1], LENGTH (msg));
+      msg_strng [0] := CHR (max_msg);
+{$R^}
+      
+                                  {Place the message.}
+      GO_TO_X_Y (10, 12);
+      WRITE (msg_strng);
+      
+                                  {Move the cursor out of the way.}
+      GO_TO_X_Y (0, 0)
+    END {note_obsv};
+    
+    
+  BEGIN {disk_xfr}
+    head_scrn (tran_titl);
+    
+                                  {Establish the baud rate divisor.  First
+                                  place menu of available rates on screen.}
+    GO_TO_X_Y (5, 6);
+    WRITE ('Available transmission rates:');
+    GO_TO_X_Y (10, 8);
+    WRITE ('0 -- 9600 bps');
+    GO_TO_X_Y (10, 9);
+    WRITE ('1 -- 4800 bps');
+    GO_TO_X_Y (10, 10);
+    WRITE ('2 -- 2400 bps');
+    GO_TO_X_Y (10, 11);
+    WRITE ('3 -- 1200 bps');
+    GO_TO_X_Y (10, 12);
+    WRITE ('4 --  600 bps');
+    GO_TO_X_Y (5, 14);
+    WRITE ('Select:');
+    
+                                  {Request selection and filter for
+                                  plausibility.}
+    REPEAT
+                                  {Assume 9600 Baud if no number entered.}
+      mdem_baud := 0;
+      
+                                  {Clear result of prior erroneous entry.}
+      GO_TO_X_Y (14, 14);
+      WRITE ('     ', CHR (8), CHR (8), CHR (8), CHR (8), CHR (8));
+      
+                                  {Get operator input and filter.}
+      READ_LN (mdem_baud)
+    UNTIL mdem_baud IN [0 .. 4];
+    
+                                  {Start the screen over again.}
+    head_scrn (tran_titl);
+    
+                                  {Translate selection into baud rate
+                                  divisor and record result.}
+    GO_TO_X_Y (10, 10);
+    CASE mdem_baud OF
+      0:                          {9600 Baud.}
+        BEGIN
+          mdem_baud := 13;
+          WRITE ('9600 Baud transmission.')
+        END;
+        
+      1:                          {4800 Baud.}
+        BEGIN
+          mdem_baud := 26;
+          WRITE ('4800 Baud transmission.')
+        END;
+        
+      2:                          {2400 Baud.}
+        BEGIN
+          mdem_baud := 52;
+          WRITE ('2400 Baud transmission.')
+        END;
+        
+      3:                          {1200 Baud.}
+        BEGIN
+          mdem_baud := 104;
+          WRITE ('1200 Baud transmission.')
+        END;
+        
+      4:                          {600 Baud.}
+        BEGIN
+          mdem_baud := 208;
+          WRITE ('600 Baud transmission.')
+        END
+    END;
+    
+                                  {The hunt mode loop begins here. This
+                                  loop is used during initialization.}
+    FILL_CHAR (xfr_bufr, SIZE_OF (xfr_bufr), CHR (0));
+    note_obsv ('Waiting for Host message.');
+      
+                                  {Initialize the modem port to the desired
+                                  baud rate.}
+    mdem_init (mdem_baud);
+      
+                                  {Search for Host serial port.}
+    done := false;
+    REPEAT
+      read_msg (xfr_bufr);
+      done := (xfr_bufr [0] = CHR (5)) OR (xfr_bufr [0] IN
+        ['D', 'E', 'R', 'W'])
+    UNTIL done;
+    
+                                  {Serial port has come up with initial
+                                  command or transfer has been aborted by
+                                  operator intervention.}
+    IF xfr_bufr [0] = CHR (5) THEN
+          
+                                  {Operator has terminated transfer.}
+      note_obsv ('Operator terminated.')
+
+    ELSE
+      
+      BEGIN
+                                  {Initial command received.  Process
+                                  commands until operator terminates or
+                                  Host drops line.}
+        done := false;
+        REPEAT
+          IF xfr_bufr [0] < ' ' THEN
+            err_prcsr ( ORD (xfr_bufr [0]))
+          
+          ELSE
+            CASE xfr_bufr [0] OF
+              'D':                {Directory request.}
+                BEGIN
+                  note_obsv ('Sending directory.');
+                  dir_mode;
+                  note_obsv ('Waiting.');
+                END;
+
+              'E':                {Erase file.}
+                BEGIN
+                  note_obsv ('Erasing file.');
+                  eras_mode;
+                  note_obsv ('Waiting.');
+                END;
+
+              'R':                {Send a file.}
+                BEGIN
+                  note_obsv ('Sending file to Host.');
+                  read_mode;
+                  note_obsv ('Waiting.');
+                END;
+
+              'W':                {Recieve a file.}
+                BEGIN
+                  note_obsv ('Getting file from Host.');
+                  writ_mode;
+                  note_obsv ('Waiting.');
+                END
+            END;
+
+                                  {If no fatal error has occurred, read the
+                                  next message from the host and interpret
+                                  it.}
+          IF NOT done THEN
+            read_msg (xfr_bufr);
+        
+        UNTIL done;
+      END;
+    mdem_clr
+  END {disk_xfr}.
+

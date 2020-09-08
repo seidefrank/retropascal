@@ -1,0 +1,345 @@
+(*$L-printer:*)
+program fit;    {federal income tax program}
+                { by edward heyman         }
+                {    300 center hill rd
+                     centerville de 19807  }
+                     
+                {keyed in from Feb 1982 Byte by
+                 George Schreyer }
+                
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+const  maxline          = 115;
+       maxtline         = 66;
+       minaline         = 67;
+       maxaline         = 107;
+       minbline         = 108;
+       maxbline         = 115;
+       esc              = 27;
+
+type longint            = integer [ 9 ];
+     filename           = string [ 15 ];
+     intstr             = string [ 12 ];
+     namestr            = string [ 26 ];
+     filing_status      = 0..5;
+     tline_num          = 1..maxline;
+     tlineset           = set of tline_num;
+     owner              = (h_own, w_own, t_own );
+     pointer            = ^item;
+     item               = packed record
+                                nptr    : pointer;
+                                name    : string[ 10 ];
+                                amt     : integer [ 9 ];
+                                whose   : owner;
+                                tlnum   : tline_num;
+                          end;
+     tline              = packed record
+                             case tag : integer of
+                               1        : (iptr : pointer;
+                                           hus  : integer [ 9 ];
+                                           wif  : integer [ 9 ];
+                                           tot  : integer [ 9 ]);
+                               2        : (d1, d2, d3 : integer;
+                                           taxyear    : string [ 4 ];
+                                           fs         : filing_status;
+                                           exem       : integer );
+                               3        : (name : namestr );
+                             end;
+     tls                = packed array [ 1..maxline ] of tline;
+     taxtable           = ( x, y, ys, z );
+     taxfactors         = ( lower, upper, base, percent );
+     factorarray        = array [ 1..16, taxfactors ] of longint;
+     
+var  ch         : char;
+     ttable     : taxtable;
+     fstat      : filing_status;
+     screen,
+     single,
+     same,
+     quit       : boolean;
+     day,
+     month,
+     year       : integer;
+     specset,
+     dlineset,
+     slineset,
+     spageset,
+     calcset    : tlineset;
+     taxray     : array [ taxtable ] of factorarray;
+     titles     : array [ 1..maxline ] of string [ 30 ];
+     tlines     : tls;
+     max_tax    : array [ owner ] of longint;
+     p          : file of char;
+
+procedure mem; forward;
+function  readint ( len : integer ) : integer; forward;
+procedure clear; forward;
+procedure eline; forward;
+procedure eeol; forward;
+procedure eeos; forward;
+procedure wait; forward;
+procedure pdol ( dol : longint;
+                 var stdol : intstr ); forward;
+procedure center ( st : string;
+                   screen : boolean ); forward;
+procedure readdol ( len : integer;
+                    var dolread : longint ); forward;
+procedure namer ( title : namestr;
+                  var st : string;
+                  l : integer ); forward;
+procedure line ( ch : char;
+                 long : integer ); forward;
+
+(*$I taxstart.text*)
+(*$I taxrw.text*)
+(*$I taxprint.text*)
+(*$I taxcalc.text*)
+(*$I taxedit.text*)
+
+procedure mem;
+begin
+   writeln ( 'memory available ',memavail );
+end;
+
+procedure line (* ch : char;
+                  long : integer *);
+var j : integer;
+begin
+   for j := 1 to long do write ( p, ch );
+end;
+
+procedure namer (* title : namestr;
+                   var st : string;
+                   l : integer *);
+{used to permit string data input TITLE is a prompt, L is the max length
+ of the returned string}
+begin
+   repeat
+      gotoxy ( 0, 6 );
+      write ( 'enter ',title,' -->  ' );
+      eeol;
+      readln ( st );
+      if ( length ( st ) ) > l then
+         begin
+            write ( 'name cannot exceed ', l, ' characters' );
+            wait;
+            gotoxy ( 0, 7 );
+            eeol;
+         end;
+   until length ( st ) <= l;
+   writeln;
+end;
+
+function readint (* len : integer ) : integer *);
+{a long winded routine to allow input of an inter of len digits }
+const   period =  '.';
+        plus    = '+';
+        minus   = '-';
+        dol     = '$';
+        bs      = 8;
+        lf      = 10;
+        ff      = 12;
+        cr      = 13;
+        del     = 127;
+        space   = 32;
+
+var     charray : array [ 1..10 ] of char;
+        readinteger : integer;
+        position : 1..9;
+        neg : boolean;
+        digits : set of char;
+
+begin {readint}
+   digits := [ '0'..'9' ];
+   for position := 1 to len do write ( '_' );
+   for position := 1 to len do write ( chr ( bs ) );
+   position := 1;
+   while position = 1 do
+      begin
+         read ( keyboard, charray [ position ] );
+         if charray [ position ] in ( digits + [ plus, minus ] ) then
+            begin
+               write ( charray [ position ] );
+               position := succ ( position );
+            end;
+      end;
+   while position <= len do
+      begin
+         read ( keyboard, charray [ position ] );
+         if charray [ position ] in digits then
+            begin
+               write ( charray [ position ] );
+               position := succ ( position );
+            end
+         else
+            begin
+               if charray [ position ] = chr ( bs ) then
+                  begin
+                     write ( chr ( bs ) );
+                     position := pred ( position );
+                  end;
+               if ( charray [ position ] in [ chr ( space ), chr ( cr ) ] ) then
+                  len := pred ( position );
+            end;
+      end;
+   readinteger := 0;
+   if charray [ 1 ] = minus then neg := true else neg := false;
+   for position := 1 to len do
+      begin
+         if charray [ position ] in digits then
+            readinteger := 10 * readinteger + ord ( charray [ position ] ) -
+               ord ( '0' );
+      end;
+   if neg then readint := -readinteger else readint := readinteger;
+end; {readint}
+
+procedure eeos;  {erase to end of screen}
+begin
+   write ( chr ( 27 ), 'J' );  {for H-19}
+end;
+
+procedure clear;  {clear to end of screen}
+begin
+   gotoxy ( 0, 0 );
+   eeos;
+end;
+
+procedure eline;  {erase entire line}
+begin
+   write ( chr ( 27 ) , 'l' );  {for H-19}
+end;
+
+procedure eeol;  {erase to end of line}
+begin
+  write ( chr ( 27 ), 'K' );  {for H-19}
+end;
+
+procedure wait;
+{routine used to halt program while user examines output}
+var ch : char;
+begin
+   gotoxy ( 10, 23 );
+   write ( 'enter <space> to continue' );
+   repeat
+      read ( keyboard, ch );
+   until ( ch = chr ( 32 ) ) and ( not eoln ( keyboard ) );
+end;
+
+procedure center;
+{routine to print a string in the center of the line}
+var x, y : 0..132;
+    ch : char;
+begin
+   ch := ' ';
+   if screen then y := 40 else y := 66;
+   x := y - ( length ( st ) div 2 );
+   writeln ( ch:x, st );
+end;
+
+procedure pdol (*dol : longint;
+                 var stdol : intstr *);
+begin
+   str ( dol, stdol );
+   insert ( '.', stdol, pred ( length ( stdol ) ) );
+end;
+
+procedure readdol (* len integer;
+                     var dolread : longint *);
+{routine to permit entry of long integer of len digits}
+const bs        = 8;
+      plus      = '+';
+      minus     = '-';
+var   position  : 1..10;
+      neg       : boolean;
+      esc       : char;
+      charray   : array [ 1..10 ] of char;
+      digits    : set of char;
+begin {readdol}
+   same := false;
+   quit := false;
+   digits := [ '0'..'9' ];
+   esc := chr ( 27 );
+   for position := 1 to len do write ( '_' );
+   for position := 1 to len do write ( chr ( bs ) );
+   position := 1;
+   repeat
+      read ( keyboard, charray [ position ] );
+   until ( charray [ position ] in digits + [ plus, minus, esc, 'Q', 'q' ] );
+   if ( charray [ position ] = esc ) or ( charray [ position ] in [ 'q','Q' ] )
+     then if ( charray [ position ] ) in [ 'q', 'Q' ] then
+        begin
+           quit := true;
+           exit ( readdol );
+        end
+     else
+        begin
+           same := true;
+           exit ( readdol );
+        end
+  else 
+     begin
+        write ( charray [ position ] );
+        position := succ ( position );
+     end;
+  while position <= len do
+     begin
+        repeat
+           read ( keyboard, charray [ position ] );
+        until ( charray [ position ] in ( digits + [ '.', chr ( bs ) ] ) );
+        if ( charray [ position ] in digits ) then
+           begin
+              write ( charray [ position ] );
+              position := succ ( position );
+           end
+        else
+           begin
+              if charray [ position ] = chr ( bs ) then
+                 begin
+                    write ( chr ( bs ) );
+                    position := pred ( position );
+                 end;
+              if ( charray [ position ] = '.' ) then
+                 begin
+                    write ( '.' );
+                    len := succ ( position );
+                 end;
+           end;
+     end;
+  dolread := 0;
+  if charray [ 1 ] = minus then neg := true else neg := false;
+  for position := 1 to len do
+     if ( charray [ position ] in digits ) then
+       dolread := 10 * dolread + ord ( charray [ position ] ) - ord ( '0' );
+  if neg then dolread := -dolread;
+end; {readdol}
+
+begin  {fit main}
+   start;
+   writeln;
+   mem;
+   wait;
+   repeat;
+      clear;
+      write ( 'fit command --> P)rint E(dit C(alculate R(read W(rite Q(uit ');
+      repeat
+         read ( keyboard, ch );
+      until ( ch in [ 'p','P','e','E','c','C','r','R','w','W','q','Q' ] );
+      case ch of
+        'E','e' : edit;
+        'R','r' : begin
+                     rw ( 'R' );
+                     fstat := tlines [ 7 ].fs;
+                     if fstat in [ 2, 3 ] then single := false;
+                  end;
+        'W','w' : rw ( 'W' );
+        'P','p' : printer;
+        'C','c' : calculate;
+      end;
+   until ch in [ 'Q', 'q' ];
+end.  {fit main }
+

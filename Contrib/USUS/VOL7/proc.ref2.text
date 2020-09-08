@@ -1,0 +1,401 @@
+{                                       
+
+Program Xref2 : Pascal procedural cross reference program
+
+Date          : July 10, 1980.
+
+Programmer    : Patrick R. Horton
+
+Copyright  (c)  1980  -  Associated Computer Industries - All rights reserved 
+
+}
+
+PROGRAM Xref2;                                
+ TYPE fwrdrec = RECORD
+                 procname : STRING;
+                 link     : ^fwrdrec;
+                 segnum   : INTEGER;
+                 proc     : INTEGER;
+                END; 
+ VAR ifile1,ifile2,ofile : TEXT; 
+     lproc,incname, 
+     ifilename,ofilename : STRING;  
+     line                : STRING[255]; 
+     highseg,
+     linenum,nesting, 
+     temp,seg            : INTEGER;   
+     prseg,
+     inseg,gotprog,   
+     iflg,ln,needready,   
+     includefile         : BOOLEAN; 
+     tneed               : ARRAY[1..16] OF INTEGER; 
+     procnum             : ARRAY[1..16] OF INTEGER;   
+     first,ptr,tptr,fnd  : ^fwrdrec;
+ 
+ PROCEDURE Chkline;
+  BEGIN
+   linenum := linenum + 1;
+   IF linenum MOD 50 = 0 THEN
+    BEGIN
+     WRITELN;
+     WRITE(linenum:6);
+    END;
+   WRITE('.');
+  END;  
+     
+ PROCEDURE Writeincludefile;  
+  BEGIN
+   IF ln THEN WRITELN(ofile);       
+   ln := FALSE;
+   WRITELN(ofile);
+   WRITELN(ofile,incname);   
+   WRITELN(ofile,'-------------------------------------');
+  END;
+   
+ PROCEDURE Uppercase(VAR line : STRING);
+  BEGIN 
+   WHILE POS(' ',line) = 1 DO DELETE(line,1,1);
+   FOR temp := 1 TO LENGTH(line) DO  
+    IF (ORD(line[temp])<123) AND (ORD(line[temp])>96) THEN
+     line[temp] := CHR(ORD(line[temp])-32);
+  END;
+ 
+ PROCEDURE Paline;      
+  VAR ch : CHAR;
+      token : STRING;
+ 
+ FUNCTION Notfwrdproc: BOOLEAN; 
+  BEGIN
+   Notfwrdproc := TRUE; 
+   tptr := first;
+   WHILE tptr <> NIL DO  
+    BEGIN
+     IF tptr^.procname = token THEN                  
+      BEGIN
+       fnd := tptr;
+       tptr := nil; 
+       Notfwrdproc := FALSE;                 
+      END
+     ELSE tptr := tptr^.link;
+    END;
+  END;
+ 
+ PROCEDURE Bypassc1;
+  BEGIN
+   DELETE(line,1,1);  
+   IF (POS('$U',line) =1) OR (POS('$u',line) =1) THEN highseg := 0;  
+   REPEAT  
+    IF LENGTH(line)=0 THEN
+     REPEAT
+      IF includefile THEN READLN(ifile2,line) 
+                     ELSE READLN(ifile1,line);  
+      Chkline;
+      Uppercase(line); 
+     UNTIL LENGTH(line)<>0;
+    WHILE (LENGTH(line)>0) AND (POS('}',line)<>1) DO     
+     DELETE(line,1,1);  
+   UNTIL POS('}',line)=1;
+   DELETE(line,1,1);  
+  END;
+ 
+ PROCEDURE Bypassc2;
+  BEGIN
+   DELETE(line,1,2);    
+   IF (POS('$U',line) =1) OR (POS('$u',line) =1) THEN highseg := 0;    
+   REPEAT  
+    IF LENGTH(line)=0 THEN
+     REPEAT
+      IF includefile THEN READLN(ifile2,line)   
+                     ELSE READLN(ifile1,line);
+      Chkline;
+      Uppercase(line); 
+     UNTIL LENGTH(line)>0;
+    WHILE (LENGTH(line)>0) AND (POS('*)',line)<>1) DO        
+     DELETE(line,1,1);
+    UNTIL POS('*)',line)=1;
+   DELETE(line,1,2);  
+  END;
+  
+ PROCEDURE Getoken;      
+  VAR out : BOOLEAN;
+  BEGIN 
+   out := FALSE;
+   WHILE (LENGTH(line)>0) AND (NOT out) DO  
+     IF POS('{',line)=1 THEN Bypassc1 ELSE 
+     IF POS('(*',line)=1 THEN Bypassc2 ELSE                     
+     IF line[1] ='''' THEN             
+      BEGIN
+       DELETE(line,1,1);
+       REPEAT
+        IF LENGTH(line)=0 THEN 
+         BEGIN       
+          IF includefile THEN READLN(ifile2,line)      
+                         ELSE READLN(ifile1,line);  
+          Chkline;
+          Uppercase(line);   
+         END;
+        IF line[1]<>'''' THEN DELETE(line,1,1);      
+       UNTIL line[1] = '''';     
+       DELETE(line,1,1);  
+      END
+     ELSE   
+      IF NOT(line[1] IN ['0'..'9','_','-','A'..'Z'])
+       THEN DELETE(line,1,1)     
+       ELSE out := TRUE;      
+    token := '';      
+    out := FALSE;
+    WHILE (LENGTH(line)>0) AND (NOT out) DO    
+     IF line[1] IN ['0'..'9','_','-','A'..'Z'] THEN  
+      BEGIN
+       token := CONCAT(token,COPY(line,1,1));  
+       DELETE(line,1,1);
+      END
+     ELSE out := TRUE; 
+  END;     
+    
+  PROCEDURE Doprog;
+   BEGIN
+    Getoken;
+    IF NOT iflg THEN Writeincludfile;
+    iflg := TRUE;
+    WRITELN(ofile,'PROGRAM ',token,';');   
+    gotprog := TRUE;
+   END;
+  
+  PROCEDURE Doseg;  
+   BEGIN
+    IF ln THEN WRITELN(ofile);  
+    IF NOT iflg THEN Writeincludfile;
+    prseg := TRUE;
+    iflg := TRUE;     
+    inseg := TRUE; 
+    ln := FALSE; 
+    highseg := highseg + 1;  
+    seg := highseg;   
+    tneed[seg] := 0;    
+    procnum[seg] := 0;  
+    needready := FALSE;        
+   END;    
+   
+  PROCEDURE Docas;      
+   BEGIN
+    IF ln THEN WRITELN(ofile);  
+    ln := FALSE;    
+    tneed[seg] := tneed[seg] + 1;
+    needready := TRUE; 
+   END; 
+   
+  PROCEDURE Dorec;  
+   BEGIN
+    IF ln THEN WRITELN(ofile);
+    ln := FALSE;          
+    tneed[seg] := tneed[seg] + 1; 
+    needready := TRUE; 
+    nesting := nesting + 1;
+   END;   
+     
+  PROCEDURE Doproc;
+   BEGIN
+    IF ln THEN WRITELN(ofile);
+    ln := FALSE;
+    IF NOT iflg THEN Writeincludfile;
+    iflg := TRUE;
+    tneed[seg] := tneed[seg] + 1;  
+    needready := FALSE;  
+    Getoken;
+    ln := TRUE;
+    IF Notfwrdproc THEN
+     BEGIN
+      procnum[seg] := procnum[seg] + 1;
+      WRITE(ofile,linenum:4,' ',
+                  seg:4,' ',procnum[seg]:4); 
+      IF prseg THEN WRITE(ofile,'  SEGMENT');
+      prseg := FALSE;
+      WRITE(ofile,'  PROCEDURE ',token,';',' ':20-LENGTH(token));     
+     END
+    ELSE 
+     BEGIN
+      WRITE(ofile,linenum:4,' ',fnd^.segnum:4,' ',fnd^.proc:4);
+      IF prseg THEN WRITE(ofile,'  SEGMENT');
+      prseg := FALSE;
+      WRITE(ofile,'  PROCEDURE ',token,';',     
+                     ' ':20-LENGTH(token),'PREVIOUSLY DECLARED;');         
+     END;
+    lproc := token;    
+   END; 
+   
+  PROCEDURE Dofun;
+   BEGIN
+    IF ln THEN WRITELN(ofile);
+    ln := FALSE;
+    IF NOT iflg THEN Writeincludfile;
+    iflg := TRUE;
+    tneed[seg] := tneed[seg] + 1; 
+    needready := FALSE;      
+    Getoken;    
+    ln := TRUE;
+    IF Notfwrdproc THEN
+     BEGIN
+      procnum[seg] := procnum[seg] + 1;
+      WRITE(ofile,linenum:4,' ',  
+                  seg:4,' ',procnum[seg]:4,          
+                  '  FUNCTION  ',token,';',' ':20-LENGTH(token));           
+     END
+    ELSE WRITE(ofile,linenum:4,' ',  
+                     fnd^.segnum:4,' ',     
+                     fnd^.proc:4,'  FUNCTION  ',token,';',
+                     ' ':20-LENGTH(token),'PREVIOUSLY DECLARED;');   
+    lproc := token;  
+   END;    
+   
+  PROCEDURE Dofor;  
+   BEGIN
+    NEW(ptr);
+    ptr^.procname := lproc;
+    ptr^.link := first;
+    ptr^.segnum := seg;
+    ptr^.proc := procnum[seg];
+    first := ptr; 
+    tneed[seg] := tneed[seg] - 1;
+    WRITE(ofile,' FORWARD;');     
+   END;
+   
+  PROCEDURE Dobeg;   
+   BEGIN
+    IF ln THEN WRITELN(ofile);     
+    ln := FALSE;
+    needready := TRUE;        
+    nesting := nesting + 1;  
+   END;
+    
+  PROCEDURE Doend;
+   BEGIN
+    IF ln THEN WRITELN(ofile);  
+    ln := FALSE;
+    nesting := nesting - 1;  
+    IF (nesting<=0) AND needready THEN        
+     BEGIN  
+      tneed[seg] := tneed[seg] - 1;
+      IF tneed[seg] = 0 THEN 
+       BEGIN
+        inseg := FALSE;
+        seg := 1;   
+       END;
+      nesting := 0;          
+     END;   
+   END;           
+   
+  BEGIN       
+   WHILE LENGTH(line)>0 DO    
+    BEGIN    
+     Getoken;
+     IF LENGTH(token)<>0 THEN  
+      BEGIN
+       IF NOT gotprog THEN IF token = 'PROGRAM'   THEN Doprog ;  
+          
+       IF token = 'SEGMENT' THEN Doseg       
+       ELSE IF token = 'PROCEDURE' THEN Doproc  
+       ELSE IF token = 'FUNCTION'  THEN Dofun   
+       ELSE IF token = 'FORWARD'   THEN Dofor;  
+       
+       IF inseg THEN IF token = 'CASE' THEN Docas    
+       ELSE IF token = 'RECORD'    THEN Dorec    
+       ELSE IF token = 'BEGIN'     THEN Dobeg      
+       ELSE IF token = 'END'       THEN Doend;   
+      END;
+    END; 
+  END;       
+  
+ 
+ PROCEDURE Pafile;                      
+  BEGIN
+   WHILE NOT EOF(ifile2) DO   
+    BEGIN
+     READLN(ifile2,line); 
+     Chkline;
+     Uppercase(line);     
+     Paline;  
+    END;
+   CLOSE(ifile2);    
+   incname := ifilename;
+   iflg := FALSE;
+  END;   
+    
+ PROCEDURE Processfiles;   
+  BEGIN 
+   incname := ifilename; 
+   WHILE NOT EOF(ifile1) DO       
+    BEGIN
+     includefile := FALSE;
+     READLN(ifile1,line);  
+     Chkline;
+     Uppercase(line);       
+     temp := POS('{$I ',line);   
+     IF temp  = 1 THEN             
+      BEGIN 
+       incname := COPY(line,temp+4,POS('}',line)-temp-4); 
+       Uppercase(incname);
+       IF POS('.TEXT',incname)=0 THEN incname := CONCAT(incname,'.TEXT');
+       RESET(ifile2,incname);          
+       iflg := FALSE;
+       includefile := TRUE; 
+       Pafile;   
+      END;   
+     IF temp  = 0 THEN 
+      BEGIN
+       temp := POS('(*$I ',line);
+       IF temp =1 THEN 
+        BEGIN
+         incname := COPY(line,temp+5,POS('*)',line)-temp-5);   
+         Uppercase(incname);
+         IF POS('.TEXT',incname)=0 THEN incname := CONCAT(incname,'.TEXT');
+         iflg := FALSE; 
+         RESET(ifile2,COPY(line,temp+5,POS('*)',line)-temp-5));              
+         includefile := TRUE; 
+         Pafile;      
+        END  
+       ELSE Paline;       
+      END;       
+    END { ifile1 };
+   CLOSE(ifile1);  
+  END;
+    
+ BEGIN  
+  WRITE(CHR(27),'*',CHR(0),CHR(0),CHR(0),CHR(0));        
+  {$I-} 
+  REPEAT   
+   WRITE('enter input file name ---->');
+   READLN(ifilename);
+   Uppercase(ifilename);
+   IF POS('.TEXT',ifilename)=0 THEN ifilename := CONCAT(ifilename,'.TEXT');
+   RESET(ifile1,ifilename);       
+  UNTIL IORESULT=0;   
+  REPEAT
+   WRITE('enter output file name --->');     
+   READLN(ofilename);
+   REWRITE(ofile,ofilename); 
+  UNTIL IORESULT=0;   
+  {$I+}
+  
+  WRITELN('Processing Program Text ');
+  WRITE(0:6);
+  linenum    := 0;   
+  nesting    := 0; 
+  seg        := 1;     
+  tneed[1]   := 1; 
+  procnum[1] := 1;
+  highseg    := 9;   
+  first      := NIL;
+  ln         := FALSE; 
+  iflg       := FALSE;
+  prseg      := FALSE;   
+  inseg      := FALSE;    
+  gotprog    := FALSE;
+  needready  := FALSE;
+  
+  Processfiles;
+  WRITELN(ofile);WRITELN(ofile);
+  WRITELN(ofile,'END OF PROGRAM');
+  CLOSE(ofile,lock); 
+ END. 
+  

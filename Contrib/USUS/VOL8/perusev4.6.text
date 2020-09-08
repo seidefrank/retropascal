@@ -1,0 +1,181 @@
+(*$I-*)
+(*$R-*)
+program perusepage;
+
+USES (*$U SCREENUNIT.CODE*)SCREENUNIT,
+     (*$U FILEUNIT.CODE*)FILEUNIT;
+{*****************}
+
+CONST VERSION = 'peruse     version 4.6    13-Jul-81';
+      MAXBYTES = 18431;
+
+(*
+                      G.W. Schreyer
+
+     Peruse is an update of Monaco's original version in Volume 2A of the USUS
+library, however it is so heavily modified that only the 'program perusepage',
+'begin' and 'end.' of his original code remains.  This version incorporates
+several units to handle the error free opening of the source file.  The units
+may be over-kill for this little program, but they sure are easy to use.  See
+FILEUNIT.DOC for a discription of the units.  
+
+     The program runs about ten to fifteen times faster than the original.
+It reads up the whole file in one chunk and uses SCAN to count out 22 lines.
+It then dumps the whole 22 lines to the screen with one unitwrite.  I believe
+this is the way the editor does its page function as peruse goes just as fast
+as the editor. Also like the editor, there is a size limit to the file which
+can be perused.  I set it at 36 blocks (with the header page) as this is the
+largest file which the editor on my system can read.  If you can use more (and
+have the memory avaiable!) then change the blockread statement and the
+declaration for the packed array accordingly. 
+
+     The read function uses an incredibly large amount of time to execute, so
+invoking that function to read characters one at a time is very costly. Writes
+go much quicker, but still they waste a fair amount of time so the unitwrite
+significantly speeds things along.  Of course, these 'features' are non-
+standard so that this program can only be used in the UCSD system. This
+version will back up in the file by 44 lines then it will display 22 lines if
+you should desire it.
+
+     There is a perversity in the DLE expansion when using unitwrites in my
+system. I don't know if this is a general problem, or just specific to my
+particular computer (SCREENTEST says that there is a problem with the DLE
+expansion). Lines which have leading blanks and are spaced with the DLE
+expansion are spaced one too few spaces.  If some lines use the DLE expansion
+and some lines are padded with leading blanks, the columns won't line up.  I
+believe that this is problem with the operating system because the same thing 
+happens when do a T)ransfer to the console with the F)iler.
+
+     If you want to you may convert all of the lines padded with leading
+blanks to the DLE expansion.  Go into the editor and enter A)djust mode. 
+Then step thru the file with the down arrow (repeat factors work). This will
+convert each line without moving it.  It may also make the file smaller, so
+if you are running out if room, you can conserve a little space this way.
+
+     Peruse will also open a device and read 36 blocks starting at any block
+you choose.  This allows you to look through a disk for a lost text file and
+see it in a readable format faster than PATCH can do it.  Use this feature in
+conjunction with RECOVER and to see if a unused region on the disk is the file
+that you want. But be carful, if you read in a code file, you will see
+garbage. Some of that garbage may put your terminal into some weird mode and
+anything may happen. It is best to reset your terminal after such an occurance
+or the operating system may not work right.*)
+
+
+VAR
+ i,K,BLOCK      :INTEGER;
+ SOURCE         :FILE;
+ CHARARRAY      :PACKED ARRAY [0..MAXBYTES] OF CHAR;
+ FILENAME       :STRING;
+ MAXBLOCKS      :INTEGER;
+ CH             :CHAR;
+ ARRAYSIZE      :INTEGER;
+ INDEX          :INTEGER;
+ ANCHOR         :INTEGER;
+ POSITION       : INTEGER;
+ BLOCKS         : INTEGER;
+ NEWFILE        :BOOLEAN;
+
+PROCEDURE SKIP_HEADER;
+
+BEGIN
+   IF POS('.TEXT',FILENAME) <> 0 
+      THEN 
+         BEGIN
+            BLOCKS:=34;
+            BLOCK:=2 
+         END
+      ELSE 
+         BEGIN
+            BLOCKS:=36;
+            BLOCK:=0;
+         END;
+END;
+
+PROCEDURE BACKUP;
+BEGIN
+   IF INDEX > 1 THEN INDEX:=INDEX-2;
+   FOR I:=1 TO 44 DO
+      BEGIN
+         POSITION:=SCAN(-1*INDEX,=CHR(13),CHARARRAY[INDEX]);
+         INDEX:=INDEX + POSITION-1;
+         IF INDEX < 0 THEN INDEX := 0;
+      END;
+   IF INDEX > 0 THEN INDEX:=INDEX+1;
+END;
+
+
+begin
+GETCRTINFO;
+FILENAME:='';
+GOTOXY(0,0);
+FILLCHAR(CHARARRAY,SIZEOF(CHARARRAY),CHR(0));
+CRT(ERASEOS);
+WRITELN('     ',VERSION);
+VER_SCREENUNIT;
+VER_FILEUNIT;
+REPEAT
+   I := 0;
+   BLOCK:=0;
+   OPNDSKREAD(SOURCE,'enter file or volume to be perused - -> ',FILENAME,0,10);
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   IF FILENAME='' THEN EXIT(PROGRAM);
+   NEWFILE:=FALSE;
+   IF (POS(':',FILENAME) = LENGTH(FILENAME)) OR (FILENAME = '*') 
+      THEN
+         BEGIN
+             MAXBLOCKS:=SIZEOF(CHARARRAY) DIV 512;
+             GOTOXY(10,12);
+             WRITE('read how many blocks (',MAXBLOCKS,' max) ? ');
+             READLN(BLOCKS);
+             GOTOXY(0,12);
+             CRT(ERASEOL);
+             IF BLOCKS <> 0 THEN
+                BEGIN
+                  IF (BLOCKS < 0 ) OR (BLOCKS > MAXBLOCKS) THEN
+                     BLOCKS := MAXBLOCKS;
+                  GOTOXY(10,12);
+                  WRITE('read ',BLOCKS,' blocks starting at block ? ');
+                  READLN(BLOCK);
+                  IF BLOCK < 0 THEN 
+                     BEGIN
+                        BLOCKS:=0;
+                        BLOCK:=0;
+                     END;
+                END
+             ELSE BLOCKS :=0;
+             GOTOXY(0,0);
+             CRT(ERASEOS);
+          END
+       ELSE SKIP_HEADER;
+   WRITELN;
+   K:=BLOCKREAD(SOURCE,CHARARRAY,BLOCKS,BLOCK);
+   CLOSE(SOURCE);
+   ARRAYSIZE:=512*K;
+   INDEX:=0;
+   REPEAT
+      ANCHOR:=INDEX;
+      FOR I:=1 TO 22 DO
+         BEGIN
+            POSITION:=SCAN(ARRAYSIZE-INDEX,=CHR(13),CHARARRAY[INDEX]);
+            INDEX:=POSITION+INDEX+1;
+         END;
+      UNITWRITE(1,CHARARRAY[ANCHOR],INDEX-ANCHOR,,1);
+      GOTOXY(0,0);
+      CRT(ERASEOL);
+      WRITE('M)ore, B)ack-up, N)ew file or Q)uit ? ');
+      READ(KEYBOARD,CH);
+      GOTOXY(0,0);
+      CRT(ERASEOS);
+      WRITELN;
+      CASE CH OF
+        'Q','q' : EXIT(PROGRAM);
+        'B','b' : BACKUP;
+        'M','m' : ;
+        'N','n' : NEWFILE:=TRUE;
+      END; 
+   UNTIL ((INDEX >= ARRAYSIZE)) OR NEWFILE; 
+UNTIL NOT NEWFILE;
+end.
+

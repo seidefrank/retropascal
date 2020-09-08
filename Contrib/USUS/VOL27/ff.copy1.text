@@ -1,0 +1,365 @@
+SEGMENT PROCEDURE COPYFORM;
+CONST
+     SEGSTOLOCK = 9;         (* Added 2 more Segments to lock  SDA  1/5/82 *)
+
+TYPE
+     MOVETYPE = (CTLROW, CTLCOL, DATAPAGE, DATAROW, DATACOL);
+
+VAR
+     TEMP, SOURCEDRIVE, DESTDRIVE: STRING[3];
+     ERR, ZERO, JUSTPAGES: BOOLEAN;
+     DESTFORM, SOURCEFORM: STRING[L_NAME];
+     I, DESTREC, SOURCEREC, DESTPAGE, DESTROW, DESTCOL, ROW_CNT, COL_CNT,
+       PAGE_CNT, PAGE, ROW, COL, ST_PAGE, ST_COL, ST_ROW, TOPAGE, TOROW,
+         TOCOL: INTEGER;
+     SOURCE: STRING[6];
+     DEST: STRING[11];
+     PAGELIST, COLLIST, ROWLIST: STRING[60];
+     SEGLIST: ARRAY[0..SEGSTOLOCK] OF STRING[8];
+     SOURCEDIRENTRY, DESTDIRENTRY: DIRRECORD;
+     FORM_CON_TEMP: FILE OF NUMBERTYPE;
+     FORM_TIT_TEMP: TFILE;
+     FORM_CTL_TEMP: CFILE;
+     FORM_DAT_TEMP: AFILE;
+     TEMP_DAT_DESC: FILEDESC;
+
+SEGMENT PROCEDURE INITIALIZE;      FORWARD;
+SEGMENT PROCEDURE DOTHECOPY;       FORWARD;
+
+SEGMENT PROCEDURE INITIALIZE;
+VAR  I, J: INTEGER;
+
+PROCEDURE GETDRIVE(WHERE: STRING;  VAR PLACE: STRING);
+VAR  ANS: INTEGER;
+BEGIN
+  REPEAT            (* Changed range of legal drive numbers SDA 4/6/81 *)
+    (*$B 40COL- *)
+    GETNUM(4,30,-1,CONCAT('Enter ',WHERE,' disk drive # '), ANS)
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETNUM(4,30,-1,CONCAT('Enter ',WHERE,' drive # '), ANS)
+    (*$E 40COL  *)
+  UNTIL ANS IN [4,5,9..30];
+  ENCODE(ANS,PLACE);           (* change drive # read in into a string *)
+  PLACE := CONCAT('#',PLACE);  (* put pound sign in front of drive #   *)
+END;
+
+BEGIN
+  TEMP := DISKDRIVE;
+  SOURCE := 'Source';
+  (*$B 40COL- *)
+  DEST := 'Destination';
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  DEST := 'Dest';
+  (*$E 40COL  *)
+
+  DESTFORM := '';              (*  Bug Fix  SDA  5/19/81               *)
+  SOURCEFORM := REQUESTED_FORM;
+  
+  sc_clr_screen;
+  {WRITELN(OUTPUT,CLEAR);}
+  WRITELN(OUTPUT,'F R E E F O R M   C O P Y');
+  WRITELN(OUTPUT,'Copy existing Forms');
+  
+  MEMORY;
+  
+  IF NOT DISKDIR THEN EXIT(COPYFORM);
+  
+  SEGLIST[0] := 'EXTRAHEA';   SEGLIST[1] := 'HEAPOPS ';
+  SEGLIST[2] := 'PASCALIO';   SEGLIST[3] := 'EXTRAIO ';
+  SEGLIST[4] := 'STRINGOP';   SEGLIST[5] := 'FILEOPS ';
+  SEGLIST[6] := 'REALOPS ';   SEGLIST[7] := 'GOTOXY  ';
+  SEGLIST[8] := 'ACCEPTNU';   SEGLIST[9] := 'ACCEPTST';
+
+  FOR I := 0 TO SEGSTOLOCK DO
+    BEGIN
+      IS := CONCAT('FREEFORM,COPYFORM,DOTHECOPY,',SEGLIST[I]);
+      J := VARAVAIL(IS);
+      IF DEBUGMODE THEN
+        BEGIN
+          GOTOXY(0,4+I);
+          WRITE('VARAVAIL(''',IS,''') = ',J,'  PRESS <RET>');
+          READLN(IS)
+        END
+      ELSE                        (* Don't Lock in Fileops and don't ask why, *)
+        IF I = 5 THEN IS := 'N';  (* it just works.    SDA 4/7/81             *)
+      IF (J>0) AND (IS<>'N') THEN MEMLOCK(SEGLIST[I]) ELSE SEGLIST[I] := '';
+      MEMORY;
+    END;
+
+  IF YESNO('Copy from one disk to another','N') THEN
+    BEGIN    (* set source and dest drives to different places *)
+      GETDRIVE(SOURCE,SOURCEDRIVE);  (* get drive # for source *)
+      REPEAT
+        GETDRIVE(DEST,DESTDRIVE)     (* get drive # for dest.  *)
+      UNTIL DESTDRIVE <> SOURCEDRIVE
+    END
+  ELSE         (* set source and dest drives to the same place *)
+    BEGIN  SOURCEDRIVE := TEMP;  DESTDRIVE := TEMP  END;
+  REPEAT
+    GETRESPONSE(TRUE,'Copy a Form or just Pages ? (F/P) ','F','',1,IS);
+    LCTOUC(IS);
+  UNTIL (IS='F') OR (IS='P');
+  JUSTPAGES := IS = 'P';
+END;   (* of initialize *)
+
+SEGMENT PROCEDURE DOTHECOPY;
+
+PROCEDURE INSERTDISK(DRIVE, WHERE: STRING);
+BEGIN
+  DISKDRIVE := DRIVE;  (* set global used to point to Freeform disk *)
+  
+  MEMORY;
+  
+  IF DESTDRIVE <> SOURCEDRIVE THEN   (* copying between disks *)
+    BEGIN
+      (*$B 40COL- *)
+      PRESSRETURN( CONCAT('Insert ',WHERE,' disk into drive ',DRIVE),MSG_LINE );
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      PRESSRETURN( CONCAT('Put ',WHERE,' disk in ',DRIVE),MSG_LINE );
+      (*$E 40COL  *)
+      ERASE(MSG_LINE)
+    END
+END;
+
+PROCEDURE RETURNDISKS(WHY: STRING);
+BEGIN
+  (*$B 40COL- *)
+  PRESSRETURN(CONCAT('Copy ',WHY,', return all disks to original drives and'),
+                 MSG_LINE);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PRESSRETURN(CONCAT('Copy ',WHY,', return disks &'),
+                 MSG_LINE);
+  (*$E 40COL  *)
+  FOR I := 0 TO SEGSTOLOCK DO MEMSWAP(SEGLIST[I])
+END;
+
+PROCEDURE LEAVE(ERR: INTEGER;  DONTDELETE: BOOLEAN);
+BEGIN
+  ERASE(MSG_LINE-1);  ERASE(MSG_LINE);  ERASE(MSG_LINE+1);
+  IF ERR > 0 THEN ERROR(ERR);
+  IF NOT DONTDELETE THEN       (* Delete all files belonging to Destform *)
+    BEGIN
+      DISKDRIVE := DESTDRIVE;
+      OPEN_DIR;
+      (* blank directory entry and remove control and data files *)
+      DIRECTORY^.FORM_NAME := '';  SEEKDIR(DESTREC,ANDPUT);
+      IS := CONCAT(DISKDRIVE,':',DESTFORM,'.');
+      RESET(FORM_CTL_TEMP,CONCAT(IS,'CTL'));
+      CLOSE(FORM_CTL_TEMP, PURGE);
+      RESET(FORM_CON_TEMP,CONCAT(IS,'CON'));
+      CLOSE(FORM_CON_TEMP, PURGE);
+      RESET(FORM_TIT_TEMP,CONCAT(IS,'TIT'));
+      CLOSE(FORM_TIT_TEMP, PURGE);
+      RESET(FORM_DAT_TEMP,CONCAT(IS,'DAT'));
+      CLOSE(FORM_DAT_TEMP, PURGE)
+    END;
+  DISKDRIVE := TEMP;          (* Close all source files *)
+  OPEN_DIR;
+  FINISHUP;
+  RETURNDISKS('Aborted');
+  EXIT(COPYFORM)
+END;
+
+PROCEDURE SETDEST( WHAT: STRING;  MAX: INTEGER;  VAR ANS: INTEGER );
+BEGIN
+  IF MAX = 1 THEN ANS := 1
+  ELSE
+    GETNUM(1,MAX,1,CONCAT('Enter ',WHAT,' # to start putting the Copy ->'),ANS)
+END;   (* of setdest *)
+
+PROCEDURE OPEN_NEW_FORM_FILES;
+VAR
+     ALLOK: BOOLEAN;
+     AWINDOW: WINDOWTYPE;
+     I, J: INTEGER;
+
+PROCEDURE CHECKERR;
+BEGIN
+  IF IORESULT <> 0 THEN LEAVE(2,FALSE)
+END;
+
+BEGIN
+  (* Initialize number of pages and where to start putting the pages, rows,
+     and columns in the new form *)
+  DESTPAGE := SOURCEDIRENTRY.NO_PAGES;
+  STPAGE := 1;
+  STCOL  := 1;
+  STROW  := 1;
+  
+  MEMORY;
+  
+  (* Open up new FORM files *)
+  REPEAT                           (* Get the size of the new Form            *)
+    ALLOK := TRUE;                 (* Copy can't be smaller than the original *)
+    WITH SOURCEDIRENTRY DO BEGIN
+      DESTCOL := ( MAXINT-WINDOWSIZE ) DIV NO_ROWS;
+      IF DESTCOL > MAXCOL THEN DESTCOL := MAXCOL;     (* BUG FIX  SDA 10/3/81 *)
+      (*$B 40COL- *)
+      GETNUM(NO_COLS,DESTCOL,THEMAXCOL,
+        'How many Columns might ever be in the FORM ?', DESTCOL);
+      DESTROW := ( MAXINT-WINDOWSIZE ) DIV DESTCOL;
+      GETNUM(NO_ROWS,DESTROW,THEMAXROW,
+        'How many Rows might ever be in the FORM ?',    DESTROW)
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      GETNUM(NO_COLS,DESTCOL,THEMAXCOL,'Max Cols in FORM ?', DESTCOL);
+      DESTROW := ( MAXINT-WINDOWSIZE ) DIV DESTCOL;
+      GETNUM(NO_ROWS,DESTROW,THEMAXROW,'Max Rows in FORM ?', DESTROW)
+      (*$E 40COL  *)
+    END;
+    PROMPT('Maximum Cols = ',MSG_LINE+1);
+    WRITE(OUTPUT,DESTCOL,', Rows = ',DESTROW);
+    (*$B 40COL- *)
+    ALLOK := YESNO('Are the dimensions ok as specified','Y');
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    ALLOK := YESNO('Are the dimensions ok','Y');
+    (*$E 40COL  *)
+    ERASE(MSG_LINE+1)
+  UNTIL ALLOK;
+  ONEMOMENT('Opening new FORM files');
+  IS := CONCAT(DESTDRIVE,':',DESTFORM,'.');
+  REWRITE(FORM_CTL_TEMP,CONCAT(IS,'CTL'));    (* The new Control file *)
+  CHECKERR;
+  FOR I := 0 TO DESTROW+DESTCOL DO
+    BEGIN  PUT(FORM_CTL_TEMP);  CHECKERR  END;
+  CLOSE(FORM_CTL_TEMP,LOCK);
+  REWRITE(FORM_TIT_TEMP,CONCAT(IS,'TIT'));    (* The new Title file *)
+  CHECKERR;
+  FOR I := 0 TO MAXPAGES DO
+    BEGIN  PUT(FORM_TIT_TEMP);  CHECKERR  END;
+  CLOSE(FORM_TIT_TEMP,LOCK);
+  REWRITE(FORM_CON_TEMP,CONCAT(IS,'CON'));    (* The new Constant file *)
+  CHECKERR;
+  FOR I := 0 TO MAXCONSTS DO
+    BEGIN  PUT(FORM_CON_TEMP);  CHECKERR  END;
+  CLOSE(FORM_CON_TEMP,LOCK);
+  REWRITE(FORM_DAT_TEMP,CONCAT(IS,'DAT'));    (* The new Data file *)
+  CHECKERR;
+  FOR I := 0 TO WINDOWSIZE DO AWINDOW[I] := EMPTY;
+  WITH TEMP_DAT_DESC DO BEGIN
+    BLKSPERPAGE := ( (DESTROW*DESTCOL) + WINDOWSIZE ) DIV (WINDOWSIZE + 1);
+    USEDHEAP := FALSE;
+    FOR I := 1 TO DESTPAGE DO
+      FOR J := 1 TO BLKSPERPAGE DO
+        IF BLOCKWRITE(FORM_DAT_TEMP,AWINDOW,1) <> 1 THEN LEAVE(2,FALSE)
+  END;
+  CLOSE(FORM_DAT_TEMP,LOCK)
+END;   (* of open new form files *)
+
+PROCEDURE SETUP( VAR CNT: INTEGER;  VAR COPYLIST: STRING;  WHAT: STRING;
+                      MAX, HIGH: INTEGER );
+VAR
+     FIRST, START, NUM, INC, PT, BEG: INTEGER;
+     FIRSTONE, A_OK: BOOLEAN;
+     INSTRING: STRING;
+     
+PROCEDURE SET_OUT(NUM: INTEGER);
+
+  PROCEDURE SHOWERR(ERRNUM: INTEGER);
+  BEGIN
+    A_OK := FALSE;
+    GOTOXY(PT-1,MSG_LINE+1);
+    WRITE(OUTPUT,' <- ');
+    DELETE(COPYLIST,LENGTH(COPYLIST),1);  (* Delete the inserted comma *)
+    FOR I := PT TO LENGTH(COPYLIST) DO WRITE(OUTPUT,COPYLIST[I]);
+    CASE ERRNUM OF
+      1: PRESSRETURN('Sorry, too many',MSG_LINE+2);
+      2: PRESSRETURN('Illegal value',MSG_LINE+2)
+    END;
+    ERASE(MSG_LINE+2)
+  END;
+
+BEGIN
+  CNT := CNT + 1;
+  IF CNT > MAX THEN SHOWERR(1)  ELSE
+  IF NOT (NUM IN [1..HIGH]) THEN SHOWERR(2)
+END;
+
+BEGIN (* SETUP *)
+  (* Default list to all rows or columns in the source or the number of pages *)
+  (* chosen to be in the destination.                                         *)
+  (* Note list of rows or cols may be more than will fit in the destination ! *)
+  ENCODE(HIGH,COPYLIST);
+  COPYLIST := CONCAT('1 - ',COPYLIST);
+  
+  MEMORY;
+  
+  INSTRING := '';
+  
+  (*$B 40COL- *)
+  PROMPT(CONCAT('Enter sequences of ',WHAT,'s (XX-XX,YY-YY) to copy below'),
+                 MSG_LINE);
+  WRITE(OUTPUT,' (there are ',HIGH,')');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PROMPT(CONCAT('Enter ',WHAT,'s to copy'),MSG_LINE);
+  WRITE(OUTPUT,' (max ',HIGH,')');
+  (*$E 40COL  *)
+  REPEAT
+    CNT := 0;   PT := 1;
+    FIRSTONE := TRUE;   A_OK := TRUE;
+    ACCEPTSTR(TRUE,59,0,MSG_LINE+1,COPYLIST,INSTRING);
+    IF INSTRING = 'ESCAPE' THEN LEAVE(0,JUSTPAGES) ELSE COPYLIST := INSTRING;
+    COPYLIST := CONCAT(COPYLIST,',');   (* comma stopper at end of string *)
+    REPEAT
+      WHILE NOT ( (COPYLIST[PT] IN DIGITS) OR (COPYLIST[PT]=',') ) DO
+        PT := PT + 1;
+      IF COPYLIST[PT] = ',' THEN BEGIN  PT := PT + 1;  FIRSTONE := TRUE  END
+      ELSE  (* must be a number *)
+        BEGIN
+          START := PT;
+          WHILE COPYLIST[PT] IN DIGITS DO PT := PT+1; (* find end of number *)
+          VALUE(TRUE,COPY(COPYLIST,START,PT-START),FAKE,NUM);
+          IF FIRSTONE THEN
+            BEGIN  SET_OUT(NUM);  BEG := NUM;  FIRSTONE := FALSE  END
+          ELSE  (* second number so generate a sequence *)
+            BEGIN
+              FIRST := BEG;
+              IF FIRST <> NUM THEN  (* legitimate sequence *)
+                BEGIN
+                  IF FIRST > NUM THEN INC := -1 ELSE INC := 1;
+                  REPEAT
+                    FIRST := FIRST + INC;
+                    SET_OUT(FIRST)
+                  UNTIL (NOT A_OK) OR (FIRST = NUM)
+                END;
+              FIRSTONE := TRUE
+            END
+        END
+    UNTIL (NOT A_OK) OR (PT >= LENGTH(COPYLIST))
+  UNTIL A_OK;
+  IF CNT = 0 THEN LEAVE(0,JUSTPAGES);             (* Bug fix  SDA 3/4/81 *)
+  ERASE(MSG_LINE+1)
+END;  (* of setup *)
+
+
+PROCEDURE ONEPAIR( VAR PT, BEG, LAST: INTEGER; COPYLIST: STRING );
+VAR
+     FIRSTONE, SECOND: BOOLEAN;
+     NUM, START: INTEGER;
+     
+BEGIN
+  FIRSTONE := TRUE;  SECOND := FALSE;  LAST := -1;
+  REPEAT
+    WHILE NOT ( (COPYLIST[PT] IN DIGITS) OR (COPYLIST[PT]=',') ) DO
+      PT := PT + 1;
+    IF COPYLIST[PT] = ',' THEN
+      BEGIN  PT := PT + 1;  FIRSTONE := TRUE;  SECOND := LAST <> -1  END
+    ELSE  (* must be a number *)
+      BEGIN
+        START := PT;
+        WHILE COPYLIST[PT] IN DIGITS DO PT := PT + 1;  (* find end of number *)
+        VALUE(TRUE,COPY(COPYLIST,START,PT-START),FAKE,NUM);
+        IF FIRSTONE THEN
+          BEGIN  BEG := NUM;  LAST := NUM;  FIRSTONE := FALSE  END
+        ELSE
+          BEGIN  SECOND := TRUE;  LAST := NUM  END
+      END
+    UNTIL (LAST <> -1) AND SECOND
+END;   (* of onepair *)
+

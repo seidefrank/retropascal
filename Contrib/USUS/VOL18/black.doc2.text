@@ -1,0 +1,19 @@
+     
+     The Blackbox program may be played in two modes.  In mode 1, the program 
+places the hidden marbles in the 8 * 8 grid using a random number generator. 
+In mode 2, a player may place marbles for an opponent to guess in the 8 * 8
+grid.  In either mode, the player may select either 4 or 5 marbles to be
+hidden in the grid.  The score of the game is the sum of the markers denoting
+the number of rays needed to deduce the position of the marbles in the board.
+
+     The commands to Blackbox are S(hoot, which fires a ray from a player 
+selected row or column; M(anipulate Marbles, where the player may place
+marbles to indicate a tentative guess; and G(uess when a player decides that 
+his tentatively placed marbles represent a correct guess.  If the guess is 
+correct, the game ends and the score is displayed.  The score is the sum of 
+the markers '*','^', and 'a','b',etc.  If a guess is incorrect, a 5 marker 
+penalty is added  and the game continues.
+
+     Type <return> to start the game.
+
+     

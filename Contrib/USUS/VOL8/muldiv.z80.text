@@ -1,0 +1,62 @@
+; muldiv.text
+;
+; This procedure is specifically designed to meet the needs of the 
+; UCSD Pascal Seek Algorithm by calculating the block and byte offset
+; given the record number, and the record size.
+;
+; Copyright (c) 1980, by Stuart Lynne. All rights reserved.
+;
+;
+;Procedure MULDIV - BLOCK:=(RECNUM*RECSIZ) DIV 512;
+;                 - BYTE :=(RECNUM*RECSIZ) MOD 512;
+                  
+
+;PROCEDURE MULDIV(VAR BYTE:INTEGER;VAR BLOCK:INTEGER;REC,SIZ:INTEGER);
+
+.PROC MULDIV,4
+        POP     IX      ;Save return
+        POP     HL
+        POP     DE      ;Get Size and record #
+        CALL    MUL    ;HLDE:= HL*DE
+        LD      A,L     ;Assume 24 bit max result
+        POP     HL      ;HL-> destination for block #
+        PUSH    DE      ;Save remainder for byte
+        SRL     A       ;
+        RR      D       ;LD div 2 = Block #
+        LD      (HL),D
+        INC     HL
+        LD      (HL),A
+        POP     DE      ;Get remainder
+        LD      A,1
+        AND     D       ;Mask out lower 9 bits (512)
+        POP     HL      ;HL=> destination of BYTE
+        LD      (HL),E
+        INC     HL
+        LD      (HL),A
+        JP      (IX)    ;Return
+        
+;Multiply routine
+;unsigned HLDE = HL*DE
+MUL:
+        PUSH    AF
+        PUSH    BC
+        LD      A,17.
+        LD      C,L
+        LD      B,H
+        LD      HL,0
+MUL1    OR     A               ;Clear carry
+        RR      H
+        RR      L
+        RR      D
+        RR      E
+        JP      NC,MUL2
+        ADD     HL,BC
+MUL2    DEC     A
+        JP      NZ,MUL1
+        POP     BC
+        POP     AF
+        RET
+        
+.END
+
+

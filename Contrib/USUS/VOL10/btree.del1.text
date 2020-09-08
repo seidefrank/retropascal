@@ -1,0 +1,180 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.DEL1.TEXT             revised 31-May-82               *
+*                                                                       *
+************************************************************************}
+
+
+procedure DELETE(INPUTKEY:FNAME;
+                      A:integer;
+                      var FOUND,WRONG:boolean);
+{************************************************************************
+*                                                                       *
+*  Search and delete INPUTKEY in the b-tree node/record number A.  If   *
+*  the deletion cause an underflow (i.e. NODESIZE<MIN_NODE_SIZE) then   *
+*  balance with adjacent page if possible, otherwise MERGE.             *
+*                                                                       *
+*       NEW_HEIGHT = NODESIZE<MIN_NODE_SIZE                             *
+*                                                                       *
+*************************************************************************}
+var   U:PERSON;                         {not required?}
+      NEW_NODE:PERSON_NODE;             {not required?}
+      Z,TEMP:PERSON_NODE;               {hold node temporarily}
+      M,A1,I,J,K,R,L,Q:integer;         {loop control variables}
+
+procedure UNDERFLOW(C,A,S:integer);
+{A=underflow node/record number and C=parent node/record number}
+var   TOO_SMALL:PERSON_NODE;    {underflow node}
+      PARENT:PERSON_NODE;       {parent of underflow node}
+      ADJACENT_NODE:PERSON_NODE;{adjacent node}
+      B,I,K:integer;            {loop control variables}
+      ADJ_SIZE:integer;    {number of person in ADJACENT_NODE}
+      PARENT_SIZE:integer;      {number of person in PARENT_NODE}
+
+procedure UNDER1;
+begin
+  S:=S+1;                     {determine ADJACENT_NODE record number}
+  B:=PARENT.DATA[S].SUCC_NODE;{determine ADJACENT_NODE record number}
+  seek(PERSONS,B);    {set the file window on the adjacent node}
+  write('.');         {show user something is happening}
+  get(PERSONS);       {load the file buffer}
+  ADJACENT_NODE:=PERSONS^;   {assign adjacent node to working variable}
+  ADJ_SIZE:=ADJACENT_NODE.NODESIZE;    {assign to working variable}
+  K:=(ADJ_SIZE-MIN_NODE_SIZE+1) div 2;
+    {K=no. of items available on adjacent node}
+  TOO_SMALL.DATA[MIN_NODE_SIZE]:=PARENT.DATA[S];
+    {increase number of persons in TOO_SMALL}
+  TOO_SMALL.DATA[MIN_NODE_SIZE].SUCC_NODE:=ADJACENT_NODE.P0;
+    {set proper successor node for person added to TOO_SMALL}
+  if K>0 then begin  {move K items from ADJACENT_NODE to TOO_SMALL}
+    for I:=1 to K-1 do
+      TOO_SMALL.DATA[I+MIN_NODE_SIZE]:=ADJACENT_NODE.DATA[I];
+    PARENT.DATA[S]:=ADJACENT_NODE.DATA[K];
+      {add "new" person to parent to replace deleted person}
+    PARENT.DATA[S].SUCC_NODE:=B;
+      {set "new" person successor node to correct record number}
+    ADJACENT_NODE.P0:=ADJACENT_NODE.DATA[K].SUCC_NODE;
+      {set correct lessor successor node to correct record number}
+    ADJ_SIZE:=ADJ_SIZE-K;
+      {adjust for persons transferred to TOO_SMALL}
+    for I:=1 to ADJ_SIZE do {"close-up" gap left by transfer}
+      ADJACENT_NODE.DATA[I]:=ADJACENT_NODE.DATA[I+K];
+    ADJACENT_NODE.NODESIZE:=ADJ_SIZE;
+      {adjust for persons transferred to TOO_SMALL}
+    TOO_SMALL.NODESIZE:=MIN_NODE_SIZE-1+K;
+      {adjust for persons transferred to TOO_SMALL}
+    NEW_HEIGHT:=false;        {b-tree is not shrinking vertically}
+    seek(PERSONS,B);          {set file window to ADJACENT_NODE}
+    write('.');               {show user something is happening}
+    PERSONS^:=ADJACENT_NODE;  {assign to "disk variable"}
+    put(PERSONS)              {write revised node to disk}
+  end  {if K>0}
+  else begin  {merge nodes TOO_SMALL and ADJACENT_NODE}
+    for I:=1 to MIN_NODE_SIZE do
+     {transfer to TOO_SMALL until it is the maximum size}
+      TOO_SMALL.DATA[I+MIN_NODE_SIZE]:=ADJACENT_NODE.DATA[I];
+    for I:=S to PARENT_SIZE-1 do PARENT.DATA[I]:=PARENT.DATA[I+1];
+      {"Krunch" PARENT_NODE}
+    TOO_SMALL.NODESIZE:=MAX_NODE_SIZE;
+      {adjust for transfer from ADJACENT_NODE}
+    PARENT.NODESIZE:=PARENT_SIZE-1; {dispose(ADJACENT_NODE)}
+    seek(PERSONS,B);            {set file window to node being deleted}
+    write('.');                 {show user something is happening}
+    ADJACENT.P0:=FILE_LEN.PERSON_AVAIL; {link node to available list}
+    PERSONS^:=ADJACENT;         {load file buffer}
+    put(PERSONS);               {write buffer to disk}
+    FILE_LEN.PERSON_AVAIL:=B;   {reset pointer to head of linked list}
+    FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED+1;
+      {correct number of empty or unused nodes}
+    NEW_HEIGHT:=PARENT.NODESIZE<MIN_NODE_SIZE
+      {if PARENT.NODESIZE<MIN_NODE_SIZE then b-tree is shrinking vertically}
+  end; {else begin}
+  seek(PERSONS,A);            {set file window to underflow node}
+  write('.');                 {show user something is happening}
+  PERSONS^:=TOO_SMALL;        {assign to "disk variable"}
+  put(PERSONS)                {write revised underflow node to disk}
+end; {UNDER1}
+
+begin {UNDERFLOW}
+  seek(PERSONS,C);      {set the file window on the parent node}
+  write('.');           {show user something is happening}
+  get(PERSONS);         {load the file buffer}
+  PARENT:=PERSONS^;     {assign parent node to working variable}
+  seek(PERSONS,A);      {set the file window on underflow node}
+  write('.');           {show user something is happening}
+  get(PERSONS);         {load the file buffer}
+  TOO_SMALL:=PERSONS^;  {assign underflow node to working variable}
+  PARENT_SIZE:=PARENT.NODESIZE;         {assign to working variable}
+    {NEW_HEIGHT=true, TOO_SMALL.NODESIZE=MIN_NODE_SIZE-1}
+  if S<PARENT_SIZE then UNDER1 {ADJACENT_NODE:=node to the right of TOO_SMALL}
+  else begin                   {ADJACENT_NODE:=node to the left of TOO_SMALL}
+    if S=1 then B:=PARENT.P0            {determine ADJACENT_NODE record #}
+    else B:=PARENT.DATA[S-1].SUCC_NODE; {determine ADJACENT_NODE record #}
+    seek(PERSONS,B);            {set the window on the adjacent node}
+    write('.');                 {show user something is happening}
+    get(PERSONS);               {load the file buffer}
+    ADJACENT_NODE:=PERSONS^;    {assign adjacent node to a working variable}
+    ADJ_SIZE:=ADJACENT_NODE.NODESIZE+1;     {assign to a working variable}
+    K:=(ADJ_SIZE-MIN_NODE_SIZE) div 2;
+      {K=no. of items available on adjacent node}
+    if K>0 then begin  {move K items from node ADJACENT_NODE to TOO_SMALL}
+      for I:=MIN_NODE_SIZE-1 downto 1 do  {"Krunch" TOO_SMALL}
+        TOO_SMALL.DATA[I+K]:=TOO_SMALL.DATA[I];
+      TOO_SMALL.DATA[K]:=PARENT.DATA[S];
+        {add "new" person to replace deleted person}
+      TOO_SMALL.DATA[K].SUCC_NODE:=TOO_SMALL.P0;
+        {set correct successor node to correct record number}
+      ADJ_SIZE:=ADJ_SIZE-K;
+        {adjust for persons transferred to TOO_SMALL}
+      for I:=K-1 downto 1 do  {transfer to K persons TOO_SMALL}
+        TOO_SMALL.DATA[I]:=ADJACENT_NODE.DATA[I+ADJ_SIZE];
+      TOO_SMALL.P0:=ADJACENT_NODE.DATA[ADJ_SIZE].SUCC_NODE;
+        {set correct lessor successor node to correct record number}
+      PARENT.DATA[S]:=ADJACENT_NODE.DATA[ADJ_SIZE];
+        {transfer replacement person to PARENT}
+      PARENT.DATA[S].SUCC_NODE:=A;
+        {set correct successor node to correct record number}
+      ADJACENT_NODE.NODESIZE:=ADJ_SIZE-1;
+        {adjust for persons transferred to TOO_SMALL}
+      TOO_SMALL.NODESIZE:=MIN_NODE_SIZE-1+K;
+        {adjust for persons transferred to TOO_SMALL}
+      NEW_HEIGHT:=false;        {b-tree is not shrinking vertically}
+      seek(PERSONS,A);          {set file window to underflow node}
+      write('.');               {show user something is happening}
+      PERSONS^:=TOO_SMALL;      {assign to a "disk variable"}
+      put(PERSONS)              {write revised underflow node to disk}
+    end {if K>0}
+    else begin  {merge nodes TOO_SMALL and ADJACENT_NODE}
+      ADJACENT_NODE.DATA[ADJ_SIZE]:=PARENT.DATA[S];
+        {transfer replacement person to adjacent node}
+      ADJACENT_NODE.DATA[ADJ_SIZE].SUCC_NODE:=TOO_SMALL.P0;
+        {set correct successor node to correct record number}
+      for I:=1 to MIN_NODE_SIZE-1 do  {transfer persons to ADJACENT_NODE}
+        ADJACENT_NODE.DATA[I+ADJ_SIZE]:=TOO_SMALL.DATA[I];
+      ADJACENT_NODE.NODESIZE:=MAX_NODE_SIZE;
+        {adjust for persons transferred from TOO_SMALL}
+      PARENT.NODESIZE:=PARENT_SIZE-1; {dispose(TOO_SMALL)}
+      seek(PERSONS,A);          {set file window to node begin deleted}
+      write('.');               {show user something is happening}
+      TOO_SMALL.P0:=FILE_LEN.PERSON_AVAIL; {link to list of available nodes}
+      PERSONS^:=TOO_SMALL;      {load file buffer}
+      put(PERSONS);             {write buffer to disk}
+      FILE_LEN.PERSON_AVAIL:=A; {reset pointer to new head of linked list}
+      FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED+1;
+        {correct number of empty or unused nodes}
+      NEW_HEIGHT:=PARENT.NODESIZE<MIN_NODE_SIZE
+        {if NODESIZE<MIN_NODE_SIZE then b-tree is shrinking vertically}
+    end; {else begin}
+    seek(PERSONS,B);            {set file window to adjacent node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=ADJACENT_NODE;    {assign to a "disk variable"}
+    put(PERSONS)                {write revised adjacent node to disk}
+  end;
+  seek(PERSONS,C);              {set file window to parent node}
+  write('.');                   {show user something is happening}
+  PERSONS^:=PARENT;             {assign to a "disk variable"}
+  put(PERSONS)                  {write revised parent node to disk}
+end; {UNDERFLOW}
+
+
+

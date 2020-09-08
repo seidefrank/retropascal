@@ -1,0 +1,58 @@
+{$R-,$F-}(* GENERATES A FILE OF 25000 REAL NUMBERS, AND COMPUTES THEIR    *)
+(* SUM S.  THEN THE FILE IS RESET AND READ, AND A CHECKSUM IS COMPUTED.   *)
+
+(* IT TOOK 1230 MSEC (ON THE CDC 6400) TO GENERATE THE FILE, AND 980 MSEC *)
+(* TO READ IT.  THIS CORRESPONDS TO 49 USEC TO WRITE AND 39 USEC TO READ  *)
+(* PER NUMBER.                                                            *)
+(* THE AMOUNT OF TIME INCREASES DRASTICALLY, IF A DECIMAL REPRESENTATION  *)
+(* OF THE NUMBERS ON THE FILE IS REQUESTED.  THIS IS EASILY ACCOMPLISHED, *)
+(* NAMELY BY DECLARING THE FILE TO CONSIST OF CHARACTERS INSTEAD OF REAL  *)
+(* NUMBERS:                                                               *)
+(*             F: FILE OF CHAR                                            *)
+(* IN THIS CASE, THE READ AND WRITE STATEMENTS INCLUDE A CONVERSION       *)
+(* OPERATION FROM DECIMAL TO BINARY AND VICE-VERSA.  GENERATING THE FILE  *)
+(* THEN TAKES 28185 MSEC (ON THE CDC 6400), READING TAKES 30313 MSEC (ON  *)
+(* CDC 6400).  THIS CORRESPONDS TO AN INCREASE BY A FACTOR OF 23 IN       *)
+(* WRITING AND 31 IN READING.  (EACH NUMBER IS REPRESENTED BY 22          *)
+(* CHARACTERS ON THE FILE).                                               *)
+
+(* THE ORIGINAL PROGRAM HAS BEEN MODIFIED TO BE UCSD PASCAL COMPATIBLE,   *)
+(* INCLUDING THE USE OF GET/PUT INSTEAD OF READ/WRITE FOR FILES OF REALS. *)
+
+PROGRAM NUMERICIO(F,OUTPUT);
+   (*  INPUT AND OUTPUT OF NUMBERS *)
+   CONST N = 25000;  D = 0.12345;
+   VAR I: INTEGER;  X,S: REAL;
+       F: FILE OF REAL;
+
+    BEGIN  
+    Writeln;
+    Writeln ('Write and read reals  (R-)');
+    Writeln;
+    Write ('<cr> starts benchmark  (create file part)');
+    Readln;
+
+X := 1.0;  S := 0;  REWRITE(F, 'REALTEMP' );
+   FOR I := 1 TO N DO
+      BEGIN  F^ := X; PUT(F); S := S+X;  X := X+D
+      END;
+   
+   WRITELN('DONE',CHR(7));
+
+WRITELN('CHECKSUM= ', S );
+   
+   CLOSE(F,LOCK);
+   
+   WRITELN('<cr> continues benchmark (read part)');
+   READLN;
+   
+   RESET(F, 'REALTEMP');  S := 0;
+   WHILE NOT EOF(F) DO
+      BEGIN  X:= F^; GET(F); S := S+X;
+      END;
+   
+   WRITELN('DONE',CHR(7));
+
+   WRITELN('CHECKSUM = ',S);
+   CLOSE(F, PURGE);
+END.

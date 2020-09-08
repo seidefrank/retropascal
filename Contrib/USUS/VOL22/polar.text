@@ -1,0 +1,379 @@
+{$S+}
+
+{
+                                                  program by: DENNIS E. GRUNDLER
+     Changes made and comments by reviewer:
+       Changed CHR(CLR_EOL) to CEOL and removed definition of CLR_EOL.
+       Placed definition of CLEAR_LINE in SCREEN_STUFF.
+       Changed PAGE(OUTPUT) to CLEARSCREEN.
+       Added USES SCREEN_STUFF.
+       Provided unit PLOTTER.
+       Reversed range of subscripts in SCREENTYPE.
+       Added boolean variable, PLOT_STARTED (apparently in
+         original PLOTTER unit).
+       Added line PLOT_STARTED := FALSE; in procedure PLOT_IT.
+       Defined UP and DOWN (apparently in original plotter unit).
+       FUNCTION CHECK does NOT protect the plotter; if used with the simple
+         Hiplots, it may be wise to consider rewriting this function.
+       The Grundlers routinely use the system to define pi, using 
+         PI := 4*ATAN(1). This is all right as long as ATAN gives the
+         same accuracy as real number accuracy, but why not just enter
+         PI = 3.14159 26535 89793 23846 as a constant to the accuracy of
+         your choice.
+       Added error message 15.
+}
+PROGRAM POLAR;
+
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF, PLOTTER,
+  POST_ENTRY{the latter by: EDWARD J. GRUNDLER };
+
+CONST ROWWIDTH=20;
+      INK=1;
+      UP=0;
+      DOWN=1;
+TYPE SCREENTYPE = PACKED ARRAY [0..239,0..319] OF BOOLEAN;
+
+VAR SCREEN:SCREENTYPE;
+    HIPLOT,TABLE,FIRST_TIME:BOOLEAN;
+    RANGE:INTEGER;
+    PI,SCALE,UNIT_SCALE,XI,XF,DELTA_ANGLE:REAL;
+    MODE: 1..3;
+    CH:CHAR;
+    SAVED_FUNCTION:STRING;
+    PLOT_STARTED:BOOLEAN;
+    
+PROCEDURE DRAWLINE(VAR RANGE:INTEGER; VAR SCREEN:SCREENTYPE; ROWWIDTH,
+                   XSTART,YSTART,DX,DY,INK:INTEGER);EXTERNAL;
+                   
+PROCEDURE INITIALIZE;
+
+PROCEDURE GET_VALUE(PROMPT:STRING;VAR VALUE:REAL);
+
+BEGIN{ GET_VALUE}
+   SAVED_FUNCTION:=ENTERED_FUNCTION;
+   GOTOXY(5,7);
+   WRITE(PROMPT);
+   GET_FUNCTION;
+   VALUE:=F(0,0,0);
+   GOTOXY(0,7);
+   WRITE(CEOL);
+   ENTERED_FUNCTION:=SAVED_FUNCTION;
+   REPLACE_FUNCTION;
+END;
+
+PROCEDURE MODIFY_VARIABLES;
+
+PROCEDURE CHANGE_EM(TEMP:REAL);
+
+BEGIN {CHANGE_EM}
+   XI:=XI*TEMP;
+   XF:=XF*TEMP;
+   DELTA_ANGLE:=DELTA_ANGLE*TEMP;
+   GOTOXY(18,8);
+   WRITE(XI:10:4,CEOL);
+   GOTOXY(18,9);
+   WRITE(XF:10:4,CEOL);
+   GOTOXY(18,10);
+   WRITE(DELTA_ANGLE:10:4,CEOL);
+   GOTOXY(23,11);
+   CASE MODE OF
+     1 : WRITE('DEGREES',CEOL);
+     2 : WRITE('RADIANS',CEOL);
+     3 : WRITE('PI RADIANS',CEOL);
+   END{ OF CASE};
+END {OF CHANGE_EM};
+
+BEGIN {MODIFY_VARIABLES}
+   CASE CH OF 
+     'F','f' : BEGIN
+                  REPEAT
+                     GOTOXY(0,5);
+                     WRITE('r(x) = ',CEOL);
+                     GET_FUNCTION;
+                     IF ERROR THEN 
+                        BEGIN
+                           GOTOXY(0,6);
+                           WRITE(CHR(7{BELL}));
+                           CASE ERROR_CODE OF
+                             1 : WRITE('<<<< UNBALANCED PARENTHESIS >>>>',CEOL);
+                             2 : WRITE('<<<< UNRECOGNIZED SYMBOL >>>>',CEOL);
+                             3 : WRITE('<< MULTIPLE DECIMAL POINTS IN A CONSTANT >>',CEOL);
+                            15 : WRITE('<< INVALID FUNCTION OR MISSING PARENS >>',CEOL);
+                           END{ OF CASE};
+                        END;
+                  UNTIL NOT(ERROR);
+                  GOTOXY(0,5);
+                  WRITELN('r(x) = ',ENTERED_FUNCTION,CEOL);
+                  WRITELN(CEOL);
+               END;
+     'B','b' : REPEAT
+                  GET_VALUE('New starting angle = ',XI);
+                  IF XF<>XI THEN 
+                     BEGIN
+                        GOTOXY(18,8);
+                        WRITE(XI:10:4,CEOL);
+                     END;
+               UNTIL(XF<>XI);
+     'E','e' : REPEAT
+                  GET_VALUE('New ending angle = ',XF);
+                  IF XF<>XI THEN 
+                     BEGIN
+                        GOTOXY(18,9);
+                        WRITE(XF:10:4,CEOL);
+                     END;
+               UNTIL(XF<>XI);
+     'D','d' : REPEAT
+                  GET_VALUE('New Delta angle = ',DELTA_ANGLE);
+                  IF DELTA_ANGLE<>0 THEN
+                     BEGIN
+                        GOTOXY(18,10);
+                        WRITE(DELTA_ANGLE:10:4,CEOL);
+                     END;
+               UNTIL (DELTA_ANGLE<>0);
+     'S','s' : BEGIN
+                  GET_VALUE('New Scale magnification = ',SCALE);
+                  IF SCALE<>0 THEN 
+                     BEGIN
+                        GOTOXY(8,12);
+                        WRITE(SCALE:10:4,CEOL);
+                     END;
+               END;
+     'U','u' : REPEAT
+                  GET_VALUE('ENTER THE MAXIMUM RADIUS EXPECTED: ',UNIT_SCALE);
+                  IF UNIT_SCALE>0 THEN
+                     BEGIN
+                        GOTOXY(13,13);
+                        UNIT_SCALE:=100.0/UNIT_SCALE;
+                        WRITE(UNIT_SCALE:10:4,CEOL);
+                     END;
+               UNTIL UNIT_SCALE>0;
+     'M','m' : BEGIN
+                  IF MODE = 3 THEN MODE:=1 ELSE MODE:=MODE+1;
+                  CASE MODE OF
+                    1 : CHANGE_EM(180/(PI*PI));
+                    2 : CHANGE_EM(PI/180);
+                    3 : CHANGE_EM(PI);
+                  END;
+               END;
+     'C','c' : BEGIN
+                  FILLCHAR(SCREEN,SIZEOF(SCREEN),0);
+                  DRAWLINE(RANGE,SCREEN,ROWWIDTH,61,120,200,0,INK) {X-AXIS};
+                  DRAWLINE(RANGE,SCREEN,ROWWIDTH,160,21,0,200,INK) {Y-AXIS};
+               END;
+     'Q','q' : BEGIN
+                  UNITWRITE(3,SCREEN,7);
+                  CLEARSCREEN;
+                  EXIT(POLAR);
+               END;
+     'H','h' : HIPLOT:=TRUE;
+   END {OF THE CASE};
+   GOTOXY(5,24);
+END {OF MODIFY_VARIABLES};
+   
+
+BEGIN {INITIALIZE}
+   IF FIRST_TIME THEN
+      BEGIN
+         TABLE:=FALSE;
+         FILLCHAR(SCREEN,SIZEOF(SCREEN),0);
+         REPEAT
+            CLEARSCREEN;
+            WRITE('r(x) = ');
+            GET_FUNCTION;
+         UNTIL NOT(ERROR);
+         DRAWLINE(RANGE,SCREEN,ROWWIDTH,61,120,200,0,INK) {X-AXIS};
+         DRAWLINE(RANGE,SCREEN,ROWWIDTH,160,21,0,200,INK) {Y-AXIS};
+         DELTA_ANGLE:=PI/180;
+         XI:=0;
+         XF:=8.0*ATAN(1.0);
+         MODE:=2;
+         SCALE:=1;
+         UNIT_SCALE:=100;
+         CLEARSCREEN;
+         GOTOXY(0,4);
+         WRITELN('THE ENTERED FUNCTION IS:',CEOL);
+         WRITELN('r(x) = ',ENTERED_FUNCTION);
+         WRITELN; WRITELN; 
+         WRITELN('Beginning angle = ',XI:10:4);
+         WRITELN('Ending angle =    ',XF:10:4);
+         WRITELN('Delta angle =     ',DELTA_ANGLE:10:4);
+         WRITE('Angular MODE is set at ');
+         CASE MODE OF
+           1 : WRITELN('DEGREES');
+           2 : WRITELN('RADIANS');
+           3 : WRITELN('PI RADIANS');
+         END {OF CASE};
+         WRITELN('Scale = ',SCALE:10:4);
+         WRITELN('Unit scale = ',UNIT_SCALE:10:4);
+         GOTOXY(0,15);
+         WRITELN('The bell will sound at the end of the plot. ');
+         WRITELN('Pressing any key will continue the program.');
+         FIRST_TIME:=FALSE;
+      END {OF FIRST TIME INITIALIZATIONS};
+   UNITWRITE(3,SCREEN,7);
+   GOTOXY(0,0);
+   WRITELN('new F(unction; B(eginning angle; E(nding angle; D(elta angle; ');
+   WRITE('S(cale magnification; angle M(ode; C(learscreen; ');
+   WRITELN('U(nit scale; Q(uit the program.');
+   WRITELN('H(ardcopy, press "P" to PLOT r(x)');
+   WRITELN;
+   HIPLOT:=FALSE;
+   REPEAT
+      READ(KEYBOARD,CH);
+      MODIFY_VARIABLES;
+      IF XF>XI THEN DELTA_ANGLE:= ABS(DELTA_ANGLE) ELSE DELTA_ANGLE:= 
+          -ABS(DELTA_ANGLE);
+   UNTIL (CH IN ['P','p']);
+END {OF INITIALIZE};
+
+PROCEDURE PLOTIT;
+
+CONST  CR=13{ Carriage Return};
+       
+VAR X,Y,START_ANGLE,END_ANGLE,ANGLE_CHANGE,TEMP:REAL;
+    XPLOT,YPLOT,XSTART,YSTART,DX,DY:INTEGER;
+    
+
+FUNCTION IN_RANGE:BOOLEAN;
+
+BEGIN {IN RANGE}
+   IN_RANGE:=(XSTART<320) AND (XSTART>-1) AND (YSTART<240) AND (YSTART>-1) AND
+   (XSTART+DX<320) AND (XSTART+DX>-1) AND (YSTART+DY<240) AND (YSTART+DY>-1);
+END {IN_RANGE};
+   
+FUNCTION CHECK(VALUE:REAL):INTEGER;
+   
+   BEGIN
+      IF ABS(VALUE)>32767 THEN VALUE:=32767*ABS(VALUE)/VALUE;
+      CHECK:=ROUND(VALUE);
+   END;
+   
+PROCEDURE PLOT_OUT;
+
+FUNCTION XRANGE:INTEGER;
+VAR TEMP:INTEGER;
+    DX_PLOTTER:INTEGER;
+
+BEGIN
+   DX_PLOTTER:=1000+CHECK(X*SCALE*UNIT_SCALE*7)-PLOT_XLOC;
+   TEMP:=PLOT_XLOC+DX_PLOTTER;
+   IF TEMP>2000 THEN TEMP:=2000;
+   IF TEMP<0 THEN TEMP:=0;
+   XRANGE:=TEMP;
+END;
+
+FUNCTION YRANGE:INTEGER;
+VAR TEMP:INTEGER;
+    DY_PLOTTER:INTEGER;
+
+BEGIN
+   DY_PLOTTER:=700+CHECK(Y*SCALE*UNIT_SCALE*7)-PLOT_YLOC;
+   TEMP:=PLOT_YLOC+DY_PLOTTER;
+   IF TEMP>1400 THEN TEMP:=1400;
+   IF TEMP<0 THEN TEMP:=0;
+   YRANGE:=TEMP;
+END;
+
+   
+BEGIN {PLOT_OUT}
+   IF NOT PLOT_STARTED THEN
+      BEGIN
+         GOTOXY(0,0);
+         WRITELN('Position the plotter''s pen to the lower left corner.',
+            CEOL);
+         UNITCLEAR(2);
+         WRITELN('Press RETURN to continue');
+         READLN;
+         {The next couple of lines clear the top three lines of text.}
+         GOTOXY(0,0);
+         WRITE(CLEAR_LINE,CLEAR_LINE,CLEAR_LINE);
+         GOTOXY(35,0);
+         WRITELN('POLAR PLOT');
+         PLOT_STARTED:=TRUE;
+         PLOT(UP,0,700);
+         PLOT(DOWN,2000,700);
+         PLOT(UP,1000,0);
+         PLOT(DOWN,1000,1400);
+         PLOT(UP,XPLOT,YPLOT);
+         WRITELN('YOU MAY WANT TO CHANGE COLORS, press RETURN to continue');
+         READLN;
+         GOTOXY(0,1);
+         WRITELN(CEOL);
+         UNITREAD(2,CH,1,,1);
+      END;
+   IF NOT ERROR THEN PLOT(DOWN,XRANGE,YRANGE);
+END;
+   
+BEGIN {PLOTIT}
+   IF HIPLOT THEN INITPLOT;
+   PLOT_STARTED := FALSE;
+   UNITWRITE(3,SCREEN,60);
+   {The next couple of lines clear the top three lines of text.}
+   GOTOXY(0,0);
+   WRITE(CLEAR_LINE,CLEAR_LINE,CLEAR_LINE);
+   GOTOXY(35,0);
+   WRITELN('POLAR PLOT');
+   UNITREAD(2,CH,1,,1);{ read the keyboard while processing continues}
+   CASE MODE OF
+     1 : BEGIN
+            START_ANGLE:=XI*PI/180;
+            END_ANGLE:=XF*PI/180;
+            ANGLE_CHANGE:=DELTA_ANGLE*PI/180;
+         END;
+     2 : BEGIN
+            START_ANGLE:=XI;
+            END_ANGLE:=XF;
+            ANGLE_CHANGE:=DELTA_ANGLE;
+         END;
+     3 : BEGIN
+            START_ANGLE:=XI*PI;
+            END_ANGLE:=XF*PI;
+            ANGLE_CHANGE:=DELTA_ANGLE*PI;
+         END;
+   END {OF CASE};
+   TEMP:=F(START_ANGLE,0,0);
+   X:=TEMP*COS(START_ANGLE);
+   Y:=TEMP*SIN(START_ANGLE);
+   XPLOT:=1000+CHECK(X*SCALE*7*UNIT_SCALE);
+   YPLOT:=700+CHECK(Y*SCALE*7*UNIT_SCALE);
+   XSTART:=160+CHECK(X*SCALE*UNIT_SCALE);
+   YSTART:=120-CHECK(Y*SCALE*UNIT_SCALE);
+   REPEAT
+     IF NOT UNITBUSY(2) THEN
+       BEGIN
+         IF CH = CHR(27{ESC}) THEN 
+            BEGIN
+               IF HIPLOT THEN PLOT(UP,0,0);
+               EXIT(PLOTIT);
+            END;
+         UNITREAD(2,CH,1,,1);
+       END;
+     START_ANGLE:=START_ANGLE+ANGLE_CHANGE;
+     TEMP:=F(START_ANGLE,0,0);
+     X:=TEMP*COS(START_ANGLE);
+     Y:=TEMP*SIN(START_ANGLE);
+     DX:=160+CHECK(X*SCALE*UNIT_SCALE)-XSTART;
+     DY:=120-CHECK(Y*SCALE*UNIT_SCALE)-YSTART;
+     IF HIPLOT THEN PLOT_OUT;
+     IF IN_RANGE AND NOT ERROR THEN 
+        DRAWLINE(RANGE,SCREEN,ROWWIDTH,XSTART,YSTART,DX,DY,INK);
+     XSTART:=XSTART+DX;
+     YSTART:=YSTART+DY;
+   UNTIL (START_ANGLE>END_ANGLE);
+   IF HIPLOT THEN PLOT(UP,0,0);
+   IF UNITBUSY(2) THEN UNITCLEAR(2);
+END {OF PLOTIT};
+
+
+BEGIN {POLAR}
+
+   PI:=4*ATAN(1);
+   DEFINESTRINGS;
+   FIRST_TIME:=TRUE;
+   REPEAT
+      INITIALIZE;
+      PLOTIT;
+      WRITE('Press any key to continue ',CHR(7{BELL}));
+      READ(CH);
+   UNTIL FALSE {The program is exited from INITIALIZE};
+END {OF THE PROGRAM}.

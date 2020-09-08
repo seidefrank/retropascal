@@ -1,0 +1,293 @@
+Form Creation Example 
+
+
+1.8  FORM CREATION EXAMPLE 
+ 
+     The following instructions will create a Form which could be used in
+doing a financial Forecast. 
+ 
+     Step one is to set the Prefix to whichever Volume FREEFORM is to put the 
+'directory' file on or to the disk which already contains a FREEFORM directory.
+This can be done by typing /SP (Set Prefix) while at Freeform's main menu or 
+while in the Filer program using the P)refix command. 
+ 
+     Step two is to execute FREEFORM.  This is done by eXecuting the code file 
+FF/VER4. 
+ 
+     The following exchange will then take place: 
+ 
+FREEFORM:    Puts up FREEFORM main menu. 
+User Enters: 1 
+Explanation: Selected Define new FORM controls option. 
+ 
+FREEFORM:    Enters Forms Control mode, creates FREEFORM directory
+             if one was not found on the prefixed disk, and prompts for a Form 
+             name. 
+             Form Name (8 alpha max.)________ 
+User Enters: FORECAST<return> 
+Explanation: User named Form FORECAST. 
+ 
+FREEFORM:    Are checkpoint prompts desired? N 
+User Enters: Y 
+Explanation: This turns on the Checkpoint option.  With the Checkpoint option 
+             on, FREEFORM will give the option of re-entering a bad input.  An 
+             experienced user will normally press <return> so this option will 
+             not be turned on. 
+ 
+FREEFORM:    Enter user initials 
+User Enters: DA<return> 
+Explanation: This is optional.  It is O.K. to just press <return>. 
+ 
+FREEFORM:    Enter optional descriptive comment -> 
+User Enters: Forecast Form<return> 
+Explanation: This comment is displayed when the FREEFORM directory is listed.  
+             This helps one recognize what a Form contains, and is therefore 
+             recommended for use, although it is optional. 
+ 
+FREEFORM:    Enter today's date (MMDDYY) -> 
+User Enters: 080680<return> 
+Explanation: This is displayed as the date of creation when the Form controls 
+             are listed.  It is optional also. 
+ 
+FREEFORM:    How many pages? 
+User Enters: 1<return> 
+Explanation: Only one page is wanted in this Form.  If more are wanted later, 
+             it is possible to add them. 
+ 
+FREEFORM:    Format Rows or Columns? R 
+User Enters: <return> 
+Explanation: Form will be formatted by Row because R is the default. Row
+             formatting lets the user define the decimal point position for an 
+             entire row, one row at a time.  This means that the number of 
+             digits to the left and the right of the decimal point will not 
+             vary across a row but may vary down a column.  With column 
+             formatting, the number of digits to the left and the right of the 
+             decimal point is fixed for each column but may vary across a row. 
+             In either case all numbers will line up when the form and its data
+             are printed. 
+ 
+FREEFORM:    Do you want automatic month descriptions? N 
+User Enters: Y 
+Explanation: This is a forecast and will contain monthly information as well as
+             a year and quarterly totals.  The columns containing the totals 
+             will be added to the Form after the initial definition is 
+             complete.  For now only the columns with month names for headings 
+             will be put into the Form. 
+ 
+FREEFORM:    Month descriptions for rows or columns? C 
+User Enters: <return> 
+Explanation: Descriptions will be for the columns because C is the default. 
+ 
+FREEFORM:    Enter starting month # 1 
+User Enters: <return> 
+Explanation: The first column will be labeled Jan, one was the default, and the
+             last will be labeled Dec.  It is possible to start with any month 
+             by picking a different number in the range one through twelve. 
+ 
+FREEFORM:    How many Calculation Constants? 
+User Enters: 1<return> 
+Explanation: One constant wanted. 
+ 
+FREEFORM:    CONSTANT(1) = - 
+User Enters: .95<return> 
+Explanation: FREEFORM will set C1 equal to 0.9500. 
+ 
+FREEFORM:    Anything to change? N 
+User Enters: <return> 
+Explanation: Default is N.  If something had been entered wrong so far
+             <Y> should be typed.  If <Y> is pressed FREEFORM will repeat all 
+             questions asked so far again.  This question would not have been 
+             asked if the Checkpoint option had not been turned on. 
+ 
+FREEFORM:    How many columns might ever be in the FORM? 
+User Enters: 20<return> 
+Explanation: In this Form a total of 17 columns will be used.  By responding 
+             with 20 there will be a little room for expansion later. 
+ 
+FREEFORM:    How many rows might ever be in the FORM? 
+User Enters: 40<return> 
+Explanation: A total of nine rows will be used in this Form now.  By telling 
+             Freeform 40 there will be plenty of room for expansion. 
+ 
+FREEFORM:    How many columns? 
+User Enters: 12<return> 
+Explanation: Twelve columns are desired in this Form, one for each month.  
+             Quarterly totals will be added later. 
+ 
+FREEFORM:    How many rows? 
+User Enters: 9<return> 
+Explanation: Nine rows are desired in this Form. 
+ 
+FREEFORM:    Are the dimensions o.k. as specified? Y 
+User Enters: <return> 
+Explanation: To change the number of rows or columns just specified type <N>. 
+ 
+FREEFORM:    Updating directory ...one moment, please 
+             Creating Control and Data files ...one moment, please 
+User: 
+Explanation: These are displayed while FREEFORM writes the information just 
+             given it into the FREEFORM directory.  FREEFORM then creates new 
+             Control and Data files. 
+ 
+FREEFORM:    Enter Title for Page 1 ______________________________________ 
+User Enters: PCIF FORECAST<return> 
+Explanation: Enter the title on the dashed line below the prompt.  The title 
+             entered will always appear whenever page one of this Form is 
+             listed. 
+ 
+FREEFORM:    Is Title correct? Y 
+User Enters: <return> 
+Explanation: Yes is the default.  If the Title was entered incorrectly typing 
+             <N> would allow you to re-enter the Title. 
+ 
+FREEFORM:    This title will be written to the disk.  FREEFORM then prompts 
+             Enter Description for Row 1 _______________ 
+User Enters: EX PEOPLE<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 1 Type (D/I/F/H) D 
+User Enters: <return> 
+Explanation: This is where the option of defining a Row as Data, Initial
+             calculation, Final calculation or Heading is given.  Data is the 
+             default and was chosen. 
+ 
+FREEFORM:    O.K. to set values from Column calculations? Y 
+User Enters: N 
+Explanation: This will not be a calculated row.  Therefore it is not okay to 
+             set values from column calculations in this row.  This will be 
+             more evident when the Form is finished and being used. 
+ 
+FREEFORM:    Enter Row 1 Editing Format ####.##__ 
+User Enters: ##<erase input><return> 
+Explanation: Just defined the field to be two digits wide.  This row will be 
+             able to store integers in the range -99 through 99.  A user must 
+             define the field to have at least one digit to the left of the 
+             decimal point and at most four digits to the right of the decimal 
+             point. 
+ 
+FREEFORM:    Are Controls for Row 1 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             one and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 2 _______________ 
+User Enters: NON-EX PEOPLE<return> 
+Explanation: This is the description for Row two.  Answer all the rest of the 
+             questions about Row two in the same way as for Row one. 
+ 
+FREEFORM:    Enter Description for Row 3 _______________ 
+User Enters: <return> 
+Explanation: You want to have a blank line before Row four.  The Row type will 
+             be the heading. 
+ 
+FREEFORM:    Enter 3 Type (D/I/F/H) D 
+User Enters: H 
+Explanation: Row type of heading was chosen. 
+ 
+FREEFORM:    Are Controls for Row 3 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             three, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 4 _______________ 
+User Enters: TOTAL PEOPLE<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 4 Type (D/I/F/H) D 
+User Enters: I 
+Explanation: This is to be a Initial calculation row. 
+ 
+FREEFORM:     =___________________________
+User Enters: 1 + 2<return> 
+Explanation: This tells FREEFORM that Row four is the sum of Row one and Row 
+             two. 
+ 
+FREEFORM:    O.K. to set values from Column calculations? Y 
+User Enters: N 
+Explanation:  
+ 
+FREEFORM:    Enter Row 4 Editing Format ##_______ 
+User Enters: <return> 
+Explanation: This defines the field to be two digits wide as the default was 
+             ##. 
+ 
+FREEFORM:    Are Controls for Row 4 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             four, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 5
+_______________ 
+User Enters: <return> 
+Explanation: You want to have a blank line before Row six just like the one 
+             before Row four. 
+ 
+FREEFORM:    Enter 5 Type (D/I/F/H) D 
+User Enters: H 
+Explanation:  
+ 
+FREEFORM:    Are Controls for Row 5 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             five, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 6 _______________ 
+User Enters: LABOR<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 6 Type (D/I/F/H) D 
+User Enters: <return> 
+Explanation: This is to be a Data row (Data is the default). 
+ 
+FREEFORM:    O.K. to set values from Column calculations? Y 
+User Enters: <return> 
+Explanation:  
+ 
+FREEFORM:    Enter Row 6 Editing Format ##_______ 
+User Enters: ####.##<return> 
+Explanation: You want the field to have up to four digits before the decimal 
+             point and two after it. 
+ 
+FREEFORM:    Are Controls for Row 6 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             six, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 7 _______________ 
+User Enters: LESS BILLINGS<return> 
+Explanation:  
+ 
+FREEFORM:    Enter 7 Type (D/I/F/H) D 
+User Enters: <return> 
+Explanation: This is to be a Data row (Data is the default). 
+ 
+FREEFORM:    O.K. to set values from Column calculations? Y 
+User Enters: <return> 
+Explanation:  
+ 
+FREEFORM:    Enter Row 7 Editing Format ####.##__ 
+User Enters: <return> 
+Explanation: Just defined the field to have up to four digits before the
+             decimal point and two after it. 
+ 
+FREEFORM:    Are Controls for Row 7 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             seven, and all questions asked to describe it will be repeated. 
+ 
+FREEFORM:    Enter Description for Row 8 _______________ 
+User Enters: <return> 
+Explanation: Want to have a blank line before Row nine just like the one before
+             Row four. 
+ 
+FREEFORM:    Enter 8 Type (D/I/F/H) D 
+User Enters: H 
+Explanation:  
+ 
+FREEFORM:    Are Controls for Row 8 o.k.? Y 
+User Enters: <return> 
+Explanation: Type <N> if an error was made while defining the controls for Row 
+             eight, and all questions asked to describe it will be repeated. 
+ 
+
+

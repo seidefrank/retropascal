@@ -1,0 +1,784 @@
+PROGRAM TERMINAL ;  {$S+}   {xL PRINTER: }
+(*
+  COPYRIGHT 1980, 1981 BY ROBERT W. PETERSON.
+                ALL RIGHTS RESERVED.
+                
+  THIS PROGRAM TALKS TO THE REMIN: AND REMOUT: AND HAS THE
+  FOLLOWING CAPABILITIES:
+    1. DUMB TERMINAL EMULATION.
+    2. LOGGING TO A FILE THE TEXT RECEIVED.
+    3. TRANSMITTING DOWN THE LINE A FILE.
+    4. ECHOING OR NOT ECHOING THE CHARACTERS TYPED/TRANSMITTED.
+    5. SELECTING THE NAME OF THE LOG FILE DYNAMICALLY.
+    6. TRANSMITTING A PREDEFINED LOGON SEQUENCE TO REMOUT:
+
+  IN ADDITION, THIS PROGRAM IS OPTIONALLY VIDEOTEXT COMPATIBLE.
+*)
+
+
+USES {$U TI.UNIT.CODE } REMUNIT ;
+
+
+CONST
+  ARROW_DOWN    =   139 ;
+  ARROW_LEFT    =     8 ;
+  ARROW_RIGHT   =   138 ;
+  ARROW_UP      =   137 ;
+  BACKSPACE     =     8 ;
+  CLEAR_EOLN    =   141 ;
+  CLEAR_EOS     =   152 ;
+  CLEAR_SCREEN  =    12 ;
+  CR            =    13 ;
+  ESCAPE        =    27 ;
+  FORMFEED      =    12 ;
+  HOME_CURSOR   =   130 ;
+  KB            =     2 ;
+  LINEFEED      =    10 ;
+  LOGLIMIT      = 20000 ;
+  PRINTER       =     6 ;
+  REMIN         =     7 ;
+  REMOUT        =     8 ;
+  RUBOUT        =   127 ;
+  SCREENDEPTH   =    24 ;
+  VERSION       = ' VERSION 1.02  9 June 81  USUS remote unit/911 CRT';
+
+  
+  
+VAR
+  C             : CHAR ;
+  DONE          : BOOLEAN ;
+  ECHO          : BOOLEAN ;
+  FILTERCONTROL : BOOLEAN ;
+  FILTERSET     : SET OF CHAR ;
+  LOGARRAY      : PACKED ARRAY [ 0 .. LOGLIMIT ] OF CHAR ;
+  LOGFILE       : TEXT ;
+  LOGFILENAME   : STRING[ 30 ] ;
+  LOGINDEX      : 0 .. LOGLIMIT ;
+  LOGON1        : STRING ;
+  LOGON2        : STRING ;
+  LOGOPEN       : BOOLEAN ;
+  LOGPROMPT     : CHAR ;
+  LOGTEXT       : BOOLEAN ;
+  NEARLY        : 0 .. LOGLIMIT ;
+  VIDEOTEXT     : BOOLEAN ;
+
+
+PROCEDURE LOGIT( C : CHAR ) ;
+BEGIN
+  IF ORD( C ) IN [BACKSPACE, RUBOUT]
+    THEN
+      IF LOGINDEX > 0
+        THEN
+          LOGINDEX := LOGINDEX - 1
+        ELSE
+          { NULL STATEMENT }
+    ELSE
+      LOGARRAY[ LOGINDEX ] := C ;
+  IF LOGINDEX = NEARLY
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN( ' ***> CURRENTLY AT 80% OF LOG SPACE <***' ) ;
+      WRITELN ;
+      END ;
+  IF LOGINDEX >= LOGLIMIT 
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN( ' >* LOGLIMIT EXCEEDED *< ', CHR(7), CHR(7) ) ;
+      WRITELN ;
+      LOGINDEX := 0 ;
+      END
+    ELSE
+      LOGINDEX := LOGINDEX + 1 ;
+END ;
+
+
+PROCEDURE DISPLAY( C : CHAR ) ;
+VAR
+  ORD_C         : INTEGER ;
+PROCEDURE V_GOTOXY ;
+VAR
+  C     : CHAR ;
+  X     : INTEGER ;
+  Y     : INTEGER ;
+BEGIN
+  REPEAT
+  UNTIL CR_REMSTAT OR CR_KBSTAT ;
+  IF CR_KBSTAT
+    THEN
+      BEGIN
+      C := CR_GETKB ;
+      EXIT( DISPLAY ) ;
+      END ;
+  C := CR_GETREM ;
+  Y := ORD( C ) - 31 ;
+  
+  REPEAT
+  UNTIL CR_REMSTAT OR CR_KBSTAT ;
+  IF CR_KBSTAT
+    THEN
+      BEGIN
+      C := CR_GETKB ;
+      EXIT( DISPLAY ) ;
+      END ;
+  C := CR_GETREM ;
+  X := ORD( C ) - 31 ;
+
+  GOTOXY( X, Y ) ;
+
+END ; { V_GOTOXY }
+
+BEGIN
+
+  IF VIDEOTEXT AND (C = CHR( ESCAPE ) )
+    THEN
+      BEGIN
+      REPEAT
+      UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      IF CR_KBSTAT
+        THEN
+          BEGIN
+          C := CR_GETKB ;
+          EXIT( DISPLAY ) ;
+          END ;
+      C := CR_GETREM ;
+      ORD_C := 0 ;
+      CASE C OF 
+        'm',
+        'l'      : ; { Wide character/Normal character }
+        'A'      : ORD_C := ARROW_UP ; { Up arrow }
+        'B'      : ORD_C := ARROW_DOWN ; { Down arrow }
+        'C'      : ORD_C := ARROW_RIGHT ; { Right arrow }
+        'D'      : ORD_C := ARROW_LEFT ; { Left arrow }
+        'H'      : ORD_C := HOME_CURSOR ; { Home }
+        'K'      : ORD_C := CLEAR_EOLN ; { Clear to end of line }
+        'J'      : ORD_C := CLEAR_EOS ; { Clear to end of screen }
+        'j'      : ORD_C := CLEAR_SCREEN ; { Clear screen }
+        'Y'      : V_GOTOXY ; { VIDEOTEXT's GOTOXY }
+        END ; { CASE ORD_C OF }
+        IF ORD_C <> 0
+          THEN
+            WRITE( CHR( ORD_C ) ) ;
+      END
+    ELSE
+      BEGIN
+      ORD_C := ORD( C ) ;
+      IF ORD_C > RUBOUT
+        THEN
+          C := CHR( ORD_C - (RUBOUT + 1) ) ;
+      IF FILTERCONTROL
+        THEN
+          IF C IN FILTERSET
+            THEN
+              C := CHR( 0 ) ;
+      IF C <> CHR( LINEFEED )
+        THEN
+          WRITE( C ) ;
+      IF LOGTEXT
+        THEN
+          LOGIT( C ) ;
+      END ;
+END ;
+        
+    
+FUNCTION QUESTION( PROMPT : STRING ) : BOOLEAN ;
+VAR
+  C             : CHAR ;
+BEGIN
+  WRITELN ;
+  WRITELN ;
+  WRITE  ( PROMPT, '(Y or N)?' ) ;
+  REPEAT
+    READ( KEYBOARD, C ) ;
+  UNTIL C IN [ 'y', 'n', 'Y', 'N' ] ;
+  WRITE( C ) ;
+  QUESTION := C IN ['y', 'Y'] ;
+END ;
+
+
+PROCEDURE OPTIONS ;
+BEGIN
+  FILTERCONTROL := QUESTION( 
+                 'DO YOU WISH TO FILTER CONTROL CHARACTERS' ) ;
+  LOGTEXT := QUESTION( 'DO YOU WISH TO LOG THE TEXT' ) ;
+  ECHO    := QUESTION( 'DO YOU WISH TO ECHO THE KEYBOARD' ) ;
+  VIDEOTEXT := QUESTION(
+        'DO YOU WISH TO RESPOND TO VIDEOTEXT CONTROL CODES' ) ;
+  WRITELN ;
+  WRITELN ;
+  WRITELN ;
+END ;
+
+
+PROCEDURE INITIALIZE ;
+VAR
+  AUTOLOGON    : BOOLEAN ;
+  B            : BOOLEAN ;
+  C            : CHAR ;
+  HAVEDIAL     : BOOLEAN ;
+  HAVEREM      : BOOLEAN ;
+  RESULT       : CR_BAUD_RESULT ;
+BEGIN
+
+  WRITELN ;
+  WRITELN( 'TERMINAL PROGRAM.', VERSION ) ;
+  WRITELN( 'COPYRIGHT 1980, 1981 BY ROBERT W. PETERSON' ) ;
+  WRITELN( 'BYTES AVAILABLE = ', MEMAVAIL * 2 ) ;
+  WRITELN( 'LOG BUFFER      = ', LOGLIMIT ) ;
+  
+  DONE      := FALSE ;
+  FILTERSET := [ CHR( 0 ) .. CHR( BACKSPACE-1 ), 
+                 CHR( BACKSPACE+1 ) .. CHR( CR-1 ), 
+                 CHR( CR+1 ) .. CHR( 31 ), 
+                 CHR( RUBOUT ) ] ;
+  NEARLY    := (LOGLIMIT DIV 100) * 80 ;
+  
+  WRITELN ;
+  IF QUESTION('Is <control E> a suitable attention character')
+    THEN
+      C := CHR( 5 )
+    ELSE
+      REPEAT
+        B := FALSE ;
+        REPEAT
+          WRITE( 'What character will be used? ' ) ;
+          WHILE NOT CR_KBSTAT DO ;
+          C := CR_GETKB ;
+          WRITELN( '<', ORD( C ), '>' ) ;
+          IF C IN [' '..'~']
+            THEN
+              WRITELN( 
+                      'You cannot use a displayable character')
+            ELSE
+              B := QUESTION( 'Is this correct' ) ;
+        UNTIL B ;
+      UNTIL NOT (C IN [' '..'~']) ;
+  WRITELN ;
+  
+  LOGON1 := '' ;
+  LOGON2 := LOGON1 ;
+  
+  CR_COMMINIT( CR_ORIG, C, HAVEREM, HAVEDIAL ) ;
+  IF NOT HAVEREM
+    THEN
+      BEGIN
+      WRITELN( ' REMOTE not supported in current environment.' ) ;
+      WRITELN( ' Program is terminating.' ) ;
+      EXIT( TERMINAL ) ;
+      END ;
+  
+  OPTIONS ;
+  
+  CR_SETCOMMUNICATIONS( 
+                TRUE,
+                TRUE,
+                300,
+                7,
+                1,
+                CR_ORIG,
+                '990/5',
+                RESULT ) ;
+  
+  WRITELN ;
+  WRITELN( 'Proceed when connection has been made.' ) ;
+  CR_ANSWER ;
+  
+  WRITELN ;
+  WRITELN ;
+  
+END ;
+
+PROCEDURE CLOSELOG ;
+VAR
+  RESULT        : INTEGER ;
+BEGIN
+  IF LOGOPEN
+    THEN
+      BEGIN
+      CLOSE( LOGFILE, LOCK ) ;
+      RESULT := IORESULT ;
+      WRITE( LOGFILENAME ) ;
+      IF RESULT = 0
+        THEN
+          WRITELN(' HAS BEEN CLOSED.' )
+        ELSE
+          WRITELN(' FAILED TO CLOSE.  IORESULT = ', RESULT ) ;
+      END ;
+END ;
+
+
+PROCEDURE SETLOGFILENAME ;
+VAR
+  RESULT        : INTEGER ;
+BEGIN
+
+  WRITELN ;
+  CLOSELOG ;
+  
+(*$I-*)
+
+  REPEAT
+    WRITELN ;
+    WRITE  ( 'WHAT IS THE NEW LOG FILENAME? ') ;
+    READLN ( LOGFILENAME ) ;
+    IF (LOGFILENAME = 'PRINTER:') OR (LOGFILENAME = 'CONSOLE:') OR
+       (LOGFILENAME = 'printer:') OR (LOGFILENAME = 'console:')
+      THEN
+        RESULT := 1
+      ELSE
+        BEGIN
+        RESET  ( LOGFILE, LOGFILENAME ) ;
+        RESULT := IORESULT ;
+        END ;
+    IF RESULT = 0
+      THEN
+        BEGIN
+        CLOSE( LOGFILE, LOCK ) ;
+        RESULT := 1 ;
+        WRITELN ;
+        WRITELN( LOGFILENAME, ' EXISTS!' ) ;
+        END
+      ELSE
+        IF LENGTH( LOGFILENAME ) > 0
+          THEN
+            BEGIN
+            WRITE( 'OPEN OF ', LOGFILENAME, ' ' ) ;
+            REWRITE( LOGFILE, LOGFILENAME ) ;
+            RESULT := IORESULT ;
+            LOGOPEN := RESULT = 0 ;
+            IF NOT LOGOPEN
+              THEN
+                WRITELN( ' FAILED.  REWRITE RESULT = ', RESULT )
+              ELSE
+                WRITELN( ' WAS SUCCESSFUL.' ) ;
+            END ;
+  UNTIL LOGOPEN OR (LENGTH( LOGFILENAME ) = 0 ) ;
+  WRITELN ;
+
+(*$I+*)
+
+END ;
+
+
+PROCEDURE CLEARLOG ;
+BEGIN
+  IF QUESTION( 'CLEAR LOG: ARE YOU SURE' )
+    THEN
+      LOGINDEX := 0
+END ;
+
+
+PROCEDURE SAVELOG ;
+CONST
+  BLANK         = ' ' ;
+  RETURNCHAR    =  13 ;
+VAR
+  C             : CHAR ;
+  I             : 0 .. LOGLIMIT ;
+  LINECOUNT     : INTEGER ;
+  LINESPERPAGE  : INTEGER ;
+  RESULT        : INTEGER ;
+  TILDE         : CHAR ;
+  TRASH         : CHAR ;
+  UNITFILE      : BOOLEAN ;
+  WRITTEN       : BOOLEAN ;
+BEGIN
+  WRITELN ;
+  TILDE := '~' ;
+  IF NOT LOGOPEN
+    THEN
+      BEGIN
+      WRITELN( 'THE LOG FILE IS NOT OPEN!' ) ;
+      WRITELN ;
+      EXIT( SAVELOG ) ;
+      END ;
+  
+  WRITELN( 'THERE ARE ', LOGINDEX, ' CHARACTERS IN THE LOG.');
+  
+  UNITFILE := (LOGFILENAME = 'CONSOLE:') 
+           OR (LOGFILENAME = 'PRINTER:')
+           OR (LOGFILENAME = 'console:')
+           OR (LOGFILENAME = 'printer:') ;
+  IF UNITFILE
+    THEN
+      BEGIN
+      IF (LOGFILENAME = 'PRINTER:') OR (LOGFILENAME = 'printer:')
+        THEN
+          LINESPERPAGE := 32767
+        ELSE
+          LINESPERPAGE := SCREENDEPTH - 2 ;
+      PAGE( LOGFILE ) ;
+      WRITELN( 'WRITING LOG TO ', LOGFILENAME )
+      END
+    ELSE
+      BEGIN
+      WRITELN( 'WRITING LOG (', LOGFILENAME, ').' ) ;
+      WRITE  ( ' ':11 ) ;
+      END ;
+  LINECOUNT     := 0 ;
+  
+  FOR I := 0 TO LOGINDEX-1 DO
+    BEGIN
+    C := LOGARRAY[ I ] ;
+    IF    (C >= BLANK)
+      AND (C <= TILDE)
+      THEN
+        BEGIN
+        WRITTEN := TRUE ;
+        WRITE( LOGFILE, C ) ;
+        END
+      ELSE
+        IF C = CHR( RETURNCHAR )
+          THEN
+            IF WRITTEN
+              THEN
+                IF UNITFILE
+                  THEN
+                    BEGIN
+                    WRITELN( LOGFILE ) ;
+                    IF LINECOUNT >= LINESPERPAGE
+                      THEN
+                        BEGIN
+                        WRITE( 'PRESS ANY KEY TO CONTINUE' ) ;
+                        REPEAT
+                        UNTIL CR_KBSTAT ;
+                        TRASH := CR_GETKB ;
+                        LINECOUNT := 0 ;
+                        PAGE( LOGFILE ) ;
+                        END
+                      ELSE
+                        LINECOUNT := LINECOUNT + 1 ;
+                    END
+                  ELSE
+                    BEGIN
+                    IF LINECOUNT >= 50
+                      THEN
+                        BEGIN
+                        WRITELN ;
+                        WRITE( ' ':11 ) ;
+                        LINECOUNT := 1 ; 
+                        END
+                      ELSE
+                        LINECOUNT := LINECOUNT + 1 ;
+                    WRITE( '.' ) ;
+                    WRITELN( LOGFILE ) ;
+                    END ;
+  
+    RESULT := IORESULT ;
+    IF RESULT <> 0
+      THEN
+        BEGIN
+        WRITELN ;
+        WRITELN( 'BAD RETURN IN SAVELOG: ', RESULT ) ;
+        WRITELN( 'TERMINATING LOG SAVE' ) ;
+        WRITELN ;
+        EXIT( SAVELOG ) ;
+        END ;
+    END ; (* FOR *)
+  
+  WRITELN ;
+  
+  CLEARLOG ;
+  
+(*$I+*)
+
+END ;
+
+
+PROCEDURE SENDLOGON ;
+VAR
+  I             : 0 .. LOGLIMIT ;
+BEGIN
+  WRITELN ;
+  WRITELN( 'TRANSMITTNG LOGON' ) ;
+  FOR I := 1 TO LENGTH( LOGON1 ) DO
+    BEGIN
+    CR_PUTREM( LOGON1[ I ] ) ;
+    REPEAT
+    UNTIL CR_REMSTAT OR CR_KBSTAT ;
+    IF CR_REMSTAT
+      THEN
+        DISPLAY( CR_GETREM ) ;
+    END ;
+  CR_PUTREM( CHR(13) ) ; (* CR *)
+  REPEAT
+    IF CR_REMSTAT
+      THEN
+        BEGIN
+        C := CR_GETREM ;
+        DISPLAY( C ) ;
+        END
+      ELSE
+        C := CHR( 0 ) ;
+  UNTIL (C = LOGPROMPT) OR CR_KBSTAT ;
+  FOR I := 1 TO LENGTH( LOGON2 ) DO
+    CR_PUTREM( LOGON2[ I ] ) ;
+  CR_PUTREM( CHR(13) ) ; (* CR *)
+END ;
+
+
+PROCEDURE DUMPFILE ;
+CONST
+  CR           = 13 ;
+  LF           = 10 ;
+  
+VAR
+  I            : INTEGER ;
+  LINEFEED     : BOOLEAN ;
+  LOGSTATUS    : BOOLEAN ;
+  PACE         : BOOLEAN ;
+  READBUFFER   : STRING ;
+  RESULT       : INTEGER ;
+  WAIT_CHARACTER : CHAR ;
+  WAIT_CR      : BOOLEAN ;
+  XMITFILE     : TEXT ;
+  XMITNAME     : STRING ;
+
+
+PROCEDURE DUMPIT ;
+BEGIN
+
+  WRITELN ;
+  WRITELN( 'TRANSMITTING ', XMITNAME ) ;
+  WRITELN( 'USE ^E TO ABORT TRANSMISSION' ) ;
+  WHILE NOT EOF( XMITFILE ) DO
+    BEGIN
+    READLN( XMITFILE, READBUFFER ) ;
+    FOR I := 1 TO LENGTH( READBUFFER ) DO
+      BEGIN
+      IF NOT CR_CARRIER
+        THEN
+          BEGIN
+          WRITELN ;
+          WRITELN( 'LOST CARRIER.  TRANSMITTING ABORTED.' ) ;
+          EXIT( DUMPIT ) ;
+          END ;
+      CR_PUTREM( READBUFFER[ I ] ) ;
+      IF PACE
+        THEN
+          REPEAT
+          UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      IF CR_REMSTAT
+        THEN
+          DISPLAY( CR_GETREM ) ;
+      END ;
+    CR_PUTREM( CHR( CR ) ) ;
+    IF LINEFEED
+      THEN
+        CR_PUTREM( CHR( LF ) ) ;
+    IF WAIT_CR
+      THEN
+        REPEAT
+          IF CR_REMSTAT
+            THEN
+              BEGIN
+              C := CR_GETREM ;
+              DISPLAY( C ) ;
+              END
+            ELSE
+              C := CHR( 0 ) ;
+        UNTIL (C = WAIT_CHARACTER) OR CR_KBSTAT ;
+    IF CR_KBSTAT
+      THEN
+        IF CR_GETKB = CR_ATTENCHAR
+          THEN
+            EXIT( DUMPIT ) ;
+    END
+
+END ;
+
+  
+BEGIN
+
+(*$I-*)
+
+  LOGSTATUS := LOGTEXT ;
+  
+  WRITELN ;
+  WRITELN( 'DUMP A FILE TO REMOUT:' ) ;
+  WRITELN( 'To quit, enter an empty filename.' ) ;
+  WRITELN ;
+  LOGTEXT  := FALSE ; { TURN OFF LOGGING }
+  LINEFEED := QUESTION( 'TRANSMIT LINEFEED AFTER EACH CARRIAGE RETURN ' ) ;
+  PACE     := QUESTION( 'WAIT FOR EACH CHARACTER TO BE ECHOED ' ) ;
+  WAIT_CR  := QUESTION( 'WAIT FOR A RETURNED CHARACTER AFTER EACH LINE ' ) ;
+  IF WAIT_CR
+    THEN
+      REPEAT
+        WRITELN ;
+        WRITE( 'ENTER THE CHARACTER TO WAIT FOR:' ) ;
+        READ( KEYBOARD, WAIT_CHARACTER ) ;
+        IF EOLN 
+          THEN 
+            WAIT_CHARACTER := CHR( CR ) ;
+        IF WAIT_CHARACTER IN [' '..'~']
+          THEN
+            WRITELN( WAIT_CHARACTER )
+          ELSE
+            WRITELN( '<', ORD(WAIT_CHARACTER), '>' ) ;
+      UNTIL QUESTION( 'IS THIS THE CORRECT CHARACTER ' )
+    ELSE
+      WAIT_CHARACTER := CHR( 0 ) ;
+  
+    REPEAT
+      WRITELN ;
+      WRITE  ( 'WHAT IS THE TRANSMIT FILENAME? ') ;
+      READLN ( XMITNAME ) ;
+      IF LENGTH( XMITNAME ) <> 0
+        THEN
+          BEGIN
+          RESET  ( XMITFILE, CONCAT( XMITNAME, '.TEXT' ) ) ;
+          RESULT := IORESULT ;
+          IF RESULT = 0
+            THEN
+              BEGIN
+              DUMPIT ;
+              WRITE( XMITNAME, ' COMPLETED.' ) ;
+              END
+            ELSE
+              BEGIN
+              RESET  ( XMITFILE, XMITNAME ) ;
+              RESULT := IORESULT ;
+              IF RESULT = 0
+                THEN
+                  BEGIN
+                  DUMPIT ;
+                  WRITE( XMITNAME, ' COMPLETED.' ) ;
+                  END
+                ELSE
+                  BEGIN
+                  WRITELN ;
+                  WRITELN( 'CANNOT FIND ', XMITNAME ) ;
+                  END ;
+              END ;
+          END ;
+  UNTIL (LENGTH( XMITNAME ) = 0 ) ;
+  
+(*$I+*)
+
+  LOGTEXT := LOGSTATUS ; { Restore original logging status }
+
+END ;
+
+
+
+PROCEDURE MENU ;
+CONST
+  OUTPUTLOGON           = '5' ;
+  QUIT                  = '6' ;
+  RETURNTOTERMINAL      = '8' ;
+VAR
+  GOOD                  : BOOLEAN ;
+  O                     : CHAR ;
+BEGIN
+  REPEAT
+    WRITELN ;
+    WRITELN( 'TERMINAL PROGRAM. ', VERSION ) ;
+    WRITELN( 'COPYRIGHT 1980, 1981 BY ROBERT W. PETERSON' ) ;
+    IF LOGTEXT
+      THEN
+        WRITELN( 'TOTAL LOG SPACE = ', LOGLIMIT,
+                 '.  SPACE USED = ', LOGINDEX,
+                  ' (', LOGINDEX DIV (LOGLIMIT DIV 100),
+                  '%)' ) ;
+    WRITELN( '1. SET OPTIONS' ) ;
+    WRITELN( '2. SELECT LOG FILENAME' ) ;
+    WRITELN( '3. SAVE LOG' ) ;
+    WRITELN( '4. RESET (CLEAR) LOG' ) ;
+    WRITELN( '5. SEND LOGON STRING' ) ;
+    WRITELN( '6. QUIT TERMINAL PROGRAM' ) ;
+    WRITELN( '7. TRANSMIT FILE' ) ;
+    WRITELN( '8. QUIT OPTIONS' ) ;
+    WRITELN( '9. REINITIALIZE' ) ;
+    WRITELN ;
+    WRITE  ( 'SELECT OPTION NUMBER:' ) ;
+    READ   ( O ) ;
+    GOOD := O IN [ '1' .. '9' ] ;
+    IF GOOD
+      THEN
+        CASE O OF
+          '1' : OPTIONS ;
+          '2' : SETLOGFILENAME ;
+          '3' : SAVELOG ;
+          '4' : CLEARLOG ;
+          OUTPUTLOGON : SENDLOGON ;
+          QUIT: DONE := TRUE ;
+          '7' : DUMPFILE ;
+          RETURNTOTERMINAL : ;
+          '9' : INITIALIZE ;
+          END ;
+  UNTIL O IN [ OUTPUTLOGON, RETURNTOTERMINAL, QUIT, '7' ] ;
+  WRITELN ;
+END ;
+
+
+
+BEGIN
+
+  LOGINDEX  :=     0 ;
+  LOGOPEN   := FALSE ;
+  
+  INITIALIZE ;
+  
+  REPEAT
+    IF CR_KBSTAT
+      THEN
+        BEGIN
+        C := CR_GETKB ;
+        IF C = CR_ATTENCHAR
+          THEN
+            BEGIN
+            MENU ;
+            IF NOT (CR_CARRIER OR DONE)
+              THEN
+                CR_ANSWER ;
+            END
+          ELSE
+            BEGIN
+            CR_PUTREM( C ) ;
+            IF ECHO
+              THEN
+                DISPLAY( C ) ;
+            END ;
+        END ;
+    IF NOT CR_CARRIER
+      THEN
+        BEGIN
+        WRITELN ;
+        WRITELN('LOST CARRIER');
+        WRITELN ;
+        MENU ;
+        IF NOT (CR_CARRIER OR DONE)
+          THEN
+            CR_ANSWER ;
+        END
+      ELSE
+        IF CR_REMSTAT
+          THEN
+            DISPLAY( CR_GETREM ) ;
+
+  UNTIL DONE ;
+
+  IF LOGINDEX > 0
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITE  ( 'You have ', LOGINDEX, ' characters in the log which have not' );
+      WRITELN( ' been written to disk.');
+      IF QUESTION( 'Do you wish to write the log ' )
+        THEN
+          BEGIN
+          IF NOT LOGOPEN
+            THEN
+              SETLOGFILENAME ;
+          SAVELOG ;
+          END ;
+      END ;
+  
+  CLOSELOG ;
+
+  CR_COMMQUIT ;
+
+END.
+

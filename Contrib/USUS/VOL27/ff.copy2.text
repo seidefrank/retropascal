@@ -1,0 +1,241 @@
+PROCEDURE DOMOVE( VAR LOC, CNT: INTEGER;  WHAT: MOVETYPE;  LIST: STRING;
+                     LOOPCNT: INTEGER );
+VAR
+     OFFSET, BEG, LAST, PT, ST: INTEGER;
+     ANUMBER: NUMBERTYPE;
+
+BEGIN
+  
+  MEMORY;
+  
+  CNT := 0;    PT := 1;
+  IF WHAT = CTLCOL THEN ST := STCOL ELSE ST := STROW;
+  REPEAT
+    ONEPAIR(PT, BEG, LAST, LIST);
+    IF BEG <= LAST THEN OFFSET := 1 ELSE OFFSET := -1;
+    LOC := BEG - OFFSET;
+    REPEAT
+      LOC := LOC + OFFSET;
+      CASE WHAT OF
+        CTLROW, CTLCOL:
+                   BEGIN
+                     DIRECTORY^ := SOURCEDIRENTRY;
+                     SEEKCTL(FORM_CTL_FILE, WHAT=CTLCOL, LOC, ANDGET);
+                     FORM_CTL_TEMP^ := FORM_CTL_FILE^;
+                     DIRECTORY^ := DESTDIRENTRY;
+                     SEEKCTL(FORM_CTL_TEMP, WHAT=CTLCOL, ST+CNT, ANDPUT)
+                   END;
+        DATAPAGE:  BEGIN
+                     ENCODE(LOC,IS);
+                     ONEMOMENT(CONCAT('Copying Page # ',IS));
+                     SEEKTIT(FORM_TIT_FILE,LOC,ANDGET);
+                     FORM_TIT_TEMP^ := FORM_TIT_FILE^;
+                     SEEKTIT(FORM_TIT_TEMP,CNT+STPAGE,ANDPUT);
+                     IF NOT ZERO THEN             (* If zero no need to copy *)
+                       DOMOVE(ROW, TOROW, DATAROW, ROWLIST, ROW_CNT)
+                   END;
+        DATAROW:   DOMOVE(COL, TOCOL, DATACOL, COLLIST, COL_CNT);
+        DATACOL:   BEGIN
+                     DIRECTORY^ := SOURCEDIRENTRY;
+                     NUMBER(FORM_DAT_FILE, FORM_DAT_DESC, PAGE, ROW, LOC,
+                              ANUMBER, ANDGET, ERR);
+                     DIRECTORY^ := DESTDIRENTRY;
+                     NUMBER(FORM_DAT_TEMP, TEMP_DAT_DESC, TOPAGE+STPAGE,
+                              TOROW+STROW, CNT+STCOL, ANUMBER, ANDPUT, ERR)
+                   END
+      END;
+      CNT := CNT + 1
+    UNTIL LOC = LAST
+  UNTIL CNT = LOOPCNT
+END;   (* of domove *)
+
+PROCEDURE COPYPAGES;
+VAR  I: INTEGER;
+
+BEGIN
+  IF JUSTPAGES THEN ZERO := FALSE            (* Addition by SDA  9/22/81 *)
+  ELSE
+    BEGIN
+      REPEAT
+        GETRESPONSE(TRUE,'Copy or Empty data fields ? (C/E) ','','',1,IS);
+        LCTOUC(IS);
+      UNTIL (IS='E') OR (IS='C');
+      ZERO := IS = 'E'
+    END;
+  DISKDRIVE := SOURCEDRIVE;
+  IF NOT OPEN_TIT(SOURCEFORM) THEN LEAVE(8,JUSTPAGES);
+  RESET(FORM_TIT_TEMP,CONCAT(DESTDRIVE,':',DESTFORM,'.TIT'));
+  IF IORESULT <> 0 THEN LEAVE(8,JUSTPAGES);
+  IF NOT ZERO THEN
+    BEGIN
+      DISKDRIVE := DESTDRIVE;
+      DIRECTORY^ := DESTDIRENTRY;
+      IF NOT OPEN_DAT(DESTFORM,FORM_DAT_TEMP,TEMP_DAT_DESC,'COPYFORM,DOTHECOPY',
+                                                FALSE) THEN LEAVE(5, JUSTPAGES);
+      DISKDRIVE := SOURCEDRIVE;
+      DIRECTORY^ := SOURCEDIRENTRY;
+      IF NOT OPEN_DAT(SOURCEFORM,FORM_DAT_FILE,FORM_DAT_DESC,
+                            'COPYFORM,DOTHECOPY',TRUE) THEN LEAVE(5, JUSTPAGES)
+    END;
+  
+  DOMOVE(PAGE, TOPAGE, DATAPAGE, PAGELIST, PAGE_CNT);
+  
+  IF NOT ZERO THEN
+    BEGIN
+      CLOSE_DAT(FORM_DAT_FILE, FORM_DAT_DESC, ERR);
+      CLOSE_DAT(FORM_DAT_TEMP, TEMP_DAT_DESC, ERR)
+    END;
+  CLOSE(FORM_TIT_FILE);  CLOSE(FORM_TIT_TEMP);  TIT_OPEN := FALSE
+END;   (* of copydata *)
+
+PROCEDURE COPYCONTROLS;
+VAR  I: INTEGER;
+
+BEGIN
+  ONEMOMENT('Copying Control file');
+  DISKDRIVE := SOURCEDRIVE;
+  IF NOT OPEN_CTL(SOURCEFORM) THEN LEAVE(4,FALSE);
+  RESET(FORM_CTL_TEMP,CONCAT(DESTDRIVE,':',DESTFORM,'.CTL'));
+  IF IORESULT <> 0 THEN LEAVE(4,FALSE);
+  
+  DOMOVE(I, TOROW, CTLROW, ROWLIST, ROW_CNT);
+  DOMOVE(I, TOCOL, CTLCOL, COLLIST, COL_CNT);
+  
+  CLOSE(FORM_CTL_FILE);  CLOSE(FORM_CTL_TEMP);  CTL_OPEN := FALSE;
+  ONEMOMENT('Copying Constants');
+  IF NOT OPEN_CON(SOURCEFORM) THEN LEAVE(12,FALSE);
+  RESET(FORM_CON_TEMP,CONCAT(DESTDRIVE,':',DESTFORM,'.CON'));
+  IF IORESULT <> 0 THEN LEAVE(12,FALSE);
+  FOR I := 1 TO MAXCONSTS DO
+    BEGIN
+      GET(FORM_CON_FILE);
+      FORM_CON_TEMP^ := FORM_CON_FILE^;
+      PUT(FORM_CON_TEMP)
+    END;
+  CLOSE(FORM_CON_FILE);  CLOSE(FORM_CON_TEMP);  CON_OPEN := FALSE;
+  DISKDRIVE := DESTDRIVE;
+  OPEN_DIR;
+  DIRECTORY^ := DESTDIRENTRY;
+  SEEKDIR(DESTREC,ANDPUT);
+  CLOSE(DIRECTORY);  FILEOPEN := FALSE
+END;   (* of copycontrols *)
+
+BEGIN  (* DOTHECOPY *)
+  INSERTDISK(DESTDRIVE,DEST);        (* put in dest disk *)
+  OPEN_DIR;         (* attempt to open directory *)
+  IF NOT (FILEOPEN OR JUSTPAGES) THEN   (* copying whole form so make a dir *)
+    BEGIN
+      ONEMOMENT('Creating Freeform Directory');
+      REWRITE(DIRECTORY,CONCAT(DISKDRIVE,':',DIRNAME));
+      IF IORESULT <> 0 THEN LEAVE(2,TRUE);
+      DIRECTORY^.FORM_NAME := '';   (* initialize to empty *)
+      FOR I := 0 TO DIRSIZE DO
+        BEGIN
+          PUT(DIRECTORY);
+          IF IORESULT <> 0 THEN LEAVE(2,TRUE)
+        END;
+      CLOSE(DIRECTORY,LOCK);
+      OPEN_DIR
+    END;
+  IF FILEOPEN THEN (* make sure a Freeform directory is on the disk *)
+    BEGIN
+      PROMPT(CONCAT(DEST,' Form Name'),MSG_LINE-2);
+      IF JUSTPAGES THEN (* get name of existing Form to put page in *)
+        IF NAME_FORM(DESTFORM,DESTREC) THEN (* set max dest page, row & col # *)
+          WITH DIRECTORY^ DO BEGIN
+            DESTDIRENTRY := DIRECTORY^;
+            DESTPAGE := NO_PAGES;
+            DESTCOL  := NO_COLS;
+            DESTROW  := NO_ROWS
+          END
+        ELSE LEAVE(0,TRUE)
+      ELSE
+        BEGIN          (* get a new Form name to copy old form to *)
+          REPEAT UNTIL GET_FORM_NAME(DESTFORM,DESTREC) OR QUIT;
+          IF QUIT THEN LEAVE(0,TRUE)     (* BUG FIX  SDA 10/16/80 *)
+        END
+    END
+  ELSE LEAVE(6,TRUE);      (* no directory could be found *)
+  
+  ERASE(MSG_LINE-2);
+  INSERTDISK(SOURCEDRIVE,SOURCE);   (* put in source disk *)
+  OPEN_DIR;
+  IF FILEOPEN THEN (* make sure a Freeform directory is on the disk *)
+    BEGIN
+      PROMPT(CONCAT(SOURCE,' Form Name'),MSG_LINE-2);
+      REPEAT
+        IF NOT NAME_FORM(SOURCEFORM,SOURCEREC) THEN LEAVE(0,TRUE);
+        IF (SOURCEFORM=DESTFORM) AND (SOURCEDRIVE=DESTDRIVE) AND (NOT JUSTPAGES)
+         (*$B 40COL- *)
+         THEN PRESSRETURN('Not Allowed to Copy the Source into itself',MSG_LINE)
+         (*$E 40COL  *)
+         (*$B 40COL+ *)
+         THEN PRESSRETURN('Can''t Copy Source into itself',MSG_LINE)
+         (*$E 40COL  *)
+      UNTIL (SOURCEFORM<>DESTFORM) OR (SOURCEDRIVE<>DESTDRIVE) OR JUSTPAGES;
+      ERASE(MSG_LINE-2);
+      (* make sure that the source has control and data files *)
+      ONEMOMENT('Searching for Source FORM files');
+      IF OPEN_CTL(SOURCEFORM) THEN
+        BEGIN  CLOSE(FORM_CTL_FILE);  CTL_OPEN := FALSE  END
+      ELSE LEAVE(4,TRUE);
+      IF OPEN_CON(SOURCEFORM) THEN
+        BEGIN  CLOSE(FORM_CON_FILE);  CON_OPEN := FALSE  END
+      ELSE LEAVE(12,TRUE);
+      IF OPEN_TIT(SOURCEFORM) THEN
+        BEGIN  CLOSE(FORM_TIT_FILE);  TIT_OPEN := FALSE  END
+      ELSE LEAVE(8,TRUE);
+      RESET(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',SOURCEFORM,'.DAT'));
+      IF IORESULT = 0 THEN
+        BEGIN  CLOSE(FORM_DAT_FILE);  DAT_OPEN := FALSE  END
+      ELSE LEAVE(5,TRUE);
+      
+      MEMORY;
+    
+      SOURCEDIRENTRY := DIRECTORY^;
+      
+      IF JUSTPAGES THEN (* Get destination for pages, rows and cols *)
+        BEGIN
+          SETDEST('Page',   DESTPAGE, STPAGE);
+          SETDEST('Row',    DESTROW,  STROW);
+          SETDEST('Column', DESTCOL,  STCOL)
+        END
+      ELSE  OPEN_NEW_FORM_FILES;    (* Open new files and set dests to 1 *)
+      
+      (* Set PAGELIST to pages to copy, set ROWLIST to rows to copy,
+         and set COLLIST to columns to copy. *)
+      WITH SOURCEDIRENTRY DO BEGIN
+        SETUP(PAGE_CNT, PAGELIST, 'Page', DESTPAGE-STPAGE+1, NO_PAGES);
+        SETUP(ROW_CNT,  ROWLIST,  'Row',  DESTROW-STROW+1,   NO_ROWS );
+        SETUP(COL_CNT,  COLLIST,  'Col',  DESTCOL-STCOL+1,   NO_COLS )
+      END;
+      
+      IF NOT JUSTPAGES THEN                (* Set dest dir record        *)
+        WITH DESTDIRENTRY DO BEGIN
+          DESTDIRENTRY := SOURCEDIRENTRY;  (* Set it to source entry     *)
+          FORM_NAME    := DESTFORM;        (* Then modify certain parts  *)
+          THEMAXROW    := DESTROW;
+          THEMAXCOL    := DESTCOL;
+          NO_PAGES     := PAGE_CNT;
+          NO_ROWS      := ROW_CNT;
+          NO_COLS      := COL_CNT
+        END
+    END
+  ELSE LEAVE(6,TRUE);      (* no directory could be found *)
+  COPYPAGES;
+  IF NOT JUSTPAGES THEN COPYCONTROLS;
+  DISKDRIVE := TEMP;
+  (*$B 40COL- *)
+  RETURNDISKS('Complete');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  RETURNDISKS('Done');
+  (*$E 40COL  *)
+  FINISHUP
+END;   (* of dothecopy *)
+
+BEGIN  (* COPYFORM *)
+  INITIALIZE;
+  DOTHECOPY
+END;   (* of copyform *)
+

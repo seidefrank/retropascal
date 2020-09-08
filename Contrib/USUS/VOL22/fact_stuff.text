@@ -1,0 +1,216 @@
+{This unit is was written by Henry E. Baumgarten to replace a unit, DGS_STUFF,
+ missing in the Grundler submissions.  The exact composition of the missing unit
+ is not known; thus, the routines given here could be worse (or better) than
+ those in the original unit. There are several alternative ways of combining
+ these procedures and functions. At present the N_FACTORIAL procedure will
+ be undefined for arguments greater than 32.  There is an alternative 
+ (probably better), iterative procedure for using long integers to determine n!
+ in R. Clark's, "The UCSD Pascal Handbook." A recursive procedure was used here
+ to avoid copyright problems. This procedure here uses integers for arguments
+ up to 7 and long integers for 8 to 32. Two ways of computing ln(n!) are
+ given, both of which use Stirling's approximation.  Stirling's approximation
+ is described in Knuth's "Fundamental Algorithms" (Vol. 1). The function
+ LN_FACTORIAL uses the N_FACTORIAL procedure for integer arguments up to 8
+ and the Stirling approximation for larger arguments. In the function
+ LX_FACTORIAL the Stirling approximation is also used, but with a real
+ argument. The approximation appears to be fairly good, with most errors in the
+ sixth digit. The function XFACTORIAL is also based on the Stirling
+ approximation and appears to sufficiently accurate for use in calculating the
+ gamma function, gamma(x) = (x-1)!, to 5 or 6 places. . According to Knuth,
+ gamma(1.4616321450) = 0.8856031944. With 2-word reals the calculated
+ gamma = 0.885602. Adding terms to the approximation might improve its accuracy
+ but this was not tested. The binomial coefficents and their uses are also
+ described in Knuth.  This unit was assembled in haste for review purposes and
+ has been neither thoroughly tested nor carefully optimized. 
+     If an out-of-range argument is used, the routines will return a value of
+ zero (undefined) with F_ERROR set to TRUE and with a F_ERRORCODE set as
+ follows:
+          1 : argument out of range
+          2 : argument too close to negative integer
+          3 : not defined for negative argument}
+                
+ 
+UNIT FACTORIAL_STUFF;  {version 1.4 - 04 Jan 82}
+
+INTERFACE
+
+TYPE  LONGTYPE = INTEGER[36];
+
+VAR   F_ERROR : BOOLEAN;
+      F_ERRORCODE : INTEGER;
+       
+PROCEDURE NFACTORIAL(N : INTEGER; VAR NFACT : LONGTYPE);
+
+FUNCTION XFACTORIAL(X : REAL) : REAL;
+
+FUNCTION LN_FACTORIAL(N : INTEGER): REAL;
+
+FUNCTION LX_FACTORIAL(X : REAL): REAL;
+
+FUNCTION BINOM_COEFF(N,X : INTEGER): REAL;
+
+FUNCTION LN_COMBINATION(N,X : INTEGER): REAL;
+
+IMPLEMENTATION
+
+CONST   LNSQRT2PI = 0.918938533204673;  {Values largely from Knuth, Vol. 1}
+           SQRTPI = 1.772453850905516;
+            SQRT2 = 1.414213562373095;
+
+FUNCTION LONGTOREAL(LONG : LONGTYPE): REAL;
+  VAR RESULT: LONGTYPE;
+      RL,FRACTION : REAL;
+      I : INTEGER;
+      NEGNO : BOOLEAN;
+  BEGIN
+    NEGNO := FALSE;
+    IF (LONG < 0) THEN
+      BEGIN
+        NEGNO := TRUE;
+        LONG := -LONG
+      END;
+    I := 0;
+    FRACTION := 0;
+    IF (LONG > MAXINT) THEN
+      REPEAT
+        RESULT := LONG DIV 10;
+        FRACTION := FRACTION + PWROFTEN(I)*TRUNC(LONG - RESULT*10);
+        LONG := RESULT;
+        I := I + 1;
+      UNTIL (LONG < MAXINT);
+    RL := TRUNC(LONG)*PWROFTEN(I) + FRACTION;
+    IF NEGNO THEN RL := -RL;
+    LONGTOREAL := RL
+  END;
+  
+PROCEDURE BLUNDER(N : INTEGER);
+  BEGIN
+    F_ERRORCODE := N;
+    F_ERROR := TRUE
+  END;
+
+FUNCTION INFACT(N : INTEGER): INTEGER; {for n <= 7 only}
+  BEGIN
+    F_ERROR := FALSE;
+    IF N>7 THEN
+      BEGIN
+        BLUNDER(1);
+        INFACT := 0
+      END
+    ELSE IF (N=0) THEN INFACT := 1
+    ELSE INFACT := N*INFACT(N-1)
+  END;
+
+PROCEDURE NFACTORIAL{(N : INTEGER; VAR NFACT : LONGTYPE};
+  VAR   I : INTEGER;
+  BEGIN
+    F_ERROR := FALSE;
+    IF ((N>32) OR (N<0)) THEN
+      BEGIN
+        BLUNDER(1);
+        NFACT := 0
+      END
+    ELSE IF (N=0) THEN NFACT := 1
+    ELSE
+      BEGIN
+        IF (N<8) THEN
+          BEGIN
+            NFACT := INFACT(N);
+            EXIT(NFACTORIAL)
+          END
+        ELSE NFACTORIAL(N-1,NFACT);
+        NFACT := N*NFACT
+      END
+  END;
+  
+FUNCTION XFACTORIAL{(X : REAL): REAL)};
+  VAR   ATEST2,XFACT : REAL;
+        ATEST1,N : INTEGER;
+        
+  FUNCTION FACT(A:REAL; M:INTEGER): REAL;
+    VAR B,BFACT : REAL;
+    BEGIN
+      B := A+M;
+      BFACT := SQRTPI*SQRT2*EXP(LN(B)*(B+0.5)-B+(1-1/(30*B*B))/(12*B));
+      FOR N := 0 TO M-1 DO BFACT := BFACT/(B-N);
+      FACT := BFACT
+    END;
+    
+  BEGIN
+    F_ERROR := FALSE;
+    IF ((X<=-20.0) OR (X>30.0)) THEN
+      BEGIN
+        BLUNDER(1);
+        XFACT := 0
+      END
+    ELSE IF (X=0) THEN XFACT := 1
+    ELSE IF (X>0) THEN XFACT := FACT(X,3)
+    ELSE
+      BEGIN
+        ATEST1 := TRUNC(ABS(X)+0.1);
+        IF (ATEST1>0) THEN
+          BEGIN
+            ATEST2 := ABS(ABS(X)-ATEST1);
+            IF (((ATEST1 < 10) AND (ATEST2 < 0.00001)) 
+            OR ((ATEST1 >= 10) AND (ATEST2 < 0.0001))) THEN
+              BEGIN
+                BLUNDER(2);
+                XFACTORIAL := 0;
+                EXIT(XFACTORIAL)
+              END
+          END;
+        XFACT := FACT(X,TRUNC(ABS(X)+4))
+      END;
+    XFACTORIAL := XFACT
+  END;
+  
+FUNCTION LXFACTORIAL{(X : REAL): REAL};
+  VAR   B,LNXFACT,LNBFACT : REAL;
+        N : INTEGER;
+  BEGIN
+    F_ERROR := FALSE;
+    IF (X<0) THEN
+      BEGIN
+         BLUNDER(3);
+         LNXFACT := 0
+      END
+    ELSE IF (X>10000) THEN
+       BEGIN
+         BLUNDER(1);
+         LNXFACT := 0
+       END
+    ELSE IF (X=0) THEN LNXFACT := 0
+    ELSE
+      BEGIN
+        B := X+3;
+        LNBFACT := LNSQRT2PI+(LN(B)*(B+0.5))-B+(1-1/(30*B*B))/(12*B);
+        FOR N := 0 TO 2 DO LNBFACT := LNBFACT-LN(B-N);
+        LNXFACT := LNBFACT
+      END;
+    LXFACTORIAL := LNXFACT
+  END;
+  
+FUNCTION LN_FACTORIAL{(N : INTEGER): REAL};
+  VAR   RFACT : REAL;
+        NFACT : LONGTYPE;
+  BEGIN
+    IF (N<8) THEN
+        LN_FACTORIAL := LN(INFACT(N))
+    ELSE LN_FACTORIAL := LX_FACTORIAL(N)
+  END;
+
+FUNCTION LN_COMBINATION{(N,X : INTEGER): REAL};
+  BEGIN
+    LN_COMBINATION := LN_FACTORIAL(N)-LN_FACTORIAL(N-X)-LN_FACTORIAL(X)
+  END;
+  
+FUNCTION BINOM_COEFF{(N,X : INTEGER): REAL};
+  VAR   TEMP : REAL;
+  BEGIN
+    TEMP := LN_COMBINATION(N,X); 
+    IF (TEMP > 87.4) THEN BINOM_COEFF := 1.0E37
+    ELSE BINOM_COEFF := EXP(TEMP)
+  END;
+  
+    
+END. {of unit}

@@ -1,0 +1,240 @@
+PROGRAM TERMINAL ;     {xL PRINTER: }
+(*
+  COPYRIGHT 1980, 1981, 1982 BY ROBERT W. PETERSON.
+                ALL RIGHTS RESERVED.
+                
+  This program talks to the REMIN: and REMOUT: and has the
+  following capabilities:
+    1. Dumb terminal emulation.
+    2. Logging to a file the text received.
+    3. Transmitting down the line a file.
+    4. Echoing or not echoing the characters typed/transmitted.
+    5. Selecting the name of the log file dynamically.
+    6. Transmitting a predefined logon sequence to REMOUT:
+    7. Automatically dialing a telephone number.
+    8. Optional Videotex copatibility.
+
+
+================================================================================
+  
+  This program references the following files at compile time:
+    1. An implementation of the USUS Standard Remote Unit of
+       August 1981 stored in the file "STD.UNIT.CODE".
+    2. Include file "TERM.INIT.TEXT", containing the program's
+       initialization procedure.
+    3. Include file "TERM.LOG.TEXT", containing procedures which
+       are involved in logging text to disk, including opening
+       a log file, moving chunks of the memory buffer to the log file
+       but not placing characters into the memory buffer.
+    4. Include file "TERM.UTIL.TEXT", containing the program's
+       utility procedures, including menu display, option selection,
+       transmitting of a logon, and other short utilities.
+    5. Include file "TERM.EMUL.TEXT", containing the actual terminal
+       emulation code, including receiving characters from remote
+       and keyboard, displaying them, and moving them to the memory
+       buffer.
+
+================================================================================
+
+     This program was originally developed using Version IV.01
+  on a machine with only 56K bytes of memory and contains too
+  many segment procedures to successfully compile under most
+  other versions. The procedures are organized such that the
+  largest procedures are in the early part of the source file.
+  These large procedures should probably remain segmented.
+  Later procedures are smaller and can be made memory resident
+  with only a minor expansion of memory requirements.
+  
+     The source code has been marked in the appropriate 
+  place for native code generation.
+*)
+{$P+}
+(*==============================================================================
+     
+     Logons are optionally read from the file named in the constant
+  "LOGON_FILENAME".  If the file cannot be found, the program ignores
+  its absence and proceeds.  Entries in this file consist of nine
+  lines:
+      Line      Data
+        1       Name of the entity being called.
+                For example: "Compuserve", "Source", "Local ABBS"
+                The name can be a maximum of 29 characters.
+        2       Logon ID.  This is the first of two logon
+                lines sent using the send logon command.
+                The ID can be a maximum of 21 characters
+        3       Password.  This is the second of the two
+                logon lines sent using the send logon command.
+                The password can be a maximum of 21 characters
+        4       Prompt character.  The send logon command
+                waits for this character to be sent by the remote 
+                system before the second logon line is sent.
+                The first character of the line is used.  The rest
+                of the line is ignored.  If the line contains no
+                characters, a question mark is used.
+        5       Phone number.  This is the complete
+                telephone number of the remote system.  This
+                number will be used if auto-dial support is
+                available in the Remote Unit.  The number can be a
+                maximum of 21 characters.
+          The following four lines are flag settings.  Each
+          line must begin with a "T" (without quotes) if the
+          associated flag is to be set true.  If the flag is
+          to be set false the line must begin with "F".
+        6       Filter Control Character flag.  If this flag
+                is true, control characters sent from the
+                remote system will not be displayed nor will
+                they be moved into the log buffer.  This
+                flag is usually true.
+        7       Logging.  If true, received characters will 
+                be placed into an internal buffer for later
+                movement to a perpherial device.
+        8       Echo.  If true the terminal program will
+                echo to the screen locally all characters
+                typed.  Echo is true for half-duplex
+                systems only.  For most systems, this flag
+                is false.
+        9       VideoText Compatible.  If the remote system
+                is sending CRT control characters compatible
+                with Compuserve's VideoText control
+                characters and you wish to respond to those
+                control characters, this flag should be
+                true.  Otherwise it should be false.  If you
+                intend to set this flag True you must change
+                the constants marked as Videotex to match
+                your CRT requirements.
+
+*)
+
+{$P+}
+{ The following unit must include the majority of the routines
+  specified in the USUS Standard Remote Unit of 1981.  For
+  a specification of the unit, see USUS News #5, Fall 1981.
+  If you are not a USUS member, contact USUS (the UCSD
+  p-System User Society) at P.O. Box 1148, La Jolla, 
+  California  92038 for membership information.            }
+USES {$U       :STD.UNIT.CODE } REMUNIT ;
+
+{$P+}
+CONST
+  ARROW_DOWN    =    18 ;       { Used only in Videotex code }
+  ARROW_LEFT    =    20 ;       { Used only in Videotex code }
+  ARROW_RIGHT   =    19 ;       { Used only in Videotex code }
+  ARROW_UP      =    17 ;       { Used only in Videotex code }
+  BACKSPACE     =     8 ;
+  CLEAR_EOLN    =    29 ;       { Used only in Videotex code }
+  CLEAR_EOS     =    28 ;       { Used only in Videotex code }
+  CLEAR_SCREEN  =    12 ;       { Used only in Videotex code }
+  CR            =    13 ;
+  ESCAPE        =    27 ;
+  FORMFEED      =    12 ;
+  HOME_CURSOR   =    11 ;       { Used only in Videotex code }
+  KB            =     2 ;
+  LINEFEED      =    10 ;
+  LOGLIMIT      = 10000 ;
+  LOGON_FILENAME= ':LOGONS.TEXT' ; { Leave the colon on! It is required. }
+  PRINTER       =     6 ;
+  REMIN         =     7 ;
+  REMOUT        =     8 ;
+  RUBOUT        =   127 ;
+  VERSION       = ' VERSION 2.00 20 May 82  Standard USUS remote unit' ;
+
+
+
+VAR
+  { Short, frequently referenced variables. }
+  C             : CHAR ;
+  BLOCKED       : BOOLEAN ;
+  DONE          : BOOLEAN ;
+  ECHO          : BOOLEAN ;
+  FILTERCONTROL : BOOLEAN ;
+  LOGINDEX      : 0 .. LOGLIMIT ;
+  LOGOPEN       : BOOLEAN ;
+  LOGPROMPT     : CHAR ;
+  LOGTEXT       : BOOLEAN ;
+  NEARLY        : 0 .. LOGLIMIT ;
+  VIDEOTEXT     : BOOLEAN ;
+  FILTERSET     : SET OF CHAR ;
+  
+  { Larger, structured or infrequently referenced variables. }
+  BLOCKFILE     : FILE ;
+  BLOCKS_WRITTEN: INTEGER ;
+  LOGARRAY      : PACKED ARRAY [ 0 .. LOGLIMIT ] OF CHAR ;
+  LOGFILE       : TEXT ;
+  LOGFILENAME   : STRING[ 30 ] ;
+  LOGON_DEFINED : BOOLEAN ;
+  LOGON1        : STRING ;
+  LOGON2        : STRING ;
+  NUMBER        : STRING ;
+  TIMESHARE_SERVICE : STRING[29] ;
+
+{$P+}
+SEGMENT PROCEDURE ADD_TEXT( Var S : STRING ) ;          FORWARD ;
+SEGMENT PROCEDURE CLEAR_LOG ;                           FORWARD ;
+        PROCEDURE CLEAR_THE_SCREEN ;                    FORWARD ;
+        PROCEDURE DISPLAY( C : CHAR ) ;                 FORWARD ;
+        PROCEDURE LOGIT( C : CHAR ) ;                   FORWARD ;
+SEGMENT PROCEDURE FLUSHBLOCKED ;                        FORWARD ;
+SEGMENT PROCEDURE OPTIONS ;                             FORWARD ;
+SEGMENT PROCEDURE PROCEED ;                             FORWARD ;
+SEGMENT FUNCTION  QUESTION( PROMPT : STRING ) : BOOLEAN;FORWARD ;
+SEGMENT PROCEDURE SAVELOG ;                             FORWARD ;
+SEGMENT PROCEDURE SEND_LOGON ;                          FORWARD ;
+
+{$I      :TERM.INIT.TEXT }
+{$I      :TERM.LOG.TEXT  }
+{$I      :TERM.UTIL.TEXT }
+{$I      :TERM.EMUL.TEXT }
+
+{$P+}
+BEGIN { TERMINAL }
+
+  { The following variables are initialized only at 
+    program startup.  They are not changed when the user
+    requests reinitialization of the program.             }
+  BLOCKED   := FALSE ;
+  LOG_INDEX := 0 ;
+  LOG_TEXT  := FALSE ;
+  LOG_OPEN  := FALSE ;
+  
+  INITIALIZE ;
+  
+  EMULATE ;
+
+  { Do termination here so we can get off the line ASAP. }
+  CR_COMMQUIT ;
+
+  { Now we can, if necessary, save the log at our leisure. }
+  IF LOGINDEX > 0
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITE  ( 'There are ', LOGINDEX, ' characters in the log which have not' );
+      WRITELN( ' been written to disk.');
+      IF QUESTION( 'Do you wish to write the log ' )
+        THEN
+          BEGIN
+          WRITELN ;
+          IF NOT LOGOPEN
+            THEN
+              SETLOGFILENAME ;
+          IF LOGOPEN
+            THEN
+              BEGIN
+              SAVELOG ;
+              IF BLOCKED
+                THEN
+                  FLUSHBLOCKED ;
+              END ;
+          END
+        ELSE
+          { Zero the log index so CLOSELOG won't write anything. }
+          LOGINDEX := 0 ;
+      END ;
+          
+  WRITELN ;
+  
+  CLOSELOG ;
+
+END.
+
+

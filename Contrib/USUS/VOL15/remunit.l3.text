@@ -1,0 +1,458 @@
+{$S+}
+
+{UNIT REMUNIT      Version L3     12 August 1981}
+
+{============== Copyright Notice =======================}
+        {$C Copyright 1980, 1981 by Robert W. Peterson }
+{============== Copyright Notice =======================}
+        {Copyright 1981 by Michael A. Ikezawa}
+        {Copyright 1981 by Walter B. Farrell}
+{============================================================
+  This is a separate compilation unit intended to stand 
+  between application code and a communication line.
+  Implementation of this unit follows the specifications
+  and suggestions set out in the Feburary 1981 draft of the
+  USUS (UCSD p-System User Society) remote unit specification.
+
+  This unit will interface to the following model codes:
+        LSI-11
+
+  The following routines are not functional:
+        CR_CLEARTOSEND
+        CR_DIAL
+        CR_DIALTONE
+        CR_SETADDRESS
+        CR_SETCOMMUNICATIONS
+
+ ============================================================}
+
+
+{============================================================
+                Change Log
+                ====== ===
+  Date     What change was made & Who made the change
+---------  ----------------------------------------------------
+28 Mar 81  Original code - Bob Peterson
+
+16 May 81  LSI-11 Modifications - Mike Ikezawa
+                        
+        In the IMPLEMENTATION section:
+        
+        (1) Delete the following CONSTANTs entirely:
+        
+                POLY_KB
+                POLY_REMOTE
+                
+        (2) In PROCEDURE CR_ANSWER delete:
+        
+                UNITCLEAR(POLY_REMOTE)
+                
+        (3) The single statement in FUNCTION CR_KBSTAT should read:
+        
+                CR_KBSTAT := NOT UNITBUSY(KB_UNIT)
+                
+        (4) The single statement in FUNCTION CR_REMSTAT should read:
+        
+                CR_REMSTAT := NOT UNITBUSY(REMIN_UNIT)
+                
+        (5) The UNITREAD statement in FUNCTION CR_GETKB should read:
+        
+                UNITREAD(KB_UNIT,ARAY.A,1,,1)
+                
+        (6) The UNITREAD statement in FUNCTION CR_GETREM should read:
+        
+                UNITREAD(REMIN_UNIT,ARAY.A,1,,1)
+                
+1 June 81  More LSI-11 Modifications by Walt Farrell
+
+        (1) Following declaration of BAUD_SETTABLE:
+        
+                BUF_KB, BUF-REMIN : PACKED ARRAY[1..1] OF CHAR;
+                
+        (2) In Procedure CR_ANSWER following UNITCLEAR(REMOUT_UNIT); :
+        
+                UNITREAD( REMIN_UNIT, BUF_REMIN, 1,,1);
+                
+        (3) Replace Function CR_KBSTAT with:
+        
+                FUNCTION CR_KBSTAT( : BOOLEAN )
+                VAR
+                  STATUS_REC : ARRAY[1..30] OF INTEGER;
+                BEGIN
+                  UNITSTATUS( KB_UNIT, STATUS_REC, 1);
+                  CR_KBSTAT := (STATUS_REC[1] > 0);
+                END;
+                
+        (4) Replace Function CR_GETKB with:
+        
+                FUNCTION CR_GETKB ( : CHAR );
+                BEGIN
+                  UNITREAD( KB_UNIT, BUF_KB, 1,,5);
+                  CR_GETKB := BUF_KB[1];
+                END;
+                
+        (5) Replace Function CR_GETREM with:
+        
+                FUNCTION CR_GETREM ( : CHAR );
+                BEGIN
+                  CR_GETREM := BUF_REMIN[1];
+                  UNITREAD( REMIN_UNIT, BUF_REMIN, 1,,1);
+                END; 
+                
+        (6) In CR_COMMINIT just before MODEL_ID := ''; :
+        
+                UNITREAD( REMIN_UNIT, BUF_REMIN, 1,,1);
+                
+12 Aug 81  More LSI-11 Modifications by Mike Ikezawa
+
+        CR_BREAK has been implemented.  It uses the external
+        procedures SET_BREAK and CLR_BREAK.  In this version,
+        SET_BREAK and CLR_BREAK are written for the LSI-11.
+        This makes this version machine-dependent.  However,
+        it is very possible that if SET_BREAK and CLR_BREAK
+        are replaced by appropriate external functions that
+        are written for other machines, this version may very
+        well work on those machines also.
+
+19 Jun 82  Changed CR_RATE_SET_OK in interface part to
+             CR_SET_OK per std in NL#5   
+             
+           Changed CR_REMSTAT to use UNITSTATUS and commented out an initial
+             UNITREAD in CR_COMMINIT.  This allowed this unit to work with
+             Bob Peterson's TERM.MAIN.TEXT and still work with TOMUSUS.  
+                                                George Schreyer
+        
+
+ ============================================================}
+
+
+UNIT REMUNIT ;
+INTERFACE
+
+{$P+}
+
+TYPE
+  CR_DIALRESULT     = ( CR_OFF_HOOK, 
+                        CR_DIALERROR,
+                        CR_NOAUTODIAL ) ;
+  CR_BAUD_RESULT    = ( CR_BAD_PARAMETER,
+                        CR_BAD_RATE,
+                        CR_SET_OK,
+                        CR_SELECT_NOT_SUPPORTED ) ;
+  CR_WHOAMI         = ( CR_ORIG,
+                        CR_ANS ) ;
+  CR_REM_PORT       =  PACKED RECORD
+                        PART1   : INTEGER ;
+                        PART2   : INTEGER ;
+                        END ; { CR_REM_PORT }
+
+VAR
+  CR_ATTENCHAR          : CHAR ;
+  CR_CURRENT_PORT       : CR_REM_PORT ;
+
+{       Initialization and termination routines. }
+PROCEDURE CR_COMMINIT(  DIR             : CR_WHOAMI ;
+                        ATTENTION_CHAR  : CHAR ;
+                    VAR REMOTE_EXISTS   : BOOLEAN ;
+                    VAR DIALER_EXISTS   : BOOLEAN ) ;
+
+PROCEDURE CR_COMMQUIT ;
+
+
+{       Input status. }
+FUNCTION  CR_KBSTAT                     : BOOLEAN ;
+FUNCTION  CR_REMSTAT                    : BOOLEAN ;
+
+
+{       Input/Output operations. }
+FUNCTION  CR_GETKB                      : CHAR ;
+FUNCTION  CR_GETREM                     : CHAR ;
+PROCEDURE CR_PUTREM(                  C : CHAR ) ;
+
+
+{       Control procedures. }
+PROCEDURE CR_ANSWER ;
+PROCEDURE CR_BREAK ;
+FUNCTION  CR_CARRIER                    : BOOLEAN ;
+FUNCTION  CR_CLEARTOSEND                : BOOLEAN ;
+PROCEDURE CR_DELAY(     TENTHS          : INTEGER ) ;
+PROCEDURE CR_DIAL(      NUMBER          : STRING ;
+                        WAITCHAR        : CHAR
+                    VAR RESULT          : CR_DIALRESULT ) ;
+PROCEDURE CR_HOOK(      ON_HOOK         : BOOLEAN ) ;
+PROCEDURE CR_SETADDRESS(HIGHADDR        : INTEGER ;
+                        LOWADDR         : INTEGER ;
+                        VECTOR          : INTEGER ) ;
+PROCEDURE CR_SETCOMMUNICATIONS(
+                        PARITY          : BOOLEAN ;
+                        EVEN            : BOOLEAN ;
+                        RATE            : INTEGER ;
+                        CHARBITS        : INTEGER ;
+                        STOPBITS        : INTEGER ;
+                        DIR             : CR_WHOAMI ;
+                        MODEL           : STRING ;
+                    VAR RESULT          : CR_BAUD_RESULT ) ;
+
+IMPLEMENTATION
+{$P+}{ Page here so the option is not in the interface text. }
+CONST
+  DEFAULT_RATE          =  300 ;
+  DEFAULT_MODE          = TRUE ; { Default to parity enabled. }
+  DEFAULT_PARITY        = TRUE ; { Default to even parity.    }
+  DEFAULT_CHARBITS      =    7 ; { Default to seven data bits.}
+  DEFAULT_STOPBITS      =    2 ; { Default to two stop bits.  }
+  KB_UNIT               =    2 ;
+  REMIN_UNIT            =    7 ;
+  REMOUT_UNIT           =    8 ;
+  TIMER                 =  250 ;
+
+TYPE
+  TRICK                 = PACKED RECORD
+                          CASE INTEGER OF
+                          1:(A : PACKED ARRAY[0..80] OF CHAR);
+                          2:(S : STRING[80]);
+                          3:(I : INTEGER;
+                             J : INTEGER);
+                          4:(L : ARRAY[0..39] OF INTEGER);
+                          5:(B : ARRAY[0..39] OF BOOLEAN);
+                          6:(C : PACKED RECORD
+                                 CHARL  : CHAR ;
+                                 CHARR  : CHAR 
+                                 END ) ;
+                          END ; { TRICK }
+
+VAR
+  BAUD_SETTABLE         : BOOLEAN ;
+  buf_kb, buf_remin     : packed array[1..1] of char;
+  CONTROL               : INTEGER ;
+  CURRENT_BAUD          : INTEGER ;
+  MODEL_ID              : STRING ;
+  OFF_HOOK              : BOOLEAN ;
+{$P+}
+{  ---------------------------------------------------------  }
+{               Control Procedures                            }
+{  ---------------------------------------------------------  }
+
+procedure set_break; external;
+
+procedure clr_break; external;
+
+PROCEDURE CR_ANSWER ;
+VAR
+  WAITING               : BOOLEAN ;
+BEGIN
+  WAITING := TRUE ;
+  WHILE WAITING DO
+    BEGIN
+    WAITING := NOT CR_CARRIER ;
+    IF WAITING
+      THEN
+        IF CR_KBSTAT
+          THEN
+            WAITING := CR_GETKB <> CR_ATTENCHAR ;
+    END ;
+  OFF_HOOK := NOT WAITING ;
+  IF NOT WAITING
+    THEN
+      BEGIN
+      UNITCLEAR( REMIN_UNIT ) ;
+      UNITCLEAR( REMOUT_UNIT ) ;
+      unitread(remin_unit,buf_remin,1,,1);
+      END ;
+END ; { CR_ANSWER }
+
+PROCEDURE CR_BREAK ;
+
+var     i       :integer;
+
+BEGIN
+  cr_putrem(chr(0));
+  cr_putrem(chr(0));
+  set_break;
+  for i := 1 to 100 do
+    cr_putrem(chr(0));
+  clr_break;
+END ;
+
+FUNCTION  CR_CARRIER{ : BOOLEAN } ;
+BEGIN
+  CR_CARRIER := TRUE ;
+  OFF_HOOK   := TRUE ;
+END ; { CR_CARRIER }
+
+FUNCTION  CR_CLEARTOSEND{ : BOOLEAN } ;
+BEGIN
+  CR_CLEARTOSEND := TRUE ;
+END ; { CR_CLEARTOSEND }
+
+PROCEDURE CR_DELAY{ TENTHS : INTEGER } ;
+VAR
+  I             : INTEGER ;
+BEGIN
+  I := TIMER ;
+  WHILE I > 0 DO
+    I := I - 1 ;
+END ; { CR_DELAY }
+
+PROCEDURE CR_DIAL{ NUMBER       : STRING ;
+               VAR RESULT       : CR_DIAL_RESULT } ;
+BEGIN
+  RESULT := CR_NOAUTODIAL ;
+END ; { CR_DIAL }
+
+PROCEDURE CR_HOOK{ ON_HOOK      : BOOLEAN } ;
+BEGIN
+  OFF_HOOK := NOT ON_HOOK ;
+END ; { CR_HOOK }
+{$P+}
+{  ---------------------------------------------------------  }
+{               Status Procedures                             }
+{  ---------------------------------------------------------  }
+
+FUNCTION  CR_KBSTAT{ : BOOLEAN } ;
+var     status_rec      :array[1..30] of integer;
+BEGIN
+  unitstatus(kb_unit,status_rec,1);
+  cr_kbstat := (status_rec[1] > 0);
+END ; { CR_KBSTAT }
+
+FUNCTION  CR_REMSTAT{ : BOOLEAN } ;
+var status_rec : array[1..30] of integer;
+BEGIN
+  CR_REMSTAT := not UNITBUSY( remin_unit ) ;
+  {unitstatus ( remin_unit, status_rec, 1 );} {this sometimes works and}
+  {cr_remstat := ( status_rec[1] > 0 );}       {and sometimes doesn't   gws}
+END ; { CR_REMSTAT }
+{$P+}
+{  ---------------------------------------------------------  }
+{               Input/Output Procdures                        }
+{  ---------------------------------------------------------  }
+
+FUNCTION  CR_GETKB{ : CHAR } ;
+BEGIN
+  unitread(kb_unit,buf_kb,1,,5);
+  cr_getkb := buf_kb[1];
+END ; { CR_GETKB }
+
+FUNCTION  CR_GETREM{ : CHAR } ;
+BEGIN
+  cr_getrem := buf_remin[1];
+  unitread(remin_unit,buf_remin,1,,1);
+END ; { CR_GETREM }
+
+PROCEDURE CR_PUTREM{ C : CHAR } ;
+VAR
+  P                     : TRICK ;
+BEGIN
+  IF CR_CARRIER
+    THEN
+      BEGIN
+      P.A[0] := C ;
+      UNITWRITE( REMOUT_UNIT, P.A, 1, 0, CONTROL ) ;
+      END ;
+END ; { CR_PUTREM }
+{$P+}
+{  ---------------------------------------------------------  }
+{               Initialization/Termination Procedures         }
+{  ---------------------------------------------------------  }
+
+PROCEDURE CR_SETADDRESS{        HIGHADDR        : INTEGER ;
+                                LOWADDR         : INTEGER ;
+                                VECTOR          : INTEGER } ;
+BEGIN
+  WITH CR_CURRENT_PORT DO
+    BEGIN
+    PART1 := HIGHADDR ;
+    PART2 := LOWADDR ;
+    END ;
+END ; { CR_SETADDRESS }
+
+PROCEDURE CR_SETCOMMUNICATIONS{
+                        PARITY          : BOOLEAN ;
+                        EVEN            : BOOLEAN ;
+                        RATE            : INTEGER ;
+                        CHARBITS        : INTEGER ;
+                        STOPBITS        : INTEGER ;
+                        DIR             : CR_WHOAMI ;
+                        MODEL           : STRING ;
+                    VAR RESULT          : CR_BAUD_RESULT } ;
+BEGIN
+  CONTROL       :=    12 ;
+  BAUD_SETTABLE := FALSE ;
+  RESULT        := CR_SELECT_NOT_SUPPORTED ;
+END ; { CR_SETCOMMUNICATIONS }
+
+PROCEDURE CR_COMMINIT{  DIR             : CR_WHOAMI ;
+                        ATTENTION_CHAR  : CHAR ;
+                    VAR REMOTE_EXISTS   : BOOLEAN ;
+                    VAR DIALER_EXITST   : BOOLEAN } ;
+VAR
+  RESULT                : CR_BAUD_RESULT ;
+PROCEDURE NOT_THERE ;
+BEGIN
+  PAGE( OUTPUT ) ;
+  GOTOXY( 0, 10 ) ;
+  WRITELN(' ':20, 'Required unit failed UNITCLEAR!') ;
+  WRITELN(' ':20, 'Program will terminate.') ;
+  EXIT( PROGRAM ) ;
+END ;
+BEGIN
+  { Set no auto-dial. }
+  DIALER_EXISTS := FALSE ;
+
+  { Check that the required units exist. }
+  REMOTE_EXISTS := TRUE ;
+  UNITCLEAR( REMIN_UNIT ) ;
+  IF IORESULT <> 0
+    THEN
+      NOT_THERE ;
+  UNITCLEAR( REMOUT_UNIT ) ;
+  IF IORESULT <> 0
+    THEN
+      NOT_THERE ;
+
+  {unitread(remin_unit,buf_remin,1,,1);}              {primes the pump}
+  MODEL_ID      := '' ;
+  OFF_HOOK      := FALSE ;
+  BAUD_SETTABLE :=  TRUE ;
+  CR_ATTENCHAR  := ATTENTION_CHAR ;
+
+  CR_SETCOMMUNICATIONS(
+                        DEFAULT_MODE,
+                        DEFAULT_PARITY,
+                        DEFAULT_RATE,
+                        DEFAULT_CHARBITS,
+                        DEFAULT_STOPBITS,
+                        CR_ORIG,
+                        'LSI-11',
+                        RESULT ) ;
+  BAUD_SETTABLE := RESULT = CR_SELECT_NOT_SUPPORTED ;
+END ; { CR_COMMINIT }
+
+
+PROCEDURE CR_COMMQUIT ;
+VAR
+  RESULT                : CR_BAUD_RESULT ;
+BEGIN
+  OFF_HOOK := FALSE ;
+  IF BAUD_SETTABLE
+    THEN
+      CR_SETCOMMUNICATIONS(
+                        DEFAULT_MODE,
+                        DEFAULT_PARITY,
+                        DEFAULT_RATE,
+                        DEFAULT_CHARBITS,
+                        DEFAULT_STOPBITS,
+                        CR_ORIG,
+                        'LSI-11',
+                        RESULT ) ;
+
+END ; { CR_COMMQUIT }
+
+END.
+
+
+
+
+
+

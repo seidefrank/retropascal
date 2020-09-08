@@ -1,0 +1,375 @@
+(*$S+*)
+PROGRAM CHASE;
+CONST   MAN        = 'O';                     {SYMBOL FOR THE MAN}
+        EDGE       = 'I';                     {SYMBOL FOR THE FENCE}
+        OBST       = '*';                     {SYMBOL FOR AN OBSTRUCTION}
+        ROBOT      = 'R';                     {SYMBOL FOR A ROBOT}
+        BLANK      = ' ';                     {AN ASCII BLANK}
+       
+        DROB       =   3;                     {STARTING NO OF ROBOTS}
+        ROBMAX     =  20;                     {MAX NO OF ROBOTS ALLOWED}
+        XMAX       =  39;                     {MAX HORIZONTAL FIELD DIMENSION}
+        YMAX       =  14;                     {MAX VERTICAL FIELD DIMENSION}
+        
+        TOP        =   2;                     {SPACE ABOVE FIELD}
+        SIDE       =   5;                     {SPACE TO LEFT OF FIELD}
+        
+        CLRSCRN    =  26;                     {CLEAR SCREEN CODE}
+
+
+VAR     FIELD      : PACKED ARRAY[0..XMAX,0..YMAX] OF CHAR;
+        AGAIN,PLAY : BOOLEAN;
+        WIN        : BOOLEAN;
+        MI,MJ      : INTEGER;                 {COORDINATES OF THE MAN}
+        R          : INTEGER;                 {NUMBER OF ROBOTS LEFT}
+        RI,RJ      : ARRAY[1..ROBMAX] OF INTEGER;  {ROBOT COORDINATES}
+        SEED       : INTEGER;
+        DIFF       : INTEGER;                 {DIFFICULTY}
+        IDIFF      : 0..10;                   {INITIAL DIFFICULTY}
+        GAMENU     : INTEGER;                 {GAME NUMBER}
+        M          : CHAR;
+        NROB       : INTEGER;                 {NUMBER OF ROBOTS}
+        WINS       : INTEGER;                 {NUMBER OF GAMES WON}
+        GOODCHAR   : SET OF CHAR;             {GOOD CHARACTERS}
+        MOVES      : INTEGER;                 {COUNT OF MOVES}
+        CRASH      : INTEGER;                 {NO OF ROBOTS "CRASHED"}
+
+FUNCTION RND(LO,HI:INTEGER):INTEGER;          {RANDOM NUMBER GENERATOR}
+VAR  Q       :REAL;
+     I       :INTEGER;
+BEGIN
+   Q:=SEED/32767;
+   SEED:=(103*SEED+1999) MOD 32767;
+   IF SEED<0 THEN SEED:=-1*SEED;
+   RND:=TRUNC((HI-LO)*Q)+LO;
+END;
+    
+
+
+PROCEDURE DOMOVE(COL,ROW:INTEGER;SYMBOL:CHAR); {DISPLAY SYMBOL AT I,J ON FIELD}
+BEGIN
+  GOTOXY(COL,ROW);         {POSITION CURSOR}
+  WRITE(SYMBOL)
+END;            {END OF DOMOVE PROCEDURE}
+
+
+PROCEDURE CLEARSCREEN; BEGIN
+  WRITE(CHR(27),CHR(69))        {h-19 specific}
+END;
+
+PROCEDURE CURSOR_OFF;
+BEGIN
+   WRITE(CHR(27),'x5');   {H-19}
+END;
+
+PROCEDURE CURSOR_ON;
+BEGIN
+   WRITE(CHR(27),'y5');   {H-19}
+END;
+
+PROCEDURE INSTRUCTIONS;                       {DISPLAY INSTRUCTIONS}
+VAR M:CHAR;
+BEGIN
+  CLEARSCREEN;
+  WRITELN('WELCOME TO THE WONDERFUL EXCITING GAME OF CHASE':60);
+  GOTOXY(0,3);
+  WRITE('WOULD YOU LIKE INSTRUCTIONS ? (Y OR N) ':55);
+  READ(M);
+  IF M in ['Y', 'y' ] THEN
+  BEGIN
+    WRITELN;WRITELN;
+    WRITELN('    HERE ARE SOME INSTRUCTIONS');
+    WRITELN('YOU,"O",ARE IN A HIGH VOLTAGE MAZE.');
+    WRITELN('THE ROBOTS,"R",ARE TRYING TO DESTROY YOU.');
+    WRITELN('TO WIN, YOU MUST DESTROY THE ROBOTS.');
+    WRITELN('THIS IS DONE BY RUNNING THEM INTO FENCE POSTS,"*",');
+    WRITELN('OR BY RUNNING THEM INTO EACH OTHER.');
+    WRITELN('THE DIAGRAM BELOW THE MAZE SHOWS HOW YOU CAN MOVE');
+    WRITELN('THE ROBOTS WILL TRY TO FOLLOW YOU.');
+    WRITELN('THERE ARE 3 ROBOTS TO START FOR A BEGINNER.');
+    WRITELN('THE NUMBER WILL INCREASE AS YOU WIN GAMES !');
+    WRITELN;
+    WRITELN('          GOOD LUCK!!!!!')
+  END;
+END;                                          {END OF INSTRUCTIONS}
+
+
+PROCEDURE STARTGAME;
+VAR    SK: CHAR;
+BEGIN
+WRITELN;WRITELN;WRITELN;
+  WRITE('ENTER A NUMBER FOLLOWED BY RETURN ':51);READLN(SEED);
+  REPEAT
+     CLEARSCREEN;
+     WRITELN('      HOW GOOD A PLAYER ARE YOU ?');
+     WRITELN;
+     WRITELN('        BEGINNER     - B');
+     WRITELN('        INTERMEDIATE - I');
+     WRITELN('        EXPERT       - E');
+     WRITELN('        OLD PRO      - P');
+     WRITELN;
+     WRITE('              TYPE IN YOUR SKILL ');
+     READ (SK);
+     WRITELN;
+     IF SK IN ['a'..'z'] then sk := chr ( ord ( sk ) - 32 );
+     IF NOT (SK IN ['B','I','E','P']) THEN
+     BEGIN
+       GOTOXY(10,10);
+       WRITE('    WHAT WAS THAT AGAIN PLEASE ? ',CHR(7));
+       READ (SK);
+       IF SK IN ['a'..'z'] then sk := chr ( ord ( sk ) - 32 );
+     WRITELN
+     END;
+  UNTIL (SK IN ['B','I','E','P']);
+  CLEARSCREEN;
+  CASE SK OF
+    'B': IDIFF:=0;
+    'I': IDIFF:=1;
+    'E': IDIFF:=3;
+    'P': IDIFF:=5;
+  END;
+END;
+
+
+PROCEDURE INITIALIZE;   {SET UP BLANK FIELD SURROUNDED BY FENCE}
+VAR I,J:INTEGER;
+BEGIN
+  FOR I:=0 TO XMAX DO
+  BEGIN
+    FOR J:=0 TO YMAX DO
+    IF((I=0) OR (I=XMAX) OR (J=0) OR (J=YMAX)) THEN FIELD[I,J]:=EDGE
+      ELSE FIELD[I,J]:=BLANK
+   END;
+END;    {END OF INITIALIZE}
+
+
+PROCEDURE INNERFIELD;   {SET UP MAN, ROBOTS AND OBSTRUCTIONS}
+VAR I,J,L,POSTS:INTEGER;
+BEGIN
+  CURSOR_OFF;
+  MI:=RND(1,XMAX-1); MJ:=RND(1,YMAX-1); {LOCATE MAN AT ANY RANDOM POSITION}
+  FIELD[MI,MJ]:=MAN;
+  R:=NROB;
+  FOR L:=1 TO R DO                            {NOW DO R ROBOTS}
+  BEGIN
+    REPEAT
+      I:=RND(0,XMAX);J:=RND(0,YMAX);
+    UNTIL FIELD[I,J]=BLANK;
+    FIELD[I,J]:=ROBOT;
+    RI[L]:=I;
+    RJ[L]:=J
+  END;
+  POSTS:=RND(25,35);                          {NOW SET UP 25 TO 35 POSTS}
+  FOR L:=1 TO POSTS DO
+  BEGIN
+    REPEAT
+      IF DIFF>3 THEN
+      BEGIN
+        I:=RND(0,XMAX);
+        J:=RND(0,YMAX)
+      END ELSE
+      BEGIN
+        I:=RND(1,XMAX-1);
+        J:=RND(1,YMAX-1)
+      END;
+    UNTIL FIELD[I,J]=BLANK;
+    FIELD[I,J]:=OBST
+    END;
+  CURSOR_ON;
+END;                                          {END OF INNERFIELD}
+
+
+PROCEDURE MAP;                                {DISPLAY PLAYING FIELD}
+VAR I,J:INTEGER;
+BEGIN
+  CURSOR_OFF;
+  CLEARSCREEN;
+  WRITELN('GAME  DIFF   ROBOTS    WINS    MOVE':79);
+  WRITE(' ':44,GAMENU:3,DIFF:5,R:8,WINS:10,MOVES:8);
+  GOTOXY(0,0);
+  FOR J:=0 TO YMAX DO
+  BEGIN
+    FOR I:=0 TO XMAX DO WRITE(FIELD[I,J]);
+    WRITELN
+  END;
+  WRITELN;
+  WRITELN('7 8 9      Q = QUIT');
+  WRITELN('4 X 6      5 = NO MOVE'); 
+  WRITE('1 2 3                  MOVE => ');
+  CURSOR_ON;
+END;                                          {END OF MAP}
+
+PROCEDURE MOVE;                               {ENTER YOUR MOVE FROM KEYBOARD}
+VAR     M : INTEGER;
+        C : CHAR;
+      BAD : BOOLEAN;
+BEGIN
+  BAD:=FALSE;
+  REPEAT
+    WRITE(' ',CHR(8));
+    READ (C);
+    IF C IN ['a'..'z'] then c := chr ( ord ( c ) - 32 );
+     IF NOT (C IN GOODCHAR) THEN
+    BEGIN
+      GOTOXY(4,21);
+      BAD:=TRUE;
+      WRITE('BAD MOVE, PLEASE TRY AGAIN ':33,CHR(7))
+    END;
+  UNTIL (C IN GOODCHAR);
+  IF BAD THEN
+    BEGIN
+      GOTOXY(4,21);
+      WRITE(' ':40);
+      GOTOXY(10,22);
+    END;
+  IF C='Q' THEN
+    BEGIN
+     PLAY:=FALSE;
+     WIN:=FALSE
+    END;
+  CURSOR_OFF;
+  M:=ORD(C)-48;
+  FIELD[MI,MJ]:=BLANK;
+  DOMOVE(MI,MJ,BLANK);
+      CASE M OF
+  7: BEGIN MI:=MI-1; MJ:=MJ-1 END;
+  8: MJ:=MJ-1;
+  9: BEGIN MI:=MI+1; MJ:=MJ-1 END;
+  4: MI:=MI-1;
+  5: ;
+  6: MI:=MI+1;
+  1: BEGIN MI:=MI-1; MJ:=MJ+1 END;
+  2: MJ:=MJ+1;
+  3: BEGIN MI:=MI+1; MJ:=MJ+1 END
+     END;
+  MOVES:=MOVES+1;
+  IF FIELD[MI,MJ] = BLANK THEN
+    BEGIN
+      DOMOVE(MI,MJ,MAN);
+      FIELD[MI,MJ]:=MAN 
+    END ELSE
+  BEGIN
+    IF FIELD[MI,MJ] = EDGE THEN
+    BEGIN
+      WIN:=FALSE;
+      PLAY:=FALSE;
+      WRITELN('OUCH, YOU GOT ELECTROCUTED!')
+    END ELSE
+    BEGIN
+      IF FIELD[MI,MJ] = ROBOT THEN 
+      WRITELN('THWACK! YOU RAN INTO A ROBOT (TURKEY!)') ELSE
+      WRITELN('ZZAP! YOU RAN INTO AN ELECTIFIED POST');
+      WIN:=FALSE;
+      PLAY:=FALSE
+    END;
+  END;
+  CURSOR_ON;
+END;            {END OF MOVE PROCEDURE}
+
+
+PROCEDURE ROBOTMOVE;    {COMPUTE MOVE FOR R OR FEWER ROBOTS}
+VAR M,L,I,J:INTEGER;
+BEGIN
+  FOR L:=1 TO NROB DO
+  BEGIN
+    IF((RI[L]<>0) AND (WIN)) THEN
+    BEGIN
+      FIELD[RI[L],RJ[L]]:=BLANK;
+      DOMOVE(RI[L],RJ[L],BLANK);
+      IF MI>RI[L] THEN RI[L]:=RI[L]+1;
+      IF MI<RI[L] THEN RI[L]:=RI[L]-1;
+      IF MJ>RJ[L] THEN RJ[L]:=RJ[L]+1;
+      IF MJ<RJ[L] THEN RJ[L]:=RJ[L]-1;
+      I:=RI[L];J:=RJ[L];
+      IF FIELD[I,J]=BLANK THEN
+      BEGIN
+        FIELD[RI[L],RJ[L]]:=ROBOT;
+        DOMOVE(I,J,ROBOT)
+      END
+      ELSE
+      BEGIN
+        IF ((FIELD[I,J]=OBST) OR (FIELD[I,J]=ROBOT))  THEN 
+        BEGIN
+          GOTOXY(XMAX+12,CRASH+2);
+          CRASH:=CRASH+1;
+          WRITELN('CRASH!! YOU GOT ONE!!');
+          R:=R-1;
+          GOTOXY(53,1);             {CHANGE NO OF ROBOTS}
+          WRITE(R:8);
+          RI[L]:=0;
+          IF R=0 THEN
+          BEGIN
+            GOTOXY(XMAX+16,CRASH+2);
+            WRITELN('GOOD WORK!');
+            GOTOXY(XMAX+8,CRASH+3);
+            WRITELN('YOU HAVE DESTROYED THEM ALL!!');
+            WIN:=TRUE;
+            PLAY:=FALSE
+          END;
+        END;
+      END;
+      IF FIELD[RI[L],RJ[L]]=FIELD[MI,MJ] THEN
+      BEGIN
+        WRITELN('ZAP! A ROBOT GOT YOU!');
+        WIN:=FALSE;
+        PLAY:=FALSE
+      END;
+    END;
+ END;
+END;                                         {END OF ROBOTMOVE PROCEDURE}
+
+
+
+BEGIN             {START OF MAIN PROGRAM}
+  GOODCHAR:=['1'..'9','Q'];
+  WRITE(CHR(27),'u');  {set keypad not shifted mode}
+  GAMENU:=1;
+  WINS:=0;
+  AGAIN:=TRUE;
+  PLAY:=TRUE;     {INITIALIZE QUIT}
+  INSTRUCTIONS;   {DISPLAY INSTRUCTIONS}
+  STARTGAME;      {INPUT STARTING POSITION AND SKILL LEVEL}
+  DIFF:=IDIFF;    {INITIAL DIFFICULTY LEVEL}
+  NROB:=DROB+DIFF*2;  {INITIAL NUMBER OF ROBOTS}
+  WHILE AGAIN DO
+  BEGIN
+    MOVES:=1;WIN:=TRUE;CRASH:=0;
+    INITIALIZE;     {CLEARS FIELD[X,Y]}
+    INNERFIELD;     {SETS UP PLAYING FIELD}
+    WHILE PLAY DO
+    BEGIN
+      IF MOVES=1 THEN MAP ELSE
+      BEGIN
+        GOTOXY(70,1);
+        WRITELN(MOVES:8);
+        DOMOVE(30,18,BLANK)             {INPUT NEXT MOVE}
+      END;
+      MOVE;         {LETS YOU MOVE}
+      IF(PLAY) THEN ROBOTMOVE     {MOVES THE ROBOTS}
+    END;
+    GOTOXY(0,21);
+    WRITE('WOULD YOU LIKE TO PLAY AGAIN (Y OR N) ');
+    READ(M);
+    CLEARSCREEN;
+    IF M in ['N', 'n'] THEN AGAIN:=FALSE ELSE
+    BEGIN
+      PLAY:=TRUE;
+      GAMENU:=GAMENU+1;
+      IF WIN THEN
+      BEGIN
+        WINS:=WINS+1;
+        IF WINS>2 THEN DIFF:=IDIFF+1;
+        IF WINS>5 THEN DIFF:=IDIFF+2;
+        IF WINS>8 THEN DIFF:=IDIFF+3;
+        IF WINS>11 THEN DIFF:=IDIFF+4;
+        IF WINS>15 THEN DIFF:=IDIFF+6;
+        IF WINS>20 THEN DIFF:=IDIFF+8;
+        IF WINS>30 THEN DIFF:=IDIFF+12;
+        NROB:=DROB+2*DIFF;
+        IF NROB > 18 THEN NROB:=19;
+      END;
+    END;
+  END;
+WRITE(CHR(27),'t');  {sets keypad shifted mode}
+END.
+

@@ -1,0 +1,686 @@
+FUNCTION DBSEEK(*WI:DBWRKINDEX; WHICHITEM:INTEGER):DBERRTYPE*);
+(*move pointer to item # itemnum in current level*)
+VAR NEWOFFSET,I,LINKV:INTEGER;
+  CRACKSW:CRACKSWTYPE;
+  RP:RECDESPTR;
+
+  PROCEDURE FOLLOWLINKS(NEWOFFSET:PAGEPTR; COUNT:INTEGER);
+  VAR I:INTEGER;
+  BEGIN
+    (*all items assumed to be linked & all lists stopped with nul*)
+    WITH WRKTABLE[WI] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          LINKV:=LINKVALUE(WA,NEWOFFSET);
+          (*following should be in external procedure for speed*)
+          I:=0;
+          WHILE (LINKV > 0 ) AND (I < COUNT) DO
+            BEGIN
+              NEWOFFSET:=NEWOFFSET+LINKV;
+              LINKV:=LINKVALUE(WA,NEWOFFSET);
+              I:=I+1;
+            END;
+          (*end of external proc*)
+          IF (LINKV = 0) AND (I < COUNT) THEN
+            DBSEEK:=27  (*cannot find requested item*)
+          ELSE
+            BEGIN
+              OFFSET:=NEWOFFSET;
+              ITEMNUM:=ITEMNUM+COUNT;
+            END;
+        END (*WITH WIB*);
+  END (*FOLLOWLINKS*);
+  
+BEGIN (*DBSEEK*)
+  DBSEEK:=0;
+  TRACEWA(9,WI);
+  WITH WRKTABLE[WI] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        DBSHOWERR('SEEK#1',DBHEAD(WI));
+        IF DBTYPECHECK THEN
+          BEGIN (*assume that we are at head of this level!*)
+            CASE LEVEL OF
+              GROUPT,RECORDT:
+                BEGIN  (*all groups and records are linked*)
+                  IF WHICHITEM > 0 THEN
+                    BEGIN
+                      (*item #0 in a record may contain several fixed fields*)
+                      FOLLOWLINKS(OFFSET,WHICHITEM); 
+                      SETDESCRIPTORNUM(WI);
+                    END;
+                END (*GROUPT*);
+              FIELDT:
+                BEGIN
+                  IF WHICHITEM > 0 THEN
+                    BEGIN
+                      (*now get offset of field within the record*)
+                      RP:=ACTIVERECORDS[WIB^[TOS-1].DESCRIPTORNUM];
+                      IF RP = NIL THEN
+                        DBSEEK:=32
+                      ELSE
+                        WITH RP^ DO
+                          BEGIN
+                            IF WHICHITEM < FIRSTLITEMNUM THEN
+                              ITEMNUM:=WHICHITEM
+                            ELSE
+                              BEGIN (*linked field*)
+                                ITEMNUM:=FIRSTLITEMNUM-1;
+                                FOLLOWLINKS(OFFSET,(WHICHITEM - FIRSTLITEMNUM 
+                                                  + ORD(FIRSTLITEMNUM > 0)));
+                              END (*linked field*);
+                          END (*WITH RP^*);
+                        SETDESCRIPTORNUM(WI); 
+                    END;
+                END (*FIELDT*)
+            END (*CASE*);
+          END (*IF DBTYPECHECK*)
+        ELSE
+          FOLLOWLINKS(OFFSET,WHICHITEM);
+      END (*WITH*);
+  TRACEWA(10,WI);
+END (*DBSEEK*);
+
+FUNCTION DBDESCEND(*WI:DBWRKINDEX):DBERRTYPE*);
+VAR LINKV:PAGEPTR;
+  OLDLVL:DBLEVELTYPE;
+  LINKED:BOOLEAN;
+  GP:GRPDESPTR;
+  RP:RECDESPTR;
+  FP:FLDDESPTR;
+  CRACKSW:CRACKSWTYPE;
+
+  PROCEDURE DOWNLINK;
+  (*move down to head of enclosed level*)
+  VAR PARENTOFFSET:PAGEPTR;
+  BEGIN
+    WITH WRKTABLE[WI] DO
+      BEGIN
+        WITH WIB^[TOS] DO
+          BEGIN
+            LINKV:=LINKVALUE(WA,OFFSET);
+            PARENTOFFSET:=OFFSET;
+          END;
+        IF LINKV = 0 THEN
+          DBDESCEND:=19 (*at end of list, can't descend*)
+        ELSE
+          BEGIN
+            OLDLVL:=WIB^[TOS].LEVEL;
+            IF OLDLVL=NONET THEN
+              DBDESCEND:=20 (*can't continue from nonet*)
+            ELSE
+              BEGIN
+                TOS:=TOS+1;
+                WITH WIB^[TOS] DO
+                  BEGIN
+                    OFFSET:=PARENTOFFSET+LINKSIZE(LINKV);
+                    IF OLDLVL = GROUPT THEN
+                      (*step over group's tag*)
+                      STEPLINK(WI);
+                    LEVEL:=NEXTLEVEL(OLDLVL);
+                    ITEMNUM:=0;
+                  END (*WITH*);
+              END (*LEVEL<>NONET*);
+          END (*LINKV<>0*);
+      END (*WITH WRKTABLE*);
+  END (*DOWNLINK*);
+  
+BEGIN (*DBDESCEND*)
+  DBDESCEND:=0;
+  TRACEWA(11,WI);
+  IF DBTYPECHECK THEN
+    WITH WRKTABLE[WI] DO
+      BEGIN
+        CASE WIB^[TOS].LEVEL OF
+          GROUPT:
+            BEGIN
+              (*point to first record in group*)
+              GP:=ACTIVEGROUPS[WIB^[TOS].DESCRIPTORNUM];
+              IF GP=NIL THEN
+                DBDESCEND:=33
+              ELSE
+                BEGIN
+                  DOWNLINK;
+                  SETDESCRIPTORNUM(WI);
+                END;
+            END (*GROUPT*);
+          RECORDT:
+            BEGIN (*point to first field in record*)
+              RP:=ACTIVERECORDS[WIB^[TOS].DESCRIPTORNUM];
+              IF RP=NIL THEN
+                DBDESCEND:=32
+              ELSE
+                BEGIN
+                  DOWNLINK;
+                  SETDESCRIPTORNUM(WI);
+                END (*RP<>NIL*);
+            END (*RECORDT*);
+          FIELDT:
+            BEGIN
+              (*if the field is structured, point to the contained group*)
+              FP:=ACTIVEFIELDS[WIB^[TOS].DESCRIPTORNUM];
+              IF FP=NIL THEN
+                DBDESCEND:=31
+              ELSE
+                WITH FP^ DO
+                  IF FLDTYPE <> GROUPF THEN
+                    DBDESCEND:=34 (*can't descend into a simple field*)
+                  ELSE
+                    BEGIN
+                      DOWNLINK;
+                      SETDESCRIPTORNUM(WI);
+                    END;
+            END (*FIELDT*)
+        END (*CASES*);
+      END (*WITH WRKTABLE*)
+  ELSE
+    (*assume that next level, if any, is linked*)
+    DOWNLINK;
+  TRACEWA(12,WI);
+END (*DBDESCEND*);
+
+FUNCTION DBASCEND(*WI:DBWRKINDEX):DBERRTYPE*);
+(*return to enclosing level*)
+BEGIN
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      IF TOS > 0 THEN
+        BEGIN
+          WITH WIB^[TOS] DO
+            BEGIN
+              OFFSET:=0;
+              LEVEL:=NONET;
+              DESCRIPTORNUM:=-1;
+              ITEMNUM:=-1;
+            END;
+          TOS:=TOS-1;
+        END (*TOS> 0*);
+    END (*WITH WRKTABLE*);
+  TRACEWA(31,WI);
+END (*DBASCEND*);
+
+FUNCTION DBFINDREC(*WI:DBWRKINDEX; RULE:DBFINDRULE; FIELDNUM:INTEGER;
+                   KEY:STRING; VAR RECNUM:INTEGER;
+                   VAR FOUND:BOOLEAN):DBERRTYPE*);
+(*locate a record whose FIELDNUM field matches the KEY according to
+  the comparison RULE (ascending,descending, or random equals) *)
+(*$G+*)
+LABEL 1;
+VAR FLINKNUM,FN,RN,RLINKV,FOFFSET,DUMMY:INTEGER;
+  RP:RECDESPTR;
+  DONE:BOOLEAN;
+  S:STRING;
+BEGIN
+  TRACEWA(27,WI);
+(*on entry we should be at RECORDT level, with ITEMNUM=0. First find
+  out if field is variable and set FLINKNUM*)
+  WITH WRKTABLE[WI] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        IF LEVEL <> RECORDT THEN
+          DBFINDREC:=39 (*must be at record level*)
+        ELSE
+          BEGIN
+            IF ITEMNUM <> 0 THEN
+              DUMMY:=DBHEAD(WI);
+            RP:=ACTIVERECORDS[DESCRIPTORNUM];
+            IF RP = NIL THEN
+              DBFINDREC:=32
+            ELSE
+              WITH RP^ DO
+                BEGIN
+                  IF (SWITCHES <> 0) OR (FIELDNUM < FIRSTLITEMNUM) THEN
+                    DBFINDREC:=40 (*must be untagged record and
+                                    untagged string field*)
+                  ELSE
+                    BEGIN
+                      FLINKNUM:=FIELDNUM - FIRSTLITEMNUM
+                                         + ORD(FIRSTLITEMNUM > 0);
+                      DONE:=FALSE;
+                      FOUND:=FALSE;
+                      RN:=0;
+                      RLINKV:=LINKVALUE(WA,OFFSET);
+                      (*speed-up possibilities: native code; assume all
+                        links are single bytes & eliminate proc calls
+                        to linksize & linkvalue*)
+                      WHILE RLINKV <> 0 DO
+                        BEGIN
+                          FN:=0;
+                          FOFFSET:=OFFSET + LINKSIZE(RLINKV);
+                          (*all in-field links assumed 1 byte ! *)
+                          (*move to field pointer now*)
+(*$R-*)
+                          WHILE (FN < FLINKNUM) DO
+                            BEGIN
+                              FOFFSET:=FOFFSET+WA^[FOFFSET];
+                              FN:=FN+1;
+                            END;
+                          MOVELEFT(WA^[FOFFSET],S,WA^[FOFFSET]);
+(*$R+*)
+                          DELETE(S,LENGTH(S),1); (*correct link to length*)
+                          CASE RULE OF
+                            ASCENDING: DONE:= (KEY <= S);
+                            DESCENDING:DONE:= (KEY >= S);
+                            RANDOM:    DONE:= (KEY =  S)
+                          END (*CASES*);
+                          IF DONE THEN
+                            BEGIN
+                              FOUND:= (KEY = S);
+                              GOTO 1; (*for efficiency*)
+                            END
+                          ELSE
+                            BEGIN (*jump to next record*)
+                              OFFSET:=OFFSET+RLINKV;
+                              RLINKV:=LINKVALUE(WA,OFFSET);
+                              RN:=RN+1;
+                            END (*NOT DONE*);
+                        END (*WHILE RLINKV*);
+1:
+                      RECNUM:=RN;
+                      ITEMNUM:=RN;
+                    END (*untagged ok*);
+                END (*WITH RP^*);
+          END (*LEVEL = RECORDT*);
+      END (*WITH WIB^*);
+  TRACEWA(28,WI);
+END (*DBFINDREC*);
+
+
+(*DATA TRANSFER PRIMITIVES*)
+FUNCTION DBCOPY(*SOURCE,DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*zero out the destination workarea. copy source record or group into
+  destination. initialize pointers. *)
+VAR SLEVEL:DBLEVELTYPE; 
+  SINUSE,SDNUM,SOFFSET,SLINKV,STOS:INTEGER;
+BEGIN
+  TRACEWA(24,SOURCE);
+  TRACEWA(25,DESTINATION);
+  ZEROWORKAREA(DESTINATION);
+  WITH WRKTABLE[SOURCE] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        SINUSE:=SPACEINUSE;
+        SLEVEL:=LEVEL;
+        SOFFSET:=OFFSET;
+        SLINKV:=LINKVALUE(WA,OFFSET);
+        STOS:=TOS;
+        SDNUM:=DESCRIPTORNUM;
+      END;
+  IF (SLEVEL <> GROUPT) OR (STOS <> 0) THEN
+    DBCOPY:=12 (*can''t yet handle anything but outer level group*)
+  ELSE
+    WITH WRKTABLE[DESTINATION] DO
+      WITH WIB^[TOS] DO
+        IF SLINKV > WSIZE THEN
+          DBCOPY:=1 (*insufficient space*)
+        ELSE
+          BEGIN
+            SPACEINUSE:=SINUSE;
+            LEVEL:=GROUPT;
+            OFFSET:=0;
+            DESCRIPTORNUM:=SDNUM;
+            ITEMNUM:=0;
+(*$R-*)
+            MOVELEFT(WRKTABLE[SOURCE].WA^[SOFFSET],
+                     WA^[OFFSET], SLINKV);
+(*$R+*)
+          END;
+  TRACEWA(26,DESTINATION);
+END (*DBCOPY*);
+
+FUNCTION DBEMPTYITEM(*DESTINATION:DBWRKINDEX; LVL:DBLEVELTYPE;
+                                              TAG:INTEGER):DBERRTYPE*);
+(*creates a new empty item at level LVL and sets its tag if required*)
+VAR NEWOFFSET,LINKV:PAGEPTR;
+  TAGBYTES,ISTACK:INTEGER;
+
+  PROCEDURE NEWLINKITEM(WIDTH:INTEGER; NEWOFFSET:PAGEPTR);
+  (*insert an empty linked item WIDTH bytes wide*)
+  VAR I:INTEGER;
+  BEGIN
+    IF TAG >= LINKESCAPE THEN WIDTH:=WIDTH+1;
+    WITH WRKTABLE[DESTINATION] DO
+      BEGIN
+        DBSHOWERR('NEWLINKITEM', MOVETAIL(DESTINATION,WIDTH,NEWOFFSET));
+(*$R-*)
+        WA^[NEWOFFSET]:=WIDTH;
+        IF LVL = GROUPT THEN
+          SAVEBIGLINK(DESTINATION,TAG,NEWOFFSET+1);
+(*$R+*)
+        IF LVL = WIB^[TOS].LEVEL THEN
+          BEGIN
+            IF TOS > 0 THEN
+              FIXLINKS(DESTINATION, (TOS-1), WIDTH);
+          END
+        ELSE
+          FIXLINKS(DESTINATION, TOS, WIDTH);
+      END (*WITH*);
+  END (*NEWLINKITEM*);
+  
+  PROCEDURE BLANKRECORD;
+  (*lay out empty fields in a blank record*)
+  VAR RP:RECDESPTR;
+    FP:FLDDESPTR;
+    FN,MAXFN,FIXWIDTH,VARWIDTH:INTEGER;
+    SW:CRACKSWTYPE;
+    FIRSTLINKOFFSET:PAGEPTR;
+  BEGIN
+    WITH WRKTABLE[DESTINATION] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          RP:=ACTIVERECORDS[DESCRIPTORNUM];
+          WITH RP^ DO
+            BEGIN
+              FN:=0;
+              SW.BL:=SWITCHES;
+              FIRSTLINKOFFSET:=OFFSET+1;
+              IF SW.A[0] THEN (*tagged*)
+                FIXWIDTH:=1
+              ELSE
+                FIXWIDTH:=0;
+              MAXFN:=LASTFLDLINK DIV 2 - 1;
+              (*fixed fields first*)
+              WHILE (FN < FIRSTLITEMNUM) AND (FN < MAXFN) DO
+                BEGIN
+(*$R-*)
+                  WITH FLDREF[FN] DO
+(*$R+*)
+                    BEGIN
+                      FP:=ACTIVEFIELDS[FDNUM];
+                      FIXWIDTH:=FIXWIDTH+FP^.MAXWIDTH;
+                    END;
+                  FN:=FN+1;
+                END (*WHILE*);
+              IF FN > 0 THEN
+                BEGIN
+                  (*one link over all fixed fields*)
+                  FIXWIDTH:=FIXWIDTH+1;
+                  NEWLINKITEM(FIXWIDTH, FIRSTLINKOFFSET);
+                END;
+              (*if there are fixed fields, FIXWIDTH now includes the link*)
+              NEWOFFSET:=FIRSTLINKOFFSET+FIXWIDTH;
+              (*now put links of 1 for each variable size field*)
+              VARWIDTH:=MAXFN-FN+1;
+              DBEMPTYITEM:=MOVETAIL(DESTINATION, VARWIDTH, NEWOFFSET);
+              WHILE FN < MAXFN DO
+                BEGIN
+(*$R-*)
+                  WA^[NEWOFFSET]:=1;
+(*$R+*)
+                  NEWOFFSET:=NEWOFFSET+1;
+                  FN:=FN+1;
+                END;
+            END (*WITH RP^*);
+          (*still have to set overlink of record itself*)
+          IF (VARWIDTH+FIXWIDTH) >= LINKESCAPE THEN
+            BEGIN
+              VARWIDTH:=VARWIDTH+1;
+              DBEMPTYITEM:=MOVETAIL(DESTINATION,1,OFFSET);
+            END;
+          SAVEBIGLINK(DESTINATION, 
+                (VARWIDTH+FIXWIDTH+1(*original link assumed small*)), 
+                                          OFFSET);
+          (* and also the enclosing links*)
+          FIXLINKS(DESTINATION, (TOS-1), VARWIDTH);
+        END (*WITH WIB^[TOS]*);
+  END (*BLANKRECORD*);
+  
+BEGIN (*DBEMPTYITEM*)
+  DBEMPTYITEM:=0;
+  WITH WRKTABLE[DESTINATION] DO
+    BEGIN
+      TRACEWA(0,DESTINATION);
+      WITH WIB^[TOS] DO
+        IF LVL=LEVEL THEN
+          CASE LEVEL OF
+            NONET: DBEMPTYITEM:=13; (*undefined level*)
+            RECORDT:
+              (*insert a single byte link with value of 2, with nul stopper*)
+              BEGIN
+                NEWLINKITEM(1,OFFSET);
+                IF DBTYPECHECK THEN
+                  BLANKRECORD;
+              END;
+            GROUPT: 
+              BEGIN
+                NEWLINKITEM(3,OFFSET); (*leave byte for required tag*)
+                DESCRIPTORNUM:=TAG;
+              END;
+            FIELDT:NEWLINKITEM(2,OFFSET)
+          END (*CASE LEVEL*)
+        ELSE
+          BEGIN (*LVL<>LEVEL*)
+            IF LVL<>NEXTLEVEL(LEVEL) THEN
+              DBEMPTYITEM:=15 (*improper data level*)
+            ELSE (*new embedded level, probably have to update earlier link*)
+              BEGIN (*create blank linked item, descend to it, make blank
+                                record if needed*)
+                IF LVL = GROUPT THEN
+                  TAGBYTES:=2
+                ELSE
+                  TAGBYTES:=0;
+                NEWOFFSET:=OFFSET+1+ORD(LINKVALUE(WA,OFFSET) >= LINKESCAPE);
+                IF LEVEL = GROUPT THEN (*step over the tag*)
+                  NEWOFFSET:=NEWOFFSET+1
+                               +ORD(LINKVALUE(WA,NEWOFFSET) >= LINKESCAPE);
+                NEWLINKITEM(1+TAGBYTES,NEWOFFSET);
+                DBEMPTYITEM:=DBDESCEND(DESTINATION);
+                IF DBTYPECHECK AND (LVL = RECORDT) THEN
+                  BLANKRECORD;
+              END (*LVL = NEXTLEVEL*);
+          END (*LVL<>LEVEL*);
+    END (*WITH WRKTABLE*);
+  TRACEWA(1,DESTINATION);
+END (*DBEMPTYITEM*);
+
+FUNCTION DBDELETE(*DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*eliminate the destination item (group or record only) entirely*)
+VAR LINKV:INTEGER;
+BEGIN
+  TRACEWA(17,DESTINATION);
+  DBDELETE:=0;
+  WITH WRKTABLE[DESTINATION] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        IF NOT (LEVEL IN [GROUPT,RECORDT]) THEN
+          DBDELETE:=41
+        ELSE
+          BEGIN
+            LINKV:=LINKVALUE(WA,OFFSET);
+            IF LINKV <> 0 THEN
+              DBDELETE:=MOVETAIL(DESTINATION, -LINKV, OFFSET+LINKV);
+            IF TOS > 0 THEN
+              FIXLINKS(DESTINATION, TOS-1, -LINKV);
+          END (*LEVEL OK*);
+      END (*WITH WIB^*);
+  TRACEWA(18,DESTINATION);
+END (*DBDELETE*);
+
+FUNCTION DBBLANK(*DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*replace the destination group or record with an empty item*)
+VAR RSLT,DELTA:INTEGER;
+BEGIN
+  TRACEWA(19,DESTINATION);
+  RSLT:=DBDELETE(DESTINATION);
+  IF RSLT <> 0 THEN
+    DBBLANK:=RSLT
+  ELSE
+    WITH WRKTABLE[DESTINATION] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          IF LEVEL = GROUPT THEN
+            DELTA:=3
+          ELSE
+            DELTA:=2;
+          RSLT:=MOVETAIL(DESTINATION, DELTA, OFFSET);
+          IF RSLT <> 0 THEN
+            DBBLANK:=RSLT
+          ELSE
+            BEGIN
+              WA^[OFFSET]:=DELTA;
+              IF TOS > 0 THEN
+                FIXLINKS(DESTINATION, TOS-1, DELTA);
+            END;
+          DESCRIPTORNUM:=-1;
+        END (*WITH WIB^*);
+  TRACEWA(20,DESTINATION);
+END (*DBBLANK*);
+
+FUNCTION DBREPLACE(*SOURCE,DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*the source item replaces the destination item. must be record or group*)
+VAR SLINKV,SOFFSET,STOS,DOFFSET,DTOS,RSLT:INTEGER;
+  SLEVEL,DLEVEL:DBLEVELTYPE;
+BEGIN
+  TRACEWA(21,SOURCE);
+  TRACEWA(22,DESTINATION);
+  RSLT:=DBDELETE(DESTINATION);
+  IF RSLT <> 0 THEN
+    DBREPLACE:=RSLT
+  ELSE
+    BEGIN
+      WITH WRKTABLE[SOURCE] DO
+        WITH WIB^[TOS] DO
+          BEGIN
+            SLEVEL:=LEVEL;
+            SOFFSET:=OFFSET;
+            SLINKV:=LINKVALUE(WA,OFFSET);
+            STOS:=TOS;
+          END;
+      WITH WRKTABLE[DESTINATION] DO
+        WITH WIB^[TOS] DO
+          BEGIN
+            DLEVEL:=LEVEL;
+            DOFFSET:=OFFSET;
+            DTOS:=TOS;
+          END;
+      IF DLEVEL <> SLEVEL THEN
+        DBREPLACE:=42 (*mismatch*)
+      ELSE
+        IF NOT (DLEVEL IN [GROUPT,RECORDT]) THEN
+          DBREPLACE:=41
+        ELSE
+          BEGIN
+            (*open space up to receive source copy*)
+            RSLT:=MOVETAIL(DESTINATION,SLINKV,DOFFSET);
+            IF RSLT <> 0 THEN
+              DBREPLACE:=RSLT
+            ELSE
+(*$R-*)
+              BEGIN
+                MOVELEFT(WRKTABLE[SOURCE].WA^[SOFFSET],
+                       WRKTABLE[DESTINATION].WA^[DOFFSET], SLINKV);
+(*$R+*)
+                IF DTOS > 0 THEN
+                  FIXLINKS(DESTINATION, DTOS-1, SLINKV);
+              END;
+            WRKTABLE[DESTINATION].WIB^[DTOS].DESCRIPTORNUM
+              := WRKTABLE[SOURCE].WIB^[STOS].DESCRIPTORNUM;
+          END (*levels ok*);
+    END (*DELETE worked ok*);
+  TRACEWA(23,DESTINATION);
+END (*DBREPLACE*);
+
+FUNCTION DBRESERVE(*DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*reserve empty space at the end of destination group*)
+BEGIN
+  TRACEWA(32,DESTINATION);
+  TRACEWA(33,DESTINATION);
+END (*DBRESERVE*);
+
+FUNCTION GETFOFFSET(WI:DBWRKINDEX):PAGEPTR;
+(*returns the offset (in record) of a fixed width field based on
+  its ITEMNUM*)
+VAR RP:RECDESPTR;
+ DN:INTEGER;
+BEGIN
+  WITH WRKTABLE[WI] DO
+    BEGIN
+      DN:=WIB^[TOS-1].DESCRIPTORNUM;
+      IF (DN >= 0) AND (DN <= LASTRECDESCRIPTOR) THEN
+        BEGIN
+          RP:=ACTIVERECORDS[DN];
+          IF RP = NIL THEN
+            DBSHOWERR('GETOFFSET - Record not active', 100)
+          ELSE
+(*$R-*)
+            GETFOFFSET:=RP^.FLDREF[WIB^[TOS].ITEMNUM].FLDOFFSET;
+(*$R+*)
+        END
+      ELSE
+        DBSHOWERR('GETOFFSET - DESCRIPTORNUM not initialized',100);
+    END;
+END (*GETFOFFSET*);
+
+FUNCTION DBGET(*SOURCE:DBWRKINDEX):DBERRTYPE*);
+(*extract item value from workarea and place it in DBMAIL for pickup by
+  caller*)
+CONST FIXEDWIDTH = 1;
+VAR LINKV: INTEGER;
+  FP:FLDDESPTR;
+  RP:RECDESPTR;
+  SW:CRACKSWTYPE;
+  FOFFSET:INTEGER;
+
+  PROCEDURE GETLINKF(FLDTYPE:DBFIELDTYPES);
+  BEGIN
+    WITH WRKTABLE[SOURCE] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          LINKV:=LINKVALUE(WA,OFFSET);
+          IF LINKV >= LINKESCAPE THEN
+            DBGET:=21 (*string too long to assign*)
+          ELSE
+            BEGIN
+(*$R-*)
+              MOVELEFT(WA^[OFFSET],DBMAIL.TXT,LINKV);
+(*$R+*)
+              DBMAIL.TXT[0]:=CHR(LINKV-1);
+              DBMAIL.DBMAILTYPE:=FLDTYPE;
+            END (*LINKV < LINKESCAPE*);
+        END (*WITH WIB*);
+  END (*GETLINKF*);
+  
+BEGIN (*DBGET*)
+  DBGET:=0;
+  TRACEWA(13,SOURCE);
+  IF DBTYPECHECK THEN
+    WITH WRKTABLE[SOURCE] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          IF LEVEL = GROUPT THEN
+            GETLINKF(GROUPF)
+          ELSE
+            IF LEVEL <> FIELDT THEN
+              DBGET:=38 (*must be a field*)
+            ELSE
+          IF (DESCRIPTORNUM >= 0) 
+                  AND (DESCRIPTORNUM <= LASTFIELDDESCRIPTOR) THEN
+            BEGIN
+              FP:=ACTIVEFIELDS[DESCRIPTORNUM];
+              IF FP = NIL THEN
+                DBGET:=31 (*no such field exists*)
+              ELSE
+                WITH FP^ DO
+                  BEGIN
+                    SW.BL:=SWITCHES;
+                    IF SW.A[FIXEDWIDTH] THEN
+                      WITH DBMAIL DO
+                        BEGIN
+(*$R-*)
+                          MOVELEFT(WA^[OFFSET
+                                   +GETFOFFSET(SOURCE)], TXT, MAXWIDTH);
+(*$R+*)
+                          DBMAILTYPE:=FLDTYPE;
+                        END
+                    ELSE
+                      GETLINKF(FLDTYPE);
+                  END (*WITH FP^*);
+            END (*DESCRIPTORNUM OK*)
+          ELSE
+            DBGET:=31; (*no such field exists*)
+        END (*WITH WIB^[TOS]*)
+  ELSE (*no type checking - assume it's linked*)
+    GETLINKF(STRINGF);
+END (*DBGET*);
+
+

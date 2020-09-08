@@ -1,0 +1,134 @@
+                             USUS Library Volume 20
+  A disk patch utility, a good game, and a complete BIOS for the Jonos ESCORT
+
+VOL20:
+UNLPATCH.1.TEXT   26  The University of Nebraska Lincoln disk patch utility
+UNLPATCH.2.TEXT   24    it displays its data in octal
+UNLPCH.DOC.TEXT   10    doc for above
+AUTOPSY.TEXT      10  Divides a file into small enough pieces for the sytem
+                        Editor
+SCREEN.H19.TEXT   10  A screen control unit for Autopsy
+SCREEN.TEXT        6  A terminal independant version of SCREEN.H19
+LWRCASE.TEXT       8  Converts a file to lower case but leaves literals intact
+UPRCASE.TEXT       8    same but to upper case
+HOME_LOAN.TEXT    14  A simple minded simple loan calculator
+SIGFIG.19.TEXT    14  Get another "significant" figure, or maybe even more!
+OTHELLO.TEXT      28  Steve Brecher's OTHELLO game, originally on Volume 3
+OTHELLO.1.TEXT    26    an include file.  This game is a real killer!
+BASE.TEXT          6  A numeric base converter, works nice.
+H19UTIL.TEXT      24  A screen control unit for BASE.  Modify it for other 
+                        terminals
+NUMBER2.TEXT      12  A unit for BASE.
+FASTREAD.TEXT     10  Another version of a fast string read routine.
+ESCORT.DOC.TEXT    8  Documentation for the Jonos ESCORT BIOS
+E.BOOT.TEXT       14 
+EBIOS.TEXT         8 
+BIOS.CONST.TEXT    8 
+BIOS.SERPT.TEXT   22 
+BIOS.DISKS.TEXT   26 
+BIOS.PHONE.TEXT    4 
+BIOS.DATA.TEXT    10 
+SXFR.SVCS.TEXT    26 
+FORMATTER.TEXT     8 
+TRANSPORTR.TEXT   42 
+BOOTMAKER.TEXT    10 
+EBIOS-GENR.TEXT    4 
+EBOOT-GENR.TEXT    4 
+FMT-LINK.CODE      3 
+FMT-GENR.TEXT      4 
+TRANS-GENR.TEXT    4 
+FORMATTER.CODE     3 
+SXFR.SVCS.CODE     3 
+TRANS-MGR.CODE     8 
+BOOTR-GENR.TEXT    4 
+BOOT.WRITE.CODE    3 
+BOOTMAKER.CODE     4 
+E.BOOT.CODE        3 
+E.LOAD.BOOT        1 
+EBIOS.CODE         7 
+E.LOAD.BIOS        4 
+BOOT.WRITE.TEXT   16 
+VOL20.DOC.TEXT     8  You're reading it
+__________________________________________________________________________
+                         
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 20 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+                                    Othello
+
+     This is a game of Othello which plays a VERY GOOD game.  It's ripped up
+most self-proclaimed "experts" that have played it.  The original was on Volume
+3, but since that volume has been withdrawn, I am placing it here so all USUS
+members can have it.  The original also used the TIME intrinsic to pace its
+moves, but I have coded that out and replaced it with a simple delay loop.  You
+have to set a constant "dwell_time" to get about 2 or 3 beeps per second for
+your hardware.  The value which is already there is about right for an 
+LSI-11/23.  I've only beaten this game twice, its beat me at least 50 times.
+
+                                    FastRead
+
+     FastRead is a routine which allows you to read string info much faster than
+the p-system will do it.  It has been updated and improved by Arley Dealey.
+
+     
+     
+     
+           The following programs were submitted by Henry Baumgarten
+
+                                    UNLPatch
+
+     This disk patch utility displays its output in octal for you hex haters. 
+It is particularly useful for following assembler listings which list generated
+code in octal, such as the RT-11 assembler.
+
+                                    Autopsy
+                                        
+     Autopsy breaks a large text file into small pieces so they can be digested
+by the stock system editors.  Those of you with ASE won't need it.
+                                        
+                              UprCase and LwrCase
+
+     This programs do case conversions on files, but leave literals, such as
+strings, alone.  This can be useful if you have recieved software where the 
+case of the source is not to your liking.
+
+                                    SigFig.19
+
+     Some time ago a chap in Byte bemoaned the loss of one sigficant figure in
+the UCSD output of real numbers.  This program fragment will recover that digit
+(plus as many other---nonsignificant--- figures as your heart may desire).  Try
+it by entering 1.23456789 and 1 and an output format of your choise, or compare
+1 divided by any integer with the result from your HP-67 or HP-41.  More
+seriously the routine used is useful for converting real numbers to strings for
+using in plotting programs, etc.
+
+                                      Base
+
+     This is a numeric base converter to convert numbers of one base to another.
+It works pretty well.  You will have to modify the screen control unit, H19UTIL
+so that it works with your terminal.
+
+                             The Jonos ESCORT BIOS
+
+     Karl Balke wrote the BIOS for the Jonos ESCORT and was generous enough
+to contribute his work to the USUS Library.  While the BIOS is machine 
+specific, it is for a Z80.  This should be an excellent example of how to 
+write a BIOS for other Z80 machines also.
+
+
+
+

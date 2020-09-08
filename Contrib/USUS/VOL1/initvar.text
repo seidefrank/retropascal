@@ -1,0 +1,277 @@
+PROCEDURE Initvar1; (* initializing the following variables: *)
+     (VAR topofstack, currlinepos, currmargin: integer; 
+      VAR keyword         : keywordtable; VAR dblchars          : dblchrset;
+      VAR dblchar         : dblchartable; VAR sglchar           : sglchartable;
+      VAR recordseen      : boolean;      VAR currchar, nextchar: charinfo;
+      VAR currsym, nextsym: symbolinfo);
+BEGIN
+  topofstack  := 0;
+  currlinepos := 0;
+  currmargin  := 0;
+  recordseen  := false;
+  
+  keyword [progsym   ] := 'program   ';
+  keyword [funcsym   ] := 'function  ';
+  keyword [procsym   ] := 'procedure ';
+  keyword [labelsym  ] := 'label     ';
+  keyword [constsym  ] := 'const     ';
+  keyword [typesym   ] := 'type      ';
+  keyword [varsym    ] := 'var       ';
+  keyword [beginsym  ] := 'begin     ';
+  keyword [repeatsym ] := 'repeat    ';
+  keyword [recordsym ] := 'record    ';
+  keyword [casesym   ] := 'case      ';
+  keyword [casevarsym] := 'case      ';
+  keyword [ofsym     ] := 'of        ';
+  keyword [forsym    ] := 'for       ';
+  keyword [whilesym  ] := 'while     ';
+  keyword [withsym   ] := 'with      ';
+  keyword [dosym     ] := 'do        ';
+  keyword [ifsym     ] := 'if        ';
+  keyword [thensym   ] := 'then      ';
+  keyword [elsesym   ] := 'else      ';
+  keyword [endsym    ] := 'end       ';
+  keyword [untilsym  ] := 'until     ';
+  
+  dblchars := [becomes, opencomment];
+  dblchar [becomes ] := ':=' ;
+  dblchar [opencomment] := '(*' ;
+  
+  sglchar [semicolon   ] := ';' ;
+  sglchar [colon       ] := ':' ;
+  sglchar [equals      ] := '=' ;
+  sglchar [openparen   ] := '(' ;
+  sglchar [closeparen  ] := ')' ;
+  sglchar [openbracket ] := '{' ;
+  sglchar [closebracket] := '}' ;
+  sglchar [period      ] := '.' ;
+END (*Initvar1*);
+  
+  
+PROCEDURE Initvar2 (VAR ppoption: optiontable);
+BEGIN
+  WITH ppoption [progsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, spaceafter];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [funcsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, dindentonkeys, spaceafter];
+      dindentsymbols   := [labelsym, constsym, typesym, varsym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [procsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, dindentonkeys, spaceafter];
+      dindentsymbols   := [labelsym, constsym, typesym, varsym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [labelsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, spaceafter, indenttoclp];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [constsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, dindentonkeys, spaceafter,
+                           indenttoclp];
+      dindentsymbols   := [labelsym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [typesym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, dindentonkeys, spaceafter,
+                           indenttoclp];
+      dindentsymbols   := [labelsym, constsym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [varsym] DO 
+    BEGIN
+      optionsselected  := [blanklinebefore, dindentonkeys, spaceafter,
+                           indenttoclp];
+      dindentsymbols   := [labelsym, constsym, typesym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [beginsym] DO 
+    BEGIN
+      optionsselected  := [dindentonkeys, indentbytab, crafter];
+      dindentsymbols   := [labelsym, constsym, typesym, varsym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [repeatsym] DO 
+    BEGIN
+      optionsselected  := [indentbytab, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [recordsym] DO 
+    BEGIN
+      optionsselected  := [indentbytab, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [casesym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [ofsym]
+    END;
+  WITH ppoption [casevarsym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [ofsym]
+    END;
+  WITH ppoption [ofsym] DO 
+    BEGIN
+      optionsselected  := [crsuppress, spacebefore];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [forsym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [dosym]
+    END;
+  WITH ppoption [whilesym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [dosym]
+    END;
+  WITH ppoption [withsym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [dosym]
+    END;
+  WITH ppoption [dosym] DO 
+    BEGIN
+      optionsselected  := [crsuppress, spacebefore];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [ifsym] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indentbytab, gobblesymbols, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= [thensym]
+    END;
+  WITH ppoption [thensym] DO 
+    BEGIN
+      optionsselected  := [indentbytab, crafter];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [elsesym] DO 
+    BEGIN
+      optionsselected  := [crbefore, dindentonkeys, dindent, indentbytab,
+                           crafter];
+      dindentsymbols   := [ifsym, elsesym];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [endsym] DO 
+    BEGIN
+      optionsselected  := [crbefore, dindentonkeys, dindent, crafter];
+      dindentsymbols   := [ifsym, thensym, elsesym, forsym, whilesym, withsym,
+                           casevarsym, colon, equals];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [untilsym] DO 
+    BEGIN
+      optionsselected  := [crbefore, dindentonkeys, dindent, spaceafter,
+                           gobblesymbols, crafter];
+      dindentsymbols   := [ifsym, thensym, elsesym, forsym, whilesym, withsym,
+                           colon, equals];
+      gobbleterminators:= [endsym, untilsym, elsesym, semicolon]
+    END
+END (*Initvar2*);
+  
+    
+PROCEDURE Initvar3 (VAR ppoption: optiontable);
+BEGIN
+  WITH ppoption [becomes] DO 
+    BEGIN
+      optionsselected  := [spacebefore, spaceafter, gobblesymbols];
+      dindentsymbols   := [];
+      gobbleterminators:= [endsym, untilsym, elsesym, semicolon]
+    END;
+  WITH ppoption [opencomment] DO 
+    BEGIN
+      optionsselected  := [crsuppress];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [closecomment] DO 
+    BEGIN
+      optionsselected  := [crsuppress];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [semicolon] DO 
+    BEGIN
+      optionsselected  := [crsuppress, dindentonkeys, crafter];
+      dindentsymbols   := [ifsym, thensym, elsesym, forsym, whilesym, withsym,
+                           colon, equals];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [colon] DO 
+    BEGIN
+      optionsselected  := [spaceafter, indenttoclp];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [equals] DO 
+    BEGIN
+      optionsselected  := [spacebefore, spaceafter, indenttoclp];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [openparen] DO 
+    BEGIN
+      optionsselected  := [gobblesymbols];
+      dindentsymbols   := [];
+      gobbleterminators:= [closeparen]
+    END;
+  WITH ppoption [closeparen] DO 
+    BEGIN
+      optionsselected  := [];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [openbracket] DO 
+    BEGIN
+      optionsselected  := [crsuppress];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [closebracket] DO 
+    BEGIN
+      optionsselected  := [crsuppress];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [period] DO 
+    BEGIN
+      optionsselected  := [crsuppress];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [endoffile] DO 
+    BEGIN
+      optionsselected  := [];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+  WITH ppoption [othersym] DO 
+    BEGIN
+      optionsselected  := [];
+      dindentsymbols   := [];
+      gobbleterminators:= []
+    END;
+END (* Initvar3 *);
+

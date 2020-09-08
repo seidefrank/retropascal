@@ -1,0 +1,1616 @@
+{xL #5:LSTLST.TEXT}
+PROGRAM LIST;
+
+{  Once a data base has been defined, this set of procedures allows the
+     operator to list out the data in the data base records. }
+
+  uses {$U sh.screen.unit} SCREEN40;
+
+  CONST
+     MAX_TESTS    = 52;
+     SCREEN_TESTS = 13;
+  
+  TYPE
+    OPS = (LT,GT,EQ,LE,GE,NE);
+    TEST_REC = PACKED RECORD
+                 FIELD_LOC : 0..SCREEN_FIELDS;
+                 OPERATOR  : OPS;
+                 VALUE     : STRINGFL;
+               END;
+    TEST_DEF = ARRAY[1..MAX_TESTS] OF TEST_REC;
+    STRING255 = STRING[255];
+
+  VAR
+    GET_FIELDS,MAINT_FIELDS  : SCREEN_ARR;  { Array to hold data fields }
+    GET_PROMPTS : PROMPT_ARR; { Array to hold screen prompts }
+    GET_RESULTS,                 { 0 If 'GET.SCRN' loaded }
+    RESULTS,I,II,INDEX,DB_RECNO,REC_LEN,NUM_FLDS,CURRENT_BLOCK: Integer;
+    EXXIT,CH,EXIT_KEY : CHAR;
+    VERSION :  String[28];
+    PROMPT1 : STRING[29];
+    PROMPT2 : STRING[31];
+    VOLUME,               { Data base volume }
+    LIST_TYPE,            { Output file type }
+    LIST_VOL  :String[7]; { Print format volume }
+    NAME,                 { Data base Name }
+    LIST_NAME :String[10];{ Print format name }
+    DB_NAME   :String[18];{ Volume + Data Base Name }
+    WRITE_FILE_NAME : string[28]; { Output file name }
+    STR_RECNO : String[5];
+    IO_REC    : Packed record      { String to hold data base record }
+                case Integer of
+                  1: (A: Packed Array[0..255] of 0..255);
+                  2: (B: String[255]);
+                end;
+    DATA_FILE : File;
+                  
+  Procedure RECORD_LENGTH(var S_ARRAY: SCREEN_ARR);
+    forward;
+  
+  Function VAL(S: string; var NUM: integer): boolean;
+    forward;
+    
+  Procedure MESSAGE(M_ROW,M_COL: Integer; MSG: String; DING: Boolean);
+    forward;
+  
+  Segment Procedure INITIALIZE;
+  {  Procedure initilizes everything to begin maintaining the data base. }
+   var I: Integer;
+    begin  {INITIALIZE}
+     for I:=1 to SCREEN_FIELDS do 
+      with GET_FIELDS[I] do
+       begin
+        S_ROW := END_SCREEN;  S_COL := 15;
+        S_MIN := 0;           S_TYP := 'V';
+        S_JUS := 'L'; S_NA  := 'S';         S_SKIP := False;
+        S_DEF := '';  S_FLD := ''; S_ID := '';
+       end;
+     for I:=1 to SCREEN_FIELDS do
+      with MAINT_FIELDS[I] do
+       begin
+        S_ROW := END_SCREEN;  S_COL := 15;
+        S_MIN := 0;           S_TYP := 'V';  S_LEN := 0;
+        S_JUS := 'L';         S_NA  := 'S';  S_SKIP := False;
+        S_DEF := '';          S_FLD := '';   S_ID := '';
+       end;
+     for I:=1 to PROMPT_FIELDS do
+      with GET_PROMPTS[I] do
+       begin
+        P_ROW:=END_SCREEN;  P_COL:=0;  P_FLD:='';
+       end;
+     with GET_FIELDS[1] do
+      begin
+       S_ID := 'VOL';  S_ROW := 8; S_LEN := 7;
+      end;
+     with GET_FIELDS[2] do
+       begin
+         S_ID := 'NAME';  S_ROW := 10; S_LEN := 10;
+       end;
+     with GET_PROMPTS[1] do
+       begin
+         P_ROW := 8;  P_FLD := 'Volume    :';
+       end;
+     with GET_PROMPTS[2] do
+       begin
+         P_ROW := 10;  P_FLD := 'Name      :';
+       end;
+     with GET_PROMPTS[3] do
+       begin
+         P_ROW := 12;  P_FLD := 'Type      :    SCRN and TEXT';
+       end;
+     VERSION:='Version  IV.0';
+     PROMPT1:='Get,Save format,Output file';
+     PROMPT2:='Change,Export,List,Tests,Quit ?';
+     for I:=1 to 27 do
+      if not(PROMPT1[I] in['A'..'Z']) 
+        then PROMPT1[I]:=chr(ord(PROMPT1[I])+128);
+     for I:=1 to 29 do
+      if not(PROMPT2[I] in['A'..'Z']) 
+        then PROMPT2[I]:=chr(ord(PROMPT2[I])+128);
+     DB_RECNO := 1;
+     CURRENT_BLOCK := -1;
+     write_file_name:=''; { Dec 29 }
+    end;   {INITIALIZE}
+
+  Segment Procedure GET_DATA_BASE;
+  { Procedure gets the Data Base Definition from the disk. }
+  var
+    DATA_NAME,            { Data file name }
+    DEFI_NAME:String[23]; { Data Base Definition file name }
+    begin  {GET_DATA_BASE}  
+      ERASE_EOS(0,0);
+      writeln(' ':25,'PRINT A DATA BASE');
+      writeln(' ':25,'=================');
+      writeln(' ':25,VERSION);
+      writeln;
+      writeln(
+      'Copyright (C) 1981 by Texas Instruments Corporate Engineering Center');
+      writeln('All rights reserved as per the Computer Software ',
+                                                     'Copyright Act of 1980');
+      DISPLAY_PROMPTS(GET_PROMPTS,0,0,0,23);
+      DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+      MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',False);
+      repeat
+        SCREEN(GET_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXXIT);
+        if EXXIT = ESC_KEY then exit(LIST);
+        VOLUME := GET_FIELDS[FIND('VOL',GET_FIELDS)].S_FLD;
+        EATSPR(VOLUME);
+        NAME   := GET_FIELDS[FIND('NAME',GET_FIELDS)].S_FLD;
+        EATSPR(NAME);
+        DB_NAME := concat(VOLUME,':',NAME);
+        DEFI_NAME := concat(DB_NAME,'.SCRN');
+        DATA_NAME := concat(DB_NAME,'.TEXT');
+        GET_FILE(DEFI_NAME,MAINT_FIELDS,GET_PROMPTS,RESULTS);
+        if RESULTS = 0
+          then
+            begin
+             {$I-}
+              reset(DATA_FILE,DATA_NAME);
+             {$I+}
+              if IORESULT<>0
+                then MESSAGE(MAX_ROW,40,'ERROR: No data file found',True)
+                else exit(GET_DATA_BASE);
+            end
+          else MESSAGE(MAX_ROW,40,'ERROR: Unknown Data Base',True);
+      until False;
+    end;   {GET_DATA_BASE}
+
+ Segment Procedure ACCESS_DATA_BASE;
+  { Procedure performs all the adds, examines and deletes for the data base }
+  var DISPLAY_FLAG:Boolean;
+      START_LIST:Integer;
+      ESC:boolean; { Mar 16 }
+      BUFFER: Packed Array[0..511] of 0..255;
+      LIST_VOL_NAME :String[23];   { Print format file name }
+      EXPRT_FILE_NAME :String[28]; { Export file name }
+      IO_REC    : Packed record      { String to hold data base record }
+                case Integer of
+                  1: (A: Packed Array[0..255] of 0..255);
+                  2: (B: String[255]);
+                end;
+      TEST_ARRAY : TEST_DEF;
+      TESTS,ALL_TESTS : BOOLEAN;
+  
+ Segment Procedure GET_SAVE_FORMAT(GS_COMMAND:char; var ESC: boolean);
+  
+  { Procedure loads or saves printing format specification on disk. }
+    
+    var 
+      S: string;
+      P_FIELDS,TEMP_FIELDS: SCREEN_ARR;
+      P_PROMPTS,TEMP_PROMPTS: PROMPT_ARR;
+      I: integer;
+    begin
+      FOR I := 1 TO SCREEN_FIELDS DO
+        WITH P_FIELDS[I] DO
+          BEGIN
+            S_ROW := END_SCREEN; S_COL := 15; S_MIN := 0; S_TYP := 'V';
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := FALSE; S_DEF := '';
+            S_FLD := '';
+          END;
+      FOR I := 1 TO PROMPT_FIELDS DO
+        WITH P_PROMPTS[I] DO
+          BEGIN
+            P_ROW := END_SCREEN; P_COL := 0; P_FLD := '';
+          END;
+     with P_FIELDS[1] do
+      begin
+       S_ID := 'VOL';  S_ROW := 8; S_LEN := 7;
+      end;
+     with P_FIELDS[2] do
+       begin
+         S_ID := 'NAME';  S_ROW := 10; S_LEN := 10;
+       end;
+     with P_PROMPTS[1] do
+       begin
+         P_ROW := 8;  P_FLD := 'Volume    :';
+       end;
+     with P_PROMPTS[2] do
+       begin
+         P_ROW := 10;  P_FLD := 'Name      :';
+       end;
+      if CH='O' then begin
+        with P_PROMPTS[3] do begin
+          P_ROW:=12;
+          P_FLD:='Type      :';
+        end;
+        with P_FIELDS[3] do begin
+          S_ID:='TYPE';
+          S_ROW:=12;
+          S_LEN:=5;
+        end;
+      end
+      else begin
+        with P_PROMPTS[3] do begin
+          P_ROW:=12;
+          P_FLD:='Type      :    SCRN and TEXT';
+        end;
+        P_FIELDS[3].S_ROW:=END_SCREEN;
+      end;
+      ERASE_EOS(0,0);
+      if GS_COMMAND='G' then S:='GET PRINTING FORMAT'
+        else if GS_COMMAND='S' then S:='SAVE PRINTING FORMAT'
+          else if GS_COMMAND='E' then S:='EXPORT FILE NAME'
+            else S:='OUTPUT FILE NAME';
+      writeln(' ':25,S);
+      writeln(' ':25,'====================':LENGTH(S));
+      DISPLAY_PROMPTS(P_PROMPTS,0,0,0,23);
+      gotoxy(0,12);
+      if GS_COMMAND <>'O' then
+        if GS_COMMAND = 'E' then write('Type      :    TEXT         ')
+          else write('Type      :    LIST         ');
+      MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',False);
+      DISPLAY_SCREEN(P_FIELDS,0,0,0,23);
+      repeat
+        SCREEN(P_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXXIT);
+        ERASE_EOL(MAX_ROW,40);
+        if EXXIT = ENTER_KEY
+          then
+            begin
+              ESC:=false;
+              LIST_VOL := P_FIELDS[FIND('VOL',P_FIELDS)].S_FLD;
+              EATSPR(LIST_VOL);
+              LIST_NAME := P_FIELDS[FIND('NAME',P_FIELDS)].S_FLD;
+              EATSPR(LIST_NAME);
+              if GS_COMMAND = 'O' then begin  { Jan 8 }
+                LIST_TYPE:=P_FIELDS[FIND('TYPE',P_FIELDS)].S_FLD;
+                IF (LIST_VOL='') AND (LIST_NAME='') THEN WRITE_FILE_NAME:=''
+                else WRITE_FILE_NAME:=concat(LIST_VOL,':',LIST_NAME,'.',
+                  LIST_TYPE);
+                exit(GET_SAVE_FORMAT);
+              end
+              else
+                if GS_COMMAND = 'E' then begin  { Dec 29 }
+                  EXPRT_FILE_NAME := concat(LIST_VOL,':',LIST_NAME,'.TEXT');
+                  exit(GET_SAVE_FORMAT);
+                end
+                else LIST_VOL_NAME := concat(LIST_VOL,':',LIST_NAME,'.LIST');
+              if GS_COMMAND = 'G'
+               then
+                begin
+                 GET_FILE(LIST_VOL_NAME,TEMP_FIELDS,TEMP_PROMPTS,GET_RESULTS);
+                 if GET_RESULTS <> 0
+                  then MESSAGE(MAX_ROW,40,'ERROR: Unknown printing format',
+                                                                       True)
+                   else begin
+                     I := FIND('WIDTH',TEMP_FIELDS);
+                     if I = 0 then
+                       MESSAGE(MAX_ROW,40,'ERROR: Format file is obsolete',
+                                                                        True)
+                     else begin
+                       GET_FIELDS:=TEMP_FIELDS; GET_PROMPTS:=TEMP_PROMPTS;
+                       exit(GET_SAVE_FORMAT);
+                     end
+                   end
+                 end
+                else  { GS_COMMAND = 'S' }
+                 begin
+                  SAVE_FILE(LIST_VOL_NAME,GET_FIELDS,GET_PROMPTS,
+                                                                GET_RESULTS);
+                  if GET_RESULTS <> 0
+                   then MESSAGE(MAX_ROW,40,
+                               'ERROR: Unable to save printing format',True)
+                   else exit(GET_SAVE_FORMAT);
+                  end;
+            end
+          else begin
+            ESC:=true;
+            exit(GET_SAVE_FORMAT);
+          end;
+      until False;
+  end;
+
+ SEGMENT Procedure READ_WRITE(RW_COMMAND: Char;
+                              var REC_NO,REC_LEN,IO_RET_CODE:Integer);
+  var IO_BLOCKS,START_POSITION,TWO_BLOCK,START_REC,BYTE_TWO_BLOCK,
+      BLOCK_NO,REC_NUM,FIRST_MOV_LEN,CHAR_OFFSET: Integer;
+
+  begin {READ_WRITE}
+ {$I-}
+   IO_RET_CODE:=-1;
+   REC_NUM:=REC_NO-1;
+   if REC_NUM<0 then REC_NUM:=0;
+   TWO_BLOCK:=REC_NUM div (1023 div REC_LEN);  (* 1024 correction Dec 5 1980 *)
+   START_REC:=TWO_BLOCK*(1023 div REC_LEN);  (* 1024 correction Dec 5 1980 *)
+   BYTE_TWO_BLOCK:=(REC_NUM-START_REC)*REC_LEN;
+   BLOCK_NO:=(TWO_BLOCK*2)+2;
+   if BYTE_TWO_BLOCK>=512  (* = correction Dec 5 1980 *)
+     then
+      begin
+       BLOCK_NO:=BLOCK_NO+1;
+       CHAR_OFFSET:=BYTE_TWO_BLOCK-512;
+      end
+     else CHAR_OFFSET:=BYTE_TWO_BLOCK;
+   if CHAR_OFFSET+REC_LEN>512
+     then
+      begin
+       if CURRENT_BLOCK<>BLOCK_NO
+         then
+          begin
+           IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end;
+       FIRST_MOV_LEN:=512-CHAR_OFFSET;
+       if RW_COMMAND='W'
+         then
+           begin
+            moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],FIRST_MOV_LEN);
+            IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+            if IO_BLOCKS=0 then exit(READ_WRITE);
+           end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],FIRST_MOV_LEN);
+       BLOCK_NO:=BLOCK_NO+1;
+       IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+       if IO_BLOCKS=0 then exit(READ_WRITE);
+       if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[FIRST_MOV_LEN+1],BUFFER[0],REC_LEN-FIRST_MOV_LEN);
+           IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end
+         else 
+           moveleft(BUFFER[0],IO_REC.A[FIRST_MOV_LEN+1],REC_LEN-FIRST_MOV_LEN);
+      end
+    else
+     begin
+      if CURRENT_BLOCK<>BLOCK_NO
+        then
+         begin
+          IO_BLOCKS:=blockread(DATA_FILE,BUFFER,1,BLOCK_NO);
+          if IO_BLOCKS=0 then exit(READ_WRITE);
+         end;
+      if RW_COMMAND='W'
+         then
+          begin
+           moveleft(IO_REC.A[1],BUFFER[CHAR_OFFSET],REC_LEN);
+           IO_BLOCKS:=blockwrite(DATA_FILE,BUFFER,1,BLOCK_NO);
+           if IO_BLOCKS=0 then exit(READ_WRITE);
+          end
+         else moveleft(BUFFER[CHAR_OFFSET],IO_REC.A[1],REC_LEN);
+     end;
+    CURRENT_BLOCK:=BLOCK_NO;
+    if IO_REC.A[3]=0 then exit(READ_WRITE);
+    IO_RET_CODE:=0;
+    IO_REC.A[0]:=REC_LEN;
+  {$I+}
+  end;  {READ_WRITE}
+  
+SEGMENT Procedure LOAD_SCREEN(LOAD_COMMAND :Char; var S_ARRAY: SCREEN_ARR;
+                    NUMBER_FLDS:INTEGER; var RECORD_STRING: STRING255);
+  { Procedure load the screen array from a record obtained from the disk  }
+  { file.                                                                 }
+
+   var LOAD_INDEX,T_INDEX,COPY_INDEX,COPY_LENGTH : Integer;
+
+   begin {LOAD_SCREEN}
+    COPY_INDEX := 4;
+    LOAD_INDEX:=1;
+    while LOAD_INDEX <= NUMBER_FLDS  do
+     with S_ARRAY[LOAD_INDEX] do
+      begin
+       COPY_LENGTH:=S_LEN;
+       if (LOAD_COMMAND = 'A') or
+          ((LOAD_COMMAND = 'D') and (S_ID = COPY(S_DEF,2,LENGTH(S_DEF)-2)))
+         then
+           S_FLD:=copy(RECORD_STRING,COPY_INDEX,COPY_LENGTH)
+         else
+          begin
+            IF (S_DEF = '') OR (S_DEF = COPY(UNDERLINE,1,1))
+              THEN
+               BEGIN
+                 S_FLD := ' ';
+                 FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX);
+               END
+              ELSE  { s_def<>''  Mar 12 }
+                if s_def[1]<>'[' then begin
+                  s_fld:=' ';
+                  FOR T_INDEX := 1 TO S_LEN-1 DO INSERT(' ',S_FLD,T_INDEX)
+                end
+                else begin { s_def[1]='[' }
+                  t_index:=find(copy(s_def,2,length(s_def)-2),S_ARRAY);
+                  if t_index=0 then s_fld:=s_def
+                    else s_fld:=S_ARRAY[t_index].s_fld;
+                end;
+          end;
+        COPY_INDEX:=COPY_INDEX + COPY_LENGTH;
+        LOAD_INDEX:=LOAD_INDEX + 1;
+      end; {with/while}
+   end; {LOAD SCREEN}
+
+SEGMENT FUNCTION LIST_RECORD : BOOLEAN;
+  
+  { Determines whether a record is to be copied or not. }
+
+  VAR
+    BLANK,PASSED : BOOLEAN;
+    F : STRINGFL;
+
+  FUNCTION COMPARE(TEST : TEST_REC): BOOLEAN;
+
+    { Function is true if test passes, false if not. }
+
+    VAR
+      OLD_VAL : STRINGFL;
+      NUM1,NUM2 : REAL;
+     
+     function STR_TO_REAL(var S: STRING; var NUM: REAL): boolean;
+      
+      { Returns a value of true and the real value in NUM if
+        string can be converted to real, is set to false otherwise }
+      
+      var
+        I : integer;
+        FACTOR : REAL;
+        D_PT : BOOLEAN;
+      begin
+        STR_TO_REAL:=false;
+        I:=1;
+        D_PT := FALSE;
+        NUM:=0;
+        EATSPL(S); EATSPR(S);
+        if length(S)=0 then exit(STR_TO_REAL);
+        WHILE ((I <= LENGTH(S)) AND (NOT D_PT)) DO
+          BEGIN
+            if S[I] in ['0'..'9'] then
+              NUM:=10*NUM+ord(S[I])-ord('0')
+            ELSE IF S[I] = '.' THEN D_PT := TRUE
+            else exit(STR_TO_REAL);
+            I := I + 1;
+          END;
+        IF D_PT
+          THEN
+            BEGIN
+              FACTOR := 10;
+              WHILE I <= LENGTH(S) DO
+                IF S[I] IN ['0'..'9']
+                  THEN
+                    BEGIN
+                      NUM := NUM + ((ord(S[I])-ord('0'))/FACTOR);
+                      FACTOR := FACTOR * 10;
+                      I := I + 1;
+                    END
+                  ELSE EXIT(STR_TO_REAL);
+            END;
+        STR_TO_REAL:=true;
+      end;  { STR_TO_REAL }
+      
+    BEGIN   { COMPARE }
+      COMPARE := FALSE;
+      OLD_VAL := MAINT_FIELDS[TEST.FIELD_LOC].S_FLD;
+      EATSPL(OLD_VAL);  EATSPR(OLD_VAL);
+      WITH TEST DO
+        IF ((STR_TO_REAL(OLD_VAL,NUM1)) AND (STR_TO_REAL(VALUE,NUM2)))
+          THEN     { Compare as reals if possible }
+            CASE TEST.OPERATOR OF
+              LT: COMPARE := NUM1 < NUM2;
+              GT: COMPARE := NUM1 > NUM2;
+              EQ: COMPARE := NUM1 = NUM2;
+              LE: COMPARE := NUM1 <= NUM2;
+              GE: COMPARE := NUM1 >= NUM2;
+              NE: COMPARE := NUM1 <> NUM2;
+            END
+          ELSE     { Otherwise compare as strings }
+            CASE TEST.OPERATOR OF
+              LT: COMPARE := OLD_VAL < VALUE;
+              GT: COMPARE := OLD_VAL > VALUE;
+              EQ: COMPARE := OLD_VAL = VALUE;
+              LE: COMPARE := OLD_VAL <= VALUE;
+              GE: COMPARE := OLD_VAL >= VALUE;
+              NE: COMPARE := OLD_VAL <> VALUE;
+            END;
+    END; {COMPARE}
+
+  BEGIN {LIST_RECORD}
+    LIST_RECORD := TRUE;
+    IF TESTS                 { Then see if record meets the user's tests }
+     THEN
+      BEGIN
+       IF ALL_TESTS          { LIST_RECORD set to true if all tests pass }
+         THEN
+           BEGIN
+             I := 1;
+             PASSED := TRUE;
+             WHILE ((I <= MAX_TESTS) AND (PASSED)) DO
+               BEGIN
+                 IF TEST_ARRAY[I].FIELD_LOC > 0
+                   THEN PASSED := COMPARE(TEST_ARRAY[I]);
+                 I := I + 1;
+               END;
+             LIST_RECORD := PASSED;
+           END
+         ELSE
+           BEGIN            {LIST_RECORD set to true if any test passes}
+             I := 1;
+             PASSED := FALSE;
+             WHILE ((I <= MAX_TESTS) AND (NOT PASSED)) DO
+               BEGIN
+                 IF TEST_ARRAY[I].FIELD_LOC > 0
+                   THEN PASSED := COMPARE(TEST_ARRAY[I]);
+                 I := I + 1;
+               END;
+             LIST_RECORD := PASSED;
+           END;
+      END;
+  END;
+  
+SEGMENT Procedure EXPORT(EXP_FILENAME: String;
+                         var DATARRAY: SCREEN_ARR;
+                         var OUT_FILE: String);
+ 
+{ Data export unit Version II.2.B.2b modified for UDE Jan 1981}
+
+ const 
+   MAXSIZE  =  500;
+   AMT_MEM  = 1300;
+   MAXLINES =   10;
+
+ 
+ type 
+   BUFR   = Array[0..0] of String[255];
+   STR255 = String[255];
+   EXP_RECORD = record
+     START,LENGTH: integer;
+   end;
+
+ var
+   EXPFILELNS : Integer;
+   HEAPPTR: ^BUFR;
+   OUT,EXPFILE: Text;
+   NUMERIC,EATLEFT,EATRIGHT :Boolean;
+   IDNO,LNS,N,I,J: Integer;
+   CH :String[1];
+   IDVAL,IDNAME,LINE_IMAGE: String;
+   LINE: STR255;
+   RESULT: Integer;
+   EXP_ARRAY : array[1..SCREEN_FIELDS] of EXP_RECORD;
+
+Segment Procedure EXPORT_ARRAY;
+var
+  i,n: integer;
+begin
+  i:=1; n:=4;
+  while i<=screen_fields do
+    if maint_fields[i].s_row=end_screen then i:=screen_fields+1
+    else
+      with exp_array[i] do begin
+        start:=n;
+        length:=maint_fields[i].s_len;
+        n:=length+n;
+        i:=i+1;
+      end;
+end;  {export_array}
+
+Segment Procedure GET_EXPFILE(EXP_FILENAME: String;
+                      var RESULT: Integer);
+ var QUIT: Boolean;
+
+ begin {GET_EXPFILE}
+  {$R-}
+   EXPFILELNS:=0;
+   repeat
+    readln(EXPFILE,HEAPPTR^[EXPFILELNS]);  
+    EXPFILELNS:=EXPFILELNS+1;
+{   if MEMAVAIL<MAXSIZE then
+     begin
+      QUIT:=True;
+      RESULT:=99;
+     end;                }
+   until (eof(EXPFILE)) or (QUIT) or (EXPFILELNS = MAXLINES);
+  {$R+}
+   EXPFILELNS:=EXPFILELNS-1;
+ end; {GET_EXPFILE}
+ 
+Segment Procedure CLOSE_EXPFILE;
+ begin {CLOSE EXPFILE}
+     CLOSE(EXPFILE);
+     VARDISPOSE(HEAPPTR,AMT_MEM);
+ end; {CLOSE EXPFILE}
+
+ Segment Procedure ERROR(E :Integer);
+  var E_MSG: String;
+      CH: Char;
+      I: Integer;
+  begin
+   E_MSG:='I/O ERROR in export routine.';
+   case E of
+     1: E_MSG:='ERROR: Illegal character in text.';
+     2: E_MSG:='ERROR: Can not open output file.';
+     3: E_MSG:='ERROR: Illegal data field ID.';
+     4: E_MSG:='ERROR: Unexpected end of line.';
+     5: E_MSG:='ERROR: Can not open export file.';
+     6: E_MSG:='ERROR: Buffer Overflow.';
+     7: E_MSG:='ERROR: Cannot get memory';
+     end; {case}
+   MESSAGE(MAX_ROW-1,40,E_MSG,true);
+   MESSAGE(MAX_ROW,40,'Press SPACE to continue',false);
+   read(CH);
+   exit(EXPORT);
+  end; {ERROR}
+  
+ begin {EXPORT}
+  erase_eol(0,max_row);
+  MESSAGE(MAX_ROW,40,'STATUS: Export in progress',false);
+  {$i-}
+  if OUTFILE='' then rewrite(OUT,'PRINTER:')
+    else Rewrite(OUT,OUTFILE);
+  if IORESULT<>0 then ERROR(2);
+  {$i+}
+  EXPORT_ARRAY;  { Jan 9 }
+  IF VARNEW(HEAPPTR,AMT_MEM) <> AMT_MEM
+    THEN ERROR(7);
+  DB_RECNO:=1;
+  READ_WRITE('R',DB_RECNO,REC_LEN,RESULT);
+  IF TESTS
+    THEN LOAD_SCREEN('A',MAINT_FIELDS,NUM_FLDS,IO_REC.B);
+  WHILE RESULT=0 do begin  { Jan 9 }
+    if ((IO_REC.A[3]=ord('*')) and (LIST_RECORD))
+     then                   { Jan 9 }
+       BEGIN
+        RESET(EXPFILE,EXP_FILENAME);
+        IF IO_RESULT <> 0 THEN ERROR(5);
+        REPEAT
+          Get_Expfile(EXP_FILENAME,RESULT);
+          if RESULT=99 then ERROR(6)
+            else if RESULT<>0 then ERROR(5);
+          for I:=0 to EXPFILELNS do begin
+           {$R-}
+           LINE_IMAGE:='';  N:=0;  LINE:=HEAPPTR^[I];
+           repeat
+            CH:=' '; N:=N+1;
+            if length(LINE)>0 then CH[1]:=LINE[N];
+            if CH[1]='{' then
+              begin { ID }
+                EATRIGHT:=False;  EATLEFT:=False;
+                N:=N+1;  CH[1]:=LINE[N];
+                if CH[1]='*' then  begin  EATLEFT:=True;  IDNAME:='';  end
+                 else IDNAME:=CH;
+                while CH[1]<>'}' do
+                 begin
+                  N:=N+1;  CH[1]:=LINE[N];
+                  if CH[1]=RETURN_KEY 
+                    then ERROR(4) 
+                    else IDNAME:=concat(IDNAME,CH);
+                  if CH[1]='*' then
+                   begin
+                    if (IDNAME='') then ERROR(3);
+                    EATRIGHT:=True;
+                    N:=N+1;  CH[1]:=LINE[N];
+                    if CH[1]<>'}' then ERROR(4);
+                   end; {then}
+                 end; {while}
+                delete(IDNAME,length(IDNAME),1);
+                IDVAL:=' ';  NUMERIC:=True;
+                for J:=1 to length(IDNAME) do
+                   if not(IDNAME[J] in['0'..'9']) then NUMERIC:=False;
+                if NUMERIC then begin
+                  if VAL(IDNAME,IDNO) then IDVAL[1]:=chr(IDNO);
+                 end
+                 else
+                  begin
+                   IDNO:=FIND(IDNAME,DATARRAY);
+                   if IDNO>0 then IDVAL:=copy(IO_REC.B,EXP_ARRAY[IDNO].START,
+                       EXP_ARRAY[IDNO].LENGTH)
+                     else IDVAL:=concat('{',IDNAME,'}');
+                   if EATLEFT then EATSPL(IDVAL);
+                   if EATRIGHT then EATSPR(IDVAL);
+                  end;
+                LINE_IMAGE:=concat(LINE_IMAGE,IDVAL);
+              end { ID }
+             else LINE_IMAGE:=concat(LINE_IMAGE,CH);
+            until N>=length(LINE);
+          {if SHOW then writeln(LINE_IMAGE);} {Jan 8}
+           writeln(OUT,LINE_IMAGE);
+          end; { for }
+        UNTIL EOF(EXPFILE);
+        CLOSE(EXPFILE);
+       END;
+     DB_RECNO:=DB_RECNO+1;
+     READ_WRITE('R',DB_RECNO,REC_LEN,RESULT);
+     IF TESTS
+       THEN LOAD_SCREEN('A',MAINT_FIELDS,NUM_FLDS,IO_REC.B);
+   end;  {while result=0}
+  {$R+}
+  close(OUT,lock);
+  close_expfile;
+ end; {EXPORT}
+
+ SEGMENT PROCEDURE GET_TEST_ARRAY;
+
+  { Gets the tests to be made on each record of the "from" data file
+      before it is copied to the "to" data file. Only a limited no.
+      of these tests are displayed on the screen at any one time
+      (limited by the no. of possible fields in GET_FIELDS).       }
+
+  VAR
+    FIRST_TEST,NUM_TESTS  : INTEGER;
+    GET_FIELDS : SCREEN_ARR;
+    ERROR : BOOLEAN;
+    S,MSG : STRING;
+    
+SEGMENT PROCEDURE USER_TESTS;
+  VAR
+    NUM_FIELDS,ROW,ID_COL,ID_ROW : INTEGER;
+    PROMPT : STRING;
+  BEGIN
+    ERASE_EOS(0,0);
+    WRITE('Comparison tests to be made on fields of each record:');
+    GOTOXY(62,0);
+    WRITE('Choose from the');
+    GOTOXY(62,1);
+    WRITE('following fields:');
+    GOTOXY(0,18);
+    WRITE('Valid operators are:  < , > , = , <= , >= , or <>');
+    GOTOXY(0,20);
+    WRITE('Currently viewing tests 1 - 13');
+    GOTOXY(0,22);
+    PROMPT := 'Get, Save tests, Change, Next, Back, Quit:';
+    FOR I := 1 TO LENGTH(PROMPT) DO
+      IF NOT(PROMPT[I] IN ['A'..'Z'])
+        THEN PROMPT[I] := CHR(ORD(PROMPT[I])+128);
+    WRITE(PROMPT);
+    I := 1;
+    ROW := 4;
+    WHILE I < SCREEN_FIELDS-1 DO
+      BEGIN
+        WITH GET_FIELDS[I] DO          { Field }
+          BEGIN
+            S_ROW := ROW; S_COL := 0; S_LEN := 8; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        WITH GET_FIELDS[I+1] DO        { Operator }
+          BEGIN
+            S_ROW := ROW; S_COL := 12; S_LEN := 2; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        WITH GET_FIELDS[I+2] DO        { Value }
+          BEGIN
+            S_ROW := ROW; S_COL := 18; S_LEN := 40; S_MIN := 0;
+            S_JUS := 'L'; S_NA := 'S'; S_SKIP := TRUE;
+            S_DEF := ''; S_FLD := ''; S_TYP := 'V';
+          END;
+        ROW := ROW + 1;
+        I := I + 3;
+      END;
+    WITH GET_FIELDS[SCREEN_FIELDS] DO
+      BEGIN
+        S_ROW := END_SCREEN; S_LEN := 0; S_FLD := '';
+      END;
+    DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+    GOTOXY(0,2);
+    WRITE('FIELD ID  OPERATOR                 VALUE');
+    NUM_FIELDS := 0;
+    I := 1;
+    WHILE I <= SCREEN_FIELDS DO
+      BEGIN
+        IF MAINT_FIELDS[I].S_ROW = END_SCREEN 
+          THEN I := SCREEN_FIELDS
+        ELSE NUMFIELDS := NUMFIELDS + 1;
+        I := I + 1;
+      END;
+
+    { The following code writes out the ids the user may choose from
+      in testing the fields to be copied. If there are less than 20,
+      they are written out in a single column, otherwise they are
+      written out alternating between two columns.                   }
+
+    IF NUM_FIELDS <= 20
+      THEN ID_COL := 66    { Center a single column }
+      ELSE ID_COL := 62;   { Center double columns  }
+    ID_ROW := 3;
+    I := 1;
+    WHILE I <= NUM_FIELDS DO
+      BEGIN
+        GOTOXY(ID_COL,ID_ROW);
+        WRITE(MAINT_FIELDS[I].S_ID);
+        IF ID_COL = 62
+          THEN          { Alternate ids between 1st and 2nd cols }
+            ID_COL := 72
+          ELSE
+            IF ID_COL = 66
+              THEN ID_ROW := ID_ROW + 1
+              ELSE IF ID_COL = 72
+                     THEN
+                       BEGIN
+                         ID_COL := 62;
+                         ID_ROW := ID_ROW + 1;
+                       END;
+        I := I + 1;
+      END;
+  END; {USER_TESTS}
+
+SEGMENT PROCEDURE DISPLAY_TESTS(TEST_NO : INTEGER);
+  
+  { Transfers the appropriate section of TEST_ARRAY tests to GET_FIELDS
+      for display.                                                      }
+  
+  VAR
+    FOUND : BOOLEAN;
+  BEGIN
+    FOR I := 1 TO SCREEN_FIELDS DO
+      GET_FIELDS[I].S_FLD := '';
+    I := 1;
+    WHILE I < SCREEN_TESTS*3 DO
+      WITH TEST_ARRAY[TEST_NO +(I DIV 3)] DO
+        BEGIN
+          IF FIELD_LOC = 0
+            THEN 
+              BEGIN
+                GET_FIELDS[I].S_FLD := '';
+                GET_FIELDS[I+1].S_FLD := '';
+                GET_FIELDS[I+3].S_FLD := '';
+              END
+            ELSE
+              BEGIN
+                GET_FIELDS[I].S_FLD := MAINT_FIELDS[FIELD_LOC].S_ID;
+                WITH GET_FIELDS[I+1] DO
+                  CASE OPERATOR OF
+                    LT: S_FLD := '<';
+                    GT: S_FLD := '>';
+                    EQ: S_FLD := '=';
+                    LE: S_FLD := '<=';
+                    GE: S_FLD := '>=';
+                    NE: S_FLD := '<>';
+                  END;
+                GET_FIELDS[I+2].S_FLD := VALUE;
+              END;
+          I := I + 3;
+        END;
+    DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+  END;
+
+SEGMENT PROCEDURE UPDATE_TEST_ARRAY(TEST_NO : INTEGER);
+
+  { Checks the tests in GET_FIELDS for validity and transfers them
+    to the appropriate section of TEST_ARRAY.                      }
+
+  VAR
+    OP : OPS;
+    FLD_LEN,I,K,LOCATION : INTEGER;
+    BLANK_FIELD,BLANK_OP,BLANK_VALUE : BOOLEAN;
+
+  PROCEDURE CHK_FIELD(VAR FIELD      : STRING;
+                    VAR LOC          : INTEGER;
+                    VAR IS_BLANK     : BOOLEAN;
+                    VAR FLD_LENGTH   : INTEGER);
+  { Determines if the field name of the test is valid. Passes back the
+      length of the fields value field so that CHK_VALUE may determine
+      if the length of value of the test is within the maximum allowable. }
+
+  VAR
+    FOUND : BOOLEAN;
+
+  BEGIN
+    EATSPL(FIELD);  EATSPR(FIELD);
+    IF LENGTH(FIELD) = 0
+      THEN IS_BLANK := TRUE
+      ELSE IS_BLANK := FALSE;
+    FLD_LENGTH := 0;
+    IF NOT IS_BLANK
+      THEN
+        BEGIN
+          FOUND := FALSE;
+          LOC := FIND(FIELD,MAINT_FIELDS);
+          IF LOC <> 0
+            THEN
+              BEGIN
+                FOUND := TRUE;
+                FLD_LENGTH := MAINT_FIELDS[LOC].S_LEN;
+              END;
+          IF NOT FOUND
+            THEN
+              BEGIN
+                MESSAGE(MAX_ROW,40,CONCAT('ERROR: ',FIELD,
+                                            ' is an invalid field name'),
+                                                                   TRUE);
+                ERROR := TRUE;
+                EXIT(UPDATE_TEST_ARRAY);
+              END;
+        END;
+  END;
+
+PROCEDURE CHK_OP(VAR OP_STRING : STRING;
+                 VAR OPRATR    : OPS;
+                 VAR IS_BLANK  : BOOLEAN);
+
+  { Determine if the operator of the test is valid. Valid operators
+      are: "<", ">", "<=", ">=", "<>", and "=".                      }
+
+  VAR
+    GOOD : BOOLEAN;
+  BEGIN
+    EATSPL(OP_STRING);  EATSPR(OP_STRING);
+    GOOD := TRUE;
+    IS_BLANK := FALSE;
+    IF LENGTH(OP_STRING) = 0
+      THEN IS_BLANK := TRUE
+      ELSE
+        IF OP_STRING = '<'
+          THEN OPRATR := LT
+        ELSE IF OP_STRING = '>'
+          THEN OPRATR := GT
+        ELSE IF OP_STRING = '='
+          THEN OPRATR := EQ
+        ELSE IF OP_STRING = '<='
+          THEN OPRATR := LE
+        ELSE IF OP_STRING = '>='
+          THEN OPRATR := GE
+        ELSE IF OP_STRING = '<>'
+          THEN OPRATR := NE
+        ELSE GOOD := FALSE;
+    IF NOT GOOD
+      THEN
+        BEGIN
+          MESSAGE(MAX_ROW,40,CONCAT('ERROR: ',OP_STRING,' is an invalid ',
+                                                           'operator'),TRUE);
+          ERROR := TRUE;
+          EXIT(UPDATE_TEST_ARRAY);
+        END;
+  END;
+
+PROCEDURE CHK_VALUE(VAR VALUE: STRING; IS_BLANK: BOOLEAN; FLD_LENGTH: INTEGER);
+
+  { Determines if the length of the value of the test is within the maximum. }
+
+  VAR
+    COL : INTEGER;
+  BEGIN
+    IF FLD_LENGTH > 0
+      THEN
+        BEGIN
+          EATSPL(VALUE);  EATSPR(VALUE);
+          IF LENGTH(VALUE) > FLD_LENGTH
+            THEN
+              BEGIN
+                STR(FLD_LENGTH,MSG);
+                MSG := CONCAT('ERROR: Value "',VALUE,'" exceeds max length',
+                                          ' of ',MSG);
+                COL := 80-LENGTH(MSG);
+                IF COL > 40 THEN COL := 40;
+                MESSAGE(MAX_ROW,COL,MSG,TRUE);
+                ERROR := TRUE;
+                EXIT(UPDATE_TEST_ARRAY);
+              END
+            ELSE
+              IF LENGTH(VALUE) = 0
+                THEN IS_BLANK := TRUE
+                ELSE IS_BLANK := FALSE;
+        END;
+  END;
+
+BEGIN {UPDATE_TEST_ARRAY}
+    ERASE_EOL(0,MAX_ROW);
+    ERROR := FALSE;
+    I := 1;
+    WHILE I < 3*SCREEN_TESTS DO
+      BEGIN
+        CHK_FIELD(GET_FIELDS[I].S_FLD,LOCATION,BLANK_FIELD,FLD_LEN);
+        CHK_OP(GET_FIELDS[I+1].S_FLD,OP,BLANK_OP);
+        CHK_VALUE(GET_FIELDS[I+2].S_FLD,BLANK_VALUE,FLD_LEN);
+        IF ((BLANK_OP) AND (NOT BLANK_FIELD))
+          THEN
+            BEGIN
+              MESSAGE(MAX_ROW,40,'ERROR: Missing operator',true);
+              ERROR := TRUE;
+              EXIT(UPDATE_TEST_ARRAY);
+            END;
+        IF ((BLANK_FIELD) OR (BLANK_OP))
+          THEN TEST_ARRAY[TEST_NO + (I DIV 3)].FIELD_LOC := 0
+          ELSE
+            WITH TEST_ARRAY[TEST_NO+(I DIV 3)] DO
+              BEGIN
+                FIELD_LOC := LOCATION;
+                OPERATOR := OP;
+                VALUE := GET_FIELDS[I+2].S_FLD;
+              END;
+        I := I + 3;
+      END;
+  END;   {UPDATE_TEST_ARRAY}
+
+Segment PROCEDURE GET_SAVE(COMMAND : CHAR);
+    VAR
+      GOOD      : BOOLEAN;
+      FILE_NAME : STRING[23];
+      TEST_FILE : FILE OF TEST_REC;
+  
+    BEGIN
+      FOR II := 1 TO SCREEN_FIELDS DO
+        WITH GET_FIELDS[II] DO
+          BEGIN
+            S_ROW := END_SCREEN; S_COL := 14; S_MIN := 0; S_TYP := 'V';
+            S_JUS := 'L'; S_NA := 'S'; S_DEF := ''; S_FLD := '';
+          END;
+      WITH GET_FIELDS[1] DO
+        BEGIN
+          S_ID := 'VOL'; S_ROW := 6; S_LEN := 7;
+        END;
+      WITH GET_FIELDS[2] DO
+        BEGIN
+          S_ID := 'NAME'; S_ROW := 8; S_LEN := 10;
+        END;
+      ERASE_EOS(0,0);
+      GOTOXY(25,0);
+      IF COMMAND = 'G'
+        THEN WRITE('GET COMPARISON TESTS')
+        ELSE WRITE('SAVE COMPARISON TESTS');
+      GOTOXY(25,1);
+      IF COMMAND = 'G'
+        THEN WRITE('====================')
+        ELSE WRITE('=====================');
+      GOTOXY(0,6);
+      WRITELN('Volume    :');
+      WRITELN;
+      WRITELN('Name      :');
+      WRITELN;
+      WRITELN('Type      :   Cmpr');
+      MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',false);
+      DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+      REPEAT
+        GOOD := TRUE;
+        SCREEN(GET_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+        IF EXIT_KEY = ESC_KEY THEN EXIT(GET_SAVE);
+        VOLUME := GET_FIELDS[1].S_FLD;
+        NAME := GET_FIELDS[2].S_FLD;
+        EATSPL(VOLUME);  EATSPR(VOLUME);
+        EATSPL(NAME);  EATSPR(NAME);
+        FILE_NAME := CONCAT(VOLUME,':',NAME,'.CMPR');
+     {$I-}
+        IF COMMAND = 'G'
+          THEN
+            BEGIN
+              RESET(TEST_FILE,FILE_NAME);
+              IF IO_RESULT = 0
+                THEN
+                  BEGIN
+                    FOR I := 1 TO MAX_TESTS DO
+                      BEGIN
+                       TEST_ARRAY[I].FIELD_LOC := TEST_FILE^.FIELD_LOC;
+                       TEST_ARRAY[I].OPERATOR  := TEST_FILE^.OPERATOR;
+                       TEST_ARRAY[I].VALUE     := TEST_FILE^.VALUE;
+                       IF I <> MAX_TESTS THEN GET(TEST_FILE);
+                       IF IO_RESULT <> 0 THEN GOOD := FALSE;
+                      END;
+                    CLOSE(TEST_FILE,LOCK);
+                  END
+                ELSE GOOD := FALSE;
+            END
+          ELSE
+            BEGIN
+              REWRITE(TEST_FILE,FILE_NAME);
+              IF IO_RESULT = 0
+                THEN
+                  BEGIN
+                    FOR I := 1 TO MAX_TESTS DO
+                      BEGIN
+                        TEST_FILE^.FIELD_LOC := TEST_ARRAY[I].FIELD_LOC;
+                        TEST_FILE^.OPERATOR  := TEST_ARRAY[I].OPERATOR;
+                        TEST_FILE^.VALUE     := TEST_ARRAY[I].VALUE;
+                        PUT(TEST_FILE);
+                        IF IO_RESULT <> 0 THEN GOOD := FALSE;
+                      END;
+                    CLOSE(TEST_FILE,LOCK);
+                  END
+                ELSE GOOD := FALSE;
+            END;
+        IF NOT GOOD
+          THEN MESSAGE(MAX_ROW,40,'ERROR: Invalid file specification',true);
+      UNTIL GOOD;
+     {$I+}
+    END; {GET_SAVE}
+
+ BEGIN {GET_TEST_ARRAY}
+  USER_TESTS;
+  ERROR := FALSE;
+  FIRST_TEST := 1;
+  DISPLAY_TESTS(FIRST_TEST);
+  REPEAT
+    IF ERROR
+      THEN CH := 'C'
+      ELSE 
+        BEGIN
+          GOTOXY(43,MAX_ROW-1);
+          READ(KEYBOARD,CH);
+          ERASE_EOL(0,MAX_ROW);
+        END;
+    CASE CH OF
+      'C','c': BEGIN
+                 SCREEN(GET_FIELDS,TRUE,0,0,0,0,23,MAX_ROW,40,EXIT_KEY);
+                 IF EXIT_KEY = ESC_KEY THEN EXIT(GET_TEST_ARRAY);
+                 UPDATE_TEST_ARRAY(FIRST_TEST);
+               END;
+      'B','b': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       IF FIRST_TEST <> 1
+                         THEN FIRST_TEST := FIRST_TEST - SCREEN_TESTS
+                         ELSE FIRST_TEST := MAX_TESTS-SCREEN_TESTS+1;
+                       STR(FIRST_TEST,S);
+                       STR(FIRST_TEST+12,MSG);
+                       MSG := CONCAT('Currently viewing tests ',S,' - ',
+                                                                 MSG,' ');
+                       MESSAGE(20,0,MSG,FALSE);
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      'G','g': BEGIN
+                 GET_SAVE('G');
+                 USER_TESTS;
+                 FIRST_TEST := 1;
+                 DISPLAY_TESTS(FIRST_TEST);
+               END;
+      'S','s': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       GET_SAVE('S');
+                       USER_TESTS;
+                       FIRST_TEST := 1;
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      'N','n': BEGIN
+                 IF ERROR
+                   THEN WRITE(ALARM_BELL)
+                   ELSE
+                     BEGIN
+                       IF FIRST_TEST < MAX_TESTS-SCREEN_TESTS+1
+                         THEN FIRST_TEST := FIRST_TEST + SCREEN_TESTS
+                         ELSE FIRST_TEST := 1;
+                       STR(FIRST_TEST,S);
+                       STR(FIRST_TEST+12,MSG);
+                       MSG := CONCAT('Currently viewing tests ',S,' - ',
+                                                                  MSG,' ');
+                       MESSAGE(20,0,MSG,FALSE);
+                       DISPLAY_TESTS(FIRST_TEST);
+                     END;
+               END;
+      END;
+  UNTIL ((CH = 'Q') OR (CH = 'q'));
+  II := 1;
+  NUM_TESTS := 0;
+  WHILE ((II <= MAX_TESTS) AND (NUM_TESTS < 2)) DO
+    BEGIN
+      IF TEST_ARRAY[II].FIELD_LOC > 0
+        THEN NUM_TESTS := NUM_TESTS + 1;
+      II := II + 1;
+    END;
+  IF NUM_TESTS <> 0 
+    THEN TESTS := TRUE;
+  ALL_TESTS := TRUE;
+  IF NUM_TESTS > 1
+    THEN
+      BEGIN
+        ERASE_EOS(0,0);
+        WRITE('List or export each record if :');
+        GOTOXY(0,2);
+        WRITE('1) All of the above tests have been met');
+        GOTOXY(0,4);
+        WRITE('2) Any of the above tests has been met');
+        GOTOXY(0,6);
+        WRITE('Enter 1 or 2 :');
+        REPEAT
+          ERASE_EOL(15,6);
+          READ(KEYBOARD,CH);
+        UNTIL ((CH = '1') OR (CH = '2'));
+        WRITE(CH);
+        IF CH = '2'
+          THEN ALL_TESTS := FALSE;
+      END;
+END; {GET_TEST_ARRAY}
+
+Segment Procedure PRINT_IT(var ERROR_FIELD: Integer);
+ { Procedure formats the data records according the the format
+       specifaction and then prints the records. }
+
+  const NUMBER_COLUMNS = 8;
+        MAX_LINES = 61;
+
+  type PRINT_FIELDS = record
+                        FIELD_WIDTH,
+                        COLUMN_WIDTH,
+                        START_POS:Integer;
+                        PRINT_TITLE:String[40];
+                      end;
+  
+  var PAGE_NUMBER,P_LENGTH,COLUMN_NUMBER,INDEX,LENGTH_INDEX,LIST_INDEX,
+      ARRAY_INDEX,HEADING_INDEX,TITLE_WIDTH,LINE_NUMBER,FOOTING_INDEX,
+      FOOTING_LINES,LAST_LINE,MAINT_INDEX,PRINT_INDEX: Integer;
+      FOOTING,HEADING,ASCII_TITLE,ASCII_ID: String[40];
+      STRING_HEAD,STRING_INDEX,STRING_RECNO:String[5];
+      STRING_FOOT,STRING_ID,STRING_TITLE: String[8];
+      PRINT_ARRAY: Array[1..NUMBER_COLUMNS] of PRINT_FIELDS;
+      LP: Text;
+      STRING_WIDTH: string; WIDTH: integer;
+      
+    Procedure PSTRING(FLEN: Integer; STRNG: String);
+     var I: integer;
+     begin {PSTRING}
+      for I:=1 to length(STRNG) do
+        if STRNG[I] = ULINE then STRNG[I] := ' ';
+      write(LP,' ':(FLEN-length(STRNG)) div 2,STRNG,
+               ' ':(FLEN-length(STRNG)+1) div 2);
+     end; {PSTRNG}
+     
+    Procedure PRINT_LENGTH;
+      begin {PRINT LENGTH}
+        P_LENGTH := 0;
+        for LENGTH_INDEX := 1 to ARRAY_INDEX-1 do
+          P_LENGTH := P_LENGTH + PRINT_ARRAY[LENGTH_INDEX].COLUMN_WIDTH;
+      end; {PRINT LENGTH}
+    
+    Procedure COUNT_FOOTINGS;
+      begin {COUNT FOOTINGS}
+        FOOTING_LINES := 0;
+        for FOOTING_INDEX := 1 to 3 do
+          begin
+            str(FOOTING_INDEX,STRING_FOOT);
+            STRING_FOOT := concat('FOOT',STRING_FOOT);
+            FOOTING := GET_FIELDS[FIND(STRING_FOOT,GET_FIELDS)].S_FLD;
+            EATSPL(FOOTING);  EATSPR(FOOTING);
+            if length(FOOTING)>0 then FOOTING_LINES:=FOOTING_LINES + 1;
+          end;
+      end; {COUNT FOOTINGS}
+      
+    
+    Procedure PRINT_FOOTINGS;
+      begin {PRINT FOOTINGS}
+        writeln(LP);
+        for FOOTING_INDEX := 1 to 3 do
+          begin
+            str(FOOTING_INDEX,STRING_FOOT);
+            STRING_FOOT := concat('FOOT',STRING_FOOT);
+            FOOTING := GET_FIELDS[FIND(STRING_FOOT,GET_FIELDS)].S_FLD;
+            EATSPL(FOOTING);  EATSPR(FOOTING);
+            if FOOTING = '#'
+              then
+                begin
+                  str(PAGE_NUMBER,STRING_FOOT);
+                  PSTRING_(P_LENGTH,concat('PAGE ',STRING_FOOT));
+                  writeln(LP);
+                  LINE_NUMBER := LINE_NUMBER + 1
+                end
+              else
+                if length(FOOTING) > 0
+                  then 
+                    begin
+                      PSTRING(P_LENGTH,FOOTING);
+                      writeln(LP);
+                      LINE_NUMBER:=LINE_NUMBER + 1;
+                    end;
+          end;
+      end; {PRINT FOOTINGS}
+    
+    Procedure PRINT_HEADINGS;
+      var UNDER_LINE:String[40];
+          TEMP_WIDTH:Integer;
+      begin {PRINT_HEADINGS}
+        UNDER_LINE := '========================================';
+        for HEADING_INDEX:=1 to 3 do
+          begin
+            str(HEADING_INDEX,STRING_HEAD);
+            STRING_HEAD := concat('HEAD',STRING_HEAD);
+            HEADING := GET_FIELDS[FIND(STRING_HEAD,GET_FIELDS)].S_FLD;
+            EATSPL(HEADING);  EATSPR(HEADING);
+            if length(HEADING) > 0
+              then 
+                begin
+                  PSTRING(P_LENGTH,HEADING);
+                  writeln(LP);
+                  LINE_NUMBER := LINE_NUMBER + 1;
+                end;
+          end;
+        if LINE_NUMBER>1 then writeln(LP);
+        for HEADING_INDEX:=1 to ARRAY_INDEX - 1 do
+          begin
+            with PRINT_ARRAY[HEADING_INDEX] do
+              PSTRING(COLUMN_WIDTH,PRINT_TITLE);
+          end;
+        writeln(LP);
+        for HEADING_INDEX := 1 to ARRAY_INDEX -1 do
+          begin
+            with PRINT_ARRAY[HEADING_INDEX] do
+              begin
+                if FIELD_WIDTH>0
+                  then TEMP_WIDTH := FIELD_WIDTH
+                  else TEMP_WIDTH := -FIELD_WIDTH;
+                PSTRING(COLUMN_WIDTH,COPY(UNDER_LINE,1,TEMP_WIDTH));
+              end;
+          end;
+        writeln(LP);
+        writeln(LP);
+        LINE_NUMBER := LINE_NUMBER + 3;
+      end; {PRINT HEADINGS}
+
+
+    begin {PRINT IT}
+     MESSAGE(MAX_ROW,40,'List in progress',false);
+     {$I-}
+     if WRITE_FILE_NAME ='' then begin
+       rewrite(LP,'PRINTER:');
+       if IORESULT<>0 then 
+         begin
+          MESSAGE(MAX_ROW,40,'ERROR: Printer not on line.',True);
+          exit(PRINT_IT);
+         end;
+     end
+     else begin
+       rewrite(lp,write_file_name);
+       if ioresult<>0 then begin
+         message(max_row,40,'ERROR: Output file not available.',true);
+         exit(print_it);
+       end;
+     end; {Dec 29}
+         
+     ERROR_FIELD := 0;
+     ARRAY_INDEX := 1;
+     string_width:=GET_FIELDS[find('WIDTH',GET_FIELDS)].s_fld; {Dec 29}
+     if not val(string_width,width) then begin {Dec 29}
+       message(max_row,40,'ERROR: Invalid print width',true);
+       error_field:=find('WIDTH',GET_FIELDS);
+     end;  {if not val}
+     for PRINT_INDEX := 1 to NUMBER_COLUMNS do
+      begin
+       str(PRINT_INDEX,STRING_INDEX);
+       STRING_ID := concat('ID',STRING_INDEX);
+       STRING_TITLE := concat('TIT',STRING_INDEX);
+       ASCII_TITLE := GET_FIELDS[FIND(STRING_TITLE,GET_FIELDS)].S_FLD;
+       EATSPL(ASCII_TITLE);  EATSPR(ASCII_TITLE);
+       TITLE_WIDTH := length(ASCII_TITLE);
+       LIST_INDEX := FIND(STRING_ID,GET_FIELDS);
+       ASCII_ID := GET_FIELDS[LIST_INDEX].S_FLD;
+       EATSPL(ASCII_ID);  EATSPR(ASCII_ID);
+       if ASCII_ID = '#'
+         then 
+           with PRINT_ARRAY[ARRAY_INDEX] do
+            begin
+             FIELD_WIDTH := 5;
+             if TITLE_WIDTH <= FIELD_WIDTH
+               then COLUMN_WIDTH := FIELD_WIDTH + 2
+               else COLUMN_WIDTH := TITLE_WIDTH + 2;
+             FIELD_WIDTH := -FIELD_WIDTH;
+             PRINT_TITLE := ASCII_TITLE;
+             ARRAY_INDEX := ARRAY_INDEX + 1;
+            end
+         else
+          begin
+           MAINT_INDEX := FIND(ASCII_ID,MAINT_FIELDS);
+           if (MAINT_INDEX = 0)
+                    and
+              (length(ASCII_ID) > 0)
+              then
+                begin
+                  MESSAGE(MAX_ROW,40,'ERROR: Invalid field ID',True);
+                  ERROR_FIELD := LIST_INDEX;
+                  exit(PRINT_IT);
+                end
+              else
+                if MAINT_INDEX > 0
+                  then
+                    begin
+                     with PRINT_ARRAY[ARRAY_INDEX] do
+                      begin
+                       PRINT_TITLE := ASCII_TITLE;
+                       FIELD_WIDTH := MAINT_FIELDS[MAINT_INDEX].S_LEN;
+                       if TITLE_WIDTH <= FIELD_WIDTH
+                         then COLUMN_WIDTH := FIELD_WIDTH + 2
+                         else COLUMN_WIDTH := TITLE_WIDTH + 2;
+                       START_POS:=0;
+                       for INDEX:=1 to MAINT_INDEX-1 do
+                          START_POS:=START_POS+MAINT_FIELDS[INDEX].S_LEN;
+                       START_POS:=START_POS+1;
+                      end;
+                     ARRAY_INDEX := ARRAY_INDEX + 1;
+                    end;
+          end;
+      end;
+     if ARRAY_INDEX = 1
+      then
+        begin
+         MESSAGE(MAX_ROW,40,'ERROR: No Field IDs found',True);
+         exit(PRINT_IT);
+       end;
+     PRINT_LENGTH;
+     if P_LENGTH > width  {Dec 29}
+       then 
+         begin
+          MESSAGE(MAX_ROW,40,concat('ERROR: Print record > ',
+            string_width,' characters'),True); {Dec 29}
+          exit(PRINT_IT);
+        end;
+     COUNT_FOOTINGS;
+     LAST_LINE := MAX_LINES-FOOTING_LINES;
+     writeln(LP,FORM_FEED);
+     LINE_NUMBER := 1;
+     PAGE_NUMBER := 1;
+     DB_RECNO := 1;
+     READ_WRITE('R',DB_RECNO,REC_LEN,RESULTS);
+     IF TESTS
+       THEN LOAD_SCREEN('A',MAINT_FIELDS,NUM_FLDS,IO_REC.B);
+     while RESULTS = 0 do
+      begin
+       if LINE_NUMBER = LAST_LINE
+         then
+           begin
+            if FOOTING_LINES>0 then PRINT_FOOTINGS;
+            writeln(LP,FORM_FEED);
+            LINE_NUMBER := 1;
+            PAGE_NUMBER := PAGE_NUMBER + 1;
+           end;
+       if LINE_NUMBER = 1 then PRINT_HEADINGS;
+       str(DB_RECNO,STRING_RECNO);
+       while length(STRING_RECNO)<4 do  
+         STRING_RECNO:=concat(' ',STRING_RECNO);
+     { gotoxy(13,23);
+       write(STRING_RECNO); } {Dec 29}
+       if IO_REC.A[3] = 42
+         THEN 
+           IF LIST_RECORD 
+             THEN
+               begin
+                for COLUMN_NUMBER := 1 to ARRAY_INDEX-1 do
+                 begin
+                  with PRINT_ARRAY[COLUMN_NUMBER] do
+                   begin
+                    if FIELD_WIDTH < 1
+                      then
+                        begin
+                         PSTRING_(COLUMN_WIDTH,STRING_RECNO);
+                        end
+                      else
+                       PSTRING(COLUMN_WIDTH,
+                                       copy(IO_REC.B,START_POS+3,FIELD_WIDTH));
+                   end;
+                 end;
+                writeln(LP);
+                LINE_NUMBER := LINE_NUMBER + 1;
+               end;
+       DB_RECNO := DB_RECNO +1;
+       READ_WRITE('R',DB_RECNO,REC_LEN,RESULTS);
+       IF TESTS
+         THEN LOAD_SCREEN('A',MAINT_FIELDS,NUM_FLDS,IO_REC.B);
+     end; {while RESULTS}
+     if LINE_NUMBER < LAST_LINE
+       then
+         begin
+          for PRINT_INDEX := LINE_NUMBER to LAST_LINE-1 do writeln(LP);
+          if FOOTING_LINES > 0 then PRINT_FOOTINGS;
+         end;
+     close(lp,lock); {Dec 29}
+     ERASE_EOL(40,MAX_ROW);
+    end; {PRINT IT}
+  
+  begin  {ACCESS_DATA_BASE}
+    FOR I := 1 TO MAX_TESTS DO
+      WITH TEST_ARRAY[I] DO
+        BEGIN
+          FIELD_LOC := 0;  VALUE := '';
+        END;
+    TESTS := FALSE;
+    RECORD_LENGTH(MAINT_FIELDS); {Jan 9}
+    ERASE_EOS(0,0);
+    GET_FILE('*UD/LIST.SCRN',GET_FIELDS,GET_PROMPTS,RESULTS);
+    if RESULTS <> 0
+      then
+        begin
+          MESSAGE(MAX_ROW,40,'ERROR: Unable to load "UD/LIST.SCRN"',True);
+          exit(LIST);
+        end;
+    DISPLAY_FLAG := True;
+    repeat
+      if DISPLAY_FLAG
+        then
+          begin
+            ERASE_EOS(0,0);
+            DISPLAY_PROMPTS(GET_PROMPTS,0,0,0,23);
+            DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+            gotoxy(0,MAX_ROW-1);  writeln(PROMPT1);  write(PROMPT2);
+            DISPLAY_FLAG := False;
+          end;
+      gotoxy(32,23);  read(Keyboard,CH);
+      if CH = ESC_KEY
+        then
+          begin
+            close(DATA_FILE,lock);
+            exit(LIST);
+          end
+        else if CH in['a'..'z'] then CH:=chr(ord(CH)+ord('A')-ord('a'));
+      ERASE_EOL(32,23);
+      write(CH);
+      case CH of
+        'G','S','O':  begin
+                GET_SAVE_FORMAT(CH,ESC);
+                DISPLAY_FLAG := True;
+              end;
+        'L':  begin
+                PRINT_IT(START_LIST);
+                if START_LIST <> 0
+                  then SCREEN(GET_FIELDS,true,START_LIST,0,0,0,MAX_ROW,
+                    MAX_ROW,40,EXXIT);
+              end;
+        'C':  SCREEN(GET_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXXIT);
+        'E':  begin
+                GET_SAVE_FORMAT(CH,ESC); {Export file}
+                if not ESC then
+                  EXPORT(EXPRT_FILE_NAME,MAINT_FIELDS,WRITE_FILE_NAME);
+                DISPLAY_FLAG:=TRUE;
+              end;
+        'T':  BEGIN
+                GET_TEST_ARRAY;
+             {  GET_FILE('*UD/LIST.SCRN',GET_FIELDS,GET_PROMPTS,RESULTS);
+                if RESULTS <> 0
+                  then
+                    begin
+                      MESSAGE(MAX_ROW,40,
+                              'ERROR: Unable to load "UD/LIST.SCRN"',True);
+                      exit(LIST);
+                    end;               }
+                DISPLAY_FLAG:=TRUE;
+              END;
+        'Q':  exit(ACCESS_DATA_BASE);
+      end;
+    until False;
+  end;   {ACCESS_DATA_BASE}
+
+  Procedure RECORD_LENGTH{var S_ARRAY: SCREEN_ARR};
+  { Function to find the length of the record defined by the data base
+       definition. }
+    var
+      DONE: boolean;
+    begin  
+      REC_LEN := 0;
+      INDEX := 1;
+      DONE:=false;     {Mar 20 to handle 40 fields }
+      while (not DONE) and (INDEX<=SCREEN_FIELDS) do
+        if S_ARRAY[INDEX].S_ROW <> END_SCREEN then
+        begin
+          REC_LEN := REC_LEN + S_ARRAY[INDEX].S_LEN;
+          INDEX := INDEX + 1;
+        end
+        else DONE:=true;
+      REC_LEN := REC_LEN + 5;
+      NUM_FLDS := INDEX-1;
+    end;
+  
+  Procedure MESSAGE; (* M_ROW,M_COL: Integer; MSG: String; DING: Boolean *)
+  { Procedure displays messages at the message row and column. }
+    begin
+      gotoxy(M_COL,M_ROW);  write(MSG);
+      if DING then write(ALARM_BELL);
+    end;
+  
+  Function VAL; {(S: string; var NUM: integer): boolean;}{ Jan 7}
+  { Procedure converts a string to an integer and returns an error indicator }
+    var
+      neg: boolean;
+      i: integer;
+      correct: boolean;
+    begin
+      num:=0;
+      eatspl(s); eatspr(s);
+      if length(s)=0 then begin
+        val:=false;
+        exit(val);
+      end;
+      neg:=s[1]='-';
+      if s[1] in ['+','-'] then delete(s,1,1);
+      correct:=true;
+      for i:=1 to length(s) do 
+        if s[i] in ['0'..'9'] then num:=10*num+ord(s[i])-ord('0')
+        else correct:=false;
+      if correct and neg then num:=-num;
+      if not correct then num:=0;
+      val:=correct;
+    end;  { val }
+    
+begin  {LIST}
+ INITIALIZE;
+ GET_DATA_BASE;
+ ACCESS_DATA_BASE;
+ close(DATA_FILE,lock);
+end.   {LIST}
+

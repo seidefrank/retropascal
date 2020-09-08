@@ -1,0 +1,322 @@
+{       
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+}
+
+{BASPROC.TEXT}                                                                
+              
+FUNCTION rVal{(s : STRING) : REAL};      
+ VAR intr,ints : REAL; 
+     ts : STRING;
+ BEGIN 
+  ts := s;
+  intr := 0; 
+  ints := 0;
+  intr := intr + TRUNC(Val(ts));   
+  IF POS('.',ts)<>0 THEN
+   BEGIN
+    DELETE(ts,1,POS('.',ts));   
+    ints := TRUNC(VAL(ts));  
+    WHILE ints>1 DO ints := ints / 10;    
+    WHILE POS('0',ts)=1 DO  
+     BEGIN
+      DELETE(ts,1,1); 
+      ints := ints/10;
+     END;
+    END;
+  rVal := intr + (ABS(intr)/intr)*ints;  
+ END;
+
+ {$I-}
+ FUNCTION Chkfiles(s : STRING) : BOOLEAN;      
+  VAR intb : BOOLEAN;
+      infile : FILE;
+  BEGIN 
+   intb := TRUE;     
+   RESET(infile,s);       
+   IF IORESULT <> 0 THEN intb := FALSE;
+   CLOSE(infile);
+   Chkfiles := intb; 
+  END;  
+{$I+}
+
+PROCEDURE Readingroups;   
+ VAR gfile : TEXT;
+     line : STRING;
+     optr,tptr : ^xrerec; 
+     added : BOOLEAN;
+ BEGIN   
+  first := NIL;
+  IF NOT Chkfiles('#4:gfile.text') THEN EXIT(Readingroups);
+  RESET(gfile,'#4:gfile.text');
+  WRITE('Reading in gfile ');
+  WHILE NOT EOF(gfile) DO  
+   BEGIN
+    WRITE('.');
+    READLN(gfile,line);
+    NEW(ptr);  
+    WHILE POS(' ',line)=1 DO DELETE(line,1,1);  
+    ptr^.part1 := COPY(line,1,POS(' ',line)-1); 
+    DELETE(line,1,POS(' ',line));
+    WHILE POS(' ',line)=1 DO DELETE(line,1,1);
+    ptr^.part2 := COPY(line,1,POS(' ',line)-1);       
+    DELETE(line,1,POS(' ',line));
+    WHILE POS(' ',line)=1 DO DELETE(line,1,1);
+    ptr^.qty := rVal(line); 
+    tptr := first; 
+    optr := NIL;
+    added := FALSE; 
+    WHILE (tptr <> NIL) AND (NOT added) DO    
+     BEGIN
+      IF tptr^.part2 <=  ptr^.part2 THEN 
+       BEGIN
+        IF optr<>NIL THEN  
+         BEGIN
+          ptr^.link := tptr;
+          optr^.link := ptr; 
+          added := TRUE;
+         END 
+        ELSE
+         BEGIN
+          ptr^.link := first;  
+          first := ptr;
+          added := TRUE;
+         END;
+       END  
+      ELSE
+       BEGIN 
+        optr := tptr;
+        tptr := tptr^.link;  
+       END;  
+     END;  
+     IF NOT added THEN    
+      IF optr = NIL THEN 
+       BEGIN
+        ptr^.link := first;
+        first := ptr;
+       END
+      ELSE
+       BEGIN
+        ptr^.link := NIL;
+        optr^.link := ptr;       
+       END;
+   END (* of file *);   
+ CLOSE(gfile); 
+END; 
+ 
+PROCEDURE Wnirecs;         
+ BEGIN  
+  Str(nirecs,invfile^.ldate);
+  SEEK(invfile,0);  
+  PUT(invfile);
+ END;
+   
+PROCEDURE Wnarecs;
+ BEGIN
+  Str(ntrans,arcfile^.trans);
+  Str(narecs,arcfile^.date);   
+  SEEK(arcfile,0);    
+  PUT(arcfile);  
+ END;
+ 
+PROCEDURE Uppercase{(VAR s: STRING)};       
+ VAR t : INTEGER;
+ BEGIN
+  FOR t := 1 TO LENGTH(s) DO
+   IF s[t] IN ['a'..'z'] THEN s[t] := CHR(ORD(s[t])-32);      
+ END;
+
+PROCEDURE Clear;                      
+ BEGIN   
+  gotoxy ( 0, 0 );
+  WRITE(CHR(27),chr ( 69 ));   {h-19 specific}               
+ END; 
+  
+PROCEDURE Clrline{(x,y : INTEGER)};   
+ BEGIN
+  GOTOXY(x,y);WRITE(CHR(27),chr ( 75 )); {H-19 specific}               
+ END;    
+
+FUNCTION Val{ (s : STRING) : INTEGER};                   
+ VAR i,j,k: INTEGER;                     
+ BEGIN   
+  j := 0; k := 0; i := 1;         
+  IF LENGTH(s)<>0 THEN
+   BEGIN  
+    IF (LENGTH(s)>0) AND (s[1] = '-') THEN BEGIN k := k + 1;i := -1;END;              
+    IF k<LENGTH(s) THEN      
+     REPEAT
+      k := k + 1; 
+      IF (k<=LENGTH(s)) AND (s[k] IN ['0'..'9']) THEN    
+       BEGIN
+        j := j * 10; 
+        j := j + ORD(s[k]) - 48;
+       END; 
+     UNTIL (k=LENGTH(s)) OR NOT(s[k] IN ['0'..'9']);        
+   END;
+  Val := i*j;   
+ END (* Val *);          
+        
+PROCEDURE Str{(i : INTEGER, VAR s : STRING)};   
+ VAR startedstring : BOOLEAN;  
+     factor        : INTEGER;
+     numstr        : STRING[9];
+ BEGIN 
+  s := '';
+  IF i < 0 THEN
+   BEGIN
+    s := '-';
+    i := - i;
+   END;
+  numstr := '123456789';
+  startedstring := FALSE; 
+  factor := 10000;
+  WHILE factor<>0 DO    
+   BEGIN
+    IF i >= factor THEN   
+     BEGIN
+      s := CONCAT(s,COPY(numstr,i DIV factor,1));        
+      i := i - (i DIV factor)*factor;                 
+      startedstring := TRUE;
+     END
+    ELSE IF startedstring THEN s := CONCAT(s,'0');
+    factor := factor DIV 10;
+   END;  
+  IF LENGTH(s) = 0 THEN s := '0';    
+ END;  
+  
+
+PROCEDURE Rdata{(x,y,l : INTEGER; VAR s: STRING)};                 
+ VAR tmpstr : STRING;
+ BEGIN  
+  REPEAT
+   IF (x<>0) OR (y<>0) THEN
+    BEGIN   
+     Clrline(x,y);
+     WRITE(' ':l,'<');                      
+     GOTOXY(x,y);
+    END;    
+   READLN(tmpstr);   
+  UNTIL LENGTH(tmpstr)<=l;    
+  IF POS('^',tmpstr)=0 THEN s := tmpstr;                                                                     
+  IF (x<>0) OR (y<>0) THEN
+   BEGIN                   
+    Clrline(x,y);
+    WRITE(s);  
+   END;
+ END;         
+       
+PROCEDURE Getint{(x,y : INTEGER; VAR t1 :INTEGER)};                    
+ VAR tstr : STRING;
+ BEGIN   
+  Str(t1,tstr);
+  Rdata(x,y,6,tstr);
+  t1 := Val(tstr);
+ END;
+
+PROCEDURE Getreal{(x,y : INTEGER; VAR r : REAL)};
+ VAR tmpstr : STRING; 
+ BEGIN
+  Rdata(x,y,8,tmpstr);
+  r := rVal(tmpstr);
+ END;
+ 
+FUNCTION Chkdate{(s: STRING):BOOLEAN}; 
+ VAR intb : BOOLEAN;
+ BEGIN
+  intb := FALSE;
+  IF (Val(COPY(s,1,2))>0) AND (Val(COPY(s,1,2))<12)
+     AND (Val(COPY(s,3,2))>0) AND (Val(COPY(s,3,2))<32)    
+     AND (Val(COPY(s,5,2))>70) AND (Val(COPY(s,3,2))<90)         
+     AND (LENGTH(s)=6) THEN intb := TRUE;
+  Chkdate := intb;
+ END;
+
+
+ 
+
+PROCEDURE Initfiles;
+ 
+ (*$I-*) 
+ 
+ PROCEDURE Makefile( s : STRING);       
+  TYPE tarry = ARRAY[1..512] OF 0..15; 
+  VAR  tafile : FILE;     
+       ttarry : tarry;
+       temp1,temp   : INTEGER;
+  BEGIN
+   WRITE('Making : ',s);
+   REWRITE(tafile,s);  
+   FOR temp := 1 TO 512 DO ttarry[temp] := 0; 
+   temp := 0;
+   REPEAT            
+    WRITE('.'); 
+    temp1 := BLOCKWRITE(tafile,ttarry,1);     
+    temp := temp + 1;   
+   UNTIL (temp1=0) OR (temp>=242) OR (IORESULT<>0);                 
+   WRITELN;
+   CLOSE(tafile,lock); 
+  END;
+ (*$I+*)        
+ 
+ BEGIN  
+  IF (NOT Chkfiles('#5:inv.data')) AND (NOT Chkfiles('#5:arc.data')) THEN    
+   BEGIN
+    WRITELN('Program: Inv');   
+    WRITELN('an inventory maintanence program.');  
+    WRITELN;  
+    WRITELN('Programmer: Patrick R. Horton '); 
+    WRITELN;  
+    WRITELN('Copyright: Copyright 1980 (c), Associated Computer Industries '); 
+    WRITELN('Permission to copy and distribute for non-profit '); 
+    WRITELN('purposes is hereby granted provided that this header '); 
+    WRITELN('is included on all copies '); 
+    WRITELN;  
+    WRITELN('place a formatted and zeroed diskette in drive #5:');       
+    WRITE('<cr> when ready ');
+    READLN; 
+    Makefile('#5:inv.data[*]');  
+    Makefile('#5:arc.data[0]'); 
+   END
+  ELSE IF NOT Chkfiles('#5:inv.data') THEN   
+   BEGIN
+    WRITELN('<cr> to create ''#5:inv.data''');
+    READLN;
+    Makefile('#5:inv.data[]')     
+   END  
+  ELSE IF NOT Chkfiles('#5:arc.data') THEN 
+   BEGIN
+    WRITELN('<cr> to create ''#5:arc.data'''); 
+    READLN;
+    Makefile('#5:arc.data[]')   
+   END;
+     
+  RESET(invfile,'#5:inv.data');
+  RESET(arcfile,'#5:arc.data');   
+  SEEK(invfile,0);
+  GET(invfile);
+  SEEK(arcfile,0);
+  GET(arcfile);
+  narecs := Val(arcfile^.date);
+  nirecs := Val(invfile^.ldate);
+  ntrans := Val(arcfile^.trans);
+  
+  Readingroups;
+ END;
+ 
+PROCEDURE Closefiles;
+ BEGIN
+  CLOSE(invfile);  
+  CLOSE(arcfile); 
+ END;
+
+

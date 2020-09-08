@@ -1,0 +1,791 @@
+(*$s+,v-,L printer:*)
+
+(************************************************************************)
+(*                                                                      *)
+(* program :- spbsstuff (intrinsic unit Procedures and Functions        *)
+(*                                                                      *)
+(* update  :- May   1982                                                *)
+(*                                                                      *)
+(************************************************************************)
+ 
+ 
+Unit SpbsStuff;intrinsic code 25 data 24;
+
+ 
+interface
+
+uses chainstuff,screenops;
+
+type setofchar=set of char;
+var f,pr:text;
+
+Procedure Bell(times:integer);
+Procedure Printline(x,y:integer;s:string);
+Function GetChar(okchars:setofchar):char;
+Function GetCHoice(options:setofchar):char;
+Function Yes:boolean;
+Procedure Continue(x,y:integer);
+Procedure Goodbye;
+Procedure GetString(var s:string;maxlen:integer;okchars:setofchar);
+Procedure GetTextfileName(var nameoffile:string;s1,s2:string);
+Procedure IoError(fault:integer);
+Procedure WriteIoError(fault:integer);
+Procedure OpenNewFile(var nameoffile:string;s1,s2:string);
+Procedure OpenOldFile(var nameoffile:string;s1,s2:string);
+Procedure IntNum(var num:integer;var good:boolean;s:string);
+Procedure RealNum(var num:real;var good:boolean;s:string);
+Procedure GetRealNo(var num:real;termchars:setofchar);
+Procedure GetIntNo(var num:integer;var ok:boolean;maxlen : integer;
+                 termchars: setofchar);
+Function GetReal(x,y:integer;min,max:real):real;
+Function GetInt(x,y,min,max:integer):integer;
+Procedure CheckPrinter;
+
+implementation
+   
+(**********************************************************************)
+
+Procedure Bell;
+
+(* rings the buzzer the required number of times *)
+
+var loop2,loop:integer;
+
+begin
+for loop:=1 to times do 
+begin
+  for loop2:=1 to 40 do write('');
+  write(chr(7))
+end
+end;  (* of Bell *)
+
+(**********************************************************************)
+
+Procedure Printline;
+
+(*  prints s on the screen, starting at position x,y.  *)
+(*  if x>79 clears screen, and starts at x-80,y        *)
+
+begin
+if x>79 then
+begin
+  ScClrScreen;
+  x:=x-80
+end;
+gotoxy(x,y);
+write(s)
+end;    (* of Printline *)
+
+(**********************************************************************)
+(*  reads one char from the console.              *)
+(*  accepts if in okchars and echoes if possible. *)
+(*  if not in okchars rings bell and reads again. *)
+(*  doesnot echo return                           *)
+
+Function GetChar;
+
+var ch:char;
+    good:boolean;
+    
+begin
+unitclear(1);  (*  clear type-ahead buffer *)
+repeat
+  read(keyboard,ch);
+  if eoln(keyboard) then ch:=chr(13);
+  good:=ch in okchars;
+  if not good then Bell(3)
+  else
+  if ch in [' '..chr(125)] then write(ch)
+until good;
+GetChar:=ch
+end;    (* of GetChar *)
+
+(**********************************************************************)
+(*  gets the choice from a set of single char options  *)
+(*  The option set needs to be in UPPER case           *)
+
+Function GetChoice;
+
+var chdum,ch:char;
+    good:boolean;
+    
+begin
+unitclear(1);  (*  clear type-ahead buffer *)
+repeat
+  repeat
+    read(keyboard,chdum);
+    if chdum in ['a'..'z'] then ch:=chr(ord(chdum)-32)
+    else ch:=chdum;
+    good:=ch in options;
+    if not good then Bell(3)
+    else
+    if ch in [' '..chr(125)] then write(chdum)
+  until good;
+  GetChoice:=ch;
+  ch:=GetChar([chr(8),chr(13)]);
+  if ch=chr(8) then write(chr(8),' ',chr(8))
+until ch=chr(13)
+end;    (* of GetChoice *)
+
+(**********************************************************************)
+
+Function yes;
+
+(* reads a y/n reply only in either upper or lower case *)
+
+begin
+  yes:=GetChoice(['Y','N'])='Y'
+end;
+
+(**********************************************************************)
+
+Procedure Continue;
+
+(* prints continue message in required position *)
+
+var ch:char;
+
+begin
+  gotoxy(x,y);
+  write('Press <return> to continue..');
+  ch:=GetChar([chr(13)])
+end;
+
+(**********************************************************************)
+(*  print 'end of program' at position 0,22  and quit  *)
+(* If Turnkey disc will restart at the beginning *)
+
+Procedure Goodbye;
+
+var     nioresult,i:integer;
+        ch:char;
+        ok:boolean;
+
+begin
+ScClrLine(22);
+Printline(0,22,'End of program');
+repeat
+  (*$i-*)
+  reset(f,'#4:system.pascal');
+  (*$i+*)
+  ok:=(ioresult=0);
+  if ok then
+  begin
+    (*$i-*)
+    close(f,normal);
+    reset(f,'#4:system.startup');
+    nioresult:=ioresult;
+    if (nioresult=0) then 
+    begin
+      close(f,normal);
+      reset(f,'#4:startup.code');
+      nioresult:=ioresult;
+      if (nioresult=0) then
+      begin
+        close(f,normal);
+        (*$i+*)
+        Continue(0,23);
+        setchain('#4:startup');
+        exit(program)
+      end
+    end
+  end
+  else
+  begin
+    (*$i+*)
+    Bell(6);
+    Printline(0,23,'Put system disk in #4 and press <return>');
+    if GetChar([chr(13)])=chr(13) then ScClrLine(23)
+  end
+until ok;
+exit(program)
+end;    (* of Goodbye *)
+
+(**********************************************************************)
+(*  reads, char by char, string s of max length maxlen.   *)
+(*  each char must belong to okchars.                     *)
+(*  if a nul string is read, s retains its value prior    *)
+(*  to the Procedure call.                                *)
+
+Procedure GetString;
+
+var s1:string[1];
+    str:string[80];
+    
+begin
+  s1:=' ';
+  str:='';
+  repeat
+    if length(str)=0 then s1[1]:=GetChar(okchars+[chr(13)])
+    else
+    if length(str)=maxlen then s1[1]:=GetChar([chr(13),chr(8)])
+    else
+    s1[1]:=GetChar(okchars+[chr(13),chr(8)]);
+    if s1[1] in okchars then str:=concat(str,s1)
+    else
+    if s1[1]=chr(8) then
+    begin
+      write(chr(8),' ',chr(8));
+      delete(str,length(str),1)
+    end
+  until s1[1]=chr(13);
+  if length(str)<>0 then s:=str
+end;    (* of GetString *)
+
+(**********************************************************************)
+(*  gets text file name. allows only those chars defined by *)
+(*  local variable okchars.  .text is added if necessary    *)
+(*  checks for bad names (see below).                       *)
+
+Procedure GetTextfileName;
+
+var ok:boolean;
+    name:string[23];
+    lpdottext,updottext,pc,lfullname,lname:integer;
+    okchars:setofchar;
+    filename:string;
+
+  
+  Procedure txtflerror(error:integer);
+  
+  (*  prints text file name error, starting at line 12 *)
+  
+  var s:string;  ch:char;
+  
+  begin   (* of txtflerror *)
+    case error of 
+      1: s:='no disk name (no chars before '':'')';
+      2: s:='disk name exceeds 7 chars';
+      3: s:='no file name (no chars after '':'')';
+      4: s:='no '':'' allowed in file name';
+      5: s:='file name exceeds 10 chars'
+    end;  (* of case *)
+    Bell(3);
+    Printline(2,12,'fault in text file name');
+    Printline(2,15,s);
+    Continue(2,22)
+  end;    (* of txtflerror *)
+
+
+begin   (* of GetTextfileName *)
+okchars:=['%'..')','+','-'..'<','>','@'..'z','^',chr(97)..chr(122)];
+repeat
+  repeat
+    repeat
+      repeat
+        repeat
+          (*  check at least one char before colon *)
+          ok:=true;
+          Printline(82,0,'(Insert other disk now if relevant)');
+          Printline(2,3,s1);
+          Printline(2,5,s2);
+          Printline(2,7,'');
+          GetString(filename,23,okchars);
+          gotoxy(2,8);
+          pc:=pos(':',filename);
+          if(pc=0)or (pc=1) then
+          begin
+            ok:=not(ok);
+            txtflerror(1)
+          end
+        until ok;
+        (*  check max 7 chars before colon  *)
+        if pos(':',filename)>8 then 
+        begin
+          ok:=not(ok);
+          txtflerror(2)
+        end
+      until ok;
+      (*  check at least one char (excluding .text) after colon  *)
+      lfullname:=length(filename);
+      name:=copy(filename,pc+1,lfullname-pc);
+      updottext:=pos('.TEXT',name);
+      lpdottext:=pos('.text',name);
+      if ((length(name)=0) or (updottext=1) or (lpdottext=1)) then
+      begin
+        ok:=not ok;
+        txtflerror(3)
+      end
+    until ok;
+    (*  check only one colon altogether  *)
+    if pos(':',name) <> 0 then
+    begin
+      ok:=not ok;
+      txtflerror(4)
+    end
+  until ok;
+  (*  check max 10 chars (excluding .text) after colon *)
+  if ((updottext>0) or (lpdottext>0))  then lname:=length(name)-5
+  else
+    lname:=length(name);
+  if lname>10 then
+  begin
+    ok:=not ok;
+    txtflerror(5)
+  end
+until ok;
+if ((updottext=0) and (lpdottext=0))  then nameoffile:=concat(filename,'.text')
+else
+nameoffile:=filename
+end;    (* GetTextfileName *)
+
+(**********************************************************************)
+
+Procedure writeIoError;
+
+(* writes the appropriate ioerror to the screen *)
+
+begin
+if ((fault<=18)or(fault=64)) then
+case fault of
+  1: write('bad block, parity error');
+  2: write('bad device (volume) number');
+  3: write('illegal I/O request');
+  4: write('data-com timeout');
+  5: write('lost device; device is no longer online');
+  6: write('lost file, no longer in directory');
+  7: write('bad title; illegal file name');
+  8: write('no room; insufficient space');
+  9: write('no such volume online');
+  10:write('no file; no such file on volume');
+  11:write('duplicate directory entry');
+  12:write('not closed; attempt to open an open file');
+  13:write('not open; attempt to access a closed file');
+  14:write('bad format; error in reading real or integer');
+  15:write('ring buffer overflow');
+  16:write('disk is write protected');
+  17:write('illegal block number');
+  18:write('illegal buffer');
+  64:write('device error')
+end
+else
+write('please report this fault')
+end;    (* writeIoError *)
+
+(**********************************************************************)
+(*  prints IoError starting at position 3,17  *)
+
+Procedure IoError;
+
+begin
+  Bell(3);
+  Printline(2,18,'i/o error ');
+  write(fault);
+  gotoxy(2,20);
+  writeIoError(fault);
+  if ((fault>18) and (fault<>64)) then Goodbye;
+  Continue(2,23)
+end;    (* of IoError *)
+
+(**********************************************************************)
+
+Procedure OpenNewFile;
+
+(* opens a new file, first checks to see if a file with this name already
+  exists, if it does then asks if it is to be overwritten                 *)
+  
+var openok,goodname:boolean;
+    fault:integer;
+
+begin
+repeat
+  repeat
+    goodname:=true;
+    GetTextfileName(nameoffile,s1,s2);
+    (*$i-*) reset(f,nameoffile); (*$i+*)
+    fault:=ioresult;
+    if fault=12 then
+    begin
+      ioerror(fault);
+      PrintLine(2,11,'Program needs altering  to recitify');
+      PrintLine(2,14,'this problem ');
+      close(f,normal);
+      goodbye
+    end;
+    if fault=0 then
+    begin
+      Bell(3);
+      Printline(2,11,'this file already exists!');
+      Printline(2,14,'do you wish to overwrite it (y/n) ?');
+      goodname:=Yes;
+      gotoxy(2,16)
+    end;
+    (*$i-*) close(f,normal) (*$i+*)
+  until goodname;
+  (*$i-*) rewrite(f,nameoffile); (*$i+*)
+  fault:=ioresult;
+  openok:=fault=0;
+  if not openok then
+  begin
+    (*$i-*) close(f,normal); (*$i+*)
+     IoError(fault)
+  end
+until openok
+end;
+
+(**********************************************************************)
+
+Procedure OpenOldFile;
+
+(* opens an existing file *)
+
+var fault:integer;
+
+begin
+repeat
+  GetTextfileName(nameoffile,s1,s2);
+  (*$i-*) reset(f,nameoffile); (*$i+*)
+  fault:=ioresult;
+  (*$i-*) close(f,normal); (*$i+*)
+  if fault<>0 then IoError(fault);
+until fault=0;
+(*$i-*) reset(f,nameoffile); (*$i+*)
+end;
+
+(**********************************************************************)
+(* gonverts string 's' to short integer num *)
+(* good set to true if conversion successful*)
+
+Procedure IntNum;
+
+var ok,neg:boolean;
+    okchars:setofchar;
+    l:integer[36];
+    i,n:integer;
+    
+begin
+good:=false;
+n:=length(s);
+l:=0;
+i:=0;
+neg:=false;
+ok:=false;
+okchars:=['0'..'9'];
+num:=0;
+if n=0 then
+begin
+  num:=-32767;
+  exit(IntNum)
+end;
+i:=i+1;
+if not (s[i] in okchars) then
+begin
+  repeat 
+    if (s[i]='-') then
+    begin
+      neg:=true;
+      ok:=true
+    end
+    else
+    if (s[i]='+') then ok:=true
+    else
+    if ((s[i]<>' ') or (i=n)) then
+    begin
+      num:=-32767;
+      exit(IntNum)
+    end;
+    i:=i+1
+  until( ok or (s[i] in okchars))
+end;
+ok:=true;
+repeat
+  if (s[i] in okchars) then
+  l:=l*10+ord(s[i])-48
+  else ok:=false;
+  i:=i+1
+until ((i-1=n) or not ok);
+if i>n then i:=n;
+if not ok then
+begin
+  repeat
+    if s[i]<>' ' then 
+    begin
+      num:=-32767;
+      exit(IntNum)
+    end;
+    i:=i+1
+  until (i>n)
+end;
+if l>32767 then
+begin
+  num:=-32767;
+  exit(IntNum)
+end;
+good:=true;
+str(l,s);
+for i:=1 to length(s) do
+num:=num*10+ord(s[i])-48;
+if neg then num:=-num
+end;    (* of IntNum *)
+
+(**********************************************************************)
+(* converts string  's'  to real num  *)
+(* not valid if string in exp. format *)
+(* good set to true if conversion successful *)
+
+Procedure RealNum;
+
+var ok,dec,neg:boolean;
+    okchars:setofchar;
+    l:integer[36];
+    dnum,i,n:integer;
+    s1,s2:string;
+     
+begin
+good:=false;
+n:=length(s);
+dnum:=0;
+dec:=false;
+l:=0;
+i:=0;
+neg:=false;
+ok:=false;
+okchars:=['0'..'9','.'];
+num:=0.0;
+if n=0 then exit(RealNum);
+i:=i+1;
+if not (s[i] in okchars) then
+begin
+  repeat
+    if (s[i]='-') then
+    begin
+      neg:=true;
+      ok:=true
+    end
+    else
+    if(s[i]='+') then ok:=true
+    else
+    if((s[i]<>' ')or(i=n)) then exit(RealNum);
+    i:=i+1
+  until (ok or (s[i] in okchars))
+end;
+ok:=true;
+repeat
+  if (s[i] in okchars) then
+  begin
+    if s[i]<>'.' then
+    begin
+      num:=num*10.0 + ord(s[i])-48.0;
+      if dec then dnum:=dnum+1
+    end
+    else
+    begin
+      if not dec then dec:=true
+      else
+      exit(RealNum);
+    end
+  end
+  else
+  ok:=false;
+  i:=i+1
+until ((i-1=n) or not ok);
+if i>n then i:=n;
+if not ok then
+repeat
+  if s[i]<>' ' then exit(RealNum);
+  i:=i+1
+until (i>n);
+if dnum>0 then
+for i:=1 to dnum do
+num:=num/10;
+if neg then num:=-num;
+good:=true
+end;    (* of RealNum *)
+
+(**********************************************************************)
+(* gets one real no from console *)
+(* exp. format not allowed *)
+(* leading spaces ignored *)
+(* terminating character(s) defined by user in termchars *)
+
+Procedure GetRealNo;
+
+var s :string[36];
+    ok:boolean;
+    okchars:setofchar;
+    maxlen,i,n,k:integer;
+    s1:string[1];
+    str:string[80];
+
+begin
+s1:=' ';
+maxlen:=21;
+okchars:=['0'..'9','.'];
+str:='';
+repeat
+  if length(str)=0 then 
+  begin
+    s1[1]:=GetChar(okchars+['+','-',' ']);
+    if s1[1]=' ' then str:=''
+  end
+  else
+  if ((str[1] in ['+','-'])and(maxlen=(length(str)))) then 
+  s1[1]:=GetChar(termchars+[chr(8)])
+  else
+  if ((not(str[1] in ['+','-']))and(maxlen=(length(str)-1))) then 
+  s1[1]:=GetChar(termchars+[chr(8)])
+  else
+  if str[length(str)] in ['0'..'9'] then
+  s1[1]:=GetChar(okchars+termchars+[chr(8)])
+  else
+  s1[1]:=GetChar(okchars+[chr(8)]);
+  if s1[1] in ['0'..'9','+','-','.'] then 
+  str:=concat(str,s1)
+  else
+  if s1[1]=chr(8) then
+  begin
+    write(chr(8),' ',chr(8));
+    delete(str,length(str),1)
+  end;
+  if pos('.',str)>0 then 
+  okchars:=['0'..'9']
+  else 
+  okchars:=['0'..'9','.'];
+until (str<>'')and(s1[1] in termchars);
+RealNum(num,ok,str)
+end;    (* of GetRealNo *)
+
+(**********************************************************************)
+(* gets one integer from console *)
+(* leading spaces ignored *)
+(* terminating character(s) defined by user in termchars *)
+
+Procedure GetIntNo;
+
+var s :string[36];
+    l :integer[36];
+    okchars:setofchar;
+    i,n,k:integer;
+    s1:string[1];
+    str:string[80];
+
+begin
+s1:=' ';
+okchars:=['0'..'9'];
+str:='';
+repeat
+  if length(str)=0 then 
+  begin
+    s1[1]:=GetChar(okchars+['+','-',' ']);
+    if s1[1]=' ' then str:=''
+  end
+  else
+  if str[length(str)] in okchars then
+  begin
+    if ((str[1] in okchars)and(maxlen=(length(str)))) then 
+    s1[1]:=GetChar(termchars+[chr(8)])
+    else
+    if ((not(str[1] in okchars))and(maxlen=(length(str)-1))) then 
+    s1[1]:=GetChar(termchars+[chr(8)])
+    else
+    s1[1]:=GetChar(okchars+termchars+[chr(8)])
+  end
+  else
+  s1[1]:=GetChar(okchars+[chr(8)]);
+  if s1[1] in ['0'..'9','+','-'] then 
+  str:=concat(str,s1)
+  else
+  if s1[1]=chr(8) then
+  begin
+    write(chr(8),' ',chr(8));
+    delete(str,length(str),1)
+  end
+until (str<>'')and(s1[1] in termchars);
+IntNum(num,ok,str)
+end;    (* of GetIntNo *)
+
+(**********************************************************************)
+(* gets one real no from console *)
+(* leading spaces ignoed *)
+(* 'ret' is only valid terminator *)
+
+Function  GetReal;
+
+var ok:boolean;
+    num:real;
+    ch:char;
+
+begin
+repeat
+  ok:=true;
+  gotoxy(x,y);
+  GetRealNo(num,[chr(13)]);
+  if (num<min)or(num>max) then ok:=false;
+  if not ok then
+  begin
+    Bell(3);
+    gotoxy(2,y+2);
+    write('error! ');
+    if (num<min) then write('min is ',min:12:6)
+    else write('max is ',max:12:6);
+    gotoxy(2,y+3);
+    write('press <return> to try again..');
+    ch:=GetChar([chr(13)]);
+    SCClrLine(y+3); SCClrLine(y+2); SCErasetoEOL(x,y)
+  end
+until ok;
+GetReal:=num
+end;    (* of GetReal *)
+
+(**********************************************************************)
+(* get one integer from console *)
+(* 'ret' is only valid terminator *)
+(* checks that integer lies in range min..max *)
+
+Function  GetInt;
+
+var ok:boolean;
+    n:integer;
+    ch:char;
+
+begin
+repeat
+gotoxy(x,y);
+GetIntNo(n,ok,5,[chr(13)]);
+if ok then if ((n<min) or (n>max)) then ok:=false;
+if not ok then
+begin
+  Bell(3);
+  gotoxy(2,y+2);
+  write('Range error min is ',min,' max is ',max);
+  gotoxy(2,y+3);
+  write('Press <return> to try again..');
+  ch:=GetChar([chr(13)]);
+  SCClrLine(y+3); SCClrLine(y+2); SCErasetoEOL(x,y)
+end
+until ok;
+GetInt:=n
+end;    (* of GetInt *)
+
+(**********************************************************************)
+(* check the printer*)
+
+Procedure CheckPrinter; 
+var ok:boolean;
+    string1:string[1];
+
+begin   (* sends the message to the screen. *)
+string1:=' ';
+Printline(82,5,'Please check that the printer is');
+Printline(2,7,'switched on and is "online"');
+Printline(2,10,'Press the spacebar to align the');
+Printline(2,12,'printer.');
+Printline(2,17,'To start listing press <return>..');
+(*$i-*)
+rewrite(pr,'printer:');    (* opens the output file printer with i/o 
+                           checking off                           *)
+(*$i+*)
+repeat
+  string1[1]:=GetChar([chr(13),chr(32)]);
+  if (string1[1]=chr(32)) then
+  begin
+     write(chr(8));
+     writeln(pr)
+  end;
+until (string1[1]=chr(13))
+end;    (* of CheckPrinter *)
+
+begin (* dummy main *)
+
+end.
+

@@ -1,0 +1,29 @@
+        .PROC   DTRON,0 
+        .PRIVATE RETADDR
+
+TPORT   .EQU    0C0H            ;UART CONTROL PORT
+RPORT   .EQU    TPORT+2;        ;TIMER PORT
+CPORT   .EQU    TPORT+3         ;MODEM CONTROL
+UART    .EQU    5CH             ;8BITS, NO PARITY, 2 STOP BITS
+TODTR3  .EQU    07FH            ;NORMAL OP, 300 BAUD
+TRATE   .EQU    250             ;TIMER RATE
+TMPUL   .EQU    80H             ;TIMER MASK
+
+        POP     HL
+        LD      (RETADDR),HL
+        LD      A,TODTR3        ;SET DTR ON
+        OUT     (CPORT),A
+        LD      A,TRATE
+        OUT     (RPORT),A
+TIMES:  IN      A,(RPORT)       ; DELAY .1 SECONDS
+        AND     TMPUL
+        JP      Z,TIMES
+TIMEE:  IN      A,(RPORT)
+        AND     TMPUL
+        JP      NZ,TIMEE
+        LD      A,UART          ;SET UART TO NORMAL (SH AND RI OFF)
+        OUT     (TPORT),A
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

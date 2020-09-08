@@ -1,0 +1,224 @@
+UNIT textio; 
+  
+{$C Copyright 1982, 1983 by John Dykstra.  All rights reserved.  }
+
+
+{               This is an implementation of the TEXTIO unit for
+{               P-System Version Iv.03.                                 }
+
+
+INTERFACE
+
+TYPE
+  
+  io_direction = ( io_input, io_output );
+  
+  io_window = ARRAY [ 0..1 ] OF CHAR;
+  
+  io_file = RECORD
+              os_fib:   RECORD
+                          fwindow: ^ io_window;
+                          feof,feoln: BOOLEAN;
+                          fstate: (fjandw,fneedchar,fgotchar);
+                          frecsize: INTEGER;
+                          f_lock : SEMAPHORE;
+                          fisopen: BOOLEAN; 
+                          filler:  PACKED ARRAY [ 1..570 ] OF 0..255;
+                          END;       {  RECEND  }
+              os_window:  io_window;
+              END;    {  RECEND  }
+  
+  io_string = STRING [ 255 ];
+  
+
+PROCEDURE io_open_file ( VAR file_blk:  io_file;
+                         file_title:  STRING;
+                         direction:  io_direction;
+                         VAR successful:  BOOLEAN  )  ;
+
+PROCEDURE io_close_file ( VAR file_blk:  io_file );
+
+PROCEDURE io_write_line ( VAR file_blk:  io_file;
+                          data_string:  io_string );
+
+PROCEDURE io_read_line ( VAR file_blk:  io_file;
+                         VAR data_string:  io_string );
+
+PROCEDURE io_seek_line ( VAR file_blk:  io_file;
+                         desired_line:  INTEGER );
+
+FUNCTION io_end_of_file ( VAR file_blk:  io_file ):  BOOLEAN;
+
+IMPLEMENTATION
+  
+{$R+}
+
+{  The following procedure exists in the codefile only to force the compiler
+{  to generate segment references to FILEOPS and PASCALIO.  }
+
+PROCEDURE dummy;
+
+  VAR
+    dum_file:  TEXT;
+    name:  STRING;
+    
+  BEGIN
+  name := CONCAT ( '', '' );
+  REWRITE ( dum_file, name );
+  IF EOF ( OUTPUT ) THEN WRITELN;
+  END;
+  
+
+PROCEDURE io_open_file {  ( VAR file_blk:  io_file;
+                         file_title:  STRING;
+                         direction:  io_direction;
+                         successful:  BOOLEAN   )  };
+
+  VAR
+    complete_title:  STRING;
+    
+  BEGIN           {  PROCEDURE io_open_file  }
+  
+  {  Initialize the file block.  This operation is normally done by code
+  {  emitted by the compiler at the start of the procedure in which the 
+  {  file is declared, which calls routine finit in FILEIO.                 }
+  
+  { file_blk.os_fib.fwindow := ^ file_blk.os_window;  }
+  
+  PMACHINE (                    ^ file_blk.os_fib.fwindow,
+                                ^ file_blk.os_window,
+                {  STO  }       196 );
+                
+  file_blk.os_fib.fwindow ^ [ 1 ] := CHR ( 0 );
+  file_blk.os_fib.feof := TRUE;
+  file_blk.os_fib.feoln := TRUE;
+  file_blk.os_fib.fstate := fjandw;
+  file_blk.os_fib.frecsize := 1;
+  SEMINIT ( file_blk.os_fib.flock, 1 );
+  file_blk.os_fib.fisopen := FALSE;
+  
+  complete_title := CONCAT ( file_title, '.TEXT' );
+  IF direction = io_output THEN
+    BEGIN
+    
+    {  REWRITE ( file_blk.os_fib, complete_title );  }
+    
+    PMACHINE (  {  LDL 130  }           ^ file_blk.os_fib   ,
+                {  SLLA 1  }            ^ complete_title,
+                {  LDCN  }              152,
+                {  SLDC 0  }            0,
+                {  SLDC 0  }            0,
+                {  SCXG FILEOPS 2  }    114, 2
+                );
+    
+    successful := TRUE;
+    END
+  ELSE
+    BEGIN
+    
+    {  RESET ( file_blk.os_fib, complete_title );  }
+    PMACHINE (  {  LDL 130  }           ^ file_blk.os_fib,
+                {  SLLA 1  }            ^ complete_title,
+                {  LDCN  }              152,
+                {  SLDC 1  }            1,
+                {  SLDC 0  }            0,
+                {  SCXG FILEOPS 2  }    114, 2
+                );
+    
+    IF IORESULT <> 0 THEN
+      successful := FALSE
+    ELSE
+      BEGIN
+      successful := TRUE;
+      END;        {  ELSEND  }
+    END;
+  END;            {  PROCEDURE io_open_file  }
+
+
+PROCEDURE io_close_file {  ( VAR file_blk:  io_file )  };
+
+  BEGIN         {  PROCEDURE io_close_file  }
+  
+  {  CLOSE ( file_blk.os_fib, LOCK );  }
+  PMACHINE (    {  SLDL 1  }            32,
+                {  SLDC 1  }            1,
+                {  SCXG FILEOPS 3  }    114, 3
+                );
+                
+  END;          {  PROCEDURE io_close_file  }
+
+PROCEDURE io_write_line { ( VAR file_blk:  io_file; 
+                       data_string:  io_string )  };
+  BEGIN
+  
+  {  WRITELN ( file_blk.os_fib, data_string );  }
+  PMACHINE (    {  LDL 131  }           135, 128, 131,
+                {  SLLA 1  }            96,
+                {  LDCN  }              152,
+                {  SLDC 0  }            0,
+                {  SCXG PASCALIO 11  }  116, 11,
+                {  LDL 131  }           135, 128, 131,
+                {  SCXG PASCALIO 14  }  116, 14
+                );
+  
+  END;          {  PROCEDURE io_write_line  }
+
+
+PROCEDURE io_read_line {  ( VAR file_blk:  io_file;
+                        VAR data_string:  io_string )  };
+
+  BEGIN         {  PROCEDURE read_line  }
+  
+  {  READLN ( file_blk.os_fib, data_string );  }
+  PMACHINE (    {  SLDL 2  }            33,
+                {  SLDL 1  }            32,
+                {  LDCB 255  }          128, 255,
+                {  SCXG PASCALIO 10 }   116, 10,
+                {  SLDL 2  }            33,
+                {  SCXG PASCALIO 13  }  116, 13);
+  
+  END;          {  PROCEDURE io_read_line  }
+
+{$P}
+
+PROCEDURE io_seek_line {  ( VAR file_blk:  io_file;
+                         desired_line:  INTEGER )  };
+
+  VAR
+    line_count:  INTEGER;
+  
+  BEGIN         {  PROCEDURE io_seek_line  }
+  
+  {  RESET ( file_blk.os_fib );  }
+  PMACHINE (    {  SLDL 3  }            ^ file_blk.os_fib,
+                {  SCXG FILEOPS 6  }    114, 6
+                );
+  
+  line_count := 1;
+  WHILE line_count < desired_line DO
+    BEGIN
+    
+    {  READLN ( file_blk.os_fib );  }
+    PMACHINE (  { SLDL 3 }              ^ file_blk.os_fib,
+                { SCXG PASCALIO 13 }    116, 13);
+    
+    line_count := line_count + 1;
+    END;        {  WHILEND  }
+  END;          {  PROCEDURE io_seek_line  }
+
+
+FUNCTION io_end_of_file {  ( VAR file_blk:  io_file ):  BOOLEAN  };
+
+  BEGIN           {  FUNCTION io_end_of_file  }
+  
+  {  io_end_of_file := EOF ( file_blk.os_fib );  }
+  PMACHINE (    {  SLDC 0  }            00, 
+                {  SLDL 1  }            32, 
+                {  SCXG PASCALIO 5  }   116, 5, 
+                {  SSTL 2  }            105 
+                );
+  
+  END;            {  FUNCTION io_end_of_file  }
+
+
+  END.

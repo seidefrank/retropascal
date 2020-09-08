@@ -1,0 +1,88 @@
+
+{
+This is a modified version of an unpublished, copyrighted 
+program called TERMINAL by Robert W. Peterson.  TOMUSUS
+uses the unit REMUNIT by R.W. Peterson as modified by Walt
+Farrell and myself.
+
+Modifications by this author are in lower case throughout the
+program.  Since the original TERMINAL code was entirely in upper
+case, except for a few user prompt output, all modifications can
+be identified by the use of lower case.  Original code that have
+simply been moved from one location to another retain their upper
+case.
+
+TOMUSUS differs from TERMINAL in the following ways:
+
+       (1)  Saving the log file is done automatically.
+       
+       (2)  The logtext option can be switched on and off
+            without re-initializing.
+            
+       (3)  The printer can be switched on and off at any
+            time independent of the logtext options.
+       
+       (4)  The following options have been deleted:
+       
+                  Videotext
+                  Filter control characters
+                  Logtext to printer and console
+                  
+       (5)  The menu has been changed.  UCSD system style
+            menus are used.  The menu is automatically
+            exited after each menu function is completed.
+            Control-E is used to enter the menu.  Control-C
+            or the C(ontinue option will exit the menu
+            immediately.  The Q(uit option terminate the
+            program after closing previously opened files.
+            The L(ogfile option has sub-options to open or 
+            close files.  The P(rinter option is a toggle
+            switch that opens and closes the printer file.
+            The T(ransmit option has been simplified by the
+            removal of all sub-options except the filename
+            selection.  O(ptions is now the central place for
+            all other options previously residing in other
+            places, e.g. initialization and transmit.
+            
+TOMUSUS is designed primarily for the LSI-11, but it may work
+on other hardware running UCSD Version IV.0.  It will not run
+on Version II.0, because the required REMUNIT does not compile
+on II.0.
+
+VERSION 03:  Version 03 differs from Version 02 as follows:
+
+  (1)   The Version 03 menu includes the option B(reak.  Therefore,
+        it assumes that CR_BREAK has been implemented in REMUNIT.
+        
+  (2)   The Version 03 menu also includes the option X(off.  
+        This permits XOFF (control-S) to be transmitted to the
+        remote computer.  (Typing control-S instead of using X(off
+        causes the p-system to pause rather than the remote system.)
+        No TOMUSUS option is necessary to transmit XON, because
+        control-Q and control-W are passed to the remote system by
+        the p-system.
+        
+  (3)   Execution of the Logfile option has been speeded up consider-
+        ably, thanks to Richard Yensen's modification that replaced
+        the WRITE to disk statement with the BLOCKWRITE statement.
+        This change further permitted the deletion of the XOFF/XON
+        sequence thereby making it possible to use the Logfile option
+        when communicating with remote systems that do not recognize
+        XOFF/XON.
+        
+        Yensen also replaced the WRITE to console and WRITE to printer
+        statements with UNITWRITE statements.
+        
+  (4)   A submenu has been installed in Options.  This permits a more
+        direct access to each TOMUSUS setting.
+
+
+All inquiries about this program should be addressed to:
+
+        Michael A. Ikezawa
+        10 Packsaddle Road West
+        Rolling Hills, CA 90274
+
+        (213)541-2918
+}
+

@@ -1,0 +1,558 @@
+                    ***  SPBSSTUFF  ***
+
+          SPBSSTUFF is an Intrinsic Unit of procedures and functions
+          designed to ease the problems of error checking in
+          conversational style programs.  Including Screenops
+          it adds 18 blocks of diskspace to the SYSTEM.LIBRARY.
+          
+          The INTERFACE section of the Unit declares PR and F to be
+          of type 'TEXT' and SETOFCHAR to be of type 'SET OF CHAR'.
+          PR is always used to denote PRINTER:.  Therefore any
+          programs using SPBSSTUFF must use PR to denote PRINTER:
+          unless another channel name is declared.  F is used in
+          OpenOldfile & OpenNewfile.  F must be closed when these two
+          procedures are called.  This implies that if the user
+          whishes two or more text files to be open simultaneously
+          OpenNewfile & OpenOldfile can be used only for that file
+          denoted by F.
+          
+          As some of the SPBSSTUFF pocedures use CHAINSTUFF
+          & SCREENOPS, these are also declared in the INTERFACE.
+          
+          The version of Screenops used is a subset of that availabe 
+          in USUS UK Vol 2, containing only:  ScclrLine, ScclrScreen,
+          ScErasetoEOL.
+          
+          The example below illustrates how SPBSSTUFF must be 
+          incorporated in a program:-
+          
+          (*$S+,V-*)
+          Program Dummy;
+          uses chainstuff,screenops,spbsstuff;
+          begin 
+          .  
+          .  
+          .  
+          end.
+          
+          
+          The compiler option S+ is needed for compilation, and V- is 
+          needed to avoid string lengths being checked as they are 
+          being passed to and from the main program and SPBSSTUFF.
+          
+          The contents of SPBSSTUFF are:-
+          Procedure PrintLine(x,y:integer;s:string);
+          Function GetChar(okchars:setofchar):char;
+          Function GetCHoice(options:setofchar):char;
+          Procedure Goodbye;
+          Procedure GetString(var s:string;maxlen:integer;okchars:setofchar);
+          Procedure OpenNewFile (var nameoffile:string;s1,s2:string);          
+          Procedure OpenOldFile (var nameoffile:string;s1,s2:string);             
+          Procedure GetTextfileName(var s:string;s1,s2:string);
+          Procedure IoError(ioresult:integer);
+          Procedure WriteIoError(ioresult:integer);
+          Procedure IntNum(var num:integer;var good:boolean;s:string);
+          Procedure RealNum(var num:real;var good:boolean;s:string);
+          Procedure GetRealNo(var num:real;termchars:setofchar);
+          Procedure GetIntNo(var num:integer;var ok:boolean;maxlen : 
+                           integer;termchars: setofchar);
+          Function GetReal(x,y:integer;min,max:real):real;
+          Function GetInt(x,y:integer;min,max:integer):integer;
+          Procedure CheckPrinter;
+          Procedure Continue (x,y:integer);
+          Procedure Yes:boolean;
+          Procedure Bell (times:integer);
+          
+          Updated May 1982 to make all procedures & functions
+          screen orientated.
+          
+       Procedure GetString (VAR S:STRING;MAXLEN:INTEGER;OKCHARS:SETOFCHAR)
+       ==================================================================
+
+
+       Local vars      61 words
+       ----------
+       Code           216 bytes
+       ----
+
+       Other routines used     GetChar
+       -------------------
+
+       Special features        1.  The variable OKCHARS is of type 
+       ----------------        SETOFCHAR which must be declared as a new 
+                               type
+                                   SETOFCHAR=SET OF CHAR;
+                               either in the INTERFACE section of the UNIT or 
+                               at the start of the program, whichever is 
+                               appropriate.
+       
+       
+       General Description
+       -------------------
+       
+       
+       GetString returns the string S entered from the keyboard.  S is
+       allowed a maximum of MAXLEN characters.  These characters are read
+       individually using GetChar.  Any character which does not belong to
+       OKCHARS is not accepted and the bell is rung to warn the user.
+       Backspacing is permitted to allow corrections.
+       
+       
+       After MAXLEN characters have been entered, no further characters 
+       except BACKSPACE and corresponding replacement characters are
+       accepted.
+       
+       
+       The user denotes the end of the string by pressing RETURN.
+       
+       
+       If a null string is read i.e. the RETURN key is pressed first, S 
+       retains its value prior to the procedure call.
+       
+           
+       
+       Applications
+       ------------
+       
+       
+       GetString can be used to read any string being entered from the 
+       keyboard.
+       
+       Procedure IoError (IORESULT:INTEGER)
+       ====================================
+       
+       
+       
+       
+       Local vars     3 words
+       ----------
+       Code          66 bytes
+       ----
+       
+       Other routines used PrintLine,WriteIoError,Goodbye,Continue
+       -------------------
+       
+       Special features        None
+       ----------------
+       
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       IoError, starting at position (3,18) on the screen, lists a full I/O
+       error message.  The fault description itself is obtained from
+       WRITEIOERROR.
+       
+       If IORESULT is greater than 18 and not equal to 64 IoError will
+       terminate the program, using GOODBYE
+       
+       If IORESULT does not exceed 18 or equal 64, the message
+       
+       'Press <return> to Continue'
+       
+       is listed on line 23.  When RETURN has been pressed, control is 
+       returned to the calling procedure.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       IoError in conjunction with the compiler option I-, can be used to 
+       describe I/0 errors during program execution without the program  
+       necessarily being terminated by the system.
+       
+Procedure Continue(X,Y:INTEGER)
+===============================
+
+
+Local vars      4 words
+----------
+
+Code           68 bytes
+----
+
+Other routines used   GetChar
+-------------------
+
+Special features       NONE
+----------------
+
+
+General description
+-------------------
+
+Continue writes the message
+
+'Press <return> to continue..'
+
+at position x,y on the screen: When <return> is pressed, control is passed to
+the next statement in the program.
+
+
+
+Applications
+------------
+
+Continue enables the user to control the pace at which the program moves from
+one section to the next, for example to ensure that error messages do not
+disappear too quickly from the screen.
+       Function GetCHoice(OPTIONS:SETOFCHAR):CHAR
+       ==========================================
+       
+       
+       
+       Local vars          22 words
+       ----------
+       Code               168 bytes
+       ----
+       Other routines used        GetChar
+       -------------------
+       Special features           1. The variable OPTIONS is of type 
+       ----------------           SETOFCHAR which must be declared as a 
+                                  new type
+                                          SETOFCHAR=SET OF CHAR;
+                                  either in the INTERFACE section of the UNIT 
+                                  or at the start of the program, whichever
+                                  is appropriate.
+                                  
+                                  2.  Program text files must hold the
+                                  OPTIONS in upper case.  Lower case
+                                  responses by the user will automatically be
+                                  converted to upper case before being
+                                  checked for inclusion in OPTIONS.
+                               
+
+
+       General Description
+       -------------------
+
+       
+       
+       GetCHoice returns a single character selected by the user via the 
+       keyboard from a set of single character OPTIONS.  These options will 
+       usually be listed on the screen in menu form.
+       
+       The choice is made by typing the appropriate key followed by RETURN.  
+       
+       The user can backspace over his choice before pressing RETURN.
+       
+       Lower and upper case alphabetic characters are treated as equivalent. 
+       
+       If a character is entered which does not belong to OPTIONS the bell is 
+       rung and that character is not accepted.
+       
+
+
+       Applications
+       ------------
+
+
+       GetCHoice can be used whenever the user is asked to select from several
+       options.
+
+       Procedure GetRealNo(VAR NUM:REAL;TERMCHARS:SETOFCHAR)
+       =====================================================
+       
+       
+       
+       
+       Local vars     100 words
+       ----------
+       Code           442 bytes
+       ----
+       
+       Other routines used   GetChar,RealNum
+       -------------------
+       
+       Special features       The variable TERMCHARS is of type SETOFCHAR which
+       ----------------       must be declared as a new type
+                              SETOFCHAR=SET OF CHAR; either in the INTERFACE
+                              section of the UNIT or at the start of the
+                              program, whichever is appropriate.
+       
+       
+       General Description
+       -------------------
+       
+       
+       GetRealNo gets one real number from the keyboard.
+       
+       Exponential format is not allowed.
+       
+       Leading spaces are ignored.
+       
+       The real number is terminated by any one of the characters belonging 
+       to TERMCHARS.
+       
+       Backspacing to correct errors is possible until a terminating 
+       character has been entered.
+       
+       Illegal characters, e.g.'A', are not accepted, and the bell is rung as 
+       a warning.
+       
+       Characters which would cause illegal format, e.g. a second '+', are 
+       not accepted, and the bell is rung as a warning.
+       
+       A maximum of 21 characters may be entered, excluding leading spaces.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       GetRealNo can be used to read a single real number from the keyboard, 
+       using any sensible characters as terminators.
+       
+       Procedure PrintLine(I,J:INTEGER;S:STRING)
+       =========================================
+       
+       
+       
+       Local vars        46 words
+       ----------
+       Code              54 bytes
+       ----
+       
+       other routines used       none
+       -------------------
+       
+       Special features          none
+       ----------------
+       
+       
+       
+       General Description
+       -------------------
+
+
+       PrintLine prints the string S on the screen starting at position 
+       (I,J).  If I is greater than 79 the screen is cleared and S starts at 
+       position (I-80,J).  
+       
+       The cursor remains at the end of the string after printing.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       PrintLine allows listing of text  at specific locations on the screen.
+       
+Function OpenOldFile(VAR NAMEOFFILE:STRING;S1,S2:STRING);
+=========================================================
+
+
+
+Local vars      87
+----------
+Code            80
+----
+
+Other routines used   GetTextfileName,IOERROR.
+-------------------
+
+Special features      The variable F of type TEXT is used to denote the
+----------------      channel to the specified file. It is assumed that
+                      F has been declared earlier in the INTERFACE section
+                      of a unit, or as a global variable in the program.
+
+
+
+General features
+----------------
+
+OpenOldFile, uses GetTextfilename to get a legal filename from the
+keyboard. It then checks to see if the file does exist, and if so 
+opens the file with a reset command and leaves the file open.  If it
+does not exist or there is another IOERROR then the appropriate IOERROR
+message is displayed, and the user will be prompted for another filename
+until an existing file is opened successfully.
+
+
+Applications
+------------
+
+Can be used wherever a program has to access an existing file.
+
+          
+          
+          
+       Function GetChar(OKCHAR:SETOFCHAR):CHAR
+       =======================================
+       
+       
+       
+       Local vars       21 words
+       ----------
+       Code             88 bytes
+       ----
+       
+       Other routines used      NONE
+       -------------------
+       
+       Special features         1. The variable OKCHARS is of type SETOFCHAR 
+       ----------------         which must be declared as a new type
+                                   SETOFCHAR=SET OF CHAR;
+                                either in the INTERFACE section of the UNIT 
+                                or at the start of the program, whichever
+                                is appropriate.
+                                
+       
+       
+       
+       General Description
+       -------------------
+
+
+       Immediately it is called GetChar clears the keyboard buffer, then 
+       waits for a single character to be typed in from the keyboard.  If
+       this character belongs to OKCHARS it is returned as CHAR, and is
+       echoed to the screen if it is a 'visible' character.
+       Return is not echoed.
+       
+       
+       If the character which is read does not belong to OKCHARS  the bell 
+       will ring and the character will not be echoed.  GetChar then waits
+       until another character is entered, and the entire process is
+       repeated.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       GetChar is used in every SPBSSTUFF routine which reads from the 
+       keyboard.
+       
+       
+       Procedure GetTextfileName (VAR NAMEOFFILE  STRING; S1,S2:STRING)
+       ===================================================
+       
+       
+       
+       Local vars      205 words
+       ----------
+       Code            692 bytes
+       ----            
+       
+       Other routines used Continue,PrintLine, GetString,GetChar
+       -------------------
+       
+       Special features        None
+       ----------------
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       GetTextfileName gets a text file name from the keyboard.  If the user
+       omits 'TEXT', the procedure will automatically append it.  The
+       diskname must also be included as part of the file name.  Device
+       names, such as #4, are not permitted.
+       
+       The procedure begins by sending the text
+       
+       'Insert other disk now if relevant'
+       
+       to the top line of a cleared screen.  Starting at positions (2,3) and
+       (2,5) it then lists the strings S1 and S2.  These strings can be used
+       to prompt the user and describe the type of file name needed e.g.
+       S1:='ENTER THE DESIGN FILE NAME'.
+       
+       
+       S1 and S2 can be null.  They should not be more than 37 characters as 
+       any more characters will appear on the second half of the screen.  No 
+       check is made on the lengths of S1 and S2.  They are the default 
+       string length.
+       
+       Illegal file name characters are rejected as they are being typed in 
+       (see Apple Pascal Operating System Manual, p30)
+       
+       
+       Illegal names are rejected. The appropriate error message is listed on 
+       lines 13 and 15 of the screen.
+       
+       'Press <return> to Continue'
+       
+       is listed on line 22.  After RETURN has been pressed GetTextfilenName
+       is executed again.
+       
+       Illegal names are those with two or more colons, disk names with 0 or 
+       more than 7 characters, and filenames with 0 or more than 10 
+       characters.
+       
+       
+       Applications
+       ------------
+       
+       
+       GetTextfileName can be used whenever a file name has to be entered from
+       the keyboard.
+       
+       Procedure RealNum (VAR NUM:REAL;VAR GOOD:BOOLEAN;S:STRING)
+       ==========================================================
+       
+       
+       
+       Local vars      159 words
+       ----------
+       Code
+       ----            400 bytes
+       
+       Other routines used     None
+       -------------------
+       
+       Special features        None
+       ----------------
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       RealNum converts the string S to a real number NUM if this is
+       possible.  GOOD is set to 'true if the conversion is successful.
+       Otherwise GOOD is set to 'false'.
+       
+       The conversion will not be successful if S is in exponential format.
+       
+       
+       Leading and trailing spaces (ASCII dec 32) in S are ignored.  the 
+       number in S is terminated by the first space following a digit.
+       
+       
+       Conversion to a real number will be unsuccessful if any of the 
+       following occur:
+       
+             1)  S contains characters other than '+','-','.',' ','0'..'9'
+       
+             2)  '+' or '-' appear in any position except the first 
+                 (ignoring leading spaces)
+       
+             3)  More than one decimal point
+       
+             4)  Any characters other than 'space' follow the terminating 
+                 space
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       RealNum can be used together with the compiler option I- to read real 
+       data without the risk of a program crash should the data contain any 
+       errors.  Such data might be read from disk, from the terminal keyboard,
+       or from an external device such as an electronic balance. 
+       

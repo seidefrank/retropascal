@@ -1,0 +1,54 @@
+
+(************************************************************************)
+(*                                                                      *)
+(*      This program is used to reformat the conversion table           *)
+(*        text file to a data file that can be read swiftly and         *)
+(*        in the proper format for the 8080 to Z-80 opcode              *)
+(*        conversion program.                                           *)
+(*                                                                      *)
+(*      Author:         David Parrish                                   *)
+(*                      Medical College of Georgia                      *)
+(*                      Augusta, Georgia  30912                         *)
+(*                                                                      *)
+(*      Date:           June  14, 1980                                  *)
+(*                                                                      *)
+(******* This program is part of the MCG Pascal utilities library *******)
+(*                                                                      *)
+(*                                                                      *)
+(************************************************************************)
+
+Program reform;
+  
+  type rectype = record
+                   a8opc : string[4];
+                   a8opr : string[8];
+                   aZopc : string[4];
+                   aZopr : string[8]
+                 end;
+  
+  var infile       : text;
+      outfile      : file of rectype;
+      outrec       : rectype;
+      orgstr, temp : string;
+      i            : integer;
+
+begin
+  reset(infile,'table.text');
+  rewrite(outfile,'look.up.table');
+  for i := 1 to 237 do     (* 237 opcodes in the table *)
+   begin
+     readln(infile,orgstr);
+     outrec.a8opc := copy(orgstr,1,4);
+     outrec.a8opr := copy(orgstr,9,8);
+     outrec.aZopc := copy(orgstr,17,4);
+     temp := copy(orgstr,25,(length(orgstr)-24));
+     temp := concat(temp,'        ');
+     outrec.aZopr := copy(temp,1,8);
+     outfile^ := outrec;
+     put(outfile);
+     writeln(orgstr)
+   end;
+  close(infile);
+  close(outfile, lock)
+end.
+

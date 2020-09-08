@@ -1,0 +1,374 @@
+(*$S+*)
+UNIT GOODSTUFF;
+
+
+INTERFACE
+
+
+{ I call these routines GOOD STUFF: they really ease the 
+  chore of programming in UCSD PASCAL; I recommend that you 
+  try them... you won't be sorry }
+  
+{ Global stuff.... }
+TYPE  (* THIS MUST BE A GLOBAL TYPE!!!!!! *) 
+     CRTCOMMAND = (ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT,LEADIN);
+     FILET = FILE;
+     
+     DATEREC = PACKED RECORD
+                        MONTH: 0..12;
+                        DAY: 0..31;
+                        YEAR: 0..100
+               END;
+
+     DIRRANGE = 0..77;
+
+     VID = STRING[7];
+     TID = STRING[15];
+     FILEKIND = (UNTYPED,XDISK,CODE,TEXT,
+                 INFO,DATA,GRAF,FOTO,SECUREDIR);
+
+     DIRENTRY = RECORD
+                  DFIRSTBLK: INTEGER;
+                  DLASTBLK: INTEGER;
+                  CASE DFKIND:FILEKIND OF
+                    SECUREDIR,UNTYPED: 
+                                       (DVID:VID;
+                                        DEOVBLK,
+                                        DLOADTIME,
+                                        DBLOCKS:INTEGER;
+                                        DLASTBOOT:DATEREC);
+                    XDISK,CODE,TEXT,INFO,DATA,
+                    GRAF,FOTO: 
+                               (DTID:TID;
+                                DLASTBYTE:1..512;
+                                DACCESS:DATEREC)
+                END;
+
+     DIRP = ^DIRECTORY;
+     DIRECTORY = ARRAY[DIRRANGE] OF DIRENTRY;
+
+
+VAR   (* THESE MUST BE GLOBAL VARIABLES !!!!! *) 
+    CRTINFO:   PACKED ARRAY[CRTCOMMAND] OF CHAR;
+    PREFIXED:  ARRAY[CRTCOMMAND] OF BOOLEAN;
+    F : FILE;
+    
+    DIRX: DIRECTORY;
+
+PROCEDURE GETCRTINFO;
+PROCEDURE CRT ( C : CRTCOMMAND );
+PROCEDURE DIR;
+PROCEDURE GETSTRING ( VAR TYPED: STRING; X, Y, MAXLENGTH : INTEGER);
+PROCEDURE GETFILE ( VAR THEFILE : FILET; ISINPUTFILE : BOOLEAN ); 
+PROCEDURE GETDATE ( VAR THEDATE : STRING );
+
+IMPLEMENTATION
+
+
+
+PROCEDURE GETCRTINFO; (* BY ROGER SOLES, GEORGIA TECH *)
+(*  CALL THIS ROUTINE AT THE BEGINNING OF EVERY PROGRAM BEFORE USING "CRT"*)
+(*  READ SYSTEM.MISCINFO AND GET CRT CONTROL CHARACTER INFO     *)
+
+VAR 
+    BUFFER: PACKED ARRAY[0..511] OF CHAR;
+    I, BYTE: INTEGER;
+    (* F: FILE; *)
+
+BEGIN
+  RESET(F,'*SYSTEM.MISCINFO');
+  I := BLOCKREAD(F,BUFFER,1);
+  CLOSE(F);
+  BYTE := ORD(BUFFER[72]); (* PREFIX INFORMATION BYTE *)
+  CRTINFO[LEADIN] := BUFFER[62];
+  PREFIXED[LEADIN] := FALSE;
+  CRTINFO[ERASEOS] := BUFFER[64];
+  PREFIXED[ERASEOS] := ODD(BYTE DIV 8);
+  CRTINFO[ERASEOL] := BUFFER[65];
+  PREFIXED[ERASEOL] := ODD(BYTE DIV 4);
+  CRTINFO[RIGHT] := BUFFER[66];
+  PREFIXED[RIGHT] := ODD(BYTE DIV 2);
+  CRTINFO[UP] := BUFFER[67];
+  PREFIXED[UP] := ODD(BYTE);
+  CRTINFO[LEFT] := BUFFER[68];
+  PREFIXED[LEFT] := ODD(BYTE DIV 32);
+  CRTINFO[DOWN] := CHR(10);
+  PREFIXED[DOWN] := FALSE;
+END;
+
+
+PROCEDURE CRT(*C: CRTCOMMAND *); (* BY ROGER SOLES, GEORGIA TECH *)
+
+(*  CRT COMMANDS ARE: ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT; CALL
+    THIS ROUTINE WITH ONE OF THESE PARAMETERS ANYWHERE AFTER 
+    INITIALLY CALLING "GETCRTINFO".        *)
+
+BEGIN
+  IF PREFIXED[C]
+    THEN
+      UNITWRITE(1,CRTINFO[LEADIN],1,0,12);
+  UNITWRITE(1,CRTINFO[C],1,0,12);
+END;
+ 
+PROCEDURE DIR;
+
+VAR 
+
+    UNITNUM,I: INTEGER;
+    BUFR: PACKED ARRAY[0..2048] OF CHAR;
+    CHBUF : char;
+
+BEGIN
+  repeat
+    WRITELN;
+    WRITE('Enter unit number for required directory --> ');
+    READLN(UNITNUM);
+    WRITELN
+  until unitnum in [ 4 .. 5 ];
+ (*$I-*)
+  UNITCLEAR ( UNITNUM );
+  UNITREAD(UNITNUM,DIRX[0],2048,2);
+  UNITCLEAR ( UNITNUM );
+  IF IORESULT <> 0
+    THEN
+      BEGIN
+        WRITELN('Unit not online');
+        (*$I+*)
+        EXIT(DIR);
+      END;
+  WITH DIRX[0] DO
+    WRITELN('VOL = ',DVID,':');
+  FOR I:=1 TO DIRX[0].DLOADTIME DO
+    BEGIN
+      WITH DIRX[I] DO
+        BEGIN
+          IF LENGTH(DTID)>0
+            THEN
+              BEGIN
+                WRITE(DTID,' ':16-LENGTH(DTID),DLASTBLK-DFIRSTBLK: 4,'  ');
+                WITH DACCESS DO
+                  BEGIN
+                    WRITE(DAY:3,'-');
+                    CASE MONTH OF
+                      1: WRITE('Jan');
+                      2: WRITE('Feb');
+                      3: WRITE('Mar');
+                      4: WRITE('Apr');
+                      5: WRITE('May');
+                      6: WRITE('Jun');
+                      7: WRITE('Jul');
+                      8: WRITE('Aug');
+                      9: WRITE('Sep');
+                      10: WRITE('Oct');
+                      11: WRITE('Nov');
+                      12: WRITE('Dec');
+                    END;
+                    WRITE('-',YEAR:2,' ':3);
+                  END;
+                CASE DFKIND OF
+                  XDISK: WRITE('Bad block');
+                  CODE:  WRITE('Code file');
+                  TEXT:  WRITE('Text file');
+                  INFO:  WRITE('Info file');
+                  DATA:  WRITE('Data file');
+                  GRAF:  WRITE('Graf file');
+                  FOTO:  WRITE('Foto file');
+                END; (* CASE OF *)
+                WRITELN;
+              END;
+        END;
+     if i mod 21 = 0
+       then
+         begin
+           writeln;
+           write (' tap <space bar> to continue ');
+           repeat
+             read ( chbuf )
+           until chbuf = ' ';
+           writeln;
+         end;
+           
+    END;
+  WRITELN;
+  WRITE (' tap <space bar> to continue ');
+  repeat
+    read ( chbuf )
+  until chbuf = ' ';
+  writeln;
+END; (*$I+*)
+
+PROCEDURE GETSTRING (*VAR TYPED: STRING; X,Y, MAXLENGTH: INTEGER
+                    ( "TYPED" IS THE NEW STRING NAME (DEFINED GLOBALLY
+                    OR IN THE CALLING PROCEDURE); X, Y DEFINE THE SCREEN
+                    COORDINATES OF THE INPUT POINT; MAXLENGTH DEFINES THE 
+                    LENGTH OF THE STRING <MAX YOU WANT> *);
+   (* procedure by Jim Gagne, modified <generalized> by Frank Monaco *)
+VAR 
+    J, K: INTEGER;
+    GOTSTRING: BOOLEAN;
+    BELL: CHAR;
+BEGIN
+  BELL := CHR (7);
+  GOTSTRING := FALSE;
+  REPEAT
+    GOTOXY (X,Y);
+    FOR J := 1 TO MAXLENGTH DO
+      WRITE ('.');
+    GOTOXY (X,Y);
+    READLN (TYPED);
+    K := LENGTH (TYPED);
+    IF K > MAXLENGTH
+      THEN
+        BEGIN
+          GOTOXY (X,Y);
+          WRITE (' ':K);
+          GOTOXY (0,23);
+          WRITE (BELL, 'You have entered too many characters in this line.  ',
+                        'Please try again.')
+        END
+      ELSE
+        GOTSTRING := TRUE
+  UNTIL GOTSTRING;
+  GOTOXY ((X+K),Y);
+  WRITE (' ':(MAXLENGTH - K));
+  GOTOXY (2,22);
+  WRITE (' ':70);
+  GOTOXY (0,73);
+  WRITE (' ':70)
+END (*GETSTRING*);
+
+
+PROCEDURE GETFILE (* VAR  THEFILE  : FILE; ISINPUTFILE: BOOLEAN
+                    ( THEFILE IS THE INPUT OR OUTPUT FILE YOU 
+                    HAVE GLOBALLY DEFINED (OR DEFINED IN THE CALLING
+                    PROCEDURE); ISINPUTFILE IS "TRUE" OR "FALSE" TO
+                    TOGGLE RESET/REWRITE...*) ;
+(* procedure by Jim Gagne, modified <generalized> by Frank Monaco *)
+VAR 
+    GOTFN: BOOLEAN;
+    BELL, RESPONSE: CHAR;
+    FILENAME, FILETYPE, TYPED : STRING;
+    
+   
+   
+  BEGIN  (* GETFILE *)
+    getcrtinfo;
+    BELL := CHR (7);
+    REPEAT
+     GOTOXY ( 0, 0 );
+     CRT ( ERASEOS );
+     IF ISINPUTFILE
+        THEN
+           FILETYPE := 'input'
+        ELSE
+           FILETYPE := 'output';
+    GOTOXY (11,20);
+    WRITE ('Please type the name of the desired ', FILETYPE, ' file ');
+    GOTOXY (15,21);
+    WRITE ('-->      ');
+    GOTOXY (11,22);
+    WRITE ('  (Or just press the <return> key if you wish to quit.)');
+    TYPED := '';
+    GETSTRING ( TYPED, 20,21, 23);
+    IF LENGTH (TYPED) = 0
+      THEN
+        BEGIN
+          GOTOXY (11,23);
+          WRITE ('Would you prefer to quit this program (Y/N)?     ');
+          READ (KEYBOARD, RESPONSE);
+          GOTOXY (11,23);
+          WRITE (' ':47);
+          IF (RESPONSE = 'Y') OR (RESPONSE = 'y')
+            THEN
+              EXIT (PROGRAM)
+        END
+      ELSE
+        BEGIN
+          FILENAME := TYPED;
+   (*$I-*)
+          IF ISINPUTFILE
+            THEN
+              RESET (THEFILE, FILENAME)
+            ELSE
+              REWRITE ( THEFILE, FILENAME);
+          IF IORESULT > 0
+            THEN
+               IF ISINPUTFILE
+                 THEN
+                    RESET (THEFILE, CONCAT (FILENAME, '.TEXT'))
+                 ELSE
+                    REWRITE ( THEFILE, CONCAT ( FILENAME, '.TEXT') );
+    (*$I+*)
+          GOTFN := IORESULT = 0;
+          IF NOT GOTFN
+            THEN
+              BEGIN
+                GOTOXY (0,23);
+                WRITE (BELL, '<<**** ERROR ****>>   ',
+                     'Wrong volume or file name.  Type <space> for Directory.');
+                REPEAT
+                  READ (KEYBOARD, RESPONSE)
+                UNTIL RESPONSE = ' ';
+                GOTOXY ( 0, 0 );
+                CRT ( ERASEOS );
+                DIR
+              END
+        END(*ELSE*)
+  UNTIL GOTFN;
+END (*GETFILE*);
+
+
+
+PROCEDURE GETDATE(*VAR ( RETURNING ) THEDATE: STRING
+                  ( THEDATE IS A STRING VARIABLE 
+                  DEFINED BY THE CALLING ROUTINE 
+                  (OR GLOBALLY) AND WILL LOOK LIKE 
+                  THIS WHEN RETURNED: "24 Apr 1980"*); (* ALGORITHM 
+                                                          BY ROGER SOLES,
+                                                          FRANK MONACO, 
+                                                          GEORGIA TECH *)
+
+CONST 
+      FIRSTBYTE = 21;
+      SECONDBYTE = 22;
+      START = 1;
+      FINISH = 24;
+
+TYPE 
+     RANGE = START .. FINISH;
+     ARAYTYPE = PACKED ARRAY [ RANGE ] OF CHAR;
+
+VAR 
+    DUMMY : ARAYTYPE;
+    HIGH, LOW : INTEGER;
+    DAY, MONTH, YEAR: INTEGER;
+    CMONTH, CDAY, CYEAR  : STRING;
+BEGIN
+  UNITREAD( 4, DUMMY, 24, 2);
+  HIGH := ORD ( DUMMY [ SECONDBYTE ] ); (* GET THE DATE BYTES INTO HIGH
+                                           AND LOW *)
+  LOW := ORD ( DUMMY [ FIRSTBYTE ] );
+  DAY := ( HIGH MOD 2 ) * 16 + LOW DIV 16;
+  MONTH := LOW MOD 16; (* EXTRACT NECESSARY INFO *)
+  YEAR := HIGH DIV 2;
+  STR ( DAY, CDAY ); (* CONVERT INTEGERS TO STRINGS *)
+  STR ( YEAR, CYEAR );
+  CASE MONTH OF
+    1: CMONTH := 'Jan';
+    2: CMONTH := 'Feb';
+    3: CMONTH := 'Mar';
+    4: CMONTH := 'Apr';
+    5: CMONTH := 'May';
+    6: CMONTH := 'June';
+    7: CMONTH := 'July';
+    8: CMONTH := 'Aug';
+    9: CMONTH := 'Sept';
+    10: CMONTH := 'Oct';
+    11: CMONTH := 'Nov';
+    12: CMONTH := 'Dec'
+  END;
+
+  THEDATE := CONCAT ( CDAY, ' ', CMONTH, ' 19', CYEAR );
+END; (* PROCEDURE GETDATE *)
+
+END. { UNIT GOODSTUFF }

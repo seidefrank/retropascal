@@ -1,0 +1,104 @@
+(*$S+*)
+(*$I-*)
+(*$C Copyright 1982 (c) Great Western Software  all rights reserved *)
+program disk_copy;
+(*
+    Copies disks with verification    George Schreyer
+*)
+var chk_buffer,buffer : packed array [0..15359] of char;
+    ch : char;
+    error : boolean;
+    unitnum : integer;
+    k2,blocks,block,k,k1,i : integer;
+    diska,diskb : file;
+    namea,nameb : string;
+
+procedure clear_line;
+begin
+   write ( chr ( 27 ) , 'K' );  {H-19 dependant}
+end;
+
+procedure space_wait;
+var ch : char;
+begin
+   write ( '   <space> to continue' );
+   repeat
+      read ( keyboard, ch );
+   until ( ch = ' ' ) and ( not eoln ( keyboard ) );
+end;
+
+begin
+   writeln;
+   writeln ( '     disk_copy  version 2.12  5-Jun-82' );
+   fillchar(buffer,sizeof(buffer),chr(0));
+   fillchar(chk_buffer,sizeof(chk_buffer),chr(0));
+   namea := '#4:';
+   nameb := '#5:';
+   writeln;
+   writeln('Disk_copy copies a whole UCSD disk onto another.');
+   writeln('The source disk is placed in drive 4 and the destination');
+   writeln('disk is placed in drive 5.');
+   repeat
+      gotoxy ( 0, 15 );
+      clear_line;
+      write('type <space> to start the transfer, or <return> to quit ');
+      repeat
+         read(keyboard,ch);
+      until ( ch = ' ' );
+      if eoln(keyboard) then exit(program);
+      blocks := sizeof(buffer) div 512;
+      reset(diska,namea);
+      rewrite(diskb,nameb);
+      writeln;
+      error := false;
+      block := 0;
+      repeat
+         gotoxy ( 0, 15 );
+         clear_line;
+         write ( 'reading ...' );
+         k := blockread(diska,buffer,blocks,block);
+         if ( (k < blocks) and (not eof(diska)) ) or (ioresult <> 0 ) then
+            begin
+               gotoxy ( 0, 15 );
+               clear_line;
+               write(chr(7),'error reading #5');
+               space_wait;
+               error := true;
+            end;
+         gotoxy ( 0, 15 );
+         clear_line;
+         if not error then
+            begin
+               write ( 'writing ...' );
+               k1 := blockwrite(diskb,buffer,k,block);
+               if ioresult <> 0 then 
+                  begin
+                     gotoxy ( 0,15 );
+                     clear_line;
+                     write ( 'error writing #9:' );
+                     space_wait;
+                     error := true;
+                  end;
+            end;
+         gotoxy ( 0, 15 );
+         clear_line;
+         if not error then
+            begin
+               write ( 'verifying ...' );
+               k2 := blockread(diskb,chk_buffer,k,block);
+               block := block + k;
+               if ( buffer <> chk_buffer ) or ( ioresult <> 0 ) then 
+                  begin
+                     gotoxy ( 0, 15 );
+                     clear_line;
+                     write(chr(7),'verification error');
+                     space_wait;
+                     error := true;
+                  end;
+            end;
+      until (k < blocks) or (k1 <> k) or error;
+      close(diskb,lock);
+      close(diska);
+   until false;
+end.
+      

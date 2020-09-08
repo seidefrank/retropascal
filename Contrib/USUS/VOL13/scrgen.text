@@ -1,0 +1,313 @@
+(*dont use the $LPrinter:*)
+
+SCREDIT - edit the screen definition
+SCRGEN - write the Pascal program
+TYPES - file definitions for SCREDIT and SCRGEN
+These two programs allow you to define a form to be filled in on
+     the screen and then write a Pascal procedure that you can
+     incorporate in your own programs to set up the screen form,
+     allow the user to enter data for all the fields and show the
+     contents of all the fields.  This is version 1 of the
+     programs but they work.  These should shorten the time needed
+     to set up programs that enter several values from the screen.
+     The programs that this program writes make calls to the
+     functions in GETFUNCS above.
+by Lee Meador - FWAUG, DAC
+
+
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{                                      }
+{ Screen Code Generator - by Lee Meador}
+{ Version 1.0                Box 3261  }
+{ Copyright (c) 1981     Arlington, TX }
+{                            76010     }
+{                                      }
+{ Uses information written in a data   }
+{   file to generate Pascal code (in   }
+{   a text file) that will let you     }
+{   set up a form on the screen, and   }
+{   then input or output the info for  }
+{   the screen.                        }
+{                                      }
+{ The program SCREDIT allows you to    }
+{   create and modify the data file    }
+{   so as to have the right number of  }
+{   variables of the right types, etc. }
+{                                      }
+{ The Pascal Procedure written by this }
+{   program requires the procedures in }
+{   GETFUNCS to work correctly.        }
+{                                      }
+{ This program could use some work to  }
+{   keep from writing procedures that  }
+{   are too big. If this happens, you  }
+{   can use the E)ditor to move part   }
+{   of the code into a second procedure}
+{                                      }
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+
+PROGRAM PScrn_2;
+
+CONST MaxNumOfItems = 60;
+
+TYPE
+(*$I:TYPES.TEXT *)
+
+VAR     Scrfile : FILE OF Scrn;
+        Txt     : TEXT;
+        First   : BOOLEAN;
+        Indent,
+        ScreenName,
+        ScreenOut: STRING;
+        ItemNum : INTEGER;
+        
+procedure clear_screen;
+begin
+   gotoxy ( 0, 0 );
+   write ( chr ( 27 ), 'J' );  {H-19 specific}
+end;
+
+PROCEDURE OPEN_INPUT;
+
+BEGIN
+
+  REPEAT { Open Screen Definition }
+     GOTOXY(5,5);
+     WRITELN('What Screen shall I process?');
+     WRITE  ('     (dev:fname) ');
+     READLN(ScreenName);
+     IF POS('.SCRN',ScreenName) = 0 THEN
+        ScreenName := CONCAT(ScreenName,'.SCRN');
+   
+     (*$I-*)
+        RESET(Scrfile,CONCAT(ScreenName,'[30]'));
+     (*$I+*)
+  UNTIL IORESULT = 0;
+     
+END; { OPEN_INPUT }
+     
+PROCEDURE OPEN_OUTPUT;
+
+VAR Strng: String;
+    Flag : Boolean;
+    CH   : Char;
+    
+BEGIN
+  
+  REPEAT { Open Text Output file }
+     ScreenOut := CONCAT(COPY(ScreenName,1,Length(ScreenName)-5),'.TEXT');
+     GOTOXY(5,8);
+     WRITELN('What Name for Text Output? ');
+     WRITE  ('     (',ScreenOut,') ');
+     READLN(Strng);
+     IF Length(Strng) <> 0 THEN
+        ScreenOut := Strng;
+     (*$I-*)
+        RESET(Txt,ScreenOut);
+     (*$I+*)
+     Flag := (IORESULT<>0); { Non-existent }
+     IF NOT Flag THEN REPEAT
+          CLOSE(Txt); { Close it for now }
+          GOTOXY(0,23);
+          WRITE('Already Exists. Replace? (Y/N) ');
+          READ(CH);
+          Flag := CH IN ['Y','y']; { OR ok to replace }
+        UNTIL CH IN ['Y','y','N','n'];
+  UNTIL Flag;
+  REWRITE(Txt,ScreenOut);
+  
+  END; (* OPEN_OUTPUT *)
+  
+PROCEDURE DO_SETUP;
+
+VAR I,ItemNum : Integer;
+
+BEGIN
+  GOTOXY(1,23);
+  WRITE (' Generating SETUP   ',chr(7));
+  
+  WRITELN(Txt, '   SETUP : BEGIN ');
+  {WRITELN(Txt, '      PAGE(OUTPUT);');}
+  WRITELN ( TXT, '      WRITE ( CHR ( 27 ), CHR ( 69 ));' );  {H-19 SPECIFIC}
+  FOR ItemNum := 1 TO MAXNUMOFITEMS DO 
+     WITH Scrfile^[ItemNum] DO
+         IF ItemValid THEN BEGIN
+            WRITELN(Txt,Indent,
+                    'GOTOXY(',ItemX,',',ItemY,');');
+            WRITE  (Txt,Indent,
+                    'WRITE (''',ItemLabel); { Put WRITE & Label }
+            IF ItemLength > 0 THEN
+               WRITE(Txt, ' '); { Put <SP> if more }
+            FOR I := 1 to ItemLength DO
+               WRITE(Txt, '_'); { Put Underlines }
+            WRITELN(Txt, ''');'); { Put End of WRITE }
+         END; {LOOP}
+  
+  WRITELN(Txt, '   END; (* Setup *)');
+     
+END; (* WRITING SETUP *)
+
+PROCEDURE DO_INPUT;
+
+VAR Last,
+    I,
+    ItemNum        : INTEGER;
+
+PROCEDURE DO_Default; { within DO_INPUT }
+
+BEGIN
+   WITH Scrfile^[ItemNum] DO BEGIN
+      WRITE  (Txt,Indent,
+              'IF Return = Default THEN ');
+      IF ItemDefault = ''
+         THEN WRITE(Txt,'Temp',ItemType,':=',ItemName)
+         ELSE BEGIN
+            WRITE(Txt,'Temp',ItemType,':=');
+            IF ItemType = 'STRING' THEN WRITE(Txt,'''');
+            WRITE(Txt,ItemDefault);
+            IF ItemType = 'STRING' THEN WRITE(Txt,'''');
+           END; {ELSE}
+      WRITELN(Txt,';');
+   END; { WITH }
+END; { Do Default }
+
+BEGIN { DO_INPUT }
+   GOTOXY(0,23);
+   WRITE ('Generating INPUT',chr(7));
+   
+   WRITELN(Txt, '   INPUT: BEGIN');
+   WRITELN(Txt, '(*$G+*)');
+   
+   Last := -1;
+   FOR ItemNum := 1 TO MaxNumOfItems DO
+      WITH Scrfile^[ItemNum] DO
+          IF ItemValid THEN BEGIN
+             FOR I := 1 to LENGTH(ItemType) DO
+                IF ItemType[I] IN ['a'..'z'] THEN 
+                   ItemType[I] := CHR(ORD(ItemType[I])-32);
+             IF Last < 0 THEN Last := ItemNum; { For first item }
+             WRITELN(Txt);
+             WRITELN(Txt,Indent,
+                    '(* Input ',ItemName,' *)');
+             WRITELN(Txt,Indent,
+                     ItemNum,': ','GOTOXY(',ItemX+1+Length(ItemLabel),
+                     ',',ItemY,');');
+             WRITE  (Txt,Indent);
+             IF ItemType <> 'STRING' THEN
+                WRITE(Txt,'Temp',ItemType,':=');
+             WRITE  (Txt,'Get',ItemType,
+                     '(',ItemLength,',Return');
+             IF ItemType = 'STRING' THEN
+                WRITE(Txt,',Temp',ItemType);
+             WRITELN(Txt,');');
+             WRITELN(Txt,Indent,
+                     'IF Return = Backup THEN GOTO ',Last,';');
+             DO_Default;
+             
+             WRITELN(Txt,Indent,
+                     'GOTOXY(',ItemX+1+Length(ItemLabel),',',Itemy,');');
+             IF ItemType = 'BOOLEAN'
+                THEN WRITELN(Txt,Indent,
+                             'IF TempBOOLEAN THEN WRITE(''Yes'')',
+                             ' ELSE WRITE(''No'');')
+                ELSE WRITELN(Txt,Indent,
+                             'WRITE(Temp',ItemType,');');
+             WRITELN(Txt,Indent,
+                     ItemName,':=Temp',ItemType,';');
+             
+             Last := ItemNum; { For Labels }
+          END; {LOOP}
+   
+   WRITELN(Txt, '(*$G-*)');
+   WRITELN(Txt, '   END; (* Input *)');
+
+END; (* WRITING INPUT *)
+
+PROCEDURE DO_OUTPUT;
+
+VAR ItemNum: INTEGER;
+
+BEGIN
+   GOTOXY(0,23);
+   WRITE ('Generating OUTPUT',chr(7));
+   
+   WRITELN(Txt, '   OUTPUT : BEGIN');
+   
+   FOR ITEMNUM := 1 TO MAXNUMOFITEMS DO 
+     WITH Scrfile^[ItemNum] DO
+         IF ItemValid AND (ItemLength > 0) THEN BEGIN { No Screen Labels }
+            
+            WRITELN(Txt,Indent,
+                    '(* Print ',ItemName,' *)');
+            WRITELN(Txt,Indent,
+                    'GOTOXY(',ItemX+1+LENGTH(ItemLabel),',',
+                    ItemY,');');
+            WRITELN(Txt,Indent,
+                    'WRITE(',ItemName,');');
+         
+         END; {LOOP}
+   
+   WRITELN(Txt, '   END; (* Output *)');
+
+END; (* WRITING OUTPUT *)
+  
+BEGIN { Main }
+
+  clear_screen;
+  GOTOXY(10,0);
+  WRITELN('Generate Screen Code');
+
+  OPEN_INPUT;
+  
+  OPEN_OUTPUT;
+  
+  clear_screen;
+  GOTOXY(10,0);
+  WRITELN('Pascal Screen Generator');
+  WRITELN;
+  WRITELN('Generating Pascal Source to');
+  WRITELN('    ',ScreenOut);
+  
+  GOTOXY(1,23);
+  WRITE (' Generating DEFINES ');
+  
+  Indent := '      ';
+  WRITELN(Txt, 'PROCEDURE SCREENOUT(Action:ACTCODE);');
+  
+  WRITE  (Txt, 'LABEL ');
+  First := True;
+  For ItemNum := 1 to MaxNumOfItems DO
+     If Scrfile^[ItemNum].ItemValid THEN BEGIN
+        IF NOT First THEN BEGIN
+           WRITELN(Txt,',');
+           WRITE  (Txt,'      ');
+          END;
+        WRITE(Txt,ItemNum);
+        First := FALSE;
+       END;
+  WRITELN(Txt, ';');
+  
+  WRITELN(Txt, 'TYPE Stat: (Good,Backup,Default);');
+  
+  WRITELN(Txt, 'VAR TempBoolean: BOOLEAN;');
+  WRITELN(Txt, '    TempString : STRING;');
+  WRITELN(Txt, '    TempInteger: INTEGER;');
+  WRITELN(Txt, '    TempReal   : REAL;');
+  WRITELN(Txt, '    TempLongInteger: INTEGER[36];');
+  WRITELN(Txt, '    Return     : Stat');
+  
+  WRITELN(Txt, 'BEGIN');
+  WRITELN(Txt, 'CASE action OF');
+  
+  DO_SETUP;
+  
+  DO_INPUT;
+  
+  DO_OUTPUT;
+  
+  WRITELN(Txt, 'END; (* ScreenOut *)');
+  
+  CLOSE(Txt,LOCK);
+  
+END.
+  

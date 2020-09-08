@@ -1,0 +1,539 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{BE84B868-4639-4B15-8440-9E4DF6A2F203}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>UCSD_Sources</RootNamespace>
+    <AssemblyName>UCSD Sources</AssemblyName>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{BC8A1FFA-BEE3-4634-8014-F334798102B3};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|ARM'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\ARM\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>ARM</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|ARM'">
+    <OutputPath>bin\ARM\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>ARM</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x86\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFX_CORE</DefineConstants>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
+    <OutputPath>bin\x86\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFX_CORE</DefineConstants>
+    <Optimize>true</Optimize>
+    <NoWarn>;2008</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- A reference to the entire .Net Framework and Windows SDK are automatically included -->
+    <Folder Include="II.0 %28Unit Stuttgart%29\Other\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="1.5\Interpreters\I.5-PDP-INTERP.TXT" />
+    <Content Include="1.5\Interpreters\I5Z80Interp.TXT" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp CopyRite.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp MainOp.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp ProcOp.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp QXBOOT.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp RKBOOT.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp RXBOOT.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Interp TERAK.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 LibMap.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 PIO Unit.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 PIO.txt" />
+    <Content Include="1.5\Interpreters\UCSD Pascal 1.5 Radix.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Binder.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Compiler.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Disassembler.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 LibMap.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Librarian.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Linker.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 PIO Unit.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 PIO.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 Radix.txt" />
+    <Content Include="1.5\Other\P.UCSD Pascal 1.5 System.txt" />
+    <Content Include="1.5\Pascal Sources\filer-F5\filenote.txt" />
+    <Content Include="1.5\Pascal Sources\filer-F5\FILER.TXT" />
+    <Content Include="1.5\Pascal Sources\filer-F5\FILERA.TXT" />
+    <Content Include="1.5\Pascal Sources\filer-F5\FILERB.TXT" />
+    <Content Include="1.5\Pascal Sources\filer-F5\FILERC.TXT" />
+    <Content Include="1.5\Pascal Sources\filer-F5\FILERD.TXT" />
+    <Content Include="1.5\Pascal Sources\filer-F5\GLOBALS.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM1.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM2.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM3.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM4.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM5.TXT" />
+    <Content Include="1.5\Pascal Sources\I.5.b.1-ASM\ASM6.TXT" />
+    <Content Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\00readme.txt" />
+    <Content Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\00readme.txt" />
+    <Content Include="II.0 %28Miller Distribution%29\Pascal Sources\basicio\main.txt" />
+    <Content Include="II.0 %28Miller Distribution%29\Pascal Sources\disassembler\opcodes.ii.0.txt" />
+    <Content Include="II.0 %28Unit Stuttgart%29\Notes on Origin.txt" />
+    <Content Include="Useful Links.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="1.5\Pascal Sources\I.5Disasm\DISASM.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Disasm\DISASM1.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Disasm\DISASM2.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Disasm\OPCODES.I5" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINK0.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINK1.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINK2.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINK3A.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINK3B.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Linker\LINKER.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5System\GLOBALS.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5System\SYSSEGS.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5System\SYSTEM.B.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5System\SYSTEM.C.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5System\SYSTEM.TEXT" />
+    <None Include="1.5\Other\I.5Binder.text" />
+    <None Include="1.5\Other\I.5Librarian.text" />
+    <None Include="1.5\Pascal Sources\editor-e.4\COMMAND.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\EDITOR.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\ENVIRON.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\FIND.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\HEAD.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\INIT.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\INSERTIT.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\MISC.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\MOVEIT.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\OUT.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\USER.PAS" />
+    <None Include="1.5\Pascal Sources\editor-e.4\UTIL.PAS" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BLOCK.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BODYPARTA.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BODYPARTB.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BODYPARTC.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BODYPARTD.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\BODYPARTE.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\COMPGLBLS.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\COMPILER.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\COMPINIT.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\DECPARTA.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\DECPARTB.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\DECPARTC.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\PROCS.A.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\PROCS.B.TEXT" />
+    <None Include="1.5\Pascal Sources\I.5Compiler\UNITPART.TEXT" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm1.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm2.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm3.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm4.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm5.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\asm6.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\assembler\module.cook" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\dl.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\iotrap.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\lp.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\macros.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\mainop.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\procop.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\qx.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\rk.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\rx.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\interpreter\tk.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\qxboot\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\rkboot\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\pdp11\rxboot\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm1.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm2.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm3.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm4.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm5.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\asm6.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\error-messages.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\extra.z80.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\assembler\opcode-data.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\arith.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\boot.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\cpmio.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\fpi.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\fpl.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\fpt.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\interp.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\nofpi.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\nofpt.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\proc1.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\proc2.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\set1.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\set2.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\stp.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\Interpreters\z80\interpreter\vars.inc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\basic\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\binder\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\bios.diag\b.diag.dsk.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\bios.diag\b.diag.int.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\bios.diag\b.diag.rsp.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\bios.diag\b.diag.ser.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\bios.diag\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\calc\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\charset\bit-map-font.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\block.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\bodypart.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\bodypart.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\bodypart.c.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\bodypart.d.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\bodypart.e.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\compglbls.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\compinit.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\decpart.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\decpart.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\decpart.c.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\error-messages.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\procs.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\procs.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\compiler\unitpart.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\copydupdir\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Other\control" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag0.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag1.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag2.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag3.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag4.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag5.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\diag6.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\diagnostic\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\disassembler\disasm1.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\disassembler\disasm2.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\disassembler\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\command.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\copyfile.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\environ.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\find.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\head.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\init.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\insertit.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\misc.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\moveit.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\out.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\putsyntax.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\user.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\editor\util.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\edittort11\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\execerr\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.c.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.d.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.e.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\filer.vars.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\filer\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Emulated Unit Stubs %28Klebsch%29\long_integer\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Emulated Unit Stubs %28Klebsch%29\miscinfo.text" />
+    <None Include="II.0 %28Miller Distribution%29\Emulated Unit Stubs %28Klebsch%29\transcendental\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Emulated Unit Stubs %28Klebsch%29\turtle_graphics\main.asm.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\libmap\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\librarian\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Other\LICENSE" />
+    <None Include="II.0 %28Miller Distribution%29\Other\LICENSE-UCSD" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\link0.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\link1.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\link2.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\link3a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\link3b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\linker\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\long_integer\decop.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\long_integer\decop.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\long_integer\drwstuff.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\long_integer\globals.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\long_integer\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\markdupdir\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\pascalio\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\pascalio\unit.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\radix\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Other\README" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\rt11toedit\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\setup\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\globals.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\module.cook" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\syssegs.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\syssegs.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\system.a.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\system.b.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\system\system.c.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\transcendental\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\turtle_graphics\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Other\ucsdpsys_os_license_bsd.1" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\xref\main.text" />
+    <None Include="II.0 %28Miller Distribution%29\Pascal Sources\yaloe\main.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\basic_source\basic.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\basic_source\basicio.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\basic_source\basicio.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\b.diag.dsk.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\b.diag.int.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\b.diag.rsp.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\b.diag.ser.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\bios.diag.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\bios.diag.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag0.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag3.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag4.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag5.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diag6.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\diagnostic.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\diagnostics_source\execerr.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\command.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\copyfile.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\editor.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\environ.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\find.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\head.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\init.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\insertit.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\list.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\misc.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\moveit.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\out.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\putsyntax.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\user.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\editor_source\util.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\long_integer_source\decop.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\long_integer_source\decop.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\long_integer_source\drwstuff.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\long_integer_source\globals.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\long_integer_source\pascalio.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_assem_code\11.errors" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_assem_code\11.opcodes" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_assem_code\asm11.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\11.errors" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\11.opcodes" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm11.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm3.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm4.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm5.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\lsi-11_assem_source\asm6.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\read.me.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\rkboot" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\rt-11.dir" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\rt-11.files" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\rt11toedit.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_p-code_source\rxboot" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\binder.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\booter.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\rxboot" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\samplegoto.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\setup.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.compiler" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.editor" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.filer" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.library" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.linker" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.pascal" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.pdp-11" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.startup" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\lsi-11_system_code1\system.syntax" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.c.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.d.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.e.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\filer.vars.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\globals.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\ii.0.filer.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\syssegs.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\syssegs.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\system.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\system.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\system.c.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\os_source\system.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\block.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\bodypart.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\bodypart.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\bodypart.c.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\bodypart.d.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\bodypart.e.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\compglbls.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\compiler.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\compinit.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\decpart.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\decpart.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\decpart.c.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\procs.a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\procs.b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_compiler_source\unitpart.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\globals.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link0.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link3a.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\pascal_linker_source\link3b.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\copydupdir.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\dasm1.ii0.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\dasm2.ii0.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\disasm.ii.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\edittort11.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\libmap.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\library.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\markdupdir.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\opcodes.ii.0" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\rt11toedit.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\utility_source\setup.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\yaloe_source\l2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Pascal Sources\yaloe_source\yaloe.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_assem_code\asmz80.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_assem_code\z80.errors" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_assem_code\z80.opcodes" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm3.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm4.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm5.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asm6.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\asmz80.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\extra.z80.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\z80.errors" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_assem_source\z80.opcodes" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\arith.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\boot.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\cpminc.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\cpmio.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\fpi.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\fpl.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\fpt.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\interp.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\nofpi.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\nofpt.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\proc1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\proc2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\set1.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\set2.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\stp.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Interpreter and Assembler Sources\z80_p-code_source\vars.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\binder.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\read.me.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\samplegoto.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\setup.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.compiler" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.editor" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.filer" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.library" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.linker" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.micro" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.pascal" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.startup" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\system.syntax" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code1\z80t.micro" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\basic.compiler" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\basicio.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\copydupdir.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\disasm.ii.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\edittort11.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\l2.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\libmap.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\library.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\markdupdir.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\opcodes.ii.0" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\read.me.text" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\rt11toedit.code" />
+    <None Include="II.0 %28Unit Stuttgart%29\Systems\z80_system_code2\yaloe.code" />
+    <None Include="II.0 Manual Scans\ucsd-pascal-ii.0-io-manual-facsimile.pdf" />
+    <None Include="II.0 Manual Scans\ucsd-pascal-ii.0-user-manual-facsimile.pdf" />
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '11.0' ">
+    <VisualStudioVersion>11.0</VisualStudioVersion>
+  </PropertyGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsXaml\v$(VisualStudioVersion)\Microsoft.Windows.UI.Xaml.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

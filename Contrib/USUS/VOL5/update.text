@@ -1,0 +1,387 @@
+
+PROGRAM UPDATE;  (* UPDATES DISK FILE "#5:ADDRESS.TEXT": CAN ADD
+                              DELETE, OR PRINT RECORDS BASED ON KEY     *)
+                            (* REQUIRES "#5:KEYS.TEXT" AND "#5:ADDRESS.TEXT"*)
+
+TYPE 
+     KEYRANGE = 0..300;  (* CHANGE THIS IF YOU EXPECT > 300 RECORDS *)
+     KEYTYPE = PACKED ARRAY [ KEYRANGE ] OF STRING;
+     STRUCTURE = RECORD
+                   NAME : STRING;
+                   STREET : STRING;
+                   CITYSTATEZIP : STRING;
+                   PHONE : STRING;
+                   KEY : STRING
+                 END;
+
+VAR 
+    RECNUM, MAXKEYS  : INTEGER;
+    FID  : FILE OF STRUCTURE;
+    FIN, LP, KEYNO  : TEXT;
+    PATTERN, BUFFER   : STRING[80];
+    KEYS  : KEYTYPE;
+    LF, LI, CH, BELL, ESC,  FG, BG, CS  : CHAR;
+    PRINTIT, FINISHED, MUSTRUNKEYIT  : BOOLEAN;
+
+PROCEDURE PUTP;
+BEGIN
+  WRITE ( LP, CH );
+END;
+              
+PROCEDURE KEYIT;(* CREATES "#5:KEYS.TEXT" CONTAINING THE 
+                               KEYS FROM "#5:ADDRESS.TEXT" *)
+
+
+BEGIN (* KEYSFORADDRESSTEXT *)
+
+
+
+   WRITELN (' ... Updating the keys ... ');
+   WRITELN;
+   RESET ( KEYNO, '#5:KEYNO.TEXT');
+   READLN( KEYNO, MAXKEYS);
+   CLOSE (KEYNO, NORMAL);
+   REWRITE(FIN, '#5:keys.text');
+   WRITELN(FIN, MAXKEYS);
+   RECNUM := 0;
+
+   RESET(FID,'#5:address.text');
+
+   WHILE ((NOT EOF(FID)) AND (RECNUM <= MAXKEYS)) DO
+      BEGIN
+         SEEK(FID, RECNUM);
+         GET(FID);
+         BUFFER := FID^.KEY;
+         WRITELN(FIN,BUFFER);
+         WRITE  ('.');
+         SEEK(FID,RECNUM);
+         PUT(FID);
+         RECNUM := SUCC(RECNUM)
+     END;
+
+   CLOSE(FID,LOCK);
+   CLOSE(FIN,LOCK);
+END;                         
+
+              
+
+PROCEDURE PRINT ( T : STRING );   (* REMOVE IF NO PRINTER *)
+
+VAR 
+    I  : INTEGER;
+
+BEGIN
+   FOR I := 1 TO LENGTH ( T ) DO
+      BEGIN
+         CH := T [ I ];
+         PUTP
+      END;
+  CH := LF;
+  PUTP;
+END;   (* PROCEDURE PRINT *)
+
+PROCEDURE ZEROREC (VAR REC : STRUCTURE );
+
+CONST 
+      BLANK = ' ';
+
+BEGIN
+   WITH REC DO
+      BEGIN
+         NAME := BLANK;
+         STREET := BLANK;
+         CITYSTATEZIP := BLANK;
+         PHONE := BLANK;
+         KEY := BLANK
+      END;
+END; (* ZEROREC *)
+
+PROCEDURE SHOWREC(REC : STRUCTURE);
+
+BEGIN
+
+    WRITELN(LI,CS,BELL);
+
+    WITH REC DO
+       BEGIN
+          WRITELN(LI, FG, 'Name: ', LI, BG, NAME);
+          IF PRINTIT
+             THEN
+               BEGIN
+                  CH := LF;
+                  PUTP;
+                  PUTP;
+                  PRINT (NAME);
+               END;
+
+
+          WRITELN(LI, FG, 'Street: ', LI, BG, STREET);
+          IF PRINTIT
+             THEN
+                PRINT(STREET);
+
+          WRITELN(LI, FG, 'City, State, and Zip: ', LI, BG, CITYSTATEZIP);
+          IF PRINTIT
+             THEN
+                BEGIN
+                   PRINT (CITYSTATEZIP);
+                   CH := LF;
+                   PUTP;
+                   PRINTIT := FALSE
+                END;
+
+          WRITELN(LI, FG, 'Phone: ', LI, BG, PHONE);
+
+          WRITELN(LI, FG, 'Key: ', LI, BG, KEY);
+
+          WRITELN;
+
+       END;
+  END; (* SHOWREC *)
+
+PROCEDURE WRITELIMIT ( LEN : INTEGER );
+
+VAR
+   BS : CHAR;
+   I : INTEGER;
+   
+BEGIN
+   BS := CHR ( 8 );
+   WRITE ( ' ': LEN, '| < -- ' );
+   FOR I := 1 TO (LEN + 7) DO
+      WRITE ( BS );
+   WRITE ( LI, BG, BELL );
+END;
+
+
+PROCEDURE GETREC ( VAR REC : STRUCTURE);
+
+VAR 
+    S : STRING;
+
+  FUNCTION READIT (VAR T: STRING): BOOLEAN;
+
+  BEGIN (* READIT *)
+
+     READIT := FALSE;
+     READLN(S);
+
+     IF LENGTH(S) > 0
+        THEN
+           IF S [ LENGTH(S) ] = ESC
+              THEN
+                 READIT := TRUE
+              ELSE
+                 BEGIN
+                    IF ((T = REC.KEY) AND (LENGTH(T) > 2))
+                       THEN
+                          BEGIN
+                             KEYS [ RECNUM ] := S;
+                             T := S;
+                             MUSTRUNKEYIT := TRUE
+                          END
+                       ELSE
+                          T := S;
+                  END
+         END;  (* FUNCTION READIT *)
+
+         BEGIN (* GETREC *)
+            WRITELN(BELL);
+            WRITELN(LI,FG, BELL, 'RETURN skips item with no change');
+            WRITELN('ESC and RETURN skips the whole record', LI, BG, BELL);
+            WRITELN;
+
+            WITH REC DO
+               BEGIN
+                  WRITE(LI, FG, 'Name: '); 
+                  WRITELIMIT ( 60 );
+                  IF (NOT READIT(NAME))
+                     THEN
+                       BEGIN
+                          WRITE(LI,FG,'Street: ');
+                          WRITELIMIT ( 60 );
+                          IF (NOT READIT(STREET))
+                             THEN
+                                BEGIN
+                                   WRITE(LI,FG,'CityStateZip: ');
+                                   WRITELIMIT ( 60 );
+                                   IF (NOT READIT(CITYSTATEZIP))
+                                      THEN
+                                         BEGIN
+                                            WRITE(LI,FG,'Phone: ');
+                                            WRITELIMIT ( 60 );
+                                            IF (NOT READIT(PHONE))
+                                               THEN
+                                                  BEGIN
+                                                     WRITE(LI,FG,'Key: ');
+                                                     WRITELIMIT ( 60 );
+                                                     IF (NOT READIT(KEY))
+                                                        THEN
+                                                           WRITELN;
+
+                                                  END
+                                          END
+                                 END
+                         END
+                  END
+            END;   (* PROCEDURE GETREC *)
+
+  PROCEDURE SEARCHFORPATTERN;
+
+  BEGIN
+
+    REPEAT
+       RECNUM := SUCC(RECNUM)
+    UNTIL ((POS(PATTERN,KEYS[RECNUM]) <> 0) OR (RECNUM > MAXKEYS) OR ( FINISHED
+          ));
+
+ END;  (* PROCEDURE SEARCHFORPATTERN *)
+
+ PROCEDURE BUFFERKEYS;
+
+ BEGIN
+   RESET(FIN,'#5:keys.text');
+   RECNUM := 0;
+   WRITELN(LI,CS,LI,FG,BELL,BELL);
+
+   WRITELN(' ...  Transferring Keys to RAM ...');
+   WRITELN;
+
+   READLN(FIN,MAXKEYS);
+
+   WHILE NOT EOF(FIN) DO
+     BEGIN
+       READLN(FIN,KEYS [ RECNUM]);
+       WRITE('.');
+       RECNUM := SUCC(RECNUM)
+     END;
+
+   WRITELN;
+   WRITELN(LI,BG,BELL);
+   CLOSE(FIN,LOCK);
+   MAXKEYS := PRED ( RECNUM );
+END; (* BUFFERKEY *)
+
+PROCEDURE CHECKFORKEYS;
+BEGIN
+  WRITE(' Is this the first time through UPDATE? Y/N: ');
+  READLN ( CH );
+  IF CH IN ['Y', 'y']
+    THEN
+      KEYIT;
+END;
+
+
+
+BEGIN   (* UPDATEADDRESS.TEXT *)
+  REWRITE ( LP, 'PRINTER:');
+  CHECKFORKEYS;
+  MUSTRUNKEYIT := FALSE;
+  FINISHED := FALSE;
+  PRINTIT := FALSE;
+  LF := CHR(10);   (* SET LF..BELL = CHR(0)  (OR NULL) FOR DUMB TERMINAL *)
+                   (* LF = LINE FEED, LI = LEAD-IN TO THE SCREEN,
+                      BG = BACKGROUND FOLLOWS (SINGLE INTENSITY)
+                      FG = FOREGROUND FOLLOWS (DOUBLE INTENSITY)
+                      ESC = ESCAPE 
+                      CS = CLEAR THE SCREEN 
+                      BELL = RING TERMINAL BELL
+                      
+                      NOTE THAT CS ALSO HOMES CURSOR AND THAT
+                      "CHR" REQUIRES A DECIMAL ARGUMENT OF THE ASCII
+                      CHARACTER (TERMINAL DEPENDENT)*)
+  LI := CHR(27);
+  ESC := LI;
+  BG := CHR(25);
+  FG := CHR(31);
+  CS := CHR(28);
+  BELL := CHR(7);
+
+  BUFFERKEY;
+
+  RESET(FID, '#5:address.text');
+  RECNUM := 0;
+
+  WHILE  (( RECNUM >= 0) AND (NOT FINISHED)) DO
+    BEGIN
+       WRITE(LI,CS,BELL);
+
+       WRITE(BELL,' Enter Key --> ');
+       READLN(PATTERN);
+       WRITELN;
+
+       IF ((PATTERN = 'STOP') OR (PATTERN = 'stop'))
+          THEN
+             FINISHED := TRUE;
+
+       IF ((PATTERN = 'PRINT') OR (PATTERN = 'print'))
+          THEN
+             BEGIN
+               PRINTIT := TRUE;
+               WRITE(LI,CS,BELL);
+               WRITE(BELL, ' Enter Key of Record to be Printed --> ');
+               READLN(PATTERN);
+               WRITELN
+             END;
+
+       RECNUM := -1;
+
+       SEARCHFORPATTERN;
+
+       IF ((RECNUM > MAXKEYS) AND (NOT FINISHED))
+          THEN
+             BEGIN
+                WRITELN(LI,FG,BELL);
+                WRITE(BELL, ' Not found. Do you want to 1) Add another record')
+               ;
+                WRITELN;
+                WRITE(BELL,
+                      '         **** OR ****             2) Try another key? --> ');
+                READLN(BUFFER);
+                WRITELN(LI,BG,BELL);
+
+                IF BUFFER = '1'
+                   THEN
+                      BEGIN
+                         WRITELN;
+                         MUSTRUNKEYIT := TRUE;
+                         MAXKEYS := RECNUM
+                      END
+              END;
+        WRITELN;
+
+
+       IF ((RECNUM >= 0) AND (RECNUM <= MAXKEYS) AND (NOT FINISHED))
+          THEN
+             BEGIN
+                SEEK(FID,RECNUM);
+                GET(FID);
+                IF EOF(FID)
+                  THEN
+                    BEGIN
+                      WRITELN(LI,CS,BELL, 'Enter new record...');
+                      ZEROREC(FID^)
+                    END
+                  ELSE
+                    BEGIN
+                      WRITELN(LI,CS,BELL, 'Old Record...');
+                      SHOWREC(FID^);
+                      WRITELN;
+                      WRITELN(BELL,'Enter Any Changes...')
+                    END;
+                 GETREC(FID^);
+                 SEEK(FID,RECNUM);
+                 PUT(FID)
+             END
+        END; (* WHILE *)
+   CLOSE(FID,LOCK);
+   WRITELN(LI,CS);
+   REWRITE ( KEYNO, '#5:KEYNO.TEXT');
+   WRITELN ( KEYNO, MAXKEYS );
+   CLOSE ( KEYNO, LOCK );
+   IF MUSTRUNKEYIT
+     THEN
+        KEYIT;
+   WRITELN;
+   WRITELN (' ... Finished ...');
+END.  (* PROGRAM UPDATE *)

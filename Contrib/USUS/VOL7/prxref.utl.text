@@ -1,0 +1,339 @@
+(*****************************************************************)
+(* PRXREF.UTL -- for USUS -- 1980 July 14   (disabled KEYHIT)    *)
+(*****************************************************************)
+
+(* screen control -- takes cues from SYSTEM.MISCINFO, via two strings *)
+(* EOLSTRING and EOSSTRING established by procedure INITSCREEN *)
+
+PROCEDURE ERASEEOL; (* erase display to end of line *)
+BEGIN
+  UNITWRITE( 1, EOLSTRING[ 1], LENGTH( EOLSTRING), , 4 (* ==> raw output *) )
+  END;
+
+PROCEDURE ERASEEOS;   (* erase display to end of screen *)
+BEGIN
+  UNITWRITE( 1, EOSSTRING[ 1], LENGTH( EOSSTRING), , 4 (* ==> raw output *) )
+  END;
+(**************************************************************************)
+
+PROCEDURE DOTTEXT( VAR S: STRING);
+  (* appends ".TEXT" to file name S if it doesn't already have one *)
+
+VAR
+  I: INTEGER;
+  C: CHAR;
+BEGIN
+  FOR I := 1 TO LENGTH( S) DO BEGIN
+    C := S[ I];  UCFOLD( C); S[ I] := C  END;
+  IF (( POS( '.TEXT', S) <> LENGTH( S) - 4) OR ( LENGTH( S) <= 4)) THEN
+    S := CONCAT( S, '.TEXT')
+  END;
+(**************************************************************************)
+
+FUNCTION FILECHECK (*** VAR S: STRING ): BOOLEAN ***) ;
+  (* verify that input .TEXT file S exists, return TRUE if it does *)
+VAR
+  DUMMYFILE: FILE;
+BEGIN
+  DOTTEXT( S);
+  (*$I-*) RESET( DUMMYFILE, S); (*$I+*)
+  FILECHECK := (IORESULT = 0);  CLOSE( DUMMYFILE)
+  END;
+(****************************************************************)
+
+PROCEDURE UCFOLD(***  VAR C: CHAR ***);
+    (* Folds lower case alphabetics into upper case. *)
+  BEGIN
+  IF ( C >= 'a') THEN IF ( C <= 'z') THEN C := CHR( ORD( C) - 32)
+  END;
+(**************************************************************************)
+
+PROCEDURE MSG (*** S: STRING;  L: INTEGER ***) ; (* display S on msg line L *)
+BEGIN
+  GOTOXY( PRCOL, MSGLINE+L);  ERASEEOL;  WRITE( S);  END;
+
+PROCEDURE IOE(*** N: INTEGER;  S: STRING ***); (* handle fatal I/O error *)
+BEGIN
+  MSG(' I/O error on file: ', 2);  WRITE( S);  EXIT( PRXREF)  END;
+(**************************************************************************)
+
+PROCEDURE SEARCH(*** IDX: ALFA***);
+  (* global: T, TOP *)
+
+  (*************************************************************************)
+  (* Process and enter symbol IDX in the cross-reference symbol table *)
+  (* The crux of this routine is taken from N. Wirth, ALGORITHMS + DATA *)
+  (*   STRUCTURES = PROGRAMS, pages 264-274.  The original version *)
+  (*   was supplied with the release of UCSD Pascal version I.4. *)
+  (*   This version is considerably modified by the present author. *)
+  (* The general method is hashing with quadratic probing.  This is *)
+  (*   fully documented in the reference, so only modifications will be *)
+  (*   discussed here. *)
+  (* The identifier IDX is sought in the table, provided it begins with *)
+  (*   a non-numeric  character.  If a found symbol is a keyword, it is *)
+  (*   ignored.  Otherwise, it is assumed a programmer's symbol and entered *)
+  (*   in the table with the line number on which it occurred.  A symbol *)
+  (*   not found initiates a new table entry for a programmer's symbol. *)
+  (* Keywords are entered in the table with a special, negative line number, *)
+  (*   before the program begins (see INITXREF). *)
+  (* Should the table fill up, the disk table handler is invoked. *)
+  (*   The table is sorted and written to disk for later merging with other *)
+  (*   portions.  The table is then reinitialized for further entries. *)
+  (*************************************************************************)
+
+VAR
+  I, H, D: INTEGER;
+  JR: REAL;
+  X : ITEMPTR;
+  F: BOOLEAN;
+  FCH: CHAR;
+  (* record to deal with ID simultaneously as alphanumeric and numeric *)
+  IDREC: RECORD CASE BOOLEAN OF
+    TRUE: ( ID: ALFA);
+    FALSE: ( NUM: PACKED ARRAY[ 1..INTSPERALFA] OF INTEGER )
+    END;
+BEGIN (* SEARCH *) WITH IDREC DO BEGIN
+  (* reject symbols beginning with a numeric character *)
+  FCH := IDX[1]; IF (FCH <= '9') AND (FCH >= '0') THEN EXIT( SEARCH);
+  ID := IDX;  JR := 0.0;
+  (* hash the symbol (without using integer overflow) *)
+  FOR I := 1 TO INTSPERALFA DO  BEGIN
+    JR := JR + NUM[ I];
+    IF JR > 32766.9 THEN JR := JR - 32766.9
+    END;
+  H := TRUNC( JR) MOD P;
+  (* search the scatter store with quadratic probing *)
+  F := FALSE;  D := 1;
+  REPEAT
+    IF T[H].KEY = ID THEN BEGIN (* found *)
+      F := TRUE;  (* terminate search *)
+      IF T[ H].FIRST <> NIL THEN BEGIN (* found is not keyword *)
+        (* check if room left in the current item *)
+        IF T[H].LAST^.REFNUM = REFSPERITEM THEN BEGIN
+          (* no room; create new item and link to previous one *)
+          NEW( X);  X^.REFNUM := 1;  X^.REF[ 1] := LINENUMBER;
+          T[ H].LAST^.NEXT:= X;  T[ H].LAST := X;
+          END
+        ELSE WITH T[ H].LAST^ DO BEGIN
+          (* there is room; insert symbol in current item *)
+          REFNUM := REFNUM + 1;  REF[ REFNUM] := LINENUMBER
+          END
+        END
+      ELSE BEGIN (* found is a keyword *)
+        NUMKWREFS := NUMKWREFS + 1 (* count the ref *)  END
+      END
+    ELSE IF T[ H].KEY = '        ' THEN BEGIN (* new entry *)
+      F := TRUE; (* terminate search *)
+      LNUMENTRIES := LNUMENTRIES + 1; (* local entry count, for ovflw check *)
+      (* check if this is to be a keyword entry *)
+      IF LINENUMBER <> KWCODE THEN (* non keyword *) BEGIN
+        (* enter symbol and start new item *)
+        NEW( X);  X^.REFNUM := 1;  X^.REF[1] := LINENUMBER;
+        T[H].FIRST := X;  T[H].LAST  := X  END
+      ELSE (* keyword *) BEGIN  (* indicate that by NIL pointer *)
+        T[ H].FIRST := NIL;  END;
+      T[ H].KEY   := ID;  TOP := H
+      END
+    ELSE BEGIN (* collision; quadratic probe *)
+      H := H + D;  D := D + 2;  IF H >= P THEN  H := H - P;
+      IF D = P THEN BEGIN
+        (* table overflow; shouldn't happen if table is sufficiently large *)
+        (* since table will be written to disk before it occurs *)
+        WRITELN( OUTPUT,'Internal error: table overflow!!');  EXIT( PRXREF)
+        END
+      END
+    UNTIL F;
+  (* check if hash load factor exceeded or dynamic memory exhausted *)
+  IF (LNUMENTRIES >= MAXNUMENTRIES) OR (MEMAVAIL < MEMTHRESH)  THEN
+    (* write current table contents to disk *) PRINTTABLE( DISK)
+  END END (*SEARCH*) ;
+(**************************************************************************)
+
+PROCEDURE PUTCRLF;
+  (* Do printer line skip, with regard for possible printer need for nulls *)
+VAR
+  I: INTEGER;
+BEGIN
+  IF PRINTING OR INXREF THEN  FOR I := 1 TO SPACING DO BEGIN
+    WRITE( OUTFILE, CHR(CR));
+    IF NUMPRNULLS > 0 THEN  IF UNITOUT THEN  IF PRINTUNIT = 6 THEN
+      UNITWRITE( PRINTUNIT, NULLS[ 1], NUMPRNULLS)
+    END
+  END;
+(**************************************************************************)
+
+PROCEDURE BUMPLINE;
+  (* perform logical line skip; watch for page overflow *)
+VAR
+  I: INTEGER;
+BEGIN
+  IF CURLINE >= PRINTLAST THEN TOPOFPAGE;
+  CURLINE := CURLINE + SPACING
+  END;
+(**************************************************************************)
+
+PROCEDURE SKIP(*** NUM: INTEGER***);
+  (* skip NUM lines on printer, logically and physically *)
+VAR
+  I: INTEGER;
+BEGIN
+  FOR I := 1 TO NUM DO BEGIN
+    BUMPLINE;  PUTCRLF;
+    IF ESCAPEHIT THEN EXIT( SKIP)
+    END
+  END;
+(**************************************************************************)
+
+PROCEDURE PLAINSKIP( N: INTEGER);
+  (* uncomplicated skip; no check for end of page, etc. *)
+VAR
+  I: INTEGER;
+BEGIN
+  FOR I := 1 TO N DO BEGIN
+    CURLINE := CURLINE + 1;  PUTCRLF;
+    IF ESCAPEHIT THEN EXIT( PLAINSKIP)
+    END
+  END;
+(**************************************************************************)
+
+PROCEDURE TOPOFPAGE;
+    (* Page skip; respects header, pageskipping options, prints hdrs, etc *)
+VAR
+  I: INTEGER;
+
+BEGIN
+  IF PRINTING OR INXREF THEN BEGIN (* otherwise don't bother *)
+    IF PAGESKIP THEN  (* skip to top of new physical page *)
+      IF NOT FIRSTPAGE THEN (* actual skip is required *)
+        IF (PRFORMFEED <> 0) AND UNITOUT THEN (* send formfeed char *)
+          WRITE( OUTFILE, CHR( PRFORMFEED))
+        ELSE (* do it with skips *)
+          PLAINSKIP( PAGELINES - CURLINE + 1);
+      (* else user has set it there already *);
+    (* set curline for new page; show no longer first page *)
+    CURLINE := 1;  FIRSTPAGE := FALSE;
+    IF HDRS OR PAGESKIP THEN PLAINSKIP( TOPMARGIN); (* margin above hdr *)
+    IF HDRS THEN BEGIN (* print the header *)
+      IF PRINTING THEN BEGIN
+        IF TITLEHDRS THEN (* use standard file title header *) BEGIN
+          WRITE( OUTFILE, 'FILE: ', MAINNAME, '  PAGE ', GPAGE);
+          IF LNAME <> MAINNAME THEN (* show included file name *)
+            WRITE( OUTFILE, ' ':12, 'INCLUDED FILE: ', LNAME, '  PAGE ', LPAGE)
+          END
+        ELSE  (* user header from format command *)
+          WRITE( OUTFILE, HEADER, GPAGE)
+        END;
+      IF INXREF THEN BEGIN (* special header during xref *)
+        IF NOT PRINTING THEN WRITE( OUTFILE, 'FILE: ', MAINNAME);
+        WRITE( OUTFILE, ' ':12, 'CROSS REFERENCE', '  PAGE ', LPAGE)
+        END;
+      (* header separator *)
+      PLAINSKIP( 1);  WRITE( OUTFILE, HEADERSEP);  PLAINSKIP( HEADERMARGIN+1)
+      END;
+    (* update page counters, global and local (for included file) *)
+    GPAGE := GPAGE + 1;   LPAGE := LPAGE + 1
+    END
+  END;
+(**************************************************************************)
+
+PROCEDURE STRIPSTRING( VAR S: BIGSTRING);
+  (* strip leading and trailing blanks from S; maybe down to null string *)
+VAR
+  A, B, L: INTEGER;
+BEGIN
+  L := LENGTH( S);
+  IF L > 0 THEN BEGIN
+    A := SCAN( L, <>' ', S[ 1]);  (* find first non-space *)
+    IF A >= L THEN (* nothing but spaces in S *) S := ''
+    ELSE (* find last non-space;  extract middle *) BEGIN
+      B := SCAN( -L, <>' ', S[ L]);  S := COPY( S, A+1, L-A+B)  END
+    END
+  END;
+(**************************************************************************)
+
+FUNCTION STRTON( S: BIGSTRING): INTEGER;
+  (* small, crummy routine to convert string to integer *)
+  (* assumes S stripped of leading and trailing blanks *)
+  (* handles up to 3 digits, no sign; returns -1 on any error *)
+VAR
+  N, I: INTEGER;
+  ERR: BOOLEAN;
+BEGIN
+  IF LENGTH( S) > 3 THEN ERR := TRUE
+  ELSE BEGIN
+    N := 0;  I := 1;  ERR := FALSE;
+    REPEAT
+      IF S[ I] IN [ '0'..'9'] THEN BEGIN
+        N := N * 10 + ORD( S[ I]) - ORD( '0');  I := I + 1  END
+      ELSE ERR := TRUE;
+      UNTIL (I > LENGTH( S)) OR ERR;
+    IF ERR THEN STRTON := -1  ELSE STRTON := N
+    END
+  END;
+(**************************************************************************)
+
+FUNCTION KEYHIT: BOOLEAN;
+  (* if any key on terminal is hit, return true *)
+  (* if nothing happening on kb, return false without ado *)
+
+{-----------------------------------following is commented out-----
+
+(* This version is for Pascal-100 (TM), the Pascal CPU for the S-100 bus *)
+(*   manufactured by Digicomp Research *)
+(* with a Cromemco Tuart at ports 0 (control) and 1 (data) *)
+
+  CONST
+    CTLPORT = 0; (* which port tells *)
+    RDABIT = 6;  ACTIVELOW = FALSE;
+  TYPE
+    WORDBITS = PACKED ARRAY[ 0..15] OF BOOLEAN;
+  VAR
+    PORT: RECORD CASE INTEGER OF
+      0: (IADDR: INTEGER);
+      1: (ADDR: ^WORDBITS)
+      END;
+  BEGIN WITH PORT DO BEGIN
+    IADDR := CTLPORT - 256; (* set the port pointer *)
+    (* read the port, active low or high as appropriate *)
+    IF ACTIVELOW THEN KEYHIT := NOT ADDR^[ RDABIT]
+    ELSE KEYHIT := ADDR^[ RDABIT];
+    END END;
+  ------------------------------------above is commented out---------}
+
+  {-----------------------------------following is commented out-----
+  (* This is a version for a module in the library *)
+  EXTERNAL;
+  ------------------------------------above is commented out---------}
+
+  (* This is a version that does nothing; assumes nothing *)
+  (* This is the active routine *)
+  BEGIN  KEYHIT := FALSE  END;
+
+(* Boy, do we need conditional compilation !! *)
+(**************************************************************************)
+
+FUNCTION ESCAPEHIT (*** : BOOLEAN ***);
+  (* looks for kb hit; if yes and escape, abort; else wait for another *)
+  (* and look again for escape *)
+  (* sets the global vbl ESCAPING as well as the function itself *)
+  (* if ESCAPING is true to begin with, it will remain true regardless of *)
+  (* keyboard activity or lack thereof *)
+BEGIN
+  IF KEYHIT THEN (* somebody knocking *) BEGIN
+    READ( KEYBOARD, C); (* read what's there *)
+    IF C <> CHR( ESC) THEN BEGIN (* hold everything until another hit *)
+      MSG( 'any key to continue;  <esc> to quit', 2);
+      READ( KEYBOARD, C);  MSG( ' ', 2)
+      END;
+    IF C = CHR( ESC) THEN BEGIN
+      MSG( '<esc> again to quit PRXref;  ', 2);
+      WRITE( 'any other key to reinitialize');
+      READ( KEYBOARD, C);  IF C = CHR( ESC) THEN EXIT( PRXREF);
+      ESCAPING := TRUE
+      END
+    END;
+  ESCAPEHIT := ESCAPING
+  END;
+
+(*********************************************************)
+

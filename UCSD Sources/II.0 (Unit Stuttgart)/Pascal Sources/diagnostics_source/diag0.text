@@ -1,0 +1,132 @@
+  {This is an unpublished work copyright by the Regents of
+   the University of California. This item is the property of SofTech
+   Microsystems Inc., and it may be used, copied or distributed only
+   as permitted in a written license from that company.}
+
+
+
+(************************************************************************)
+
+
+
+
+SEGMENT PROCEDURE CXP(PARAM1,PARAM2:INTEGER);
+
+  SEGMENT FUNCTION RETURN1000:INTEGER;
+  VAR VARIABLE:INTEGER;
+  BEGIN
+    VARIABLE:=76;
+    RETURN1000:=1000;
+  END;
+
+  (*SPACEEATER tests that a segment is only loaded the first time it is 
+    called. SPACEEATER calls itself recursively 64 times which should be
+    more than enough to swallow up all of memory and stack overflow if it
+    is reloaded every time called*)
+  SEGMENT PROCEDURE SPACEEATER(HOWFAR:INTEGER);
+
+    PROCEDURE EAT0;
+    VAR S:STRING;
+    BEGIN
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+    END;
+
+    PROCEDURE EAT1;
+    VAR S:STRING;
+    BEGIN
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+      S:='                                                            ';
+    END;
+
+  BEGIN
+    IF HOWFAR<64 THEN
+      SPACEEATER(HOWFAR+1);
+  END;
+
+BEGIN
+  CHK(INIT);
+
+  CHK(TRUE);   (*end of CXP call test*)
+
+  DESCRIPTION('CXP  chking paramters are passed correctly');
+  CHK((PARAM1=6502) AND (PARAM2=2001));
+
+  DESCRIPTION('CXP  function');
+  CHK(RETURN1000=1000);
+
+  DESCRIPTION('CXP  chking that segment is not reloaded if already on stack');
+  SPACEEATER(0);
+  CHK(TRUE);
+
+END;
+
+
+
+
+(************************************************************************)
+
+
+
+
+PROCEDURE VARIOUSCSPS;
+VAR I,J:INTEGER;
+    F:FILE;
+BEGIN
+  CHK(INIT);
+
+  DESCRIPTION('TIM  stack check only');
+  TIME(I,J);
+  CHK(TRUE);
+
+  DESCRIPTION('IOR  stack check only');
+  I:=IORESULT;
+  CHK(TRUE);
+
+  DESCRIPTION('IOC');
+  (*$I+*)
+  CLOSE(F);
+  (*$I-*)
+  CHK(TRUE);
+
+END;
+
+
+
+
+(************************************************************************)
+
+
+
+
+

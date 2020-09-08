@@ -1,0 +1,350 @@
+(**********************************************)
+(* PRXREF.TBL -- for USUS -- 1980 July 14     *)
+(*  Bug fixed in PRINTWORD, 1980 Oct 13, JLG  *)
+(**********************************************)
+
+SEGMENT PROCEDURE INITXREF;  FORWARD;
+  (* initializes the cross-reference with keywords, etc. *)
+
+(**************************************************************************)
+
+SEGMENT PROCEDURE PRINTTABLE ( WHAT: PTABLETYPE);
+  (* output all or part of the cross-reference table *)
+  (* WHAT = PRINT ==> entire tbl from memory to output file/vol *)
+  (* WHAT = DISK  ==> fragment in memory to overflow file *)
+  (* WHAT = MERGE ==> merge and output the fragments overflowed *)
+TYPE
+  HARRAY = ARRAY[ INDEX] OF WORD;  (* for the hash hdr table *)
+VAR
+  I, M: INDEX;
+  HI: HUNKQINDEX;
+  DRSIZE: INTEGER; (* for SIZEOF( DRCDS) *)
+  NUMSYMS, NUMREFS: INTEGER; (* number of pgmr's symbols and refs to them *)
+  HOLDSPACING: INTEGER; (* so spacing can be restored after setting to 1 *)
+  (********************************************************************)
+
+  PROCEDURE COMPACT( VAR T: HARRAY; VAR N: INDEX);
+    (* compact the spread-out hash table preparatory to sort *)
+  VAR
+    I: INDEX;
+  BEGIN
+    N := 0;
+    FOR I := 0 TO P DO WITH T[ I] DO BEGIN
+      IF KEY <> '        ' THEN IF FIRST <> NIL THEN BEGIN
+        (* slide this entry backwards *)
+        T[ N] := T[ I];  N := N + 1  END
+      END
+    END;
+  (*********************************************************************)
+
+  PROCEDURE TSORT( VAR A: HARRAY;  VAR N: INDEX);
+    (* good ole quicksort -- more-or-less from Conway & Gries *)
+    (* sorts hash table A by key for printout or write to disk *)
+  VAR
+    LOWER, UPPER: ARRAY[ INDEX] OF INTEGER;
+    COUNT, L, U, M, K, NJ: INTEGER;
+    TEMPA: WORD;
+
+  BEGIN (* TSORT *)
+    MSG( ' sorting', 1);
+    COMPACT( T, N);  (* compact the array first *)
+    LOWER[ 1] := 0;  UPPER[ 1] := N-1;  M := 1;  COUNT := 50;
+    WHILE M <> 0 DO BEGIN
+      IF ESCAPEHIT THEN (* user requests escape *) EXIT( PRINTTABLE);
+      IF COUNT >= 50 THEN BEGIN  COUNT := 0;  WRITE( '.')  END
+      ELSE COUNT := COUNT + 1;
+      L := LOWER[ M];  U := UPPER[ M];  M := M - 1;
+      IF U = L + 1 THEN BEGIN
+        IF A[ L].KEY > A[ U].KEY THEN BEGIN
+          TEMPA := A[ L];  A[ L] := A[ U];  A[ U] := TEMPA  END
+        END
+      ELSE IF U > L + 1 THEN BEGIN
+        NJ := L + 1;  K := U;
+        WHILE NJ <= K DO BEGIN
+          IF A[ NJ].KEY <= A[ L].KEY THEN NJ := NJ + 1
+          ELSE BEGIN;
+            WHILE A[ K].KEY > A[ L].KEY  DO K := K - 1;
+            IF NJ < K THEN BEGIN
+              TEMPA := A[ NJ];  A[ NJ] := A[ K];  A[ K] := TEMPA;
+              NJ := NJ + 1;  K := K - 1  END
+            END
+          END;
+        TEMPA := A[ L];  A[ L] := A[ K];  A[ K] := TEMPA;
+        IF U - K > K - L THEN BEGIN
+          M := M + 1;  LOWER[ M] := K + 1;  UPPER[ M] := U  END;
+        M := M + 1;  LOWER[ M] := L;  UPPER[ M] := K - 1;
+        IF U - K <= K - L THEN BEGIN
+          M := M + 1;  LOWER[ M] := K + 1;  UPPER[ M] := U  END
+        END
+      END
+    END;
+    (**************************************************************************)
+
+    PROCEDURE PRINTREF( NEXTREF: INTEGER);
+      (* print a reference *)
+    BEGIN
+      IF NEXTREF <> PROCCODE THEN  BEGIN
+        NUMREFS := NUMREFS + 1;  WRITE( OUTFILE, NEXTREF: 5)  END
+      ELSE (* just a flag for a proc/func *) WRITE( OUTFILE, '<----')
+      END;
+    (**************************************************************************)
+
+  PROCEDURE PRINTWORD( W: WORD);
+    (* print an id and all its references *)
+  VAR
+      L: INTEGER;
+      X: ITEMPTR;
+      NEXTREF : INTEGER;
+      THISREF: REFINDEX;
+  BEGIN
+    IF W.FIRST <> NIL THEN BEGIN (* have non-keyword *)
+      WRITE( OUTFILE, W.KEY: SYMPRLENGTH);  (* print symbol *)
+      NUMSYMS := NUMSYMS + 1;  (* count a programmer's symbol *)
+      (* print its references *)
+      X := W.FIRST;  L := 0;  (* point to first ref; init horizontal counter *)
+      REPEAT    {bug fix per author made next 2 lines, 13 Oct 1980, J. Gagne}
+        IF L MOD REFSPERLINE = REFSPERLINE -1 (* start another print line *)
+          THEN BEGIN SKIP(1);  WRITE( OUTFILE, ' ': SYMPRLENGTH) END;
+        L := L+1; (* count another ref across *)
+        (* go to next reference *)
+        THISREF := (L-1) MOD REFSPERITEM + 1;
+        NEXTREF := X^.REF[ THISREF]; (* next ref in this array *)
+        IF THISREF = X^.REFNUM  THEN X := NIL (* indicate done *)
+        ELSE  IF THISREF = REFSPERITEM THEN X := X^.NEXT; (* next array *)
+        PRINTREF( NEXTREF)
+        UNTIL X = NIL;
+      SKIP(1);
+      END
+    END;
+  (**************************************************************************)
+
+  PROCEDURE SK;  BEGIN  SKIP(1)  END;
+  (**************************************************************************)
+
+  PROCEDURE DWRITE;
+    (* write the current xref table to a hunk of disk *)
+  VAR
+    D: DRCDS; (* to assemble a file rcd *)
+    I, NR, NREFS, R: INTEGER;
+    RPTR, NEXTRPTR: ITEMPTR;
+    DONE: BOOLEAN;
+    M: INDEX;
+  (**********************************)
+
+  PROCEDURE DPUT( D: DRCDS);
+    (* actual PUT of xref rcd to disk overflow file *)
+  BEGIN
+    DF^ := D;
+    (*$I-*)  PUT( DF);  IOERR := IORESULT;  (*$I+*)
+    IF IOERR = 8 THEN BEGIN
+      MSG( 'No room on disk for overflow.', 2);
+      WRITE( '  Xref aborted; input block ', GLOBLOCK, '.');
+      XREFFING := FALSE;
+      IF PRINTING THEN BEGIN
+        WRITE( '  Print continues.');  EXIT( DWRITE)  END
+      ELSE EXIT( PRXREF)
+      END
+    ELSE IF IOERR <> 0 THEN BEGIN (* other I/O error *)
+      IOE( IOERR, 'Xref overflow');  EXIT( PRXREF)  END;
+    (* count another rcd;  reset ref-within-rcd counter *)
+    DFCOUNT := DFCOUNT + 1;  NR := 1
+    END;
+  (**********************************)
+
+  PROCEDURE DPUTREF( RLN: INTEGER);
+    (* write a single ref entry; if array fills, put it to disk *)
+  BEGIN
+    D.REF[ NR] := RLN;  NR := NR + 1; (* place it in array *)
+    IF NR > DREFSPER THEN (* put to disk *) DPUT( D);
+    END;
+  (**********************************)
+
+  BEGIN (* DWRITE *)
+    MSG( 'xref overflow to disk; hunk #', 2);  WRITE( NHUNKS+1, ';');
+    IF NHUNKS = 0 THEN BEGIN (* initial hunk; open file, initialize *)
+      CLOSE( DF); REWRITE( DF, ',,DF.DFDF.DFDFZ');  DFCOUNT := 0  END;
+    (* record statistics; count hunks *)
+    HUNKSTART[ NHUNKS] := DFCOUNT;  NHUNKS := NHUNKS + 1;
+    TSORT( T, M); (* sort the present xref table *)
+    WRITE('; writing');
+    HUNKLINE[ NHUNKS] := LINENUMBER;
+    FOR I := 0 TO M-1 DO BEGIN (* write each symbol's entry to file *)
+      IF ESCAPEHIT THEN (* user requests escape *) EXIT( PRINTTABLE);
+      IF I MOD 50 = 25 THEN WRITE('.');
+      (* write the record with the symbol *)
+      D.JUNK := 0;  D.KEY := T[ I].KEY;  DPUT( D);
+      (* write the record(s) with the line number references *)
+      RPTR := T[ I].FIRST;  DONE := FALSE;
+      REPEAT
+        IF RPTR = T[ I].LAST THEN BEGIN (* last piece of refs *)
+          NREFS := RPTR^.REFNUM; (* might not be a full array of refs *)
+          DONE := TRUE
+          END
+        ELSE BEGIN (* not last piece; sure to be full *)
+          NEXTRPTR := RPTR^.NEXT;  NREFS := REFSPERITEM  END;
+        (* put all the references in this piece *)
+        FOR R := 1 TO NREFS DO DPUTREF( RPTR^.REF[ R]);
+        RPTR := NEXTRPTR (* point to next piece *)
+        UNTIL DONE;
+      (* pad out with some end codes *)
+      FOR R := 1 TO DREFSPER DO DPUTREF( EREFCODE)
+      END;
+    HUNKSTART[ NHUNKS] := DFCOUNT;  (* hunk statistics *)
+    MSG( ' ', 2)
+    END;
+  (*****************************************************************)
+
+  PROCEDURE DMERGE;
+    (* merge and print the xref hunks put on file *)
+  TYPE
+    (* merge buffer template *)
+    HBUFFINDEX = 0..HBUFFSIZE;
+    BUFFRCD = RECORD
+      BUFF: ARRAY[ HBUFFINDEX] OF DRCDS;
+      NEXT, LAST: HBUFFINDEX; (* point to next-to-process, last-in-buff *)
+      DCTR: INTEGER; (* location on disk for this hunk *)
+      NOTFINI: BOOLEAN  (* indicates if hunk is exhausted *)
+      END;
+  VAR
+    HI, MINSPOT: HUNKPINDEX;
+    NOMORE: BOOLEAN;
+    MINSOFAR, MAXALFA, LOOKKEY, LASTKEY: ALFA;
+    I, REFCOUNT: INTEGER;
+    BUFFSTUFF: ARRAY[ HUNKPINDEX] OF BUFFRCD; (* merge buffers *)
+  (*****************************************************************)
+
+  PROCEDURE FILLBUFF( HI: HUNKPINDEX);
+    (* fill merge buffer when it empties *)
+  VAR
+    DI: HBUFFINDEX;
+  BEGIN  WITH BUFFSTUFF[ HI] DO BEGIN
+    WRITE( '.');
+    IF DCTR >= HUNKSTART[ HI] THEN BEGIN (* this hunk exhausted *)
+      (* tell DMERGE that *) NOTFINI := FALSE  END
+    ELSE BEGIN (* fill buffer *)
+      (* find correct hunk in file *) SEEK( DF, DCTR);  DI := 0;
+      (* read stuff into buffer *)
+      WHILE ( DCTR < HUNKSTART[ HI]) AND ( DI < HBUFFSIZE) DO BEGIN
+        GET( DF);  DI := DI + 1;  DCTR := DCTR + 1;  BUFF[ DI] := DF^  END;
+      (* set pointers to last rcd in buff; next rcd in buff to process *)
+      LAST := DI;  NEXT := 1;  NOTFINI := TRUE
+      END;
+    END  END;
+  (*****************************************************************)
+
+  PROCEDURE BUMPBUFF( HI: HBUFFINDEX);
+    (* proceed to next rcd in buffer, filling from disk first if necessary *)
+  BEGIN  WITH BUFFSTUFF[ HI] DO BEGIN
+    IF NEXT >= LAST THEN  (* no more rcds to process in buff *)
+      (* so read some more *) FILLBUFF( HI)
+    ELSE (* just look at the next rcd in buff *) NEXT := NEXT + 1
+    END END;
+  (*****************************************************************)
+
+  PROCEDURE MPRINTREF( HI: HUNKPINDEX);
+    (* when merging, print the id and reference at front of buffer HI *)
+  VAR
+    THISREF, RI: INTEGER;
+    REFSDONE: BOOLEAN;
+  BEGIN WITH BUFFSTUFF[ HI] DO BEGIN
+    IF BUFF[ NEXT].KEY <> LASTKEY THEN (* this id different than last *) BEGIN
+      LASTKEY := BUFF[ NEXT].KEY; (* record id for next round's test *)
+      (* start new line and print the id *)
+      SKIP( 1);  WRITE( OUTFILE, LASTKEY:9);  REFCOUNT := 0;
+      NUMSYMS := NUMSYMS + 1;  (* count a pgmr's symbol *)
+      END;
+    REPEAT (* process each array of references *)
+      BUMPBUFF( HI);  RI := 1;  REFSDONE := FALSE;
+      REPEAT  WITH BUFF[ NEXT] DO BEGIN (* process single reference *)
+        THISREF := REF[ RI];
+        IF THISREF = EREFCODE THEN (* have a end-of-refs flag *)
+          REFSDONE := TRUE
+        ELSE BEGIN (* have a real reference *)
+          IF REFCOUNT >= REFSPERLINE THEN BEGIN (* new print line *)
+            REFCOUNT := 0;  SKIP( 1);  WRITE( OUTFILE, ' ': 9)  END;
+          (* print the ref and bump array and printline counters *)
+          PRINTREF( THISREF); REFCOUNT := REFCOUNT + 1;  RI := RI + 1
+          END
+        END UNTIL ( RI > DREFSPER) OR REFSDONE
+      UNTIL REFSDONE;
+    BUMPBUFF( HI) (* set up next thing in buffer for merging *)
+    END END;
+  (*****************************************************************)
+
+  BEGIN  (* DMERGE *)
+    MSG( 'merging xref hunks from disk', 2);
+    (* set up maximal symbol for merge runout *)
+    FOR I := 1 TO ALFALEN DO MAXALFA[ I] := CHR( ORD( 'Z') + 1);
+    (* fill all merge buffers initially *)
+    FOR HI := 1 TO NHUNKS DO WITH BUFFSTUFF[ HI] DO BEGIN
+      DCTR := HUNKSTART[ HI-1];  FILLBUFF( HI)  END;
+    LASTKEY := MAXALFA;
+    (* merge loop; until all is printed *)
+    REPEAT
+      IF ESCAPEHIT THEN (* user requests escape *) EXIT( PRINTTABLE);
+      NOMORE := TRUE;  MINSOFAR := MAXALFA;
+      FOR HI := 1 TO NHUNKS DO WITH BUFFSTUFF[ HI] DO BEGIN
+        (* locate buffer with minimum key *)
+        IF NOTFINI THEN BEGIN
+          NOMORE := FALSE;  LOOKKEY := BUFF[ NEXT].KEY;
+          IF MINSOFAR > LOOKKEY THEN BEGIN
+            MINSOFAR := LOOKKEY;  MINSPOT := HI  END
+          END
+        END;
+      IF NOT NOMORE THEN BEGIN (* print the minimum element; bump buffer *)
+        MPRINTREF( MINSPOT)  END
+      UNTIL NOMORE
+    END;
+  (*****************************************************************)
+  PROCEDURE SHOWSTATS;
+  VAR
+    I: INTEGER; (* misc index work vbl *)
+  BEGIN
+    DRSIZE := SIZEOF( DRCDS);
+    SKIP( 2); WRITE( OUTFILE, LINENUMBER: 5, ' Lines');
+    SK; WRITE( OUTFILE, NUMSYMS: 5, ' Programmer''s symbols');
+    SK; WRITE( OUTFILE, NUMREFS: 5,
+      ' Programmer''s symbol usages (including declarations)');
+    SK; WRITE( OUTFILE, NUMKWREFS: 5,
+        ' Keyword usages');
+    SK; WRITE( OUTFILE, (NUMKWREFS + NUMREFS): 5,
+        ' Total symbol usages');
+    IF NHUNKS > 0 THEN BEGIN  (* disk usage stats *)
+      SK; SK; WRITE( OUTFILE, NHUNKS:5, ' Hunks of disk memory used');
+      SK; WRITE( OUTFILE, TRUNC(0.999+((DFCOUNT-1)*DRSIZE)/512.0): 5,
+          ' Blocks of disk used (512 bytes/block)');
+      SK; SK; WRITE( OUTFILE,
+          '     HUNK  START--END (RCD #)    START--END (LINE #)');
+      HUNKLINE[ 0] := 1;
+      FOR I := 1 TO NHUNKS DO BEGIN
+        SK; WRITE( OUTFILE, I:8, HUNKSTART[ I-1]:7, HUNKSTART[ I]-1: 6);
+            WRITE( OUTFILE, ' ':11, HUNKLINE[ I-1]:5, HUNKLINE[ I]: 6);
+        END
+      END
+    END; (* SHOWSTATS *)
+(*****************************************************************)
+
+BEGIN (* PRINTTABLE *)
+  HOLDSPACING := SPACING;  SPACING := 1;  (* single space the xref *)
+  NUMSYMS := 0;  NUMREFS := 0;  (* initialize statistics *)
+  IF WHAT = DISK THEN BEGIN (* write present table to disk *)
+    DWRITE; (* write it *)
+    RELEASE( HEAPPOINT);  MARK( HEAPPOINT); (* reclaim heap *)
+    INITXREF (* initialize xref for next disk hunk *)
+    END
+  ELSE BEGIN  (* either merge and print from disk or just print xref *)
+    (* show in xref; fix page numbering, new page *)
+    INXREF := TRUE;  LPAGE := 1;  TOPOFPAGE;
+    IF WHAT = MERGE THEN DMERGE (* merge xref hunks from disk and print *)
+    ELSE IF WHAT = PRINTER THEN BEGIN  (* sort and print non-disk xref *)
+      TSORT( T, M);  WRITE(' printing xref');
+      FOR I := 0 TO M-1 DO BEGIN
+      IF ESCAPEHIT THEN (* user requests escape *) EXIT( PRINTTABLE);
+      IF I MOD 20 = 10 THEN WRITE('.'); PRINTWORD( T[ I])  END
+      END;
+    SHOWSTATS
+    END;
+  SPACING := HOLDSPACING  (* restore spacing from single *)
+  END; (*PRINTTABLE*)
+(**************************************************************************)
+

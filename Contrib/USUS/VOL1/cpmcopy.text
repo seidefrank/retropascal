@@ -1,0 +1,262 @@
+PROGRAM cpmcopy;
+
+(*Written by J. M. Wierda
+
+     This program will transfer a CP/M file from a disk in unit 5 to a Pascal
+disk in unit 4. Note that when the filename is requested, it must be 11
+characters long and include all spaces. This program does not remove the LFs
+from the CP/M file as the transfer is made, so a replace command in the Pascal
+editor should be used to delete the LFs. During successful file transfers the
+program prints an expanded CP/M directory of the file being tranferred.
+Attempts to transfer empty or non-existent files are ignored.*)
+
+CONST 
+      blkslip = 2;
+      quadsperblk = 4;
+      trkslip = 6;
+      blkspertrk = 6.5;
+      secpergrp = 8;
+      lastsec = 26;
+      lasttrk = 76;
+
+TYPE
+    groupbuffer = packed array[0..1023] of char;
+    
+VAR 
+    sectortbl : ARRAY[1..lastsec] OF integer;
+    grptrk : ARRAY[1..secpergrp] OF integer;
+    grpsec : ARRAY[1..secpergrp] OF integer;
+    quadmap : ARRAY[1..lastsec] OF integer;
+    blockmap : ARRAY[1..lastsec] OF integer;
+    blockbuffer : PACKED ARRAY[0..511] OF char;
+    directbuffer : groupbuffer;
+    transferbuffer : groupbuffer;
+    prevtrk, filectr : integer;
+    currfile, filename : string;
+    outfile : string;
+    file2 : text;
+
+PROCEDURE trackmap(track : integer);
+
+VAR 
+    sector,sect,blk,quad,firstsect : integer;
+    firstblkquad : real;
+
+BEGIN
+  IF track <> prevtrk
+  THEN
+    BEGIN
+      firstblkquad := (track-1)*blkspertrk;
+      blk := trunc(firstblkquad);
+      firstsect := (((track-1)*trkslip)+1) MOD lastsec;
+      quad := trunc((firstblkquad-blk)*quadsperblk);
+      sect := firstsect;
+      FOR sector := 1 TO lastsec DO
+        BEGIN
+          blockmap[sect] := blk;
+          quadmap[sect] := quad;
+          sect := (sect + blkslip) MOD lastsec;
+          IF sect = 0
+          THEN
+            sect := lastsec;
+          IF sect = firstsect
+          THEN
+            sect := sect + 1;
+          quad := (quad+1) MOD quadsperblk;
+          IF quad = 0
+          THEN
+            blk := blk + 1
+        END
+    END
+END;
+
+PROCEDURE initsectbl;
+BEGIN
+  sectortbl[1] := 1;
+  sectortbl[2] := 7;
+  sectortbl[3] := 13;
+  sectortbl[4] := 19;
+  sectortbl[5] := 25;
+  sectortbl[6] := 5;
+  sectortbl[7] := 11;
+  sectortbl[8] := 17;
+  sectortbl[9] := 23;
+  sectortbl[10] := 3;
+  sectortbl[11] := 9;
+  sectortbl[12] := 15;
+  sectortbl[13] := 21;
+  sectortbl[14] := 2;
+  sectortbl[15] := 8;
+  sectortbl[16] := 14;
+  sectortbl[17] := 20;
+  sectortbl[18] := lastsec;
+  sectortbl[19] := 6;
+  sectortbl[20] := 12;
+  sectortbl[21] := 18;
+  sectortbl[22] := 24;
+  sectortbl[23] := 4;
+  sectortbl[24] := 10;
+  sectortbl[25] := 16;
+  sectortbl[lastsec] := 22
+END;
+
+PROCEDURE cpmgrp(group : integer);
+
+VAR 
+    j, track, sector : integer;
+
+BEGIN
+  track := ((group * 8) DIV lastsec) + 2;
+  sector := ((group * 8) MOD lastsec) + 1;
+  FOR j := 1 TO secpergrp DO
+    BEGIN
+      grptrk[j] := track;
+      grpsec[j] := sectortbl[sector];
+      sector := sector + 1;
+      IF sector > lastsec
+      THEN
+        BEGIN
+          sector := 1;
+          track := track + 1
+        END
+    END
+END;
+
+procedure readgroup(group : integer; VAR buffer : groupbuffer);
+var
+   j, k, l : integer;
+begin
+  cpmgrp(group);
+  l := 0;
+  for j := 1 to secpergrp do
+    begin
+      trackmap(grptrk[j]);
+      unitread(5,blockbuffer,512,blockmap[grpsec[j]],0);
+      for k := ((quadmap[grpsec[j]])*128) to k+127 do
+        begin
+          buffer[l] := blockbuffer[k];
+          l := l+1
+        end
+    end
+end;
+
+PROCEDURE printentries;
+
+VAR 
+    j, k : integer;
+
+begin
+  j := 0;
+  while j < 1024 do
+    BEGIN
+      IF (ord(directbuffer[j]) = 0) AND (ord(directbuffer[j+12]) = 0)
+         AND (directbuffer[j+1] IN [' '..'Z'])
+      THEN
+        BEGIN
+          FOR k := j+1 TO j+11 DO
+            write(directbuffer[k]);
+          filectr := filectr + 1;
+          IF (filectr MOD 4) = 0
+          THEN
+            writeln
+          ELSE
+            write('        ')
+        END;
+      j := j+32
+    END
+end;
+
+PROCEDURE findentry;
+
+VAR 
+    extent, sectors, j, k, l : integer;
+    eoffound : boolean;
+BEGIN
+  j := 0;
+  WHILE j < 1024  DO
+    BEGIN
+      IF ord(directbuffer[j]) = 0
+      THEN
+        BEGIN
+          currfile := '           ';
+          extent := ord(directbuffer[j+12]);
+          sectors := ord(directbuffer[j+15]);
+          FOR k := j+1 TO j+11 DO
+            currfile[k-j] := directbuffer[k];
+          IF (currfile = filename) AND (sectors > 0)
+          THEN
+            BEGIN
+              IF extent = 0
+              THEN
+                BEGIN
+                  write('Output Filename.Ext ? ');
+                  readln(outfile);
+                  rewrite(file2, outfile);
+                  writeln(currfile);
+                  writeln('Ex Sec Groups')
+                END;
+              write(extent: 2,sectors: 4);
+              FOR k := j+16 TO (k+((sectors-1) DIV 8)) DO
+                begin
+                  write(ord(directbuffer[k]): 4);
+                  readgroup(ord(directbuffer[k]), transferbuffer);
+                  l := 0;
+                  eoffound := false;
+                  WHILE l <= 1023 DO
+                    begin
+                      IF (ord(transferbuffer[l]) <> 26) and (not eoffound)
+                      then
+                        write(file2, transferbuffer[l])
+                      else
+                        begin
+                          eoffound := true;
+                          write(file2, chr(0))
+                        end;
+                      l := l + 1
+                    end;
+                end;
+              IF sectors < 128
+              THEN
+                close(file2,lock);
+              writeln
+            END
+        END;
+      j := j+32
+    END
+END;
+
+BEGIN
+  filectr := 0;
+  prevtrk := 0;
+  initsectbl;
+  writeln('CP/M File Transfer, 7-Jun-79');
+  readgroup(0, directbuffer);
+  printentries;
+  readgroup(1, directbuffer);
+  printentries;
+  writeln;
+  writeln(filectr,' Files');
+  REPEAT
+    REPEAT
+      writeln;
+      write('Transfer which file ? ');
+      readln(filename);
+      IF NOT (length(filename) IN [0,11])
+      THEN
+        BEGIN
+          write('Enter 11 character filename exactly as listed');
+          writeln(', including spaces,');
+          writeln('or CR to exit program.')
+        END
+    UNTIL length(filename) IN [0,11];
+    IF length(filename) = 11
+    THEN
+      BEGIN
+        readgroup(0, directbuffer);
+        findentry;
+        readgroup(1, directbuffer);
+        findentry
+      END;
+  UNTIL length(filename) = 0;
+END
+.

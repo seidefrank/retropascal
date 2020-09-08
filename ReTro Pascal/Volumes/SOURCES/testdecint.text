@@ -1,0 +1,19 @@
+program x;
+  var a, b, c: integer[20];
+begin
+  a:=65536;
+  b:=16;
+  c:=a div b;
+  writeln(c);
+  writeln(b div a);
+  a:=80000000;
+  b:=10000;
+  writeln(a div b);
+  a:=34589734625782349;
+  b:=458973465734678;
+  writeln(-a div b);
+  writeln(a,',',b:30);
+  write('enter b: ');
+  readln(b);
+  writeln(a div b)
+end.

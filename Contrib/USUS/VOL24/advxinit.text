@@ -1,0 +1,519 @@
+PROGRAM ADVINIT; 
+
+const
+  {$I advxcons.text}
+
+TYPE
+  CHAR6 = PACKED ARRAY[1..6] OF CHAR;
+  ARYS = RECORD
+           CASE BOOLEAN OF
+             FALSE : ( DBLK : PACKED ARRAY[1..512] OF CHAR);
+             TRUE  : (TRAVEL : ARRAY[1..trvsiz] OF INTEGER;
+                      TRAVEL2 : ARRAY[1..trvsiz] OF INTEGER;
+                      TRAVEL3 : ARRAY[1..trvsiz] OF INTEGER;
+                      ATAB : ARRAY[1..tabsiz] OF STRING[5];
+                      KTAB : ARRAY[1..tabsiz] OF INTEGER;
+                      LTEXT : ARRAY[1..locsiz] OF INTEGER;
+                      STEXT : ARRAY[1..locsiz] OF INTEGER;
+                      KEY : ARRAY[1..locsiz] OF INTEGER;
+                      PLAC : ARRAY[1..100] OF INTEGER;
+                      FIXD : ARRAY[1..100] OF INTEGER;
+                      PTEXT : ARRAY[1..100] OF INTEGER;
+                      ACTSPK : ARRAY[1..vrbsiz] OF INTEGER;
+                      RTEXT : ARRAY[1..rtxsiz] OF INTEGER;
+                      CTEXT : ARRAY[1..clsmax] OF INTEGER;
+                      CVAL : ARRAY[1..clsmax] OF INTEGER;
+                      HINTS : ARRAY[1..hntmax, 1..4] OF INTEGER)
+         END;
+  VARYS = RECORD
+            CASE BOOLEAN OF
+              FALSE : ( DBLK : PACKED ARRAY[1..512] OF CHAR);
+              TRUE  : (COND : ARRAY[1..locsiz] OF INTEGER;
+                       ABB : ARRAY[1..locsiz] OF INTEGER;
+                       ATLOC : ARRAY[1..locsiz] OF INTEGER;
+                       PLACE : ARRAY[1..100] OF INTEGER;
+                       FIXED : ARRAY[1..100] OF INTEGER;
+                       LINK : ARRAY[1..200] OF INTEGER;
+                       PROP : ARRAY[1..100] OF INTEGER;
+                       HINTLC : ARRAY[1..hntmax] OF INTEGER;
+                       HINTED : ARRAY[1..hntmax] OF BOOLEAN;
+                       DSEEN : ARRAY[1..6] OF BOOLEAN;
+                       DLOC : ARRAY[1..6] OF INTEGER;
+                       ODLOC : ARRAY[1..6] OF INTEGER;
+                       TK : ARRAY[1..20] OF INTEGER)
+          END;
+
+VAR
+  MSGNDX, SEG, CLASSES, RECNUM, I, J, COUNT : INTEGER;
+  ACHAR : CHAR;
+  ARY : ^ARYS;
+  VARY : ^VARYS;
+  MSGFILE : FILE OF CHAR6;
+  SAVEMSG : STRING[10];
+  INFILE : TEXT;
+  OUTFILE : FILE;
+
+
+  PROCEDURE DROP(OBJECT, WHERE : INTEGER);
+
+  BEGIN
+    WITH VARY^ DO
+      BEGIN
+        IF OBJECT > 100 THEN
+          FIXED[OBJECT - 100] := WHERE
+        ELSE
+          PLACE[OBJECT] := WHERE;
+        IF WHERE > 0 THEN
+          BEGIN
+            LINK[OBJECT] := ATLOC[WHERE];
+            ATLOC[WHERE] := OBJECT
+          END
+      END
+  END;  { DROP }
+
+
+  PROCEDURE BLIP;
+
+  BEGIN
+    IF COUNT = 50 THEN
+      BEGIN
+        COUNT := 0;
+        WRITELN;
+        WRITE('           .')
+      END
+    ELSE
+      WRITE('.');
+    COUNT := COUNT + 1
+  END;  {BLIP}
+
+
+  PROCEDURE BLIPER(MSG : STRING); 
+
+  BEGIN
+    COUNT := 0;
+    WRITELN;
+    WRITE(MSG)
+  END;  { BLIPER }
+
+
+  PROCEDURE PUTMSG(MSG : STRING;SAME : BOOLEAN);
+
+  VAR
+    I : INTEGER;
+
+  BEGIN { PUTMSG }
+    IF LENGTH(MSG) = 0 THEN MSG := ' ';
+    IF SAME THEN
+      BEGIN
+        IF LENGTH(SAVEMSG) <> 0 THEN RECNUM := RECNUM - 1;
+        MSG := CONCAT(SAVEMSG, MSG);
+        SAVEMSG := ''
+      END
+    ELSE
+      BEGIN
+        IF SAVEMSG <> '' THEN
+          BEGIN
+            WHILE LENGTH(SAVEMSG) < 5 DO SAVEMSG := CONCAT(SAVEMSG, ' ');
+            PUTMSG(' ', TRUE)
+          END;
+        MSGFILE^[1] := CHR(ORD(MSGFILE^[1]) + 128)
+      END;
+    WHILE LENGTH(MSG) >= 6 DO
+      BEGIN
+        PUT(MSGFILE);  { PUT LAST MESSAGE }
+        FOR I := 1 TO 6 DO MSGFILE^[I] := MSG[I];
+        DELETE(MSG, 1, 6);
+        RECNUM := RECNUM + 1
+      END;
+    SAVEMSG := MSG;
+    IF LENGTH(SAVEMSG) <> 0 THEN RECNUM := RECNUM + 1
+  END;  { PUTMSG }
+
+
+  PROCEDURE TXTREAD;
+
+  VAR
+    LAST, I : INTEGER;
+    MSGTXT : STRING[128];
+
+  BEGIN {TXTREAD}
+    LAST := 32761;
+    REPEAT
+      READ(INFILE, MSGNDX);
+      BLIP;
+      IF NOT EOF(INFILE) THEN
+        BEGIN
+          IF NOT EOLN(INFILE) THEN READ(INFILE, ACHAR); { ONE BLANK DELIMITER } 
+          if (SEG <> 5) and (msgndx <= 0) then
+            begin
+              write('Bad message number!');
+              exit(ADVINIT)
+            end;
+          CASE SEG OF
+            1 : if MSGNDX > locsiz then
+                  begin
+                    write('Too many locations!');
+                    exit(ADVINIT)
+                  end
+                else
+                  IF ARY^.LTEXT[MSGNDX] = 0 THEN ARY^.LTEXT[MSGNDX] := RECNUM;
+            2 : if MSGNDX > locsiz then
+                  begin
+                    write('Too many locations!');
+                    exit(ADVINIT)
+                  end
+                else
+                  IF ARY^.STEXT[MSGNDX] = 0 THEN ARY^.STEXT[MSGNDX] := RECNUM;
+            5 : IF (MSGNDX > 0) AND (MSGNDX <= 100) THEN
+                  IF ARY^.PTEXT[MSGNDX] = 0 THEN ARY^.PTEXT[MSGNDX] := RECNUM;
+            6 : if MSGNDX > rtxsiz then
+                  begin
+                    write('Too many messages!');
+                    exit(ADVINIT)
+                  end
+                else
+                  IF ARY^.RTEXT[MSGNDX] = 0 THEN ARY^.RTEXT[MSGNDX] := RECNUM;
+            10 : BEGIN
+                   if CLASSES >= clsmax then
+                     begin
+                       write('Too many classes!');
+                       exit(ADVINIT)
+                     end;
+                   CLASSES := CLASSES + 1;
+                   IF ARY^.CTEXT[CLASSES] = 0 THEN
+                     ARY^.CTEXT[CLASSES] := RECNUM;
+                   ARY^.CVAL[CLASSES] := MSGNDX
+                 END
+          END;
+          READLN(INFILE, MSGTXT); 
+          PUTMSG(MSGTXT, MSGNDX = LAST);
+          LAST := MSGNDX
+        END
+    UNTIL EOF(INFILE);
+    IF LENGTH(SAVEMSG) > 0 THEN
+      BEGIN
+        WHILE LENGTH(SAVEMSG) < 5 DO SAVEMSG := CONCAT(SAVEMSG, ' ');
+        PUTMSG(' ', TRUE)
+      END;
+    CLOSE(INFILE)
+  END;  { TXTREAD }
+
+
+  PROCEDURE SEGMENT1;
+
+  BEGIN
+    BLIPER('<Segment1 >');
+    RESET(INFILE, 'ADVx1.TEXT');
+    SEG := 1;
+    TXTREAD
+  END;  { SEGMENT1 }
+
+
+  PROCEDURE SEGMENT2;
+
+  BEGIN
+    BLIPER('<Segment2 >');
+    RESET(INFILE, 'ADVx2.TEXT');
+    SEG := 2;
+    TXTREAD
+  END;  { SEGMENT2 }
+
+
+  PROCEDURE SEGMENT3;
+
+  VAR
+    TVINDEX, INDEX, TRVL, TVCOND, VOIB : INTEGER;
+
+  BEGIN { SEGMENT3 }
+    TVINDEX := 1;
+    BLIPER('<Segment3 >');
+    RESET(INFILE, 'ADVx3.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, INDEX);
+        BLIP;
+        IF NOT EOLN(INFILE) THEN
+          BEGIN
+            READ(INFILE, TVCOND, TRVL);
+            IF ARY^.KEY[INDEX] = 0 THEN
+              ARY^.KEY[INDEX] := TVINDEX
+            ELSE
+              ARY^.TRAVEL[TVINDEX - 1] := -ARY^.TRAVEL[TVINDEX - 1];
+            WHILE NOT EOLN(INFILE) DO
+              BEGIN
+                if TVINDEX > trvsiz then
+                  begin 
+                    write('Too many travel options!');
+                    exit(ADVINIT)
+                  end;
+                READ(INFILE, VOIB);
+                ARY^.TRAVEL[TVINDEX] := VOIB;
+                ARY^.TRAVEL2[TVINDEX] := TRVL;
+                ARY^.TRAVEL3[TVINDEX] := TVCOND;
+                TVINDEX := TVINDEX + 1
+              END;
+            ARY^.TRAVEL[TVINDEX - 1] := -ARY^.TRAVEL[TVINDEX - 1];
+            READLN(INFILE)
+          END
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENT3 }
+
+
+  PROCEDURE SEGMENT4;
+
+  VAR
+    WORDNUM, NUMBER : INTEGER;
+
+  BEGIN { SEGMENT4 }
+    WORDNUM := 0;
+    BLIPER('<Segment4 >');
+    RESET(INFILE, 'ADVx4.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, NUMBER);
+        BLIP;
+        IF NOT EOLN(INFILE) THEN
+          BEGIN
+            READ(INFILE, ACHAR);
+            if WORDNUM >= tabsiz then
+              begin
+                write('Too many vocabulary words!');
+                exit(ADVINIT)
+              end;
+            WORDNUM := WORDNUM + 1;
+            READLN(INFILE, ARY^.ATAB[WORDNUM]);
+            ARY^.KTAB[WORDNUM] := NUMBER
+          END
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENT4 }
+
+
+  PROCEDURE SEGMENT5;
+
+  BEGIN
+    BLIPER('<Segment5 >');
+    RESET(INFILE, 'ADVx5.TEXT');
+    SEG := 5;
+    TXTREAD
+  END;  { SEGMENT5 }
+
+
+  PROCEDURE SEGMENT6; 
+
+  BEGIN
+    BLIPER('<Segment6 >');
+    RESET(INFILE, 'ADVx6.TEXT');
+    SEG := 6;
+    TXTREAD
+  END;  { SEGMENT6 }
+
+
+  PROCEDURE SEGMENT7;
+
+  VAR
+    ILOC1, ILOC2, OBJECT : INTEGER;
+
+  BEGIN { SEGMENT7 }
+    BLIPER('<Segment7 >');
+    RESET(INFILE, 'ADVx7.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, OBJECT);
+        if OBJECT > 100 then
+          begin
+            write('Too many objects!');
+            exit(ADVINIT)
+          end;
+        BLIP;
+        IF NOT EOLN(INFILE) THEN
+          BEGIN
+            READLN(INFILE, ILOC1, ILOC2);
+            ARY^.PLAC[OBJECT] := ILOC1;
+            ARY^.FIXD[OBJECT] := ILOC2
+          END
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENT7 }
+
+
+  PROCEDURE SEGMENT8;
+
+  VAR
+    VOIB, MSGNUM : INTEGER;
+
+  BEGIN { SEGMENT8 }
+    BLIPER('<Segment8 >');
+    RESET(INFILE, 'ADVx8.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, VOIB);
+        if VOIB > vrbsiz then
+          begin
+            write('Too many action verbs!');
+            exit(ADVINIT)
+          end;
+        BLIP;
+        IF NOT EOLN(INFILE) THEN
+          BEGIN
+            READLN(INFILE, MSGNUM);
+            ARY^.ACTSPK[VOIB] := MSGNUM
+          END
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENT8 } 
+
+
+  PROCEDURE SEGMENT9;
+
+  VAR
+    I, TEMP, COND, LOC : INTEGER;
+
+  BEGIN { SEGMENT9 }
+    BLIPER('<Segment9 >');
+    RESET(INFILE, 'ADVx9.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, COND);
+        if COND > 15 then
+          begin
+            write('Too many conditions!');
+            exit(ADVINIT)
+          end;
+        BLIP;
+        TEMP := 1;
+        FOR I := 1 TO COND DO TEMP := TEMP * 2;
+        WHILE NOT EOLN(INFILE) DO
+          BEGIN
+            READ(INFILE, LOC);
+            if LOC > locsiz then
+              begin
+                write('Too many locations!');
+                exit(ADVINIT)
+              end;
+            VARY^.COND[LOC] := VARY^.COND[LOC] + TEMP
+          END;
+        READLN(INFILE)
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENT9 }
+
+
+  PROCEDURE SEGMENTA;
+
+  BEGIN
+    BLIPER('<Segment10>');
+    RESET(INFILE, 'ADVx10.TEXT');
+    SEG := 10;
+    TXTREAD
+  END;  { SEGMENTA }
+
+
+  PROCEDURE SEGMENTB;
+
+  VAR
+    HINT, TURNS, POINTS, QUES, ANS : INTEGER;
+
+  BEGIN { SEGMENTB }
+    BLIPER('<Segment11>');
+    RESET(INFILE, 'ADVx11.TEXT');
+    WHILE NOT EOF(INFILE) DO
+      BEGIN
+        READ(INFILE, HINT);
+        if HINT > hntmax then
+          begin
+            write('Too many hints!'); 
+            exit(ADVINIT)
+          end;
+        BLIP;
+        IF NOT EOLN(INFILE) THEN
+          BEGIN
+            READLN(INFILE, TURNS, POINTS, QUES, ANS);
+            ARY^.HINTS[HINT, 1] := TURNS;
+            ARY^.HINTS[HINT, 2] := POINTS;
+            ARY^.HINTS[HINT, 3] := QUES;
+            ARY^.HINTS[HINT, 4] := ANS
+          END
+      END;
+    CLOSE(INFILE)
+  END;  { SEGMENTB }
+
+
+  PROCEDURE LINKUP;
+
+  VAR
+    K, I : INTEGER;
+
+  BEGIN {LINKUP}
+    BLIP;
+    WITH ARY^, VARY^ DO
+      FOR I := 1 TO locsiz DO
+        IF ((LTEXT[I] <> 0) AND (KEY[I] <> 0)) THEN
+          IF TRAVEL[KEY[I]] = 1 THEN COND[I] := 2;
+    BLIP;
+    WITH ARY^ DO
+      FOR I := 100 DOWNTO 1 DO
+        IF FIXD[I] > 0 THEN
+          BEGIN
+            DROP(I + 100, FIXD[I]);
+            DROP(I, PLAC[I])
+          END;
+    BLIP;
+    WITH ARY^ DO
+      FOR I := 100 DOWNTO 1 DO
+        BEGIN
+          VARY^.FIXED[I] := FIXD[I];
+          IF (PLAC[I] <> 0) AND (FIXD[I] <= 0) THEN DROP(I, PLAC[I])
+        END;
+    BLIP;
+    WITH ARY^, VARY^ DO
+      FOR I := 50 TO 100 DO
+        IF PTEXT[I] <> 0 THEN PROP[I] := -1
+  END;  {LINKUP}
+
+
+BEGIN { ADVINIT }
+  NEW(ARY);
+  FILLCHAR(ARY^.DBLK, SIZEOF(ARYS), CHR(0));  { ZERO ARRAYS }
+  NEW(VARY);
+  FILLCHAR(VARY^.DBLK, SIZEOF(VARYS), CHR(0));  { ZERO ARRAYS }
+  CLASSES := 0;
+  RECNUM := 1;
+  COUNT := 0;
+  REWRITE(MSGFILE, 'ADVxMSGS');
+  MSGFILE^ := 'MSGFIL';  {WILL BE PUT }
+  SAVEMSG := '';
+  SEGMENT1;  {LONG DESCRIPTIONS}
+  SEGMENT2;  {SHORT DESCRIPTIONS}
+  SEGMENT3;   {TRAVEL OPTIONS}
+  SEGMENT4;  {WORD TABLE}
+  SEGMENT5;  {OBJECT PROPERTIES}
+  SEGMENT6;  {MISC MESSAGES}
+  SEGMENT7;  {OBJECT LOCATIONS}
+  SEGMENT8;  {VERB DEFAULT ACTIONS}
+  SEGMENT9;  {LIQUID ASSETS}
+  SEGMENTA;  {PLAYER CLASS MESSAGES}
+  SEGMENTB;  {HINTS}
+  LINKUP;    {BUILD MISC ARRAYS}
+  PUTMSG('EXTMSG', FALSE);
+  PUT(MSGFILE);  {PURGE LAST BUFFER}
+  CLOSE(MSGFILE, LOCK);
+  WRITELN;
+  writeln('ADVXMSGS created.');
+  REWRITE(OUTFILE, 'ADVxDATA');
+  I := (SIZEOF(ARYS) + 511) DIV 512;
+  IF I <> BLOCKWRITE(OUTFILE, ARY^.DBLK, I) THEN
+    BEGIN
+      WRITELN('Error writing file.');
+      EXIT(ADVINIT)
+    END;
+  I := (SIZEOF(VARYS) + 511) DIV 512;
+  IF I <> BLOCKWRITE(OUTFILE, VARY^.DBLK, I) THEN
+    BEGIN
+      WRITELN('Error writing file.');
+      EXIT(ADVINIT)
+    END;
+  CLOSE(OUTFILE, LOCK);
+  WRITELN('ADVXDATA created.')
+END.

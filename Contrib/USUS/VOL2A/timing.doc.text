@@ -1,0 +1,55 @@
+
+     COMMENTS ON FLOPPY DISK TIMING RE THE 512-BYTE SECTORED DISK
+
+     A friend remarked recently that the only reason many of the disk i/o 
+drivers have worked so well is that they drive systems like CP/M, where 
+intersystem timing differences have been overwhelmed by having to wait for 
+every sixth sector to come by on the disk.
+
+     The distribution UCSD system, though faster than CP/M, still respects the 
+timing needs of many (but not most) disk drives and controllers.  My old 
+Micromation controller (quite similar to the single-density Discus) did all 
+its CRC calculations in SOFTWARE (!?!?) and could not read 128-byte sectors 
+faster than one in four, and even then was unreliable.  Because it could not 
+keep up with the every-other-sector reading of the UCSD system, I had to wait 
+for a disk revolution per sector, slowing the system down unmanageably (45 
+seconds to boot up!).
+
+     Even when one is equipped with a decent LSI-based disk controller, there 
+are subtle timing constraints that are rarely taken into account in the disk
+i/o software I have seen, but will cause trouble if they are not respected in
+a high-performance system like the one on these two disks.  The problem is 
+that different drives and different controllers have different timing 
+constraints, so our software may not run unaltered on all systems:
+
+     1)  When you change disk drives, your system requires a head-settling 
+time of approximately 35 milliseconds.
+
+     2)  Track-to-track accesses must be followed by settling time on the 
+order of 10 to 15 milliseconds, higher if more distance is gone.
+
+     3)  The number of sectors you can pack onto a disk track depends on how 
+closely your disk drives revolve at 360 RPM's.  There is a specified tolerance 
+of 2%, meaning that if your disk is formatted when running slightly slow and 
+written to when going slightly fast, you can wipe out addresses or data on a 
+successive sector unless there is an adequate intersector gap (see the recent 
+article in Byte magazine on this subject).  So, although many disk drives will 
+run happily with nine 512-byte sectors per track, others will occasionally 
+clobber the disk, and require the increased intersector gap afforded by eight 
+sectors per track.
+
+     The practical application of the above data is as follows:  the 512-byte 
+programs listed in 512.DOC.TEXT have been tested on a number of systems and 
+seem to run well.  A number of delay loops have been included, particularly in 
+the SETDSK (change to new disk drive) and SETTRK (move the head) routines.  
+These delays may or may not be adequate for your system.  You may require the 
+additional delay when changing tracks of a track-to-track offset.  You can 
+achieve this by altering the disk access routines in PBIOS to start accessing 
+the next track at sector number (TrackNumber MOD 8), or format your disks with 
+DFOCO so that the PHYSICAL sector number is offset by 1 (though see the notes 
+in 512.DOC about the funny way you must tell DFOCO to do this).  The way to 
+find out how your system responds to the timing presently in the 512-byte 
+system is to USE it.  Try doing a bad-block scan of a newly formatted 512-byte 
+disk, and see if your drives step at 6 tracks a second.  If there is 
+hesitation, you'll have to fiddle with sector offsets.
+

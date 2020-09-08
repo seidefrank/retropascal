@@ -1,0 +1,538 @@
+EDINBURGH REGIONAL COMPUTING CENTRE                                TRAINING UNIT
+
+
+   User Specification for the ERCC UCSD p-System II.0 -IV.0 SORT/MERGE Package
+
+
+Introduction
+
+     The ERCC UCSD p-System SORT/MERGE Package provides you with facilities for
+sorting, merging and checking the order of your files of TEXT or DATA type, with
+any record structure you may wish to define.
+
+Access
+
+     You may use the Package under the UCSD p-System (Version II or IV) on any
+of the following micro-computers:
+
+     Cromemco System Three
+     Intertec Superbrain QD/DD
+     Apple II
+     Terak 8510
+     Sirius 1
+
+     All files referred to in this description as relating to the Package are
+obtainable from the United Kingdom UCSD System Users' Society {USUS(UK)} or from
+the Microcomputer Support Unit, Edinburgh Regional Computing Centre.
+
+     These TEXT files are identified as follows:
+
+     SORT.DOC.TEXT   - the text of this User Specification for the Package;
+     SORT.MERGE.TEXT - the Pascal source code of the main SORT/MERGE Program
+                       (configured for use under UCSD Version IV.0, comments
+                       indicating modifications for use under Version II.0);
+     SORT.DUMUN.TEXT - a minimal User Unit required to complete the Package;
+     SORT.TXTUN.TEXT - a general-purpose User Unit for sorting TEXT files
+                       or files of STRING (two versions, for use under UCSD
+                       Versions II.0/II.1 and IV.0.)
+
+General Description
+
+     The Package performs the following primary procedures:
+
+     Sort  - Sort the contents of a file (TEXT or DATA) into order with respect
+             to certain key information held in each line or record (as defined
+             by you), placing the sorted records in another nominated file;
+             
+     Merge - Merge together into a single file the contents of two files of the
+             same record structure, which you have already sorted into the
+             required order, with respect to the same key information;
+
+     Check - Check that the contents of a TEXT or DATA file are correctly
+             ordered with respect to the key information you define.
+
+     [N.B. If your file is of some size, the Sort procedure may need one or two
+temporary files, at least as large as your original file, for working space.
+These temporary files may, but need not, reside on the same volume as your
+original file.   The Sort procedure can, in general, handle a file of up to half
+the capacity of a disk volume, while the Merge and Check procedures can handle
+a file occupying a full disk.]
+
+     Secondary functions include invoking your own procedures to initialise
+information required for the primary procedures and to terminate the primary
+procedures as you wish (tidying up, listing or reformatting files, etc.)   In
+the UCSD Version IV.0 implementation, you may invoke the FILER at any stage to
+assist you in managing your files, automatically returning to the Sort/Merge
+Package on leaving the Filer.
+
+
+File and Record Structures
+
+     The file or files which you present to the Package may be any TEXT files,
+containing lines of text, or DATA files, containing structured records of your
+own specification.
+     
+     The ordered file produced by the Sort or Merge procedure need not be of
+the same structure as the file or files which you present.   You may define it
+to be of whatever structure you wish.
+
+     Further, the key information on which you wish to base the ordering may
+not be contained explicitly in the records of the file or files you present
+(e.g. you may wish to extract numerical data from lines of text or convert
+alphanumeric data from ISO to EBCDIC code, etc.)   You may, therefore wish to
+define an intermediate record structure upon which comparisons are to be made.
+Any temporary files required by the Sort procedure will be of this intermediate
+structure.
+
+     If you wish to change the structure of your records for either of these
+reasons, you will need to provide the necessary code to convert from one record
+type to the other.   You might wish to include code to select certain records
+from the input file and ignore others.
+
+     You will, in any case, need to provide additional code to define exactly
+what the key information is and how records are to be compared.
+
+     The code provided in the additional User Unit files, referred to above,
+is likely to be suitable for these purposes, for certain common cases.   You
+may, therefore, be able to avoid producing your own code or perhaps merely
+tailor the provided code to suit your own needs.
+
+
+The User-provided Unit
+
+     You must specify the structures of your files and any additional file
+manipulation procedures you wish to make availabe to the Package, in the form of
+a UCSD Pascal Unit.   This Unit must also define the way in which records are to
+be compared and must provide any other information necessary to the sorting,
+merging or checking procedures which you wish to be conducted.
+
+     A minimal User Unit for sorting TEXT files (or DATA files of FILE OF STRING
+type) is provided in the text file:
+
+     SORT.DUMUN.TEXT
+
+(q.v.)   You should include any additional code you may need for any particular
+application within the framework defined by that Unit.
+
+     First of all, the Unit must always be called 'SORTSPEC' and you must write
+the comment:
+
+     (*$S++*)
+
+immediately before the UNIT SORTSPEC statement, as indicated in the sample Unit.
+
+     The CONST item RUNLENGTH defines the maximum number of records, of
+intermediate (SORTTYPE) structure, which are processed in the initial phase of
+the Sort procedure, in which segments of the file are sorted into runs, and
+copied to a temporary file; these are later merged together into a single,
+sorted file.   If your records are more than 80 bytes in length, you may have
+to reduce the value of RUNLENGTH to accommodate them in memory in smaller
+groups.   Increasing the value of RUNLENGTH will increase the memory
+requirement of the procedure, and will prolong the initial phase, but will
+reduce the number of merging passes and may reduce the number of temporary
+files required.   If RUNLENGTH is at least half the number of records to be
+sorted, only one temporary file will be required; if it equals or exceeds the
+number of records, the sort will be completed in a single pass, with no need
+of temporary files - subject to the availability of sufficient main storage.
+Values of 20480 DIV SIZEOF(SORTTYPE) and 10240 DIV SIZEOF(SORTTYPE) will
+normally be suitable for the RUNLENGTH parameter in the UCSD Version II and
+Version IV implementations, respectively.   If a System Halt or Stack Overflow
+condition arises on attempting to execute the Package, you should reduce the
+value of RUNLENGTH and try again.
+
+     You may require to replace the definitions of the TYPE identifiers
+INPUTTYPE, SORTTYPE and OUTPUTTYPE with the specifications of the record
+structures you want your input, intermediate (work files) and output files to
+have, respectively.  [SORTTYPE is the record structure on which the comparison
+of key information is based in the Sort, Merge and Check procedures.]
+
+     If you are defining different record structures for your files, you will
+next have to write, in the PROCEDURE USERIN, whatever Pascal statements are
+needed to convert a record of INPUTTYPE (INPUTREC) into one of SORTTYPE
+(SORTREC), and in the PROCEDURE USEROUT the code required to convert from
+SORTTYPE (SORTREC) to OUTPUTTYPE (OUTPUTREC).   You may leave these procedures
+unchanged if your files are all of the same structure.
+
+     [N.B. In the case of TEXT files, the INPUTTYPE and OUTPUTTYPE declarations
+are not used by the Package to define the input and output files; they are,
+however, used in the buffering mechanism on input.   They should be defined as
+STRING (equivalent to STRING[80]), or STRING[maximum line length], which may
+also be a suitable definition for the intermediate SORTTYPE structure.   You may
+still define a different SORTTYPE record structure if your key comparison
+procedure demands it.   Text lines in the input file which are longer than the
+length specified by INPUTTYPE are truncated by the Package, to avoid failure.]
+
+     In any case, you must include in the (BOOLEAN) FUNCTION COMPARE whatever
+code you require to compare two records (of SORTTYPE type) and indicate whether
+they are correctly ordered [all keys of the two records are equal or any key of
+the first record (SORTREC1) takes precedence over the corresponding key of the
+second (SORTREC2), all previous keys being equal.]
+
+     If the code you have included in the PROCEDURES USERIN and USEROUT or the
+FUNCTION COMPARE requires any preliminary housekeeping (interactive requests
+for specifications of keys, etc.) you may include code to perform the operations
+you need in the PROCEDURE INITIALISE.   You may leave this procedure empty if
+you have no such requirement - but it must still appear in the Unit.
+
+     If you require the Package to perform any housekeeping on conclusion of
+the main procedures (e.g. listing the output files), you must include the
+required code in the PROCEDURE TERMINATE, in a similar fashion.
+
+     You should insert any declarations of variables or other identifiers
+which you may need for any of these purposes immediately after the
+IMPLEMENTATION statement.   Any file indentifiers should, however, be declared
+in the INTERFACE section, as 'PUBLIC' variables.
+
+     If you intend to run the Package under Version II.0 of the UCSD p-System,
+you will require to remove the final 'BEGIN' statement from the Unit.   If,
+however, you are using version II.1 or IV.0, you may insert after that 'BEGIN'
+statement any code you wish to pre-initialise variables used in the INITIALISE,
+USERIN, COMPARE, USEROUT and TERMINATE procedures.
+
+     The code provided in the file SORT.TXTUN.TEXT (q.v.) illustrates a more
+generalised form of the User-provided Unit for sorting TEXT files (or DATA
+files of FILE OF STRING type), containing lines or records of not more than 80
+characters in which up to 6 key fields (of STRING, INTEGER or REAL type) may be
+defined in each record or line of text.  The keys are specified interactively,
+by invoking the PROCEDURE INITIALISE and the output file may be listed to the
+CONSOLE: automatically, by invoking the PROCEDURE TERMINATE.   This Unit may be
+altered easily, by changing the values of the CONST items MAXRECL, MAXNOKEYS and 
+RUNLENGTH, to specify respectively the maximum length of your records, the
+maximum number of keys you require and the number of records of intermediate
+type you estimate can be accommodated in memory during the initial sort phase.
+
+
+Compilation and Linkage of the Package
+
+     Once you have produced your User Unit, you must next compile it.   The
+Package demands that you must place the code generated by the Pascal Compiler in
+the CODE file:
+
+     SORT.SPEC.CODE
+
+on the System (Boot) Disk.
+
+     Once you have completed the compilation of your Unit, you must now prepare
+to compile the code of the main SORT/MERGE Package, in the file:
+
+     SORT.MERGE.TEXT
+
+     If you are using the UCSD Version IV.0 System and you wish to use the
+facility to enter the Filer and return to the Package, you must first arrange
+for the System Unit contained in the CODE file:
+
+     COMMANDIO.CODE
+     
+to be on the System (Boot) disk.   Otherwise (if you are running under Version
+II.0 or II.1 or you do not wish to use the Filer entry facility) you will need
+to edit the file:
+
+     SORT.MERGE.TEXT
+
+as indicated by the comments in the USES statement and the PROCEDURE ENTERFILER. 
+
+     If you are using UCSD Version II, you may place the compiled code in any
+file of your choice, say:
+
+     SORT.MERGE.CODE
+     
+     If you are using the UCSD Version IV.0 System, you must place the compiled
+code in the CODE file:
+
+     SORTMERGE.CODE
+
+on the System (Boot) disk.   [N.B. no '.' in the name 'SORTMERGE' this time.]
+   
+     When you have successfully completed both compilations, you must next link
+the two code files together, as follows:
+
+     If you are using the UCSD Version II System:
+     
+          Enter the Linker (Command L at UCSD System level);
+          
+          In response to the prompt:
+     
+             Host File?
+     
+          type:
+     
+             SORT.MERGE
+
+          (or whatever you have called your code file compiled from the main
+          Package, without '.CODE') and press RETURN;
+     
+          In response to the prompt:
+     
+             Lib file?
+     
+          type:
+     
+             SORT.SPEC
+     
+          (the name of the CODE file cotaining you Unit, without '.CODE') and
+          press RETURN;
+     
+          In response to the second prompt:
+     
+             Lib file?
+     
+          and the prompt:
+     
+             Map file?
+     
+          press RETURN;
+     
+          In response to the prompt:
+     
+             Output file?
+     
+          type:
+     
+             SORTMERGE.CODE
+     
+          and press RETURN.   [N.B. No '.' in the name 'SORTMERGE' this time,
+          and '.CODE' is essential.]
+
+     If you are using the UCSD Version IV System, link your code files as
+     follows:
+     
+          Enter the Editor (Command E at UCSD System level);
+          
+          In response to the prompt:
+          
+               No workfile is present.  File?
+               
+          press RETURN;
+          
+          In response to the Editor prompt line, type:
+          
+               I
+               
+          type the line:
+          
+               SORT.SPEC
+               
+          press RETURN and terminate with CONTROL and C together;
+               
+          then in response to the Editor prompt line, type:
+               
+               Q
+               W
+               
+          and in response to the prompt:
+               
+               Name of output file ->
+               
+          type:
+               
+               USERLIB.TEXT
+               
+          and press RETURN;
+          
+          [The above creates a search list for automatic linking of your
+          Unit.]
+          
+     This procedure will result in the production of a complete program which
+will conduct the sorting, merging and checking operations you have defined.
+
+
+Execution of the Package
+
+     When you have produced the CODE file:
+
+        SORTMERGE.CODE
+
+by the above compiling and linking operations, you can now execute it, as
+follows:
+
+     Type the UCSD System command:
+
+        X SORTMERGE
+
+     The Package will introdue itself and offer the prompt:
+
+        I(nit S(ort M(erge C(heck F(iler T(erm Q(uit:
+
+    [If this does not appear and the system hangs, the most probable cause is
+STACK OVERFLOW due to excess memory requirements.   In this case, reduce the
+value you have assigned to the RUNLENGTH item in your Unit, repeat the Compiling
+and Linking procedures and try again.]
+
+    If you have included code in the PROCEDURE INITIALISE, you should type:
+
+        I
+
+and that procedure will be invoked for you.   Upon its conclusion, the Package
+will offer the above prompt again, to allow you to choose another procedure.
+
+     If you want to Sort one of your TEXT or DATA files , type:
+
+        S
+
+and the Sort procedure will be invoked.   Proceed as follows:
+
+     In response to the prompt:
+
+        Sort which file?
+
+     type the name of the file (of INPUTTYPE structure) you want to sort,
+     including the disk identifier or drive number and '.TEXT' or '.DATA' as
+     appropriate;
+
+     In response to the prompt:
+
+        Into which file?
+
+     type the name of the (new) file (of OUTPUTTYPE structure) in which you wish
+     the sorted records to be placed, including the disk identifier or drive
+     number and '.TEXT' or '.DATA' as appropriate.   This may be on the same
+     disk as your unsorted input file, if you wish;
+
+     In response to the prompt:
+
+        Which work disk?
+
+     type the disk identifier or drive number of a disk which the procedure may
+     use to create any temporary work files it may need.   This may be the same
+     disk as that containing you unsorted and sorted files.   [Space for at
+     least two copies of your records in SORTTYPE format should be available.]
+
+     In response to the prompt:
+
+        Press SPACE or RETURN when ready, ESC to abort
+
+     press the RETURN key, when you have loaded the disks you have nominated
+     [pressing the ESC key will abort the Sort procedure and return to
+     the prompt line:
+
+        I(nit S(ort M(erge C(heck T(erm Q(uit?
+
+     to allow you to chose another procedure.]
+
+     The Sort procedure will then commence.   Messages such as:
+
+         Sort1 starts
+         ... . . . ...
+         Sort2 starts
+         ... . . . ...
+         .
+         .
+         .
+         Merge1 starts
+         ... . . . ...
+         Merge2 starts
+         ... . . . ...
+         .
+         .
+         .
+
+     etc. will be displayed at certain stages of the procedure to allow you to
+     monitor its progress.   The 'comfort dots' appearing during each phase
+     indicate the number of lines or records transferred to the work files or
+     output file.   On conclusion, the Package will return to the original
+     prompt, to enable you to choose a further procedure.
+
+     If you type:
+
+        M
+
+the Merge procedure will be entered.   Proceed as follows:
+
+     In response to the prompt:
+
+        Merge which file?
+
+     type the name of the first of the two files (of INPUTTYPE structure,
+     already sorted) which you wish to merge together, including the disk
+     identifier or drive number and '.TEXT' or '.DATA' as appropriate;
+
+     In response to the prompt:
+
+        With which file?
+
+     type the name of the second file you wish to merge, including the disk
+     identifier or drive number and '.TEXT or '.DATA'.   This may be on the same
+     disk as the first.   The two files must be of the same type and structure,
+     otherwise the procedure will terminate at this point;
+
+     In response to the prompt:
+
+        Into which file?
+
+     type the name of the (new) file (of OUTPUTTYPE structure) into which you
+     wish the resultant merged sequence of records to be placed, including the
+     disk identifier or drive number and '.TEXT' or '.DATA' as appropriate.
+     This file may be on the same disk as the input files, provided sufficient
+     space is available;
+
+     The Merging procedure will commence, 'comfort dots' appearing to indicate
+     the number of lines or records transferred to the output file.   Upon its
+     conclusion, the Package will return to the original prompt, to allow you
+     to choose a further procedure.
+
+     If you type:
+
+        C
+
+the Check procedure will be invoked.   Proceed as follows:
+
+     In response to the prompt:
+
+        Check which file?
+
+     type the name of the file (of INPUTTYPE strucutre) you wish to check for
+     order against the key specification defined in your Unit, including the
+     disk identifier or drive number and '.TEXT' or '.DATA' as appropriate.
+     This file may be of OUTPUTTYPE as long as that is the same as INPUTTYPE;
+
+     The Check procedure will commence, 'comfort dots' and asterisks indicating
+      the lines or records which are found to be in and out of sequence,
+     respectively.   Upon conclusion, the procedure will print a report of the
+     form:
+
+        File FILENAME holds N records: M are out of order
+
+     and will return the Package to the original prompt, to allow you to choose
+     a further procedure.
+
+     If you type:
+
+        T
+
+the Package will enable you to conclude a Sort, Merge or Check procedure as you
+have defined in your PROCEDURE TERMINATE, by invoking that procedure.   On its
+conclusion, the Package will return to the original prompt, to allow you to
+choose a further procedure.
+
+     If you are using the UCSD Version IV System, you may type:
+
+        F
+
+The Package will automatically invoke the UCSD System Filer.   This will enable
+you to manipulate your files and disks between Sort, Merge and Check procedures
+without leaving the Sort/Merge Package.   On quitting the Filer (Filer Command
+Q), the Package will return to its original prompt, to allow you to choose a
+further procedure.
+
+     If you type:
+
+       Q
+
+the Sort/Merge Package will terminate, returning you to main UCSD System
+Command level.
+
+
+Advice and Consultancy
+
+     Any problems relating to the operation of the Sort/Merge Package
+should be related to the author, Mr D.D.M. Ogilvie, Training Unit Manager,
+ERCC, 59 George Square, Edinburgh EH8 9JU - telephone 031-667 1011 ext 2303.
+
+
+
+                                                           D.D.M. Ogilvie
+                                                           ERCC
+                                                           23rd August, 1982
+
+
+

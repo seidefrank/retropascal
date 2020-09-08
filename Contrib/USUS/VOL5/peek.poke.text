@@ -1,0 +1,125 @@
+{This program demonstrates how to bend the Pascal language
+into doing the BASIC equivalent of 'PEEK' and 'POKE' on a
+PDP-11.  Program permits direct inspection and alteration of
+memory locations}
+
+PROGRAM PEEKANDPOKE;
+CONST BS=8;
+VAR P: RECORD CASE INTEGER OF
+         1: (I: INTEGER);
+         2: (P: ^INTEGER) 
+         END;
+    A,V: INTEGER;
+    I: INTERACTIVE;
+    
+
+ PROCEDURE READO(VAR N: INTEGER);
+ VAR K: INTEGER;
+     C: CHAR;
+ BEGIN (* READO *)
+  K := 0;
+  N := 0;
+  WHILE I^ IN ['0'..'7',CHR(BS)] DO
+   BEGIN C := I^; 
+    IF C = CHR(BS) THEN
+     BEGIN
+      IF K > 0 THEN
+       BEGIN WRITE(CHR(BS)); K := K - 1; N := N DIV 8 END
+     END
+    ELSE
+     BEGIN WRITE(C); K := K + 1; N := N * 8 + ORD(C) - ORD('0') END;
+    GET(I)
+   END
+ END (* READO *);
+ 
+ 
+ PROCEDURE READB(VAR N: INTEGER);
+ VAR K: INTEGER;
+     C: CHAR;
+ BEGIN (* READB *)
+  K := 0;
+  N := 0;
+  WHILE I^ IN ['0'..'1',CHR(BS)] DO
+   BEGIN C := I^; 
+    IF C = CHR(BS) THEN
+     BEGIN
+      IF K > 0 THEN
+       BEGIN WRITE(CHR(BS)); K := K - 1; N := N DIV 2 END
+     END
+    ELSE
+     BEGIN WRITE(C); K := K + 1; N := N * 2 + ORD(C) - ORD('0') END;
+    GET(I)
+   END
+ END (* READB *);
+     
+
+ PROCEDURE WRITEO(N: INTEGER);
+ VAR I: INTEGER;
+     C: CHAR;
+ BEGIN (* WRITEO *)
+  IF N < 0 THEN
+   BEGIN WRITE('1'); N := N + 32767 + 1 END
+  ELSE WRITE('0');
+  I := 4096;
+  REPEAT WRITE(CHR(N DIV I MOD 8 + ORD('0')));
+   I := I DIV 8
+  UNTIL I = 0
+ END (* WRITEO *);
+ 
+ 
+ PROCEDURE WRITEB(N: INTEGER);
+ VAR I: INTEGER;
+ BEGIN (* WRITEB *)
+  IF N < 0 THEN
+   BEGIN WRITE('1'); N := N + 32767 + 1 END
+  ELSE WRITE('0');
+  I := 16384;
+  REPEAT WRITE(CHR(N DIV I MOD 2 + ORD('0')));
+   I := I DIV 2
+  UNTIL I = 0
+ END (* WRITEB *);
+
+
+BEGIN (* PEEK AND POKE *)
+ RESET(I,'SYSTERM:');
+ P.I := 0; WRITEO(0);
+ WHILE NOT EOF(I) DO
+  BEGIN WRITE('='); WRITEB(P.P^);
+   GET(I);
+   IF I^ IN [' ','/','0','1','2','3','4','5','6','7','^'] THEN
+    CASE I^ OF
+     ' ': BEGIN IF EOLN(I) THEN WRITELN ELSE WRITE(' ');
+           P.I := P.I + 1;
+           WRITEO(P.I)
+          END;
+     '/': BEGIN WRITE('/'); GET(I); READB(V);
+           IF I^ = ' ' THEN
+            BEGIN P.P^ := V; 
+             IF EOLN(I) THEN WRITELN ELSE WRITE(' ');
+             P.I := P.I + 1;
+             WRITEO(P.I)
+            END
+           ELSE
+            BEGIN WRITELN; WRITEO(P.I) END
+          END;
+     '0','1','2','3','4','5','6','7':
+          BEGIN WRITE(' '); READO(A);
+           IF I^ = ' ' THEN
+            BEGIN P.I := A;
+             IF EOLN(I) THEN
+              BEGIN WRITELN; WRITEO(P.I) END
+            END
+           ELSE
+            BEGIN WRITELN; WRITEO(P.I) END
+          END;
+     '^': BEGIN P.I := P.P^;
+           WRITELN;
+           WRITEO(P.I)
+          END
+     END
+    ELSE
+     BEGIN WRITELN; WRITEO(P.I) END
+  END
+END (* PEEK AND POKE *).
+    
+    

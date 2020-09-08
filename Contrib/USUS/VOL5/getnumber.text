@@ -1,0 +1,442 @@
+UNIT GetNumber;
+
+{Special procedures for controlled CRT input of integers in three flavors.
+ 
+ COPYRIGHT (c) 1980, James Gagne, President
+                     DATAMED RESEARCH
+                     1433 Roscomare Road
+                     Los Angeles, CA 90024
+                     213/472-8825
+ ALL RIGHTS RESERVED.  These routines may be used for nonprofit, non-
+ commercial purposes only, unless written consent of the author is obtained.}
+ 
+
+INTERFACE
+
+  CONST                 {The first 4 are standard ASCII control characters.}
+        bell = 7;
+        backspace = 8;
+        escape = 27;
+        delete = 127;
+        ErrorLine = 23   {Standard line on the CRT for error messages};
+
+  PROCEDURE GetInteger 
+          (x, y,        {desired x/y displacements for START of integer}
+                        {If either x or y is < 0, no X-Y movement done.}
+           LowerLimit, UpperLimit: integer; {bounds of WantedNo values }
+                        {If LowerLimit > UpperLimit, then LowerLimit is}
+                        { taken as the WIDTH of the field, and limits are}
+                        { calculated by width alone within the procedure.}
+           RJustify: boolean;         {do you want it justified R or L?}
+           VAR WantedNo: integer);    {the number returned: unchanged if}
+                        {<ESC> typed during entry.                      }
+  
+  PROCEDURE GetDecimal 
+          (x, y,                      {same as GetInteger}
+           LowerLimit, UpperLimit,    {same as GetInteger; work on WHOLE no. }
+           MaxPlaces: integer;        {boundary for decimal = max # of places}
+           VAR WholePart, FractnPart: integer);         {returned values; 
+                       the fractional value is NORMALIZED to the no. of places,
+                       i.e., it = number of 1/(10 EXP MaxPlaces)}
+
+
+IMPLEMENTATION
+
+PROCEDURE GoAndClearLine (y: integer);  EXTERNAL;
+
+
+PROCEDURE QuietRead (VAR ch: char);
+{this is implemented separately in case you wish to modify it.}
+BEGIN
+  Read (keyboard, ch)
+END;
+
+
+FUNCTION LengthOf (int: integer): integer;
+VAR i, j:integer;
+BEGIN
+  j := int;
+  IF j < 0
+    THEN BEGIN
+      i := 1 (*leave room for "-" sign*);
+      j := -j
+    END
+    ELSE i := 0;
+  REPEAT 
+    i := i + 1;  
+    j := j DIV 10;
+  UNTIL j = 0;
+  LengthOf := i
+END;
+
+
+FUNCTION FigureWidth (x, y: integer): integer;
+{returns the number of characters of whichever integer is larger}
+VAR i, j: integer;
+BEGIN
+  i := LengthOf (x);
+  j := LengthOf (y);
+  IF j > i THEN FigureWidth := j ELSE FigureWidth := i;
+END;
+
+
+PROCEDURE BackUp (distance: integer);
+VAR i: integer; bs: char;
+BEGIN
+  bs := CHR (backspace);
+  FOR i := 1 TO distance DO Write (bs, ' ', bs)
+END;
+
+
+PROCEDURE GetSpace (XYEnabled: boolean);
+{for getting attention and then cleaning up the error message}
+VAR ch: char;
+BEGIN
+  Write (CHR (Bell), '.  Type <space> to continue...');
+  REPEAT Read (ch) UNTIL ch = ' ';
+  IF XYEnabled THEN GoAndClearLine (errorline) ELSE Writeln;
+END;
+
+
+FUNCTION IntInProgress (VAR LastCh: char; VAR wanted: integer): boolean;
+{This function reads a character quietly, accepting only appropriate ones,
+ updates LASTCH (last char typed) and the integer WANTED appropriately, and
+ returns an approximate boolean value of whether we're done.  Used by all
+ input routines.}
+VAR ch: char;
+    ValidChar: boolean;
+    
+BEGIN
+  ValidChar := false;
+  REPEAT QuietRead (ch)
+  UNTIL (ch IN ['0'..'9', ' ', '+', '-', '.', CHR (delete), CHR (backspace),
+                CHR (escape)]);
+  IF (ch IN ['0'..'9']) AND (ABS (wanted) < MAXINT DIV 10)
+    THEN BEGIN
+      IF wanted >= 0
+        THEN Wanted := wanted * 10 + ORD (ch) - ORD ('0')
+        ELSE Wanted := wanted * 10 - ORD (ch) + ORD ('0');
+      ValidChar := true;
+    END
+  ELSE IF ch = CHR (backspace)
+    THEN BEGIN
+      IF Wanted < 0
+        THEN Wanted := -( (-wanted) DIV 10)
+        ELSE Wanted := wanted DIV 10;
+      ValidChar := true
+    END
+  ELSE IF ch = CHR (delete)
+    THEN BEGIN
+      Wanted := 0;
+      ValidChar := true
+    END
+  ELSE IF ch = '+'
+    THEN BEGIN
+      IF wanted < 0 THEN wanted := - wanted;
+      ValidChar := true
+    END
+  ELSE IF ch = '-'
+    THEN BEGIN
+      IF wanted > 0 THEN wanted := - wanted;
+      ValidChar := true
+    END;
+  LastCh := ch;
+  IntInProgress := ValidChar
+END;
+
+
+PROCEDURE WriteRFlushInteger (int, width: integer; LastChWasMinus: boolean);
+VAR i:integer;
+BEGIN
+  FOR i := LengthOf (int) TO width - 1 DO Write ('.');
+  IF int = 0 
+    THEN IF LastChWasMinus THEN Write ('-') ELSE Write ('.')
+    ELSE Write (int);
+END;
+
+
+PROCEDURE WriteLFlushInteger (int, width: integer; LastChWasMinus: boolean);
+VAR i, j, k: integer;
+BEGIN
+  j := width - LengthOf (int);
+  k := j;
+  IF int = 0
+    THEN IF LastChWasMinus 
+      THEN Write ('-')
+      ELSE BEGIN
+        k := k + 1;
+        Write ('.')
+      END
+    ELSE Write (int);
+  FOR i := 1 TO j DO Write ('.');
+  FOR i := 1 TO k DO Write (CHR (backspace));
+END;
+
+
+FUNCTION ValidInteger (LowerLimit, UpperLimit, width: integer;
+                         RJustify: boolean;
+                     VAR LastChTyped: char; VAR Wanted: integer): boolean;
+
+{Get an integer, justifying the number appropriately as you do so.  Quit if 
+ escape or carriage return or period or space typed or the number is as large as
+ it can get within the limits.  Return a boolean variable attesting to the
+ validity of the number.}
+                        
+VAR PrevLength: integer;
+    Done, UnderTopLimit, NumberWasWritten, StillShort, 
+      WriteAMinus, NegativeOnly, PositiveOnly: boolean;
+
+BEGIN
+  IF (Wanted < LowerLimit) OR (Wanted > UpperLimit) THEN Wanted := 0;
+  NumberWasWritten := Wanted <> 0;
+  PrevLength := LengthOf (Wanted);
+  IF RJustify
+    THEN WriteRFlushInteger (Wanted, width, false)
+    ELSE WriteLFlushInteger (Wanted, width, false);
+  Done := false;
+  StillShort := true;
+  UnderTopLimit := true;
+  WriteAMinus := false;
+  NegativeOnly := UpperLimit <= 0;
+  PositiveOnly := LowerLimit >= 0;
+  WHILE UnderTopLimit AND StillShort AND NOT Done DO
+    IF IntInProgress (LastChTyped, Wanted) 
+      THEN BEGIN
+        IF PositiveOnly AND (Wanted < 0) THEN Wanted := -Wanted;
+        IF NegativeOnly AND (Wanted > 0) THEN Wanted := -Wanted;
+        UnderTopLimit := Wanted <= UpperLimit;
+        IF UnderTopLimit
+          THEN BEGIN
+            IF RJustify
+              THEN BackUp (width)
+              ELSE IF NumberWasWritten THEN Backup (PrevLength);
+            WriteAMinus := (LastChTyped = '-') AND NOT PositiveOnly;
+            IF RJustify 
+              THEN WriteRFlushInteger (Wanted, width, WriteAMinus)
+              ELSE WriteLFlushInteger (Wanted, width, WriteAMinus);
+            NumberWasWritten := (Wanted <> 0) OR WriteAMinus;
+            PrevLength := LengthOf (Wanted);
+            StillShort := (PrevLength < width) AND (UpperLimit >= Wanted * 10)
+          END;
+      END
+      ELSE Done := true;
+  ValidInteger := (LastChTyped IN [' ', '.', '0'..'9']) 
+    AND (Wanted >= LowerLimit) AND UnderTopLimit
+END;
+
+
+PROCEDURE GetInteger {(x, y, LowerLimit, UpperLimit: integer;
+                      RJustify: boolean; VAR WantedNo: integer)};
+{Main procedure that is used; X & y refer to the START of the field.  Field 
+ size is inferred from the maximum number of digits in the two limits.  Plus 
+ or minus signs typed at any time invert the sign if appropriate.  An escape 
+ typed any time before auto-termination (by a number approaching UpperLimit) 
+ will restore the original value of WantedNo.  Nice number movement.}
+ 
+VAR TempInt, width, WorkingUpperLimit, WorkingLowerLimit, i, j: integer;
+    XYEnabled, OK, Abort: boolean;
+    Lastch: char;
+    s: string;
+BEGIN
+  IF LowerLimit > UpperLimit
+    THEN BEGIN
+      width := LowerLimit MOD 20     {just in case, reasonable limit on width};
+      i := 1;
+      FOR j := 1 TO width DO i := i * 10;
+      WorkingUpperLimit := i - 1;
+      WorkingLowerLimit := (i DIV 10) -1;       {room for "-" sign}
+    END
+    ELSE BEGIN
+      WorkingUpperLimit := UpperLimit;
+      WorkingLowerLimit := LowerLimit;
+      width := FigureWidth (UpperLimit, LowerLimit)
+    END;
+  XYEnabled := (X>=0) AND (Y>=0);
+  REPEAT
+    IF XYEnabled THEN Gotoxy (x,y);
+    OK := ValidInteger 
+    (WorkingLowerLimit, WorkingUpperLimit, width, RJustify, Lastch, TempInt);
+    IF OK
+      THEN WantedNo := TempInt
+      ELSE IF Lastch = CHR (escape) THEN Abort := true
+      ELSE IF TempInt > WorkingUpperLimit
+        THEN BEGIN
+          IF XYEnabled THEN Gotoxy (0, errorline) ELSE Writeln;
+          Write ('Please type a number less than ', WorkingUpperLimit + 1);
+          GetSpace (XYEnabled);
+          TempInt := WorkingUpperLimit
+        END
+      ELSE IF TempInt < WorkingLowerLimit
+        THEN BEGIN
+          IF XYEnabled THEN Gotoxy (0, errorline) ELSE Writeln;
+          Write ('Please type a number greater than ', WorkingLowerLimit - 1);
+          GetSpace (XYEnabled);
+          TempInt := WorkingLowerLimit
+        END
+  UNTIL OK OR Abort;
+  IF RJustify THEN i := width ELSE i := LengthOf (TempInt);
+  IF XYEnabled THEN Gotoxy (x,y) ELSE Backup (i);
+  IF RJustify
+    THEN Write (WantedNo: width)
+    ELSE Write (WantedNo)
+END;
+
+
+PROCEDURE WriteAFraction (fractn, decplaces, maxplaces: integer;
+                includedots: boolean);
+VAR i, j, LeadingZeros: integer;
+
+BEGIN
+  i := LengthOf (fractn);
+  IF fractn = 0 THEN i := 0;
+  LeadingZeros := DecPlaces - i;
+  FOR j := 1 TO LeadingZeros DO Write ('0');
+  IF fractn > 0 THEN Write (fractn);
+  IF IncludeDots
+    THEN BEGIN
+      i := maxplaces - decplaces;
+      FOR j := 1 TO i DO Write ('.');
+      FOR j := 1 TO i DO Write (CHR(backspace));
+    END;
+END;
+  
+  
+FUNCTION GetValidFraction (Wholepart, MaxPlaces: integer; 
+         VAR LastChTyped: char; VAR fractn: integer): boolean;
+{Workhorse decimal fraction-getter; difficult because leading zeros are much
+ more significant than trailing ones, which I allowed anyway because people
+ like to type them.}
+ 
+VAR dummy, DumpFractn: boolean; 
+    i, j, DecPlaces: integer;
+
+BEGIN
+  IF fractn < 0 THEN fractn := - fractn;
+  DecPlaces := MaxPlaces;
+  IF fractn = 0 
+    THEN DecPlaces := 0
+    ELSE WHILE (fractn MOD 10 = 0) DO
+      BEGIN
+        fractn := fractn DIV 10;
+        DecPlaces := DecPlaces - 1
+      END;
+  IF LengthOf (fractn) > MaxPlaces
+    THEN BEGIN
+      fractn := 0;
+      DecPlaces := 0;
+    END;
+  WriteAFraction (fractn, DecPlaces, MaxPlaces, true);
+  REPEAT
+    dummy := IntInProgress (LastChTyped, fractn);
+    IF fractn < 0 THEN fractn := -fractn;
+    DumpFractn := (LastChTyped IN [CHR (delete), CHR (escape)]) 
+        OR ((LastChTyped = '+') AND (WholePart < 0))
+        OR ((LastChTyped = '-') AND (WholePart > 0));
+    Backup (DecPlaces);
+    IF (LastChTyped = CHR (backspace)) AND (DecPlaces > 0)
+      THEN DecPlaces := DecPlaces -1;
+    IF (DecPlaces >= MaxPlaces) AND (fractn = 0) 
+      THEN DecPlaces := DecPlaces - 1;
+    IF LengthOf (fractn) > MaxPlaces THEN fractn := fractn DIV 10;
+    IF (LastChTyped IN ['0'..'9']) AND (DecPlaces < MaxPlaces)
+      THEN DecPlaces := DecPlaces + 1;
+    WriteAFraction (fractn, DecPlaces, MaxPlaces, true);
+  UNTIL DumpFraction OR (LastChTyped = ' ') OR (DecPlaces >= MaxPlaces);
+  FOR i := DecPlaces TO MaxPlaces - 1 DO fractn := fractn * 10;
+  GetValidFraction := NOT DumpFraction;
+END;
+
+
+PROCEDURE GetDecimal {(x, y, LowerLimit, UpperLimit, MaxPlaces: integer;
+                      VAR WholePart, FractnPart: integer)};
+{  Main decimal-getting procedure; returns two INTEGERS representing the whole
+ and the fractional parts.  The later number is <normalized> by the maximum
+ number of decimal places allowed (MaxPlaces), so that if you allow 4 decimal
+ places, FractnPart represents integral 1/10,000th's; 2 decimal places returns 
+ hundredths.  This procedure is the least well debugged of the sequence.
+   I'm going to have to live with the features I provided here to see if I like 
+ them:  1)  You work on the two parts of the number separately.  If you finish 
+ the whole number with a period, you can work on the fractional part.  If you 
+ finish the integral portion with a carriage return or space, the routine exits 
+ and the fractional portion is unaltered.  Typing an <escape> at any time 
+ before termination aborts the procedure and returns the original values.  
+  2) During the actual number entry, if the the original values of the integral 
+ and fractional portions are within the range set by the user, they are 
+ presented for the user's perusal and optional change; otherwise, they are set 
+ to zero.
+  3) It was simply too complicated to allow for omitting x & y parameters; I
+ couldn't keep track of where I was without a GOTOXY.}
+
+VAR  OK, Abort: boolean;
+     LastCh: char;
+     TempWhole, TempFrac, width, i, j, WorkingLowerLimit, WorkingUpperLimit:
+       integer;
+     
+BEGIN
+  IF LowerLimit > UpperLimit
+    THEN BEGIN
+      width := LowerLimit MOD 20     {just in case, reasonable limit on width};
+      i := 1;
+      FOR j := 1 TO width DO i := i * 10;
+      WorkingUpperLimit := i - 1;
+      WorkingLowerLimit := (i DIV 10) -1;       {room for "-" sign}
+    END
+    ELSE BEGIN
+      WorkingUpperLimit := UpperLimit;
+      WorkingLowerLimit := LowerLimit;
+      width := FigureWidth (UpperLimit, LowerLimit)
+    END;
+  TempWhole := WholePart;
+  TempFrac := FractnPart;
+  Abort := false;
+  REPEAT
+    Gotoxy (x,y);
+    OK := ValidInteger 
+      (WorkingLowerLimit, WorkingUpperLimit, width, true, Lastch, TempWhole);
+    IF NOT OK 
+      THEN IF Lastch = CHR (escape)
+        THEN Abort := true
+      ELSE IF TempWhole > WorkingUpperLimit
+        THEN BEGIN
+          Gotoxy (0, ErrorLine);
+          Write ('Please type a number less than ', WorkingUpperLimit + 1);
+          GetSpace (true);
+          TempWhole := WorkingUpperLimit
+        END
+      ELSE IF TempWhole < WorkingLowerLimit
+        THEN BEGIN
+          Gotoxy (0, ErrorLine);
+          Write ('Please type a number greater than ', WorkingLowerLimit - 1);
+          GetSpace (true);
+          TempWhole := WorkingLowerLimit
+        END
+      ELSE Write ('whoops! Forgot About This Error!')
+    ELSE IF Lastch IN ['.', '0'..'9'] 
+      THEN BEGIN
+        Write ('.');
+        OK := GetValidFraction (TempWhole, MaxPlaces, Lastch, TempFrac);
+        IF NOT OK
+          THEN IF LastCh = CHR (escape)
+              THEN Abort := true
+            ELSE IF LastCh IN ['-', '+'] THEN TempWhole := - TempWhole
+            ELSE IF LastCh = CHR (delete)
+              THEN BEGIN
+                TempWhole := 0;
+                TempFrac := 0
+              END
+            ELSE Write ('whoops!  Unforeseen fraction error.')
+      END
+  UNTIL Abort OR OK;
+  IF OK
+    THEN BEGIN
+      WholePart := TempWhole;
+      FractnPart := TempFrac;
+    END;
+  Gotoxy (x,y);
+  Write (WholePart: width, '.');
+  WriteAFraction (FractnPart, MaxPlaces, MaxPlaces, false)
+END;
+  
+
+END.
+

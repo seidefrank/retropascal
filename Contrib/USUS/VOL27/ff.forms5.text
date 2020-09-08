@@ -1,0 +1,433 @@
+PROCEDURE SET_CTRL_REC{ VAR REC: CTLRECORD;  SETTINGROW: BOOLEAN;
+                           OFFSET: INTEGER;  NO_PROMPT: BOOLEAN;
+                              VAR HITESC: BOOLEAN;  COND: SETTYPE };
+  VAR
+     OK_KIND: STRING[33];
+     WHAT: STRING[7];
+     ALLOK: BOOLEAN;
+     NUM: STRING[2];
+     DEF_CROSS, DEF_TYPE: STRING[1];
+
+PROCEDURE EVALUATE(VAR CALC:STRING);
+VAR DUMY: CHAR;
+
+FUNCTION VALID_CALC: BOOLEAN;  (* Calculate string validation *)
+(* Returns true if a valid_calc string is given and false otherwise *)
+TYPE
+     TOKENKINDS = (CONSTV, EOFV, LPARENV, MINUSV, PLUSV, UPARROWV, RPARENV,
+                   VALUEV, SLASHV, STARV, BADCONSTV, BADVALUEV, UNRECSYMV);
+VAR
+     PT: INTEGER;
+     OPERATORS: SET OF CHAR;
+     TOKENTYPE: TOKENKINDS;
+
+PROCEDURE ERR( REASON: TOKENKINDS );
+VAR  
+     I: INTEGER;
+     MSG: STRING[15];
+BEGIN
+  IF REASON IN [RPARENV,EOFV,BADCONSTV,BADVALUEV] THEN
+    CASE REASON OF
+      RPARENV:   MSG := 'Paren missing';
+      EOFV:      MSG := 'Unexpected end';
+      BADCONSTV: MSG := 'Invalid Const';
+      BADVALUEV: IF SETTINGROW THEN MSG := 'Invalid Row'
+                 ELSE               MSG := 'Invalid Column';
+    END
+  ELSE MSG := 'Bad character';
+  GOTOXY(1,MSG_LINE+1);
+  FOR I := 1 TO PT-1 DO WRITE(OUTPUT,CALC[I]);
+  WRITE(OUTPUT,' <-> ');
+  DELETE(CALC,LENGTH(CALC),1);   (* remove EOF char *)
+  FOR I := PT TO LENGTH(CALC) DO WRITE(OUTPUT,CALC[I]);
+  PRESSRETURN(MSG,MSG_LINE+2);
+  ERASE(MSG_LINE+2);
+  EXIT(VALID_CALC);
+END;   (* of err *)
+
+PROCEDURE SCANNER;
+VAR
+     NUM: INTEGER;
+     CH: CHAR;
+
+PROCEDURE SETNUM;
+VAR  ENDOFNUM: INTEGER;
+BEGIN
+  ENDOFNUM := PT + 1;
+  WHILE CALC[ ENDOFNUM ] IN DIGITS DO ENDOFNUM := ENDOFNUM + 1;
+  VALUE(TRUE,COPY(CALC,PT,ENDOFNUM-PT),FAKE,NUM);
+  PT := ENDOFNUM;
+END;   (* of setnum *)
+
+PROCEDURE GETCONSTANT;
+BEGIN
+  TOKENTYPE := BADCONSTV;
+  PT := PT + 1;
+  IF CALC[ PT ] IN DIGITS THEN
+    BEGIN
+      SETNUM;
+      IF (NUM > 0) AND (NUM <= DIRECTORY^.NO_CONSTS) THEN TOKENTYPE := CONSTV
+    END
+END;   (* of getconstant *)
+
+PROCEDURE GETVALUE;
+BEGIN
+  SETNUM;
+  IF (NUM > 0) AND
+       ((SETTINGROW AND (NUM <= DIRECTORY^.NO_ROWS)) OR
+         (NOT SETTINGROW AND (NUM <= DIRECTORY^.NO_COLS))) THEN
+      TOKENTYPE := VALUEV
+    ELSE
+      TOKENTYPE := BADVALUEV;
+END;   (* getrcvalue *)
+
+BEGIN  (* SCANNER *)
+  IF CALC[ PT ] = ' ' THEN
+    REPEAT PT := PT + 1 UNTIL CALC[ PT ] <> ' ';  (* get non blank *)
+  CH := CALC[ PT ];
+  IF CH IN ['C','c'] THEN GETCONSTANT
+  ELSE IF CH IN DIGITS THEN GETVALUE
+    ELSE IF CH IN OPERATORS THEN
+           BEGIN
+             CASE CH OF
+               '+': TOKENTYPE:=PLUSV;
+               '-': TOKENTYPE:=MINUSV;
+               '*': TOKENTYPE:=STARV;
+               '/': TOKENTYPE:=SLASHV;
+               '^': TOKENTYPE:=UPARROWV;
+               '(': TOKENTYPE:=LPARENV;
+               ')': TOKENTYPE:=RPARENV;
+               '#': TOKENTYPE:=EOFV
+             END;
+             PT := PT + 1
+           END
+         ELSE TOKENTYPE := UNRECSYMV;
+  IF TOKENTYPE = EOFV THEN PT := PT - 1;
+END;   (* of scanner *)
+
+PROCEDURE EXPRESSION;
+
+PROCEDURE PARENEXPRESSION;
+BEGIN
+  SCANNER;
+  EXPRESSION;
+  IF TOKENTYPE = RPARENV THEN SCANNER
+  ELSE ERR(RPARENV);
+END;    (* of parenexpression *)
+
+PROCEDURE PRIMARY;
+BEGIN
+  IF TOKENTYPE IN [ CONSTV, VALUEV ] THEN SCANNER
+  ELSE IF TOKENTYPE = LPARENV THEN PARENEXPRESSION
+    ELSE ERR(TOKENTYPE)
+END;    (* of primary *)
+
+PROCEDURE FACTOR;
+BEGIN
+  PRIMARY;
+  WHILE TOKENTYPE = UPARROWV DO
+    BEGIN
+      SCANNER;
+      PRIMARY
+    END
+END;    (* of factor *)
+
+PROCEDURE TERM;
+BEGIN
+  FACTOR;
+  WHILE TOKENTYPE IN [ STARV, SLASHV ] DO
+    BEGIN
+      SCANNER;
+      FACTOR
+    END;
+END;    (* of term *)
+
+BEGIN   (* EXPRESSION *)
+  IF TOKENTYPE IN [ PLUSV, MINUSV ] THEN SCANNER;
+  TERM;
+  WHILE TOKENTYPE IN [ PLUSV, MINUSV ] DO
+    BEGIN
+      SCANNER;
+      TERM
+    END
+END;   (* of expression *)
+
+BEGIN     (* VALID_CALC *)
+  VALID_CALC := FALSE;
+  CALC := CONCAT(CALC,'#');
+  OPERATORS := ['+','*','-','/','^','(',')','#'];
+  PT := 1;
+  SCANNER;
+  EXPRESSION;
+  IF TOKENTYPE <> EOFV THEN ERR(UNRECSYMV);
+  DELETE(CALC,LENGTH(CALC),1);
+  VALID_CALC := TRUE
+END;     (* of valid_calc *)
+
+BEGIN     (* EVALUATE *)
+  (* First released version of Freeform left an equals sign in the first
+     position of the calc string.  This version does not and gets rid of
+     any it finds.            SDA  9/15/80  *)
+  IF POS('=',CALC) = 1 THEN DELETE(CALC,1,1);
+  REPEAT
+    PROMPT('=',MSG_LINE+1);
+    ACCEPTSTR(TRUE,L_CALC-1,1,MSG_LINE+1,CALC,CALC);
+    IF CALC='ESCAPE' THEN CALC := ''
+  UNTIL VALID_CALC;
+  ERASE(MSG_LINE+1);
+END;     (* of evaluate *)
+
+PROCEDURE SETTYPE;     (* Set type *)
+VAR  TEMP: STRING[7];
+BEGIN    (* SETTYPE *)
+  REPEAT
+    (*$B 40COL- *)
+    GETRESPONSE(TRUE,CONCAT('Enter ',WHAT,' ',NUM,
+       ' Type (Data, Initial calc, ',OK_KIND,' '),DEF_TYPE,'',1,IS);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETRESPONSE(TRUE,CONCAT('Enter ',WHAT,' ',NUM,
+       ' Type ',                     OK_KIND,' '),DEF_TYPE,'',1,IS);
+    (*$E 40COL  *)
+    LCTOUC(IS);
+  UNTIL (IS='D') OR (IS='I') OR (IS='F') OR ( SETTINGROW AND (IS='H') );
+  WITH REC DO BEGIN
+    IF IS='D' THEN CTL_TYPE := DATA
+    ELSE
+      IF IS='H' THEN CTL_TYPE := HEADING
+      ELSE
+        BEGIN
+          IF IS='F' THEN CTL_TYPE := FINALC ELSE CTL_TYPE := INITIALC;
+          EVALUATE(CTL_CALC);
+        END;
+    IF CTL_TYPE IN [DATA,HEADING] THEN CTL_CALC := '';
+    IF CTL_TYPE = HEADING THEN CTL_CROSS := FALSE
+    ELSE
+      BEGIN
+        IF SETTINGROW THEN TEMP := 'Column' ELSE TEMP := 'Row';
+        (*$B 40COL- *)
+        CTL_CROSS := YESNO(CONCAT('O.K. to set values from ',TEMP,
+                           ' calculations'),DEF_CROSS);
+        (*$E 40COL  *)
+        (*$B 40COL+ *)
+        CTL_CROSS := YESNO('Cross calculations O.K.',DEF_CROSS);
+        (*$E 40COL  *)
+      END;
+  END;
+END;     (* of settype *)
+
+PROCEDURE SETDESC;     (* Set description *)
+BEGIN
+  WITH REC DO BEGIN
+    GETRESPONSE(TRUE,CONCAT('Enter Description for ',WHAT,' ',NUM,' '),
+        CTL_DESC,'',L_CDESC,CTL_DESC);
+    IF CTL_DESC='ESCAPE' THEN
+      IF ABORT THEN
+        BEGIN  HITESC := TRUE;  EXIT( SET_CTRL_REC )  END
+      ELSE
+        BEGIN  CTL_DESC := '';  SETDESC  END
+  END;
+END;     (* setdesc *)
+
+PROCEDURE SETFORMAT;   (* Set format *)
+VAR
+     DECPT, ALLOK: BOOLEAN;
+     I: INTEGER;
+BEGIN
+  WITH REC DO BEGIN
+    REPEAT
+      REPEAT
+        IF CTL_FORMAT = '' THEN CTL_FORMAT := PREV_FORMAT;
+        GETRESPONSE(TRUE,CONCAT('Enter ',WHAT,' ',NUM,' Editing Format '),
+          CTL_FORMAT,'',L_CFORMAT,CTL_FORMAT);
+        IF CTL_FORMAT = 'ESCAPE' THEN CTL_FORMAT := ''
+      UNTIL CTL_FORMAT <> '';
+      I := 1;  DECPT := FALSE;
+      ALLOK := CTL_FORMAT[1] <> '.';  (* illegal to have no #'s before dec pt *)
+      WHILE (I <= LENGTH(CTL_FORMAT)) AND ALLOK DO
+        BEGIN
+          ALLOK := CTL_FORMAT[I] IN ['#','.'];
+          IF CTL_FORMAT[I]='.' THEN
+            IF NOT DECPT THEN DECPT := TRUE
+            ELSE ALLOK := FALSE;
+          I := I + 1;
+        END;
+      IF NOT ALLOK THEN WRITE(OUTPUT,THEBELL)
+    UNTIL ALLOK;
+    I := POS('.',CTL_FORMAT);
+    IF (I > 0) AND ( ( LENGTH(CTL_FORMAT)-I ) > MAXFRAC ) THEN
+      DELETE(CTL_FORMAT, I+MAXFRAC+1, LENGTH(CTL_FORMAT)-I-MAXFRAC);
+    PREV_FORMAT := CTL_FORMAT;
+  END;
+END;      (* setformat *)
+  
+PROCEDURE SETPARAMS;
+BEGIN
+  HITESC := FALSE;
+  WITH REC DO BEGIN
+    IF COND IN [NEWFILE, NEWREC] THEN
+      BEGIN
+        CTL_DESC   := '';
+        CTL_FORMAT := '';
+        CTL_CALC   := '';
+        CTL_TYPE   := DATA;
+        CTL_CROSS  := TRUE
+      END;
+    CASE CTL_TYPE OF
+      DATA:       DEF_TYPE := 'D';
+      INITIALC:   DEF_TYPE := 'I';
+      HEADING:    DEF_TYPE := 'H';
+      FINALC:     DEF_TYPE := 'F'
+    END;
+    IF CTL_CROSS THEN DEF_CROSS := 'Y' ELSE DEF_CROSS := 'N'
+  END;
+  ENCODE(OFFSET,NUM);    (* change Offset into a string *)
+  IF SETTINGROW THEN
+    BEGIN
+      WHAT := 'Row';
+      (*$B 40COL- *)
+      OK_KIND := 'Final calc, or Heading (D/I/F/H)'
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      OK_KIND := '(D/I/F/H)'
+      (*$E 40COL  *)
+    END
+  ELSE
+    BEGIN
+      WHAT := 'Column';
+      (*$B 40COL- *)
+      OK_KIND := 'or Final calc (D/I/F)'
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      OK_KIND := '(D/I/F)'
+      (*$E 40COL  *)
+    END;
+END;
+
+PROCEDURE DISPLAYCTLS;
+VAR  Y: INTEGER;
+BEGIN
+  Y := ( OFFSET MOD ( MSG_LINE-7 ) ) + 5;
+  ERASE(Y);
+  WRITEAREC(OUTPUT,OFFSET,REC);
+  ERASE(Y+1);
+END;   (* of display ctls *)
+
+BEGIN  (* SET_CTRL_REC *)
+  SETPARAMS;
+  REPEAT
+    ALLOK := TRUE;
+    WITH REC, DIRECTORY^  DO BEGIN
+      IF COND = OLDREC THEN DISPLAYCTLS;
+      IF ( (SETTINGROW AND (AUTO_SWITCH=AROW)) OR
+          ((NOT SETTINGROW) AND (AUTO_SWITCH=ACOL)) ) AND (COND = NEWFILE) THEN
+        CTL_DESC := MONTHS[ ( ( START_MONTH+OFFSET-2 ) MOD 12 ) + 1 ]
+      ELSE
+        BEGIN  (* set description up *)
+          SETDESC;
+          SETTYPE
+        END;
+      IF ( (SETTINGROW AND (FORMAT=FROW)) OR
+            ((NOT SETTINGROW) AND (FORMAT=FCOL)) ) AND
+           (CTL_TYPE <> HEADING)                          THEN
+        SETFORMAT
+      ELSE
+        CTL_FORMAT := '';
+      DISPLAYCTLS;
+      IF NOT ( NO_PROMPT OR
+          ( ( ( SETTINGROW AND (AUTO_SWITCH=AROW) AND (FORMAT=FCOL) ) OR
+            ( (NOT SETTINGROW) AND (AUTO_SWITCH=ACOL) AND (FORMAT=FROW) ) ) AND
+              (COND=NEWFILE) ) ) THEN
+        ALLOK := YESNO(CONCAT('Are Controls for ',WHAT,' ',NUM,' ok'),'Y');
+    END;
+  UNTIL ALLOK;
+END   (* of set_ctrl_rec *);
+ 
+PROCEDURE DISPLAYDIR{ VAR OUTFILE: TXTFILE; TOSCREEN, ALL: BOOLEAN;
+                       RECNUMBER: INTEGER };
+(* Displays freeform directory entries if ALL is true or an entry if ALL is
+   false.  Starts displaying with the RECNUMBER entry
+*)
+VAR
+     BOT_CNT: INTEGER;
+     CURRENT, AUTOKIND, THEFORMAT: CHAR;
+     SPACES: STRING;
+     
+PROCEDURE PUTDIRHEAD;
+BEGIN
+  (*$B 40COL- *)
+  WRITELN(OUTFILE,'F R E E F O R M   D I R E C T O R Y   L I S T I N G');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN(OUTFILE,'F R E E F O R M  DIRECTORY  LISTING');
+  (*$E 40COL  *)
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE,
+    ' FORM NAME  ID   DATE   DESCRIPTION            PAGES  ROWS   COLS   F  M');
+  WRITELN(OUTFILE,
+    ' =========  ==   ====   ===========            =====  =====  =====  =  =');
+  PRINT_LINE := 4;
+  IF TOSCREEN AND ALL THEN
+    BEGIN
+      PROMPT('* indicates FORM not useable with this Version of FREEFORM',
+                             MSG_LINE+2);
+      GOTOXY(0,PRINT_LINE)
+    END
+END;
+  
+BEGIN     (* DISPLAYDIR *)
+  SPACES := '                                ';
+  IF TOSCREEN THEN BOT_CNT := MSG_LINE-3 ELSE BOT_CNT := PAPER_LENGTH-3;
+  IF TOSCREEN THEN {WRITE(OUTFILE,CLEAR)} sc_clr_screen;
+  PUTDIRHEAD;
+  WITH DIRECTORY^ DO
+    WHILE (RECNUMBER<DIRSIZE) AND (FORM_NAME<>'') DO
+      BEGIN
+        PRINT_LINE := PRINT_LINE +1;
+        IF PRINT_LINE > BOT_CNT THEN
+          BEGIN
+            IF TOSCREEN THEN PRESSRETURN('To continue',MSG_LINE);
+            {WRITE(OUTFILE,CLEAR);}
+            sc_clr_screen;
+            PUTDIRHEAD
+          END;
+        
+        IF THEVERSION = VERSION THEN CURRENT := ' ' ELSE CURRENT := '*';
+        
+        IF FORMAT=FROW THEN THEFORMAT := 'R' ELSE THEFORMAT := 'C';
+        CASE AUTO_SWITCH OF
+          NOAUTO: AUTOKIND := ' ';
+          AROW  : AUTOKIND := 'R';
+          ACOL  : AUTOKIND := 'C'
+        END;
+        
+        WRITELN(OUTFILE,
+                CURRENT,
+                FORM_NAME,COPY(SPACES,1,(L_NAME-LENGTH(FORM_NAME))),'   ',
+                FORM_ID,  COPY(SPACES,1,(L_ID-LENGTH(FORM_ID))),'  ',
+                FORM_DATE,COPY(SPACES,1,(L_DATE-LENGTH(FORM_DATE))),'  ',
+                FORM_DESCRIPTION,COPY(SPACES,1,
+                  (L_DESC-LENGTH(FORM_DESCRIPTION))),'     ',
+                NO_PAGES:3,'  ',NO_ROWS:5,'  ',NO_COLS:5,'  ',
+                THEFORMAT,'  ',AUTOKIND);
+          
+        IF ALL THEN
+          BEGIN RECNUMBER := RECNUMBER +1; GET(DIRECTORY) END
+        ELSE RECNUMBER := DIRSIZE
+      END;   (* of WHILE *)
+  
+  IF NOT TOSCREEN THEN {WRITE(OUTFILE,CLEAR)} sc_clr_screen;
+END;     (* of displaydir *)
+
+BEGIN    (* FORMS *)
+  INITIALIZE;
+  CASE OPTION OF
+    1: DEF;
+    2: CHG;
+    3: LIST;
+    4: LIST;
+  END;
+  FINISHUP;
+END;    (* of forms *)
+
+

@@ -1,0 +1,289 @@
+  {$R-}
+  program benchpcw;
+  (* Personal Computer World Pascal Benchmark
+  
+     self timed version *)
+  
+  const num_loops = 10000;
+  
+  var
+    j : integer;
+    starth,startl,endh,endl : integer;
+      
+  procedure doneit;
+  var t,s,e : real;
+  begin
+    s:=ABS(startl);
+    e:=ABS(endl);
+    t:=ABS(e-s)/60;
+    writeln(': ',t:4,' seconds');
+  end;
+    
+  procedure magnifier;
+  var k : integer;
+  begin
+    write('Magnifier     ');
+    time(starth,startl);
+    for k := 1 to num_loops do ;
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure forloop;
+  var j,k : integer;
+  begin
+    write('Forloop       ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+      for j := 1 to 10 do;
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure whileloop;
+  var j,k : integer;
+  begin
+    write('Whileloop     ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+    begin
+      j := 1;
+      while j <= 10 do j:=j+1
+    end;
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure repeatloop;
+  var j,k : integer;
+  begin
+    write('Repeatloop    ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+    begin
+      j := 1;
+      repeat
+        j:=j+1
+      until j > 10;
+    end;
+    time(endh,endl);
+    doneit;
+  end;
+  
+  procedure literalassign;
+  var j,k,l : integer;
+  begin
+    write('Literalassign ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+      for j := 1 to 10 do l:=0;
+    time(endh,endl);
+    doneit;
+  end;
+  
+  procedure memoryaccess;
+  var j,k,l : integer;
+  begin
+    write('Memoryaccess  ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+      for j := 1 to 10 do l:=j;
+    time(endh,endl);
+    doneit;
+  end;
+  
+  procedure realarithmetic;
+  var k : integer;
+      x : real;
+  begin
+    write('Realarithmetic');
+    time(starth,startl);
+    for k := 1 to num_loops do
+      x := k/2*3+4-5;
+    time(endh,endl);
+    doneit;
+  end;
+  
+  procedure realalgebra;
+  var k : integer;
+      x : real;
+  begin
+    write('Realalgebra   ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+      x := k/k*k+k-k;
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure vector;
+  var k,j : integer;
+      matrix : array [0..10] of integer;
+  begin
+    write('Vector        ');
+    time(starth,startl);
+    matrix[0] := 1;
+    for k := 1 to num_loops do
+      for j := 1 to 10 do
+        matrix[j] := matrix[j-1];
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure equalif;
+  var j,k,l : integer;
+  begin
+    write('Equalif       ');
+    time(starth,startl);
+    for k := 1 to 10000 do
+      for j := 1 to 10 do
+        if j < 6 then l := 1
+                 else l := 0;
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure unequalif;
+  var j,k,l : integer;
+  begin
+    write('Unequalif     ');
+    time(starth,startl);
+    for k := 1 to 10000 do
+      for j := 1 to 10 do
+        if j < 2 then l := 1
+                 else l := 0;
+    time(endh,endl);
+    doneit;
+  end;
+  
+    procedure none5;
+    begin
+      j := 1
+    end;
+    procedure none4;
+    begin
+      none5
+    end;
+    procedure none3;
+    begin
+      none4
+    end;
+    procedure none2;
+    begin
+      none3
+    end;
+    procedure none1;
+    begin
+      none2
+    end;
+
+  procedure noparameters;
+  var j,k : integer;
+  begin
+    write('Noparameters  ');
+    j := 0;
+    for k := 1 to num_loops do
+      none1;
+    time(endh,endl);
+    doneit;
+  end;
+
+    procedure value5 (i : integer);
+    begin
+      i := 1
+    end;
+    procedure value4 (i : integer);
+    begin
+      value5(i)
+    end;
+    procedure value3 (i : integer);
+    begin
+      value4(i)
+    end;
+    procedure value2 (i : integer);
+    begin
+      value3(i)
+    end;
+    procedure value1 (i : integer);
+    begin
+      value2(i)
+    end;
+  
+  procedure value;
+  var j,k : integer;
+  begin
+    write('Value         ');
+    j := 0;
+    for k := 1 to num_loops do
+      value1(j);
+    time(endh,endl);
+    doneit;
+  end;
+
+    procedure refer5 ( var i : integer);
+    begin
+      i := 1
+    end;
+    procedure refer4 ( var i : integer);
+    begin
+      refer5(i)
+    end;
+    procedure refer3 ( var i : integer);
+    begin
+      refer4(i)
+    end;
+    procedure refer2 ( var i : integer);
+    begin
+      refer3(i)
+    end;
+    procedure refer1 ( var i : integer);
+    begin
+      refer2(i)
+    end;
+  
+  procedure reference;
+  var j,k : integer;
+  begin
+    write('Reference     ');
+    j := 0;
+    for k := 1 to num_loops do
+      refer1(j);
+    time(endh,endl);
+    doneit;
+  end;
+
+  procedure maths;
+  var k : integer;
+      x,y : real;
+  begin
+    write('Maths         ');
+    time(starth,startl);
+    for k := 1 to num_loops do
+    begin
+      x := sin(k);
+      y := exp(x);
+    end;
+    time(endh,endl);
+    doneit;
+  end;
+
+  begin
+    writeln;
+    writeln;
+    writeln;
+    magnifier;
+    forloop;
+    whileloop;
+    repeatloop;
+    literalassign;
+    memoryaccess;
+    realarithmetic;
+    realalgebra;
+    vector;
+    equalif;
+    unequalif;
+    noparameters;
+    value;
+    reference;
+    maths;
+  end.

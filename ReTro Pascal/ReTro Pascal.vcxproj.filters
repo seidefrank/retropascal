@@ -1,0 +1,930 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Common">
+      <UniqueIdentifier>98df9436-9a22-4f1d-af98-695298b8eae9</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets">
+      <UniqueIdentifier>b92f27d7-7a94-4da3-a80b-3d72dee9592a</UniqueIdentifier>
+    </Filter>
+    <Page Include="Common\StandardStyles.xaml">
+      <Filter>Common</Filter>
+    </Page>
+    <Image Include="Assets\Logo.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\SmallLogo.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\StoreLogo.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\SplashScreen.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Filter Include="Volumes">
+      <UniqueIdentifier>{86508fb7-1c0d-4943-882e-9674e27d5e8a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES">
+      <UniqueIdentifier>{23210b0e-90ff-44bb-8cfb-1a310260dd9d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\basic_compiler">
+      <UniqueIdentifier>{0798398f-7e8e-4e00-91fd-0e12c77ea884}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\pascal_compiler">
+      <UniqueIdentifier>{023b3827-f14d-42fd-a7ca-6ce9f472ef7b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\editor">
+      <UniqueIdentifier>{c4636573-9a9e-4213-a25f-e5b05b821580}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\filer">
+      <UniqueIdentifier>{586d3b68-d31a-47eb-a756-f7f0ed6dd523}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\system">
+      <UniqueIdentifier>{11dc7c5c-fe91-452e-9c45-9a60a812b052}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\linker">
+      <UniqueIdentifier>{01f83b53-0100-4612-9145-368433229f14}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\setup">
+      <UniqueIdentifier>{8f3d3fce-86c4-47ff-9b86-73cdc7fe6838}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\disassembler">
+      <UniqueIdentifier>{37acdbc5-1e9e-4015-bcb2-55761cc430b1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\libmap">
+      <UniqueIdentifier>{430840fb-5348-4263-a8c7-bca0e31399ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\librarian">
+      <UniqueIdentifier>{3d268e65-735d-4922-b7a8-9144ca1d5b2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\APPLE0">
+      <UniqueIdentifier>{70f2e5f8-3d92-4e3f-9b6d-55564e9e4e2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\USER">
+      <UniqueIdentifier>{a79f526b-e7f2-41b6-a209-a1dfa4b46f70}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\MILLER">
+      <UniqueIdentifier>{30d7824c-3289-4164-8e8a-e2c88ac1c8a2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Disk Images">
+      <UniqueIdentifier>{dda7a7e3-0b74-496e-8881-dda1aded33e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\APPLE3">
+      <UniqueIdentifier>{55f99b1a-1caf-469c-9dd6-ffe137d109df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SAMPLES">
+      <UniqueIdentifier>{8d91d420-460b-49b7-9903-f0eb591808cc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Text Material">
+      <UniqueIdentifier>{71ce5a0a-95a9-4b8e-bb12-25afa20f988b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\units">
+      <UniqueIdentifier>{3c806764-cd9c-405d-89c1-d3940a9fc9d8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\BUILD">
+      <UniqueIdentifier>{7f30d640-39e6-4d55-931a-0b287452b512}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SYSTEM2">
+      <UniqueIdentifier>{6ea11227-2ad3-4cbc-862a-c1c1827b4913}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Workarounds">
+      <UniqueIdentifier>{12e67d54-f189-4c0b-bc86-9f95c539a8c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\other">
+      <UniqueIdentifier>{196f019d-3906-4ff3-b93f-8a245a38d270}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Volumes\SOURCES\bootdisk">
+      <UniqueIdentifier>{982dbb3d-e28c-4c99-bd41-0c576da776e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes">
+      <UniqueIdentifier>{ff2b00af-5ca2-4793-8e58-fc212f57ec94}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\RETRO">
+      <UniqueIdentifier>{6a9754c8-d73b-46b4-b73d-7a7f4d77f17c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES">
+      <UniqueIdentifier>{43680601-ef7d-4917-8678-097b28bd69f9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SAMPLES">
+      <UniqueIdentifier>{72511f8c-2858-429e-ae5a-f907a1459008}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\USER">
+      <UniqueIdentifier>{6671c08c-cb36-4346-aeb4-24c48a3230b9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES\tools">
+      <UniqueIdentifier>{5d0218d4-8e1b-4e3e-830c-5408d2aa22c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES\units">
+      <UniqueIdentifier>{a9a677e2-03f4-436c-a338-c3f9a1ac7dbf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES\system">
+      <UniqueIdentifier>{5eec0b17-f615-449f-a139-a376371465f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES\doc">
+      <UniqueIdentifier>{6ca03ee0-4bdc-4ead-b0f6-9018ea5409ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shipping Volumes\SOURCES\build">
+      <UniqueIdentifier>{f93a54af-6a13-4796-9c7c-54947cf23c85}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.xaml.cpp" />
+    <ClCompile Include="MainPage.xaml.cpp" />
+    <ClCompile Include="DisplaySettings.xaml.cpp" />
+    <ClCompile Include="SettingsAbout.xaml.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="App.xaml.h" />
+    <ClInclude Include="MainPage.xaml.h" />
+    <ClInclude Include="DisplaySettings.xaml.h" />
+    <ClInclude Include="SettingsAbout.xaml.h" />
+    <ClInclude Include="pch.h">
+      <Filter>Workarounds</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ReTro Pascal_TemporaryKey.pfx" />
+    <None Include="Volumes\SYSTEM2\COMPILER3.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </None>
+    <None Include="Assets\ProgramBegin.pptx">
+      <Filter>Assets</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\testdecint.text">
+      <Filter>Volumes\SOURCES\other</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\UCSDLICENS.TEXT">
+      <Filter>Shipping Volumes\SOURCES\doc</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\readme.text">
+      <Filter>Shipping Volumes\SOURCES\doc</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP1BEG.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP2TYP.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP3DEC.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP4TYP.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP5CLL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP6BDY.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP7UNT.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.COMP8USM.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.FILE1UTL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.FILE2FIL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.FILE3VOL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.LINKER1.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.LINKER2.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.LINKER3.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.PAS1.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.PAS2.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.PAS3.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.PAS4.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT1.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT2.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT3.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT4.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT5.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.EDIT6FIN.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\SOURCES\S.PAS5STR.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </None>
+    <None Include="Volumes\RETRO\PASCALDOC.TEXT">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </None>
+    <None Include="Package.StoreAssociation.xml" />
+    <None Include="ReTro Pascal_StoreKey.pfx" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="MainPage.xaml" />
+    <Page Include="SettingsAbout.xaml" />
+    <Page Include="DisplaySettings.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="Volumes\SOURCES\basic.text">
+      <Filter>Volumes\SOURCES\basic_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\basicio.text">
+      <Filter>Volumes\SOURCES\basic_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\block.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\bodypart.a.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\bodypart.b.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\bodypart.c.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\bodypart.d.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\bodypart.e.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\compglbls.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\compiler.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\compinit.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\editor.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\copyfile.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\command.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\environ.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\find.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\head.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\init.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\insertit.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\misc.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\moveit.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\out.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\putsyntax.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\user.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\util.text">
+      <Filter>Volumes\SOURCES\editor</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.a.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.b.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.c.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.d.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.e.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\filer.vars.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\ii.0.filer.text">
+      <Filter>Volumes\SOURCES\filer</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\syssegs.a.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\syssegs.b.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\system.a.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\system.b.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\system.c.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\system.text">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\decpart.a.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\decpart.b.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\decpart.c.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\procs.a.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\procs.b.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\unitpart.text">
+      <Filter>Volumes\SOURCES\pascal_compiler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link0.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link1.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link2.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link3a.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\link3b.text">
+      <Filter>Volumes\SOURCES\linker</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\setup.text">
+      <Filter>Volumes\SOURCES\setup</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\disasm.ii.text">
+      <Filter>Volumes\SOURCES\disassembler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\opcodes.ii.0">
+      <Filter>Volumes\SOURCES\disassembler</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.CHARSET">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.COMPILER[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.EDITOR[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.FILER[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.LIBRARY">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.MISCINFO">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.PASCAL[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.SYNTAX">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\BASIC.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\BINDER.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\BIOS.DIAG.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\CALC.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\COPYDUPDIR.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\DISASSEMBL.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\EDITTORT11.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\EXECERR.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\LIBMAP.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\LIBRARIAN.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\MARKDUPDIR.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\RADIX.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\RT11TOEDIT.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SETUP.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.COMPILER[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.EDITOR[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.FILER[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.LIBRARY[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.LINKER[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.MISCINFO">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.PASCAL[CODE]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\XREF.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\YALOE.CODE">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\pascal0.dsk">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\pascal1.dsk">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\pascal2.dsk">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\pascal3.dsk">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\system.vol">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\utility.vol">
+      <Filter>Disk Images</Filter>
+    </Media>
+    <Media Include="Volumes\MILLER\SYSTEM.SYNTAX[TEXT]">
+      <Filter>Volumes\MILLER</Filter>
+    </Media>
+    <Media Include="Volumes\USER\TURTLETEST.TEXT">
+      <Filter>Volumes\USER</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\6500.ERRORS">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\6500.OPCODES">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\BINDER.CODE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\CALC.CODE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\dasm2.ii0.text">
+      <Filter>Volumes\SOURCES\disassembler</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\dasm1.ii0.text">
+      <Filter>Volumes\SOURCES\disassembler</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\BALANCED.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\BALANCED.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\CROSSREF.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\CROSSREF.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\DISKIO.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\DISKIO.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\FORMATTER.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\FORMATTER.DATA">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\GRAFCHARS.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\GRAFCHARS.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\GRAFDEMO.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\GRAFDEMO.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\LIBRARY.CODE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SETUP.CODE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\LIBMAP.CODE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\HAZEL.MISCINFO">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\HAZELGOTO.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\HAZELGOTO.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\HILBERT.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\HILBERT.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\LINEFEED.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\LINEFEED.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\SOROC.MISCINFO">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\SOROCGOTO.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\SOROCGOTO.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\SPIRODEMO.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\SPIRODEMO.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.APPLE">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.ASSMBLER[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE0\SYSTEM.LINKER[CODE]">
+      <Filter>Volumes\APPLE0</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\TREE.CODE">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\APPLE3\TREE.TEXT">
+      <Filter>Volumes\APPLE3</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\SYSTEM.MISCINFO">
+      <Filter>Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Assets\applebeep.wav">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Assets\applebeep.mp3">
+      <Filter>Assets</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\COMPAPPLE.CODE">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\COMPILER1.CODE">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\L.COMPAPPLE.TEXT">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\L.COMPILER1.TEXT">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\L.SYSTEM1.TEXT">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\README.TEXT">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\BUILD\SYSTEM1.CODE">
+      <Filter>Volumes\BUILD</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\EDITOR2.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\FILER2.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\L.COMPILER.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\L.EDITOR.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\L.FILER.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\L.LINKER.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\L.SYSTEM.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\LINKER2.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\COMPILER2.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.COMPILER[CODE]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.EDITOR[CODE]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.FILER[CODE]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.LINKER[CODE]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.PASCAL[CODE]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.SYNTAX[TEXT]">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM2.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\README.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\CHAINSTUFF.TEXT">
+      <Filter>Volumes\SOURCES\units</Filter>
+    </Media>
+    <Media Include="Volumes\SAMPLES\GRAF3D.TEXT">
+      <Filter>Volumes\SAMPLES</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\LIBRARY.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\LIBRARY.LIST">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\LIBMAP.CODE">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.LIBRARY">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\SYSTEM2\SYSTEM.WRK.TEXT">
+      <Filter>Volumes\SYSTEM2</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.COMPILER[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.EDITOR[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.FILER[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.LIBRARY">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.LINKER[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.PASCAL[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.SYNTAX[TEXT]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.WRK.TEXT">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\LIBRARY.CODE">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\LIBMAP.CODE">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\USER\HELLOWORLD.TEXT">
+      <Filter>Shipping Volumes\USER</Filter>
+    </Media>
+    <Media Include="Volumes\SAMPLES\MANDELBROT.TEXT">
+      <Filter>Shipping Volumes\SAMPLES</Filter>
+    </Media>
+    <Media Include="Volumes\SAMPLES\MOUSEDRAW.TEXT">
+      <Filter>Shipping Volumes\SAMPLES</Filter>
+    </Media>
+    <Media Include="Volumes\SAMPLES\TOUCHPONG.TEXT">
+      <Filter>Shipping Volumes\SAMPLES</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\APPLESTUFF.TEXT">
+      <Filter>Shipping Volumes\SOURCES\units</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\libmap.text">
+      <Filter>Shipping Volumes\SOURCES\tools</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\library.text">
+      <Filter>Shipping Volumes\SOURCES\tools</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\GLOBALS.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\S.COMPILER.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\S.EDITOR.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\S.FILER.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\S.PASCAL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\SYSTEM.SYNTAX[TEXT]">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\HOWTOBUILD.TEXT">
+      <Filter>Shipping Volumes\SOURCES\doc</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\RETROSTUFF.TEXT">
+      <Filter>Shipping Volumes\SOURCES\units</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\TRANSCEND.TEXT">
+      <Filter>Shipping Volumes\SOURCES\units</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\TURTLEGRAP.TEXT">
+      <Filter>Shipping Volumes\SOURCES\units</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\STARTUP.TEXT">
+      <Filter>Volumes\SOURCES</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDCOMPLR.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDEDITOR.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDFILER.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDLIB.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDPASCAL.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDTOOLS.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SAMPLES\NOTEDEMO.TEXT">
+      <Filter>Shipping Volumes\SAMPLES</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\VIEWFILE.TEXT">
+      <Filter>Shipping Volumes\SOURCES\tools</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\SYSTEM.WRK.TEXT">
+      <Filter>Shipping Volumes\SOURCES\doc</Filter>
+    </Media>
+    <Media Include="Volumes\RETRO\SYSTEM.VIEWFILE[CODE]">
+      <Filter>Shipping Volumes\RETRO</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\BLDDOC.TEXT">
+      <Filter>Shipping Volumes\SOURCES\build</Filter>
+    </Media>
+    <Media Include="Volumes\SOURCES\PASCALDOC.TEXT">
+      <Filter>Shipping Volumes\SOURCES\doc</Filter>
+    </Media>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\Manual Background.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Half.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Quarter Size.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Eighth Size.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Logo 150 x 150.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Logo 30 x 30.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Third Size.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal Sixth Size.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal6x8.allchars.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\ProgramBegin 620 x 300.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\ProgramBegin 24 x 24.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\ProgramBegin 30 x 30.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\ProgramBegin 50 x 50.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\ProgramBegin 150 x 150.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Terminal8x8.allchars.bmp">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Volumes\SAMPLES\GAMEOFLIFE.TEXT">
+      <Filter>Shipping Volumes\SAMPLES</Filter>
+    </Image>
+    <Image Include="Volumes\SOURCES\S.LINKER.TEXT">
+      <Filter>Shipping Volumes\SOURCES\system</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="Text.txt">
+      <Filter>Text Material</Filter>
+    </Text>
+  </ItemGroup>
+</Project>

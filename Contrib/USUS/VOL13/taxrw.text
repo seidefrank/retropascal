@@ -1,0 +1,162 @@
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+segment procedure rw ( ch : char );
+{reads or writes Files of tlines and items}
+var     fl      : file of tls;
+        fi      : file of item;
+
+function lookup ( fn : string ) : boolean;
+{checks to see if file is on disk}
+var     ior     : 0..15;
+begin
+   {$I-}
+   reset ( p, fn );
+   ior := ioresult;
+   close ( p );
+   {$I+}
+   if ior = 0 then lookup := true 
+   else 
+      begin
+          lookup := false;
+          if ior <> 10 then writeln ( 'ioresult for file ', fn, ' is ',
+                                        ior );
+      end;
+end;
+
+procedure reader;       {reads files of tlines and items}
+const   fn1     = '.line';
+        fn2     = '.item';
+var     st      : string;
+        fn      : filename;
+
+procedure read_tlines ( fn : filename );
+var     i       : tline_num;
+begin
+   if not lookup ( fn ) then
+      begin
+         clear;
+         gotoxy ( 12, 20 );
+         writeln ( 'File ', fn, ' not found' );
+         wait;
+         exit ( read_tlines );
+      end;
+   reset ( fl, fn );
+   tlines := fl^;
+   close ( fl );
+   for i := 8 to maxline do tlines [ i ].iptr := nil;
+   writeln ( 'File ', fn, ' read. ');
+end;
+
+procedure read_items ( fn : filename );
+var     ch      : char;
+        pt,
+        newpt   : pointer;
+begin
+   if not lookup ( fn ) then
+      begin
+         clear;
+         gotoxy ( 10, 10 );
+         write ( 'File ', fn, ' not found.' );
+         wait;
+         exit ( read_items );
+      end;
+   reset ( fi, fn );
+   write ( 'Reading file ', fn );
+   while not eof ( fi ) do
+      begin
+         new ( newpt );
+         newpt^ := fi^;
+         newpt^.nptr := nil;
+         if ( tlines [ newpt^.tlnum ].iptr = nil ) then
+            tlines [ newpt^.tlnum ].iptr := newpt
+         else 
+            begin
+               pt := tlines [ newpt^.tlnum ].iptr;
+               while ( pt^.nptr <> nil ) do pt := pt^.nptr;
+               pt^.nptr := newpt;
+            end;
+         get ( fi );
+         write ( '.' );
+      end;
+   close ( fi );
+end;
+
+begin {reader}
+   namer ( 'File to be read ', st, 8 );
+   fn := concat ( st, fn1 );
+   read_tline ( fn );
+   fn := concat ( st, fn2 );
+   read_items ( fn );
+   wait;
+end; { reader }
+
+procedure writer;   {writes file of tlines and items}
+const   fn1     = '.line';
+        fn2     = '.item';
+var     st      : string;
+        fn      : filename;
+
+procedure write_tlines ( fn : filename );
+var     ch      : char;
+        ln      : tline_num;
+begin
+   if lookup ( fn ) then
+      begin
+         clear;
+         gotoxy ( 0 , 20 );
+         writeln ( 'Do you wand to remove the old file y/n ' );
+         repeat 
+            read ( keyboard, ch );
+         until ch in [ 'Y','y','N','n' ];
+         if ch in [ 'N','n' ] then exit ( writer );
+      end;
+   rewrite ( fl, fn );
+   fl^ := tlines;
+   put ( fl );
+   close ( fl, lock );
+end;
+
+procedure write_items ( fn : filename );
+var     ch      : char;
+        pt      : pointer;
+        ln      : tline_num;
+begin
+   rewrite ( fi, fn );
+   for ln := 8 to maxline do
+      if not ( ln in calcset ) then
+         begin
+            if tlines [ ln ].iptr <> nil then
+               begin
+                  pt := tlines [ ln ].iptr;
+                  while ( pt <> nil ) do
+                     begin
+                        fi^ := pt^;
+                        put ( fi );
+                        pt := pt^.nptr
+                     end;
+               end;
+         end;
+    close ( fi, lock );
+end;
+
+begin  {writer}
+   namer ( 'File to be written ', st, 8 );
+   fn := concat ( st, fn1 );
+   write_tline ( fn );
+   fn := concat ( st, fn2 );
+   write_items ( fn );
+end; {writer}
+
+begin  {rw}
+   case ch of
+      'R' : reader;
+      'W' : writer;
+   end;
+end; {rw}
+

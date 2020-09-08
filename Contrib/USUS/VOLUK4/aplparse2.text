@@ -1,0 +1,1146 @@
+procedure primary(var valid: boolean); (* recursive entry *)
+var
+  validx: boolean;
+  assign: boolean;
+
+function vector: boolean;
+var
+  vec: boolean;
+begin (* vector *)
+  vec := false;
+  if tokentabptr^.noun = constant
+  then
+    begin
+      auxopertabptr := opertabptr;
+      getoper(opertabptr);
+      ptrlastoper := opertabptr;
+      opertabptr^.lastoper := auxopertabptr;
+      opertabptr^.operptr := tokentabptr^.valtabptr;
+      hold := tokentabptr;
+      tokentabptr := tokentabptr^.nextoken;
+      vec := true
+    end;
+  vector := vec
+end; {vector}
+
+begin (* primary *)
+valid := true;
+if not vector
+then
+  begin
+    assign := false;
+    if not variable
+    then
+      if specsymbol(xrightpar)
+      then
+        begin
+          expression(validx);
+          if not validx
+          then error(14) (* non-valid expression within parens *)
+          else
+            if not specsymbol(xleftpar)
+            then error(15) (* right paren not balanced with left paren *)
+            else valid := true
+        end
+      else
+        if not functcall
+        then valid := false
+        else
+          begin
+            callsubr;
+            primary(valid)
+          end
+  end
+end; {primary}
+
+procedure expression{var validexp: boolean}; (* recursive *)
+var
+  donexp: boolean;
+  validpri, validfunc, validassn: boolean;
+  code: integer;
+
+procedure assignment(var valida: boolean);
+begin (* assignment *)
+  valida := false;
+  if specsymbol(xleftarrow)
+  then
+    begin
+      assign := true;
+      assign1 := true;
+      if variable
+      then valida := true
+      else error(8); (* result of an assn not a valid variable *)
+      valida := true;
+      assign := false
+    end
+end; {assignment}
+
+function mop: boolean;
+var
+  validm: boolean;
+begin (* mop *)
+  validm := false;
+  if (tokentabptr^.noun = monadoper)
+     or (tokentabptr^.noun = reductoper)
+  then
+    begin
+      if tokentabptr^.noun = monadoper
+      then code := moptab[tokentabptr^.monindx].opindex
+      else code := redtab[tokentabptr^.redindx].opindex;
+      hold := tokentabptr;
+      tokentabptr := tokentabptr^.nextoken;
+      validm := true
+    end;
+  mop := validm
+end; {mop}
+
+function dop: boolean;
+var
+  validd: boolean;
+begin (* dop *)
+  validd := false;
+  if tokentabptr^.noun = dyadoper
+  then
+    begin
+      code := doptab[tokentabptr^.dopindx].opindex;
+      hold := tokentabptr;
+      tokentabptr := tokentabptr^.nextoken;
+      if (code > 80)
+      then validd := true
+      else
+        if tokentabptr^.noun = specoper
+        then
+          if specsymbol(xperiod)
+          then
+            begin
+              if tokentabptr^.noun = dyadoper
+              then
+                begin
+                  if doptab[tokentabptr^.dopindx].opindex <= 80
+                  then
+                    begin
+                      code := code + 100*doptab[tokentabptr^.dopindx].opindex;
+                      hold := tokentabptr;
+                      tokentabptr := tokentabptr^.nextoken;
+                      validd := true
+                    end
+                  else error(27) (* invalid inner product exp *)
+                end
+              else
+                if tokentabptr^.noun = specoper
+                then
+                  begin
+                    if specsymbol(xlittlecircle)
+                    then
+                      begin
+                        code := 10*code;
+                        validd := true
+                      end
+                    else error(26) (* inval outer prod exp *)
+                  end
+                else error(26) (* same as above *)
+            end
+          else validd := true
+        else validd := true
+    end;
+  dop := validd
+end; {dop}
+
+function itsboolean(test: real): boolean;
+begin
+  if (test = 1.0) or (test = 0.0)
+  then itsboolean := true
+  else itsboolean := false
+end; {itsboolean}
+
+procedure dyadcomp(var sfloat: real; value: real; code: integer);
+begin (* compute result of dyadic operation *)
+  case code of (* left codes - reduction ops / right code - dyadic ops *)
+    2, 52: sfloat := value + sfloat;            (* addition *)
+    3, 53: sfloat := value - sfloat;            (* subtraction *)
+    4, 54: sfloat := value * sfloat;            (* multiplication *)
+    5, 55: if sfloat = 0.0                      (* division *)
+           then error(20) (* attempted division by zero *)
+           else sfloat := value / sfloat;
+    6, 56: if value > 0.0                       (* number raised to a power *)
+           then sfloat := exp(sfloat * ln(value))
+           else sfloat := 1.0 / (exp(sfloat * ln(abs(value))));
+   21, 71: if value = sfloat                    (* equality *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   22, 72: if value <> sfloat                   (* inequality *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   23, 73: if value < sfloat                    (* less than *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   24, 74: if value <= sfloat                   (* less than or equal to *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   25, 75: if value >= sfloat                   (* greater than or equal to *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   26, 76: if value > sfloat                    (* greater than *)
+           then sfloat := 1.0
+           else sfloat := 0.0;
+   27, 77: if (itsboolean(value)) and (itsboolean(sfloat))
+           then                                 (* and *)
+             if (value = 1.0) and (sfloat = 1.0)
+             then sfloat := 1.0
+             else sfloat := 0.0
+           else error(19); (* value not boolean *)
+   28, 78: if (itsboolean(value)) and (itsboolean(sfloat))
+           then                                 (* or *)
+             if (value = 1.0) or (sfloat = 1.0)
+             then sfloat := 1.0
+             else sfloat := 0.0
+           else error(19); (* value not boolean *)
+   29:     if value > sfloat                    (* maximum or ceiling *)
+           then sfloat := value;
+   30:     if value < sfloat                    (* minimum or floor *)
+           then sfloat := value;
+   31:     if (value*sfloat) < 0.0              (* log to a base *)
+           then error(50) (* number and base of different sign *)
+           else sfloat := (ln(abs(sfloat))) / (ln(abs(value)))
+  end (* case *)
+end; {dyadcomp}
+
+procedure indexgenerator(arg: typevaltabptr); (* monadic iota generator *)
+var
+  iotaindex: integer;
+  topvalue: integer;
+begin
+  if arg^.dimensions <> 0
+  then error(21) (* argument not a scalar *)
+  else
+    if arg^.firstvalue^.realval < 0.0
+    then error(22) (* argument is negative *)
+    else
+      if arg^.firstvalue^.realval <> trunc(arg^.firstvalue^.realval)
+      then error(23) (* argument is not an integer *)
+      else
+        begin
+          getvalt(newvaltablink);
+          oldvaltablink^.nextvaltablink := newvaltablink;
+          newvaltablink^.nextvaltablink := nil;
+          newvaltablink^.forwardorder := true;
+          newvaltablink^.intermedresult := true;
+          newvaltablink^.dimensions := 1; (* result is a vector *)
+          getdim(newdim);
+          newvaltablink^.firstdimen := newdim;
+          topvalue := trunc(arg^.firstvalue^.realval); (* last index generd *)
+          newdim^.dimenlength := topvalue;
+          newdim^.nextdimen := nil;
+          iotaindex := 1;
+          switch := true;
+          while iotaindex <= topvalue do
+            begin
+              getvalu(newvalues);
+              newvalues^.realval := iotaindex;
+              if switch = true
+              then
+                begin
+                  switch := false;
+                  newvaltablink^.firstvalue := newvalues
+                end
+              else newvalptr^.nextvalue := newvalues;
+              newvalptr := newvalues;
+              iotaindex := iotaindex + 1
+            end;
+          if switch = true
+          then newvaltablink^.firstvalue := nil
+               (* result is a vector of length 0 *)
+          else newvalues^.nextvalue := nil
+        end
+end; {indexgenerator}
+
+procedure ravel(arg: typevaltabptr); (* monadic comma operator *)
+var
+  elements: integer;
+begin
+  getvalt(newvaltablink);
+  oldvaltablink^.nextvaltablink := newvaltablink;
+  newvaltablink^.nextvaltablink := nil;
+  newvaltablink^.intermedresult := true;
+  newvaltablink^.forwardorder := arg^.forwardorder;
+  newvaltablink^.dimensions := 1; (* result is a vector *)
+  getdim(newdim);
+  newvaltablink^.firstdimen := newdim;
+  newdim^.nextdimen := nil;
+  switch := true;
+  valptr := arg^.firstvalue;
+  elements := 0;
+  while valptr <> nil do
+    begin (* duplicate values into result *)
+      getvalu(newvalues);
+      newvalues^.realval := valptr^.realval;
+      elements := elements + 1;
+      if switch = true
+      then
+        begin
+          switch := false;
+          newvaltablink^.firstvalue := newvalues
+        end
+      else newvalptr^.nextvalue := newvalues;
+      newvalptr := newvalues;
+      valptr := valptr^.nextvalue
+    end;
+  newdim^.dimenlength := elements;
+  if switch = true
+  then newvaltablink^.firstvalue := nil
+  else newvalues^.nextvalue := nil
+end; {ravel}
+
+procedure shapeof(arg: typevaltabptr); (* monadic rho operator *)
+begin
+  getvalt(newvaltablink);
+  oldvaltablink^.nextvaltablink := newvaltablink;
+  newvaltablink^.nextvaltablink := nil;
+  newvaltablink^.intermedresult := true;
+  newvaltablink^.forwardorder := true;
+  newvaltablink^.dimensions := 1; (* result is a vector *)
+  getdim(newdim);
+  newdim^.dimenlength := arg^.dimensions;
+  newvaltablink^.firstdimen := newdim;
+  newdim^.nextdimen := nil;
+  switch := true;
+  dimptr := arg^.firstdimen;
+  while dimptr <> nil do
+    begin (* argument dimensions become result values *)
+      getvalu(newvalues);
+      newvalues^.realval := dimptr^.dimenlength;
+      if switch = true
+      then
+        begin
+          switch := false;
+          newvaltablink^.firstvalue := newvalues
+        end
+      else newvalptr^.nextvalue := newvalues;
+      newvalptr := newvalues;
+      dimptr := dimptr^.nextdimen
+    end;
+  if switch = true
+  then newvaltablink^.firstvalue := nil (* result is a vector of length 0 *)
+  else newvalues^.nextvalue := nil
+end; {shapeof}
+
+procedure reduction(arg: typevaltabptr);
+var
+  counter: integer;
+  rowlength: integer;
+  sfloat: real;
+begin
+  if (arg^.dimensions = 0) or (arg^.firstvalue = nil)
+  then error(24) (* argument is a scalar or vector of length zero *)
+  else
+    if (arg^.dimensions = 1) and (arg^.firstdimen^.dimenlength = 1)
+    then error(51) (* argument is a vector of length one *)
+    else
+      begin
+        getvalt(newvaltablink);
+        oldvaltablink^.nextvaltablink := newvaltablink;
+        newvaltablink^.nextvaltablink := nil;
+        newvaltablink^.intermedresult := true;
+        if arg^.forwardorder = true
+        then reverselinklist(arg);
+        newvaltablink^.forwardorder := false;
+        newvaltablink^.dimensions := arg^.dimensions - 1;
+        dimptr := arg^.firstdimen;
+        switch := true;
+        while dimptr^.nextdimen <> nil do
+          begin (* build dimensions of result *)
+            getdim(newdim);
+            if switch = true
+            then
+              begin
+                switch := false;
+                newvaltablink^.firstdimen := newdim
+              end
+            else newptr^.nextdimen := newdim;
+            newdim^.dimenlength := dimptr^.dimenlength;
+            newptr := newdim;
+            dimptr := dimptr^.nextdimen
+          end;
+        if switch = true
+        then newvaltablink^.firstdimen := nil
+             (* arg is a vector, result is scalar *)
+        else newdim^.nextdimen := nil;
+        rowlength := dimptr^.dimenlength;
+        valptr := arg^.firstvalue;
+        switch := true;
+        while valptr <> nil do
+          begin (* perform reduction *)
+            sfloat := valptr^.realval; (* sfloat gets last value in row *)
+            valptr := valptr^.nextvalue;
+            for counter := 2 to rowlength do
+              begin
+                dyadcomp(sfloat, valptr^.realval, code);
+                valptr := valptr^.nextvalue
+              end;
+            getvalu(newvalues);
+            newvalues^.realval := sfloat;
+            if switch = true
+            then
+              begin
+                switch := false;
+                newvaltablink^.firstvalue := newvalues
+              end
+            else newvalptr^.nextvalue := newvalues;
+            newvalptr := newvalues
+          end;
+        newvalues^.nextvalue := nil
+      end
+end; {reduction}
+
+procedure roll(rollsize: real; var rollresult: real);
+const
+  rollmult = -23571;
+  rolladd = 7473;
+  twotothe16 = 65536.0;
+var
+  temprollnum: real;
+begin
+  rollnum := rollnum*rollmult + rolladd;
+  if rollnum < 0
+  then temprollnum := twotothe16 + rollnum
+  else temprollnum := rollnum;
+  rollresult := trunc(rollsize*(temprollnum/twotothe16) + 1.0)
+end; {roll}
+
+procedure monadic(arg: typevaltabptr; token: tokenptr);
+(* operations with codes between 1 and 31 *)
+begin
+  if token^.noun = reductoper
+  then reduction(arg)
+  else
+    if code > 20
+    then
+      case code of
+        21: indexgenerator(arg);
+        22: shapeof(arg);
+        23: ravel(arg)
+      end (* case *)
+    else
+      begin
+        getvalt(newvaltablink);
+        oldvaltablink^.nextvaltablink := newvaltablink;
+        newvaltablink^.nextvaltablink := nil;
+        newvaltablink^.intermedresult := true;
+        newvaltablink^.forwardorder := arg^.forwardorder;
+        newvaltablink^.dimensions := arg^.dimensions;
+        switch := true;
+        dimptr := arg^.firstdimen;
+        while dimptr <> nil do
+          begin (* duplicate dimensions of arg into result *)
+            getdim(newdim);
+            newdim^.dimenlength := dimptr^.dimenlength;
+            if switch = true
+            then
+              begin
+                switch := false;
+                newvaltablink^.firstdimen := newdim
+              end
+            else newptr^.nextdimen := newdim;
+            newptr := newdim;
+            dimptr := dimptr^.nextdimen
+          end;
+        if switch = true
+        then newvaltablink^.firstdimen := nil (* result is a scalar *)
+        else newdim^.nextdimen := nil;
+        switch := true;
+        valptr := arg^.firstvalue;
+        while valptr <> nil do
+          begin
+            getvalu(newvalues);
+            if switch = true
+            then
+              begin
+                switch := false;
+                newvaltablink^.firstvalue := newvalues
+              end
+            else newvalptr^.nextvalue := newvalues;
+            newvalptr := newvalues;
+            case code of
+              1: if itsboolean(valptr^.realval) (* logical negation *)
+                 then newvalues^.realval := 1.0 - valptr^.realval
+                 else error(19); (* value not boolean *)
+              2: newvalues^.realval := valptr^.realval; (* no-op *)
+              3: newvalues^.realval := 0.0 - valptr^.realval; (* negation *)
+              4: if valptr^.realval > 0.0 (* signum *)
+                 then newvalues^.realval := 1.0
+                 else
+                   if valptr^.realval < 0.0
+                   then newvalues^.realval := -1.0
+                   else newvalues^.realval := 0.0;
+              5: if valptr^.realval = 0.0 (* reciprocal *)
+                 then error(54) (* attempted inverse of zero *)
+                 else newvalues^.realval := 1.0 / valptr^.realval;
+              6: newvalues^.realval := exp(valptr^.realval); (* exp *)
+              9: if valptr^.realval = trunc(valptr^.realval) (* ceiling *)
+                 then newvalues^.realval := valptr^.realval
+                 else newvalues^.realval := trunc(valptr^.realval + 1.0);
+             10: newvalues^.realval := trunc(valptr^.realval); (* floor *)
+              7: if trunc(valptr^.realval) <> valptr^.realval
+                 then error(23) (* argument is not an integer *)
+                 else
+                   if valptr^.realval < 0.0
+                   then error(22) (* argument is negative *)
+                   else roll(valptr^.realval, newvalues^.realval) (* roll *)
+            end; (* case *)
+            valptr := valptr^.nextvalue
+          end;
+        if switch = true
+        then newvaltablink^.firstvalue := nil
+        else newvalues^.nextvalue := nil
+      end
+end; {monadic}
+
+procedure catenate(leftarg, rightarg: typevaltabptr);
+(* dyadic comma operator - joins 2 arguments *)
+var
+  resultlength: integer;
+begin (* catenate *)
+  if (rightarg^.dimensions > 1) or (leftarg^.dimensions > 1)
+  then error(53) (* argument(s) with rank greater than 1 *)
+  else
+    begin
+      getvalt(newvaltablink);
+      oldvaltablink^.nextvaltablink := newvaltablink;
+      newvaltablink^.nextvaltablink := nil;
+      newvaltablink^.intermedresult := true;
+      if leftarg^.forwardorder = false
+      then reverselinklist(leftarg);
+      if rightarg^.forwardorder = false
+      then reverselinklist(rightarg);
+      newvaltablink^.forwardorder := true;
+      newvaltablink^.dimensions := 1; (* result is a vector *)
+      getdim(newdim);
+      newvaltablink^.firstdimen := newdim;
+      newdim^.nextdimen := nil;
+      resultlength := 0;
+      if leftarg^.dimensions = 0
+      then resultlength := resultlength + 1 (* leftarg is a scalar *)
+      else resultlength := resultlength + leftarg^.firstdimen^.dimenlength;
+      if rightarg^.dimensions = 0
+      then resultlength := resultlength + 1 (* rightarg is a scalar *)
+      else resultlength := resultlength + rightarg^.firstdimen^.dimenlength;
+      newdim^.dimenlength := resultlength;
+      switch := true;
+      if resultlength = 0
+      then newvaltablink^.firstvalue := nil (* result is vector of length 0 *)
+      else
+        begin (* transfer values to result *)
+          leftvalptr := leftarg^.firstvalue;
+          while leftvalptr <> nil do
+            begin (* transfer left arg values (if any) *)
+              getvalu(newvalues);
+              if switch = true
+              then
+                begin
+                  switch := false;
+                  newvaltablink^.firstvalue := newvalues
+                end
+              else newvalptr^.nextvalue := newvalues;
+              newvalues^.realval := leftvalptr^.realval;
+              newvalptr := newvalues;
+              leftvalptr := leftvalptr^.nextvalue
+            end;
+          rightvalptr := rightarg^.firstvalue;
+          while rightvalptr <> nil do
+            begin (* transfer right arg values (if any) *)
+              getvalu(newvalues);
+              if switch = true
+              then
+                begin
+                  switch := false;
+                  newvaltablink^.firstvalue := newvalues
+                end
+              else newvalptr^.nextvalue := newvalues;
+              newvalues^.realval := rightvalptr^.realval;
+              newvalptr := newvalues;
+              rightvalptr := rightvalptr^.nextvalue
+            end;
+          newvalues^.nextvalue := nil
+        end (* transfer of values *)
+    end
+end; {catenate}
+
+procedure indexof(leftarg, rightarg: typevaltabptr);
+(* dyadic iota operator *)
+var
+  mapindex,
+  icount,
+  testlength,
+  onemore: integer;
+begin (* indexof *)
+  if leftarg^.dimensions <> 1
+  then error(29) (* left argument is not a vector *)
+  else
+    begin
+      getvalt(newvaltablink);
+      oldvaltablink^.nextvaltablink := newvaltablink;
+      newvaltablink^.nextvaltablink := nil;
+      newvaltablink^.intermedresult := true;
+      if leftarg^.forwardorder = false
+      then reverselinklist(leftarg);
+      newvaltablink^.forwardorder := rightarg^.forwardorder;
+      newvaltablink^.dimensions := rightarg^.dimensions;
+      if rightarg^.dimensions = 0
+      then newvaltablink^.firstdimen := nil (* right argument is a scalar *)
+      else
+        begin (* build dimensions of result *)
+          switch := true;
+          dimptr := rightarg^.firstdimen;
+          while dimptr <> nil do
+            begin
+              getdim(newdim);
+              if switch = true
+              then
+                begin
+                  switch := false;
+                  newvaltablink^.firstdimen := newdim
+                end
+              else newptr^.nextdimen := newdim;
+              newdim^.dimenlength := dimptr^.dimenlength;
+              newptr := newdim;
+              dimptr := dimptr^.nextdimen
+            end;
+          newdim^.nextdimen := nil
+        end;
+      switch := true;
+      rightvalptr := rightarg^.firstvalue;
+      while rightvalptr <> nil do
+        begin
+          getvalu(newvalues);
+          if switch = true
+          then
+            begin
+              switch := false;
+              newvaltablink^.firstvalues := newvalues
+            end
+          else newvalptr^.nextvalue := newvalues;
+          icount := 1;
+          leftvalptr := leftarg^.firstvalue;
+          testlength := leftarg^.firstdimen^.dimenlength;
+                        (* length of left arg *)
+          onemore := testlength + 1; (* length of left arg plus one !!! *)
+          mapindex := onemore;
+          while (icount <= testlength) and (mapindex = onemore) do
+            begin (* try to match value in right arg with one in left arg *)
+              if leftvalptr^.realval = rightvalptr^.realval
+              then mapindex := icount; (*value match *)
+              icount := icount + 1;
+              leftvalptr := leftvalptr^.nextvalue
+            end;
+          newvalues^.realval := mapindex;
+          newvalptr := newvalues;
+          rightvalptr := rightvalptr^.nextvalue
+        end; (* if no match, index becomes one more than length of left arg *)
+      newvalues^.nextvalue := nil
+    end
+end; {indexof}
+
+procedure reshape(leftarg, rightarg: typevaltabptr);
+(* dyadic rho operator - change dimensions of *)
+var
+  resultlength,
+  elements: integer;
+  dimptr: ^dimeninfo;
+  newptr: ^values;
+begin (* reshape *)
+  if leftarg^.dimensions > 1
+  then error(56) (* left argument is not a vector or a scalar *)
+  else
+    begin
+      getvalt(newvaltablink);
+      oldvaltablink^.nextvaltablink := newvaltablink;
+      newvaltablink^.nextvaltablink := nil;
+      newvaltablink^.intermedresult := true;
+      if leftarg^.forwardorder = false
+      then reverselinklist(leftarg);
+      if rightarg^.forwardorder = false
+      then reverselinklist(rightarg);
+      newvaltablink^.forwardorder := true;
+      if leftarg^.firstdimen = nil
+      then newvaltablink^.dimensions := 1
+      else newvaltablink^.dimensions := leftarg^.firstdimen^.dimenlength;
+      resultlength := 1;
+      leftvalptr := leftarg^.firstvalue;
+      switch := true;
+      while leftvalptr <> nil do (* left arg values are dimensions of result *)
+        begin (* build result dimensions *)
+          resultlength := resultlength*trunc(leftvalptr^.realval);
+          getdim(newdim);
+          newdim^.dimenlength := trunc(leftvalptr^.realval);
+          leftvalptr := leftvalptr^.nextvalue;
+          if switch = true
+          then
+            begin
+              switch := false;
+              newvaltablink^.firstdimen := newdim
+            end
+          else dimptr^.nextdimen := newdim;
+          dimptr := newdim;
+        end;
+      newdim^.nextdimen := nil;
+      rightvalptr := rightarg^.firstvalue;
+      elements := 0;
+      switch := true;
+      while elements < resultlength do
+        begin (* duplicate right arg values into result values *)
+          elements := elements + 1;
+          getvalu(newvalues);
+          if rightvalptr = nil (* extend right argument if necessary *)
+          then rightvalptr := rightarg^.firstvalue;
+          newvalues^.realval := rightvalptr^.realval;
+          if switch = true
+          then
+            begin
+              switch := false;
+              newvaltablink^.firstvalue := newvalues
+            end
+          else newptr^.nextvalue := newvalues;
+          newptr := newvalues;
+          rightvalptr := rightvalptr^.nextvalue
+        end;
+      newvalues^.nextvalue := nil
+    end
+end; {reshape}
+
+procedure innerproduct(leftarg, rightarg: typevaltabptr);
+var
+  inpro1code, inpro2code: integer;
+  leftskip, rightskip: integer;
+  icount, jcount, kcount, lcount, mcount: integer;
+  lastleftdim,
+  firstrightdim,
+  commonlength: integer;
+  lptr: ^values;
+  hold: real;
+  sfloat: real;
+  value: real;
+begin (* inner product is matrix multiplication *)
+  dimptr := leftarg^.firstdimen;
+  if leftarg^.firstdimen <> nil
+  then
+    while dimptr^.nextdimen <> nil do
+      dimptr := dimptr^.nextdimen; (* get last dimen of left arg (if any) *)
+  if (dimptr <> nil) and (rightarg^.firstdimen <> nil)
+  then
+    if dimptr^.dimenlength <> rightarg^.firstdimen^.dimenlength
+    then error(52) (* last dim of left arg not = first dim of right arg *)
+    else
+      begin
+        inpro1code := code div 100; (* seperate operators *)
+        inpro2code := code mod 100;
+        getvalt(newvaltablink);
+        oldvaltablink^.nextvaltablink := newvaltablink;
+        newvaltablink^.nextvaltablink := nil;
+        newvaltablink^.intermedresult := true;
+        if leftarg^.forwardorder = false
+        then reverselinklist(leftarg);
+        if rightarg^.forwardorder = false
+        then reverselinklist(rightarg);
+        newvaltablink^.forwardorder := true;
+        newvaltablink^.dimensions :=
+          leftarg^.dimensions + rightarg^.dimensions - 2;
+        if newvaltablink^.dimensions < 0
+        then newvaltablink^.dimensions := 0;
+        switch := true;
+        lastleftdim := 0;
+        if leftarg^.firstdimen <> nil
+        then
+          begin (* copy all but last of left arg dims into result *)
+            leftskip := 1;
+            dimptr := leftarg^.firstdimen;
+            while dimptr^.nextdimen <> nil do
+              begin (* copy left arg dimensions *)
+                getdim(newdim);
+                newdim^.dimenlength := dimptr^.dimenlength;
+                leftskip := leftskip*dimptr^.dimenlength;
+                if switch = true
+                then
+                  begin
+                    switch := false;
+                    newvaltablink^.firstdimen := newdim
+                  end
+                else newptr^.nextdimen := newdim;
+                newptr := newdim;
+                dimptr := dimptr^.nextdimen
+              end;
+            lastleftdim := dimptr^.dimenlength
+          end;
+        if rightarg^.firstdimen <> nil
+        then
+          begin (* copy all but last of right arg dims into result *)
+            rightskip := 1;
+            dimptr := rightarg^.firstdimen^.nextdimen;
+            while dimptr <> nil do
+              begin (* copy right arg dimensions *)
+                getdim(newdim);
+                newdim^.dimenlength := dimptr^.dimenlength;
+                rightskip := rightskip*dimptr^.dimenlength;
+                if switch = true
+                then
+                  begin
+                    switch := false;
+                    newvaltablink^.firstdimen := newdim
+                  end
+                else newptr^.nextdimen := newdim;
+                newptr := newdim;
+                dimptr := dimptr^.nextdimen
+              end
+          end;
+        if switch = true
+        then newvaltablink^.firstdimen := nil
+        else newdim^.nextdimen := nil;
+        if leftarg^.firstvalue = nil then leftskip := 0;
+        if rightarg^.firstvalue = nil then rightskip := 0;
+        switch := true;
+        if rightarg^.firstdimen <> nil
+        then firstrightdim := rightarg^.firstdimen^.dimenlength
+        else firstrightdim := 0;
+        if firstrightdim > lastleftdim
+        then commonlength := firstrightdim
+        else commonlength := lastleftdim;
+        icount := 0;
+        leftvalptr := leftarg^.firstvalue;
+        while icount < leftskip do
+          begin (* loop for each row in left arg *)
+            lptr := leftvalptr; (* hold start of row position *)
+            jcount := 0;
+            while jcount < rightskip do
+              begin (* loop for each column in right arg *)
+                leftvalptr := lptr;
+                rightvalptr := rightarg^.firstvalue;
+                lcount := 0;
+                while lcount < jcount do
+                  begin (* skip to starting value in right arg *)
+                    rightvalptr := rightvalptr^.nextvalue;
+                    if rightvalptr = nil
+                    then rightvalptr := rightarg^.firstvalue; (* extend arg *)
+                    lcount := lcount + 1
+                  end;
+                kcount := 0;
+                while kcount < commonlength do
+                  begin (* loop for each element in row/column *)
+                    sfloat := rightvalptr^.realval;
+                    dyadcomp(sfloat, leftvalptr^.realval, inpro2code);
+                    value := sfloat;
+                    if kcount = 0
+                    then (* set identity value for first time through *)
+                      case inpro1code of
+                        52, 53, 78:             sfloat := 0.0;
+                        54, 55, 56, 77:         sfloat := 1.0;
+                        71, 72, 73, 74, 75, 76: (* null case *)
+                      end (* case *)
+                    else sfloat := hold;
+                    dyadcomp(sfloat, value, inpro1code);
+                    hold := sfloat; (* save summer result *)
+                    leftvalptr := leftvalptr^.nextvalue;
+                    if leftvalptr = nil
+                    then leftvalptr := leftarg^.firstvalue; (* extend arg *)
+                    mcount := 0;
+                    while mcount < rightskip do
+                      begin (* skip to next value in right arg *)
+                        mcount := mcount + 1;
+                        rightvalptr := rightvalptr^.nextvalue;
+                        if rightvalptr = nil
+                        then rightvalptr := rightarg^.firstvalue
+                      end;
+                    kcount := kcount + 1
+                  end;
+                getvalu(newvalues);
+                newvalues^.realval := sfloat;
+                if switch = true
+                then
+                  begin
+                    switch := false;
+                    newvaltablink^.firstvalue := newvalues
+                  end
+                else newvalptr^.nextvalue := newvalues;
+                newvalptr := newvalues;
+                jcount := jcount + 1
+              end;
+            icount := icount + 1
+          end;
+        if switch = true
+        then newvaltablink^.firstvalue := nil
+        else newvalues^.nextvalue := nil
+      end
+end; {innerproduct}
+
+procedure outerproduct(leftarg, rightarg: typevaltabptr);
+var
+  outprocode: integer;
+  sfloat: real;
+begin
+  outprocode := code div 10;
+  getvalt(newvaltablink);
+  oldvaltablink^.nextvaltablink := newvaltablink;
+  newvaltablink^.nextvaltablink := nil;
+  newvaltablink^.intermedresult := true;
+  if leftarg^.forwardorder = false
+  then reverselinklist(leftarg);
+  if rightarg^.forwardorder = false
+  then reverselinklist(rightarg);
+  newvaltablink^.forwardorder := true;
+  newvaltablink^.dimensions := leftarg^.dimensions + rightarg^.dimensions;
+  switch := true;
+  dimptr := leftarg^.firstdimen;
+  while dimptr <> nil do
+    begin (* copy left arg dimensions to result *)
+      getdim(newdim);
+      newdim^.dimenlength := dimptr^.dimenlength;
+      if switch = true
+      then
+        begin
+          switch := false;
+          newvaltablink^.firstdimen := newdim
+        end
+      else newptr^.nextdimen := newdim;
+      newptr := newdim;
+      dimptr := dimptr^.nextdimen
+    end;
+  dimptr := rightarg^.firstdimen;
+  while dimptr <> nil do
+    begin (* copy right arg dimensions to result *)
+      getdim(newdim);
+      newdim^.dimenlength := dimptr^.dimenlength;
+      if switch = true
+      then
+        begin
+          switch := false;
+          newvaltablink^.firstdimen := newdim
+        end
+      else newptr^.nextdimen := newdim;
+      newptr := newdim;
+      dimptr := dimptr^.nextdimen
+    end;
+  if switch = true
+  then newvaltablink^.firstdimen := nil
+  else newdim^.nextdimen := nil;
+  switch := true;
+  leftvalptr := leftarg^.firstvalue;
+  while leftvalptr <> nil do
+    begin
+      rightvalptr := rightarg^.firstvalue;
+      while rightvalptr <> nil do
+        begin
+          sfloat := rightvalptr^.realval;
+          dyadcomp(sfloat, leftvalptr^.realval, outprocode);
+          getvalu(newvalues);
+          if switch = true
+          then
+            begin
+              switch := false;
+              newvaltablink^.firstvalue := newvalues
+            end
+          else newvalptr^.nextvalue := newvalues;
+          newvalues^.realval := sfloat;
+          newvalptr := newvalues;
+          rightvalptr := rightvalptr^.nextvalue
+        end;
+      leftvalptr := leftvalptr^.nextvalue
+    end;
+  if switch = true
+  then newvaltablink^.firstvalue := nil
+  else newvalues^.nextvalue := nil
+end; {outerproduct}
+
+procedure dyadic(leftarg, rightarg: typevaltabptr);
+(* operators with codes of 52 and higher *)
+var
+  compatible: boolean;
+  arg: typevaltabptr;
+  sfloat: real;
+begin
+  if code > 1000
+  then innerproduct(leftarg, rightarg)
+  else
+    if code > 100
+    then outerproduct(leftarg, rightarg)
+    else
+      if code > 80
+      then
+        case code of
+          87: indexof(leftarg, rightarg);
+          88: reshape(leftarg, rightarg);
+          89: catenate(leftarg, rightarg)
+        end (* case *)
+      else
+        begin (* simple dyadics *)
+          compatible := true;
+          if (leftarg^.dimensions >= 1) and (rightarg^.dimensions >= 1)
+          then
+            if leftarg^.dimensions <> rightarg^.dimensions
+            then compatible := false (* different ranks/neither scalar *)
+            else
+              begin (* ranks match - check lengths *)
+                leftdimptr := leftarg^.firstdimen;
+                rightdimptr := rightarg^.firstdimen;
+                while leftdimptr <> nil do
+                  begin
+                    if leftdimptr^.dimenlength <> rightdimptr^.dimenlength
+                    then compatible := false; (* different length(s) *)
+                    leftdimptr := leftdimptr^.nextdimen;
+                    rightdimptr := rightdimptr^.nextdimen
+                  end
+              end;
+          if compatible = true (* arguments suitable for dyadic operation *)
+          then
+            begin (* build dimensions of result *)
+              if rightarg^.dimensions > leftarg^.dimensions
+              then arg := rightarg
+              else arg := leftarg; (* result has shape of larger arg *)
+              getvalt(newvaltablink);
+              oldvaltablink^.nextvaltablink := newvaltablink;
+              newvaltablink^.nextvaltablink := nil;
+              newvaltablink^.intermedresult := true;
+              if leftarg^.forwardorder <> rightarg^.forwardorder
+              then reverselinklist(leftarg);
+              newvaltablink^.forwardorder := arg^.forwardorder;
+              newvaltablink^.dimensions := arg^.dimensions;
+              switch := true;
+              dimptr := arg^.firstdimen;
+              while dimptr <> nil do
+                begin (* copy dimensions to result *)
+                  getdim(newdim);
+                  newdim^.dimenlength := dimptr^.dimenlength;
+                  if switch = true
+                  then
+                    begin
+                      switch := false;
+                      newvaltablink^.firstdimen := newdim
+                    end
+                  else newptr^.nextdimen := newdim;
+                  newptr := newdim;
+                  dimptr := dimptr^.nextdimen
+                end;
+              if switch = true
+              then newvaltablink^.firstdimen := nil (* result is a scalar *)
+              else newdim^.nextdimen := nil;
+              switch := true;
+              rightvalptr := rightarg^.firstvalue;
+              leftvalptr := leftarg^.firstvalue;
+              valptr := arg^.firstvalue;
+              while valptr <> nil do
+                begin (* perform operation *)
+                  getvalu(newvalues);
+                  sfloat := rightvalptr^.realval;
+                  dyadcomp(sfloat, leftvalptr^.realval, code);
+                  newvalues^.realval := sfloat;
+                  if switch = true
+                  then
+                    begin
+                      switch := false;
+                      newvaltablink^.firstvalue := newvalues
+                    end
+                  else newvalptr^.nextvalue := newvalues;
+                  newvalptr := newvalues;
+                  valptr := valptr^.nextvalue;
+                  leftvalptr := leftvalptr^.nextvalue;
+                  rightvalptr := rightvalptr^.nextvalue;
+                  if leftvalptr = nil
+                  then leftvalptr := leftarg^.firstvalue; (* extend arg *)
+                  if rightvalptr = nil
+                  then rightvalptr := rightarg^.firstvalue (* extend *)
+                end;
+              if switch = true
+              then newvaltablink^.firstvalue := nil (* vector of len 0 *)
+              else newvalues^.nextvalue := nil
+            end
+          else error(55) (* arguments incompatible for dyadic operation *)
+        end
+end; {dyadic}
+
+procedure funcall(var validfunk: boolean);
+var
+  validpm: boolean;
+begin (* funcall *)
+  validfunk := false;
+  if functcall
+  then
+    begin
+      if tokentabptr^.noun <> statend
+      then
+        begin
+          subrtabptr^.tokencallingsubr := tokentabptr;
+          primary(validpm);
+          if not validpm
+          then error(17) (* leftarg of dyadic func call not a primary *)
+        end;
+      callsubr;
+      validfunk := true
+    end
+end; {funcall}
+
+begin (* expression *)
+primary(validpri);
+if not validpri
+then
+  begin
+    if tokentabptr^.noun = statend
+    then
+      begin
+        validexp := true;
+        assign1 := true
+      end
+    else validexp := false
+  end
+else
+  begin
+    donexp := false;
+    while not donexp do
+      begin
+        funcall(validfunc);
+        if validfunc
+        then
+          begin
+            expression(validexp);
+            donexp := true
+          end
+        else
+          begin
+            assignment(validassn);
+            if validassn and (tokentabptr^.noun = statend)
+            then
+              begin
+                donexp := true;
+                validexp := true
+              end;
+            if not validassn
+            then
+              if mop
+              then
+                begin
+                  monadic(opertabptr^.operptr, hold);
+                  opertabptr^.operptr := newvaltablink
+                end
+              else
+                if not dop
+                then
+                  begin
+                    validexp := true;
+                    donexp := true
+                  end
+                else
+                  begin
+                    primary(validpri);
+                    if not validpri
+                    then error(13) (* dyad oper not preceded by a pri *)
+                    else
+                      begin
+                        dyadic(opertabptr^.operptr,
+                               opertabptr^.lastoper^.operptr);
+                        auxopertabptr := opertabptr;
+                        opertabptr := opertabptr^.lastoper;
+                        ptrlastoper := opertabptr;
+                        ridoper(auxopertabptr);
+                        opertabptr^.operptr := newvaltablink
+                      end
+                  end
+          end
+      end
+  end
+end; {expression}

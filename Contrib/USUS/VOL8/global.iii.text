@@ -1,0 +1,528 @@
+{$U-}
+(***************************************************************
+ *   Copyright (c) Western Digital, Newport Beach, CA, 1981.   *
+ *   This documentation is provided for information purposes   *
+ *   only.  Definitions may change in future versions of the   *
+ *   Western Digital operating system.                         *
+ ***************************************************************)
+
+{***NOTE added by J. Gagne:  this file was originally in three parts:
+   HEADER.TEXT, GLOBALS.TEXT, and FORWARDS.TEXT.  They have been
+   combined for brevity and clarity; points where new files began are
+   noted.  This portion was called HEADER.TEXT.
+}
+
+    { **************************************************************** }
+    {                                                                  }
+    {   Copyright (c) 1979 Regents of the University of California.    }
+    {   Permission to copy or distribute this software or documen-     }
+    {   tation in hard or soft copy granted only by written license    } 
+    {   obtained from the Institute for Information Systems.           }
+    {                                                                  }
+    { **************************************************************** }
+    
+program pascalsystem;
+
+{ ********************************************** }
+{                                                }
+{     UCSD PASCAL OPERATING SYSTEM               }
+{                                                }
+{     RELEASE LEVEL:  I.3   AUGUST, 1977         }
+{ 		      I.4   JANUARY, 1978	 }
+{                     I.5   SEPTEMBER, 1978      }
+{		    III.0   JANUARY, 1979        }     
+{                                                }                     
+{     WRITTEN BY ROGER T. SUMNER                 }
+{     WINTER 1977                                }
+{                                                }
+{     INSTITUTE FOR INFORMATION SYSTEMS          }
+{     UC SAN DIEGO, LA JOLLA, CA                 }
+{                                                }
+{     KENNETH L. BOWLES, DIRECTOR                }
+{                                                }
+{ ********************************************** }
+
+{***NOTE:  This next section had been called GLOBALS.TEXT}
+
+const
+     mmaxint  = 32767; { maximum integer value }
+     maxunit  =    16; { maximum physical unit # for uread }
+     maxdir   =    77; { max number of entries in a directory }
+     vidleng  =     7; { number of chars in a volume id }
+     tidleng  =    15; { number of chars in title id }
+     maxseg   =    15; { max code segment number }
+     fblksize =   512; { standard disk block length }
+     dirblk   =     2; { disk addr of directory }
+     agelimit =   300; { max age for gdirp...in ticks }
+     eol      =    13; { end-of-line ...ASCII cr }
+     dle      =    16; { blank compression code }
+     maxq     =    79; { type-ahead queue index limit }
+     maxqp1   =    80; { type-ahead queue length }
+     maxretry =    10; { retry count for disk drivers }
+     
+     hiiopriority  = 250; { kbddriver (serial in) processes  }
+     midiopriority = 245; { disk in/out, parallel out, serial out }
+     lowiopriority = 240; { enabler process for kbddrivers }
+
+TYPE
+
+     iorsltwd = (inoerror,ibadblock,ibadunit,ibadmode,itimeout,
+                 ilostunit,ilostfile,ibadtitle,inoroom,inounit,
+                 inofile,idupfile,inotclosed,inotopen,ibadformat,
+                 istrgovfl);
+
+                                        { COMMAND STATES...SEE GETCMD }
+
+     cmdstate = (haltinit,debugcall,
+                 uprognou,uproguok,sysprog,
+                 componly,compandgo,compdebug,
+                 linkandgo,linkdebug);
+     
+                                        { CODE FILES USED IN GETCMD }
+
+     sysfile = (assmbler,compiler,editor,filer,linker);
+
+                                        { ARCHIVAL INFO...THE DATE }
+
+     daterec = packed record
+                 month: 0..12;  	{ 0 IMPLIES DATE NOT MEANINGFUL } 
+                 day:   0..31;  	{ DAY OF MONTH } 
+                 year:  0..100  	{ 100 IS TEMP DISK FLAG }
+               end { DATEREC } ;
+
+                                        { VOLUME TABLES }
+     unitnum = 0..maxunit;
+     vid = string[vidleng];
+
+                                        { DISK DIRECTORIES }
+     dirrange = 0..maxdir;
+     tid = string[tidleng];
+
+     filekind = (untypedfile,xdskfile,codefile,textfile,
+                 infofile,datafile,graffile,fotofile,securedir);
+
+     direntry = record
+                  dfirstblk: integer; { FIRST PHYSICAL DISK ADDR }
+                  dlastblk: integer;  { POINTS AT BLOCK FOLLOWING } 
+                  case dfkind: filekind of
+                    securedir,
+                    untypedfile: { ONLY IN DIR[0]...VOLUME INFO }
+                       (dvid: vid;            	{ NAME OF DISK VOLUME } 
+                        deovblk: integer;     { LASTBLK OF VOLUME }
+                        dnumfiles: dirrange;  { NUM FILES IN DIR } 
+                        dloadtime: integer;   { TIME OF LAST ACCESS }
+                        dlastboot: daterec);  { MOST RECENT DATE SETTING } 
+                    xdskfile,codefile,textfile,infofile,
+                    datafile,graffile,fotofile:
+                       (dtid: tid;              	{ TITLE OF FILE } 
+                        dlastbyte: 1..fblksize; { NUM BYTES IN LAST BLOCK }
+                        daccess: daterec)       { LAST MODIFICATION DATE }
+                end { DIRENTRY } ;
+
+     dirp = ^directory;
+
+     directory = array [dirrange] of direntry;
+
+                                        { FILE INFORMATION }
+
+     closetype = (cnormal,clock,cpurge,ccrunch);
+     windowp = ^window;
+     window = packed array [0..0] of char;
+     fibp = ^fib;
+
+     fib = record
+             fwindow: windowp;    { USER WINDOW...F^, USED BY GET-PUT } 
+             feof,feoln: boolean;
+             fstate: (fjandw,fneedchar,fgotchar);
+             frecsize: integer;   { IN BYTES...0=>BLOCKFILE, 1=>CHARFILE }
+             case fisopen: boolean of
+               true: (fisblkd: boolean;  { FILE IS ON BLOCK DEVICE } 
+                      funit: unitnum;    { PHYSICAL UNIT # } 
+                      fvid: vid;         { VOLUME NAME }
+                      freptcnt,          { # TIMES F^ VALID W/O GET } 
+                      fnxtblk,           	{ NEXT REL BLOCK TO IO }
+                      fmaxblk: integer;  { MAX REL BLOCK ACCESSED } 
+                      fmodified:boolean; { SET NEW DATE IN CLOSE }
+                      fheader: direntry; { COPY OF DISK DIR ENTRY } 
+                      case fsoftbuf: boolean of { DISK GET-PUT STUFF }
+                        true: (fnxtbyte,fmaxbyte: integer;
+                               fbufchngd: boolean;
+                               fbuffer: packed array [0..fblksize] of char))
+           end { FIB } ;
+
+                                        { USER WORKFILE STUFF }
+
+     inforec = record
+                 symfibp,codefibp: fibp;        { WORKFILES FOR SCRATCH } 
+                 errsym,errblk,errnum: integer; { ERROR STUFF IN EDIT }
+                 slowterm,stupid: boolean;      { STUDENT PROGRAMMER ID!! } 
+                 altmode: char;                 		{ WASHOUT CHAR FOR COMPILER }
+                 gotsym,gotcode: boolean;       { TITLES ARE MEANINGFUL }   
+                 workvid,symvid,codevid: vid;   { PERM&CUR WORKFILE VOLUMES }
+                 worktid,symtid,codetid: tid;   { PERM&CUR WORKFILES TITLE }
+               end { INFOREC } ;
+
+                                        { SYSTEM COMMUNICATION AREA }
+                                        { SEE INTERPRETERS...NOTE   }
+                                        { THAT WE ASSUME BACKWARD   }
+                                        { FIELD ALLOCATION IS DONE  }
+     syscomrec = record
+                   iorslt: iorsltwd;   { RESULT OF LAST IO CALL }
+                   xeqerr: integer;    { REASON FOR EXECERROR CALL } 
+                   sysunit: unitnum;   { PHYSICAL UNIT OF BOOTLOAD }
+                   rwtable: ^integer;  { PASCAL res words for idsearch } 
+                   gdirp: dirp;        	{ GLOBAL DIR POINTER,SEE VOLSEARCH } 
+                   diskinfo: packed record
+                               dseekrate: integer; {STEP RATE FOR DISK DRIVE} 
+                               dreadrate: integer; {DISK READ COMMAND}
+                               dwriterate: integer;{DISK WRITE COMMAND}
+                             end;
+                   expansone:  array [0..17] of integer;  {spare} 
+                   auxcrtinfo: packed record
+                                 verdlaychar: char
+                               end;        
+                   hightime,lowtime: integer; 
+                   miscinfo: packed record
+                               nobreak,stupid,slowterm,
+                               hasxycrt,haslccrt,has8510a,hasclock: boolean;
+                               userkind:(normal, aquiz, booker, pquiz) 
+                             end; 
+                   crttype: integer;
+                   crtctrl: packed record
+                              rlf,ndfs,eraseeol,eraseeos,home,escape: char; 
+                              backspace: char;
+                              fillcount: 0..255;
+                              clearscreen, clearline: char;
+                              prefixed: packed array [0..8] of boolean
+                            end;
+                   crtinfo: packed record
+                              width,height: integer;
+                              right,left,down,up: char;
+                              badch,chardel,stop,break,flush,eof: char; 
+                              altmode,linedel: char;
+                              backspace,etx,prefix: char;
+                              prefixed: packed array [0..13] of boolean
+                            end
+                 end { SYSCOM };
+
+     miscinforec = record
+                     msyscom: syscomrec
+                   end;
+
+     memlinkp = ^memlink;
+     memlink = record
+                 nextavail: memlinkp;
+                 nwords: integer
+               end { memlink } ;
+
+     markp = ^marknode;
+     marknode = record
+                  prevmark: markp;
+                  availlist: memlinkp
+                end { marknode } ;
+
+     byte      = 0..255;
+     integerp  = ^integer; 
+     queue     = packed array [0..maxq] of byte;
+     bytearray = packed array [0..0] of byte; 
+     codeseg   = record case boolean of
+                   true:  (int: packed array [0..0] of integer);
+                   false: (byt: bytearray);
+                 end;
+     
+     sibp = ^sib;
+     sibvec = array [0..0] of sibp;
+     sib = record { segment info block }
+             segbase: ^codeseg;{ memory address of seg }
+             segleng: integer; { # words in segment }
+             segrefs: integer; { active calls - microcode maintained }
+             segaddr: integer; { absolute disk address }
+             segunit: unitnum; { physical disk unit } 
+             prevsp:  integerp;{ SP saved by getseg for relseg cut back }
+           end { sib } ;
+
+     mscwp = ^mscw; 
+     mscw = packed record  { mark stack control word }
+              msstat: mscwp;   { lexical parent pointer }
+              msdynl: mscwp;   { ptr to caller's mscw }
+              msipc:  integer; { byte index in return code seg }
+              msseg:  byte;    { seg # of caller code }
+              msflag: byte
+            end { mscw } ;
+
+     semp = ^semtrix;
+     tibp = ^tib;
+     tib = record { Task Information Block }
+             regs: packed record
+                     waitq: tibp;     { QUEUE LINK FOR SEMAPHORES }
+                     prior: byte;     { TASK'S CPU PRIORITY }
+                     flags: byte;     { STATE FLAGS...NOT DEFINED YET }
+                     splow: integerp; { LOWER STACK POINTER LIMIT }
+                     spupr: integerp; { UPPER LIMIT ON STACK }
+                     sp: integerp;    { ACTUAL TOP-OF-STACK POINTER }
+                     mp: mscwp;       { ACTIVE PROCEDURE MSCW PTR }
+                     bp: mscwp;       { BASE ADDRESSING ENVIRONMENT PTR }
+                     ipc: integer;    { BYTE PTR IN CURRENT CODE SEG } 
+                     segb: ^codeseg;  { PTR TO SEG CURRENTLY RUNNING } 
+                     hangp: semp;     { WHICH TASK IS WAITING ON }
+                     xxx: integer;    { NOT USED } 
+                     sibs: ^sibvec    { ARRAY OF SIBS FOR 128..255 } 
+                   end { REGS } ;
+             maintask: boolean;
+             startmscw: mscwp
+           end { TIB } ;
+     
+     semtrix = record case integer of
+                 0: (sem: semaphore);
+                 1: (fakesem: record
+                                count: integer; { outstanding signals }
+                                waitq: tibp     { task queue }
+                              end); 
+               end { sem } ;
+ 
+     ports = (a,b);
+ 
+     statcmdrec = record case boolean of
+                    true : (command : integer); 
+                    false : (status : packed array[0..7] of boolean);
+                  end;  { for devices that use same reg for stat and cmd }
+     whole = 0..maxint; 
+     paralrec = record 
+                  porta : statcmdrec;
+                  portb : integer;
+                  portc : statcmdrec;
+                  pcontrol : integer;
+                end;
+     
+     floppyrec = record
+                   fstatcom : statcmdrec; 
+                   track : integer; 
+                   sector : integer;
+                   data : integer;
+                   filler : array[0..3] of whole;
+                   {  dma fields   }
+                   dcontrol : integer;
+                   dstatus : statcmdrec;
+                   trcountl : integer;
+                   trcounth : integer;
+                   bufaddl : integer;
+                   bufaddh : integer;
+                   memex : integer;
+                   intid : integer
+                 end;
+
+     serialrec = record
+                   data : integer;
+                   statsyndle : statcmdrec;
+                   control2 : integer;
+                   control1 : integer;
+                   filler : array[0..3] of integer;
+                   switch : statcmdrec;
+                 end;
+
+     sercontrol = record
+                    readsem, writebell,
+                    writesem, havch, qlock : semaphore; 
+                    (* wrlock : semtrix; *)
+                    front, rear : integer;
+                    chq : queue;
+                    serialtrix: record case integer of 
+                                  0: (sdevadd: integer);
+                                  1: (serial: ^serialrec);
+                                end; 
+                 end;
+                
+     decmax = integer[36]; 
+     longtrix = record case integer of 
+                  0: (intar: array [0..0] of integer);
+                  1: (BCDar: packed array [0..0] of 0..15); 
+                end {longtrix};
+     
+     memtrix = record case boolean of
+                 true:  (addr: integer);
+                 false: (loc:  integerp);
+               end;
+      
+VAR 
+    syscom: ^syscomrec;           		{ MAGIC PARAM...SET UP IN BOOT } 
+    gfiles: array [0..5] of fibp; { GLOBAL FILES, 0=INPUT, 1=OUTPUT }
+    userinfo: inforec;            		{ WORK STUFF FOR COMPILER ETC } 
+    ostibp: tibp;                 			{ taskinfo block of op sys prog }
+    emptyheap: ^integer;          	{ HEAP MARK FOR MEM MANAGING } 
+    inputfib,outputfib,           		{ CONSOLE FILES...GFILES ARE COPIES }
+    systerm,swapfib: fibp;        	{ CONTROL AND SWAPSPACE FILES } 
+    syvid,dkvid: vid;             		{ SYSUNIT VOLID & DEFAULT VOLID }
+    thedate: daterec;             		{ TODAY...SET IN FILER OR SIGN ON }
+    state: cmdstate;              { FOR GETCOMMAND }
+    heapinfo: record    { heap management } 
+                lock: semaphore;
+                topmark,
+                heaptop: markp
+              end { heapinfo } ;
+    taskinfo: record    { stuff for task management } 
+                lock: semaphore;
+                taskdone: semaphore;
+                ntasks: integer
+              end { taskinfo } ;
+    ipot: array [0..4] of integer; { INTEGER POWERS OF TEN }
+    filler: string[41];            		{ NULLS FOR CARRIAGE DELAY } 
+    digits: set of '0'..'9';
+    pl: string;
+    unitable: array [unitnum] of { 0 NOT USED }
+                record
+                  uvid: vid;       { VOLUME ID FOR UNIT }
+                  case uisblkd: boolean of
+                    true: (ueovblk: integer)
+                end { unitable } ;
+    filename: array [sysfile] of string[23];
+    topofsibs: ^integer;
+    
+    safediskmode : boolean; 
+    { if true, volsearch will not fetch new dir if gdirp matches unit table } 
+
+{..........Variable access by system U- programs ends here..........}
+
+    port : array [ports] of sercontrol; 
+    
+    paraltrix : record case boolean of
+                  true : (pdevadd : integer); 
+                  false : (parallel : ^paralrec);
+                end;
+    floppytrix : record case boolean of
+                   true : (fdevadd : integer); 
+                   false : (floppy : ^floppyrec);
+                 end;
+    
+    dmasem, parsem, stst : semaphore; 
+    (* pariolock, diskiolock : semtrix; *)
+    iolock, enableint : semaphore; 
+    sflag,fflag,wflag : boolean; { start/stop, flush, and waiting }
+    enabletrix : memtrix;        { for enabling interrupts }
+
+{***NOTE:  The next section had been called FORWARDS.TEXT}
+
+{ ------------------------------------------------------------------------- }
+{  SYSTEM PROCEDURE FORWARD DECLARATIONS  }
+{  THESE ARE ADDRESSED BY OBJECT CODE...  }
+{   DO NOT MOVE WITHOUT CAREFUL THOUGHT   }
+
+segment procedure userprog;
+  forward;
+
+segment procedure syscode;
+  forward;
+
+segment procedure cspcode;
+  forward;
+
+segment procedure syscode;
+
+  segment procedure printerror (var xeqerr: integer; iorslt: integer);
+    forward;
+
+  segment procedure initialize;
+    forward;
+
+  segment procedure getcmd(lastst: cmdstate; var nextst: cmdstate);
+    forward;
+
+  segment procedure debugger(var xeqerr: integer;
+                             theseg,theproc, theipc, theptr: integer); 
+    forward;
+  
+  procedure execerror(err: integer); 
+    forward;
+  procedure finit(var f: fib; window: windowp; recwords: integer);
+    forward;
+  procedure freset(var f: fib);
+    forward;
+  procedure fopen(var f: fib; var ftitle: string;
+                  fopenold: boolean; junk: fibp);
+    forward;
+  procedure fclose(var f: fib; ftype: closetype);
+    forward; 
+  procedure fget(var f: fib);
+    forward;
+  procedure fput(var f: fib);
+    forward;
+  procedure fseek(var f: fib; recnum: integer);
+    forward;
+  function feof(var f: fib): boolean;
+    forward;
+  function feoln(var f: fib): boolean;
+    forward;
+  procedure freadint(var f: fib; var i: integer);
+    forward;
+  procedure fwriteint(var f: fib; i,rleng: integer);
+    forward;
+  procedure freadreal(var f: fib; var x: real);
+    forward;
+  procedure fwritereal(var f: fib; x: real; w, d: integer);
+    forward;
+  procedure freadchar(var f: fib; var ch: char);
+    forward;
+  procedure fwritechar(var f: fib; ch: char; rleng: integer);
+    forward;
+  procedure freadstring(var f: fib; var s: string; sleng: integer);
+    forward;
+  procedure fwritestring(var f: fib; var s: string; rleng: integer);
+    forward;
+  procedure fwritebytes(var f: fib; var a: window; rleng,aleng: integer);
+    forward;
+  procedure freadln(var f: fib);
+    forward;
+  procedure fwriteln(var f: fib);
+    forward;
+  procedure sconcat(var dest,src: string; destleng: integer); 
+    forward;
+  procedure sinsert(var src,dest: string; destleng,insinx: integer);
+    forward; 
+  procedure scopy(var src,dest: string; srcinx,copyleng: integer);
+    forward;
+  procedure sdelete(var dest: string; delinx,delleng: integer);
+    forward;
+  function spos(var target,src: string): integer;
+    forward;
+  function fblockio(var f: fib; var a: window; inx: integer;
+                    nblocks,rblock: integer; doread: boolean): integer;
+    forward;
+  procedure fgotoxy(x,y: integer);
+    forward;
+  
+  {  NON FIXED FORWARD DECLARATIONS  }
+  
+  function volsearch(var fvid: vid; lookhard: boolean;
+                     var fdir: dirp): unitnum;
+    forward;
+  procedure writedir(funit: unitnum; fdir: dirp);
+    forward;
+  function dirsearch(var ftid: tid; findperm: boolean; fdir: dirp): dirrange;
+    forward;
+  function scantitle(ftitle: string; var fvid: vid; var ftid: tid;
+                     var fsegs: integer; var fkind: filekind): boolean;
+    forward;
+  procedure delentry(finx: dirrange; fdir: dirp);
+    forward;
+  procedure insentry(var fentry: direntry; finx: dirrange; fdir: dirp); 
+    forward;
+  procedure homecursor;
+    forward;
+  procedure clearscreen; 
+    forward;
+  procedure clearline;
+    forward;
+  procedure prompt;
+    forward;
+  function spacewait(flush: boolean): boolean;
+    forward;
+  function getchar(flush: boolean): char;
+    forward;
+  procedure command;
+    forward;
+  process enabler;
+    forward;
+  process bellprocess (lport: ports);
+    forward;
+  process kbddriver (lport: ports; funit: integer);
+    forward;
+

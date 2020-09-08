@@ -1,0 +1,151 @@
+{Mail9 - ReportErr, Makefile, Abort, Upate, Quit, Krunch, Initialise}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+PROCEDURE Reporterr{(st1,st2:string; res:integer)};
+begin
+  SC_Clr_Line(1);
+  SC_Clr_Line(0);
+  write(st1,st2);
+  gotoxy(60,0); write('IOResult=',res);
+  repeat
+    gotoxy(0,1);
+  until not space_wait(TRUE);
+end;
+
+{$I-}
+PROCEDURE Makefile{( s : STRING)};
+ VAR  tafile : FILE; 
+      tarry : packed array [1..512] of char;
+      Res,num,blkasked,written,temp   : INTEGER;
+ BEGIN
+  WRITE('Making: ',s);
+  REWRITE(tafile,s);  
+  Res:=IORESULT;
+  IF Res<>0 THEN
+    begin
+      Writeln;
+      Writeln('Error making file ',s,' IOResult=',Res);
+    end
+  else
+    begin
+      fillchar(tarry,512,chr(0));
+      temp := POS('[',s);
+      {no block number if max area to be claimed}
+      IF temp=0 THEN blkasked:=0
+      else blkasked:=VAL(COPY(s,temp+1,LENGTH(s)-temp));
+      {-9999 is fault return from VAL}
+      if blkasked<0 then blkasked:=0;
+      num:=0;
+      REPEAT      
+        if (num mod 10)=0 then WRITE('.');
+        written:=BLOCKWRITE(tafile,tarry,1);     
+        num:=num+written;
+      UNTIL (num=blkasked) or (written=0) or (IORESULT<>0); 
+      WRITELN;
+      if (blkasked<>0) and (num<>blkasked) then
+          WRITELN('Could only initialise ',num,' blocks.')
+      else WRITELN(num,' blocks initialised.');
+      CLOSE(tafile,lock); 
+      Res:=IORESULT;
+      IF Res<>0 THEN Writeln('Error closing file ',s,'IOResult=',Res);
+    end;
+ END; 
+{$I+}
+    
+PROCEDURE Abort;        
+ BEGIN  
+  if (ptr<>NIL) or (ptr2<>NIL) then
+    begin
+      SC_Clr_Screen;
+      WRITE('Restoring records ');
+    end;
+  ptr := first; 
+  ptr2 := first2;
+  WHILE ptr2 <> NIL DO
+   BEGIN
+    recnumber := ptr2^.intpart;
+    SEEK(disk,recnumber);
+    GET(disk);
+    disk^.code := '      ';
+    SEEK(disk,recnumber);
+    PUT(disk);
+    WRITE('.');
+    ptr2 := ptr2^.lpart2;
+   END;
+  WHILE ptr<>NIL DO
+   BEGIN
+    disk^ := ptr^.recpart;
+    recnumber := Val(disk^.code);
+    disk^.code := 'Perm  ';
+    WRITE('.');
+    SEEK(disk,recnumber);
+    PUT(disk);
+    ptr := ptr^.lpart; 
+   END; 
+  numrecs := orignrecs;
+  Wnew0rec;
+  RELEASE(heaptr); 
+ END (* Abort *);                
+                 
+PROCEDURE Update;            
+ BEGIN      
+  SC_Clr_Screen;
+  WRITE('Updating ');
+  temp := 0;
+  ptr2 := first2;
+  WHILE ptr2 <> NIL DO
+   BEGIN
+    recnumber := ptr2^.intpart;
+    SEEK(disk,recnumber);  
+    GET(disk);
+    disk^.code := 'Perm  ';
+    SEEK(disk,recnumber);
+    PUT(disk);
+    WRITE('.');
+    ptr2 := ptr2^.lpart2;
+   END;
+ RELEASE(heaptr);  
+END;            
+  
+FUNCTION Quit:BOOLEAN;         
+ var ch:char;
+ BEGIN       
+  unitclear(2); {flush keyboard type ahead before allowing quit}
+  repeat
+    SC_Clr_Screen;          
+    WRITE('Quit: E)xit without updating, R)eturn to Mail, U)pdate:');
+    READ(KEYBOARD,ch); 
+  UNTIL ch IN ['E','e','U','u','R','r'];
+  WRITE(ch);         
+  CASE ch OF            
+    'a','A' : abort;                
+    'u','U' : update;      
+   END (* case *);      
+  WRITELN;       
+  Quit:=not ((ch='R') OR (ch='r'));
+ END (* Quit *);               
+          
+PROCEDURE Krunch;
+ BEGIN       
+  Update;     
+  Init;                      
+ END;
+        
+PROCEDURE Initialize;
+ BEGIN
+  Abort;  
+  Init;
+ END;
+

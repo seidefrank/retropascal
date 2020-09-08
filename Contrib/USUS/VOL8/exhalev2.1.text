@@ -1,0 +1,51 @@
+PROGRAM EXHALE;
+
+{Program Exhale outputs a text file to be
+ sent to another computer.  The program invokes the editor (in this
+ case on a PR1ME 500) and places the editor in the input mode so that
+ the remote computer thinks that a user is simply typing in the
+ data from a terminal.  The program then outputs the user specified
+ UCSD file.  When EOF is reached the program 'FILE's the program
+ under the user specified name and returns to the UCSD command level.}
+
+{by George Schreyer}
+
+
+USES (*$U SCREENUNIT.CODE*)SCREENUNIT,
+     (*$U FILEUNIT.CODE*)FILEUNIT;
+
+VAR
+   MODEM_IN,MODEM_OUT,DISK              :TEXT;
+   JUNK,FILE_NAME,LINE_OF_DATA,OK      :STRING;
+   
+   
+BEGIN  
+   GETCRTINFO;
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   REWRITE(MODEM_OUT,'REMOUT:');
+   REWRITE(MODEM_IN,'REMIN:');
+   WRITELN('     exhale     version 2.1    28 Apr 81');
+   VER_SCREENUNIT;
+   VER_FILEUNIT;
+   OPNDSKREAD(DISK,'Please type filename to be exhaled.- - >',
+              FILE_NAME,0,13);
+   IF FILENAME = '' THEN EXIT(PROGRAM);
+   GOTOXY(0,5);
+   WRITELN(MODEM_OUT,'ED');
+   READLN(MODEM_IN,JUNK);
+   WHILE NOT EOF(DISK) DO
+      BEGIN
+         READLN(DISK,LINE_OF_DATA);
+         IF LINE_OF_DATA<> '' THEN
+            BEGIN
+               WRITELN(MODEM_OUT,LINE_OF_DATA);
+               WRITELN(LINE_OF_DATA);
+            END;
+      END;
+   WRITELN(MODEM_OUT,CHR(13),'FILE ',FILE_NAME); {close file at host}
+   CLOSE(DISK);
+   CLOSE(MODEM_OUT);
+   CLOSE(MODEM_IN);
+END.
+

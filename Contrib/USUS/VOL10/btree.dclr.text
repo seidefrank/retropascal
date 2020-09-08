@@ -1,0 +1,83 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.DCLR.TEXT           revised 27 November 1981          *
+*                                                                       *
+************************************************************************}
+
+{label 1;}
+
+const MAX_NODE_SIZE=4;                  {order of the B-TREE}
+      MIN_NODE_SIZE=2;                  {MAX_NODE_SIZE div 2}
+      MAX_PERS_NODES=20;                {number of nodes in data file}
+{************************************************************************
+*                                                                       *
+*  For a more useful program, change the above as follows...            *
+*                                                                       *
+*       MAX_NODE_SIZE=8;                                                *
+*       MIN_NODE_SIZE=4;                                                *
+*       MAX_PERS_NODE=400;                                              *
+*                                                                       *
+*  That will allow up to 3200 names and addresses to be stored.         *
+*                                                                       *
+************************************************************************}
+      CONTROL='BTREE.DATA';             {name of file management data}
+      PERSON_FILE='PERSON.DATA';        {name of data file}
+
+type  LNAME=string[20];         {last name}
+      FNAME=string[10];         {first name}
+      ADRS=string[30];          {line of address}
+      ZIP=string[10];           {zip code}
+      FONE=string[13];          {area code and phone number}
+      ST=string[3];             {state}
+      SETOFCHAR=set of char;    {for function READKEY}
+      SIZENODE=0..MAX_NODE_SIZE;
+
+      PERSON=packed record      {person informaton}
+        SUCC_NODE:integer;      {pointer to "child" node}
+        DUPE:integer;           {pointer to node with duplicate key(s)}
+        KEY:FNAME;              {search key}
+        FIRST:FNAME;            {first name}
+        LAST:LNAME;             {last name}
+        STREET:ADRS;            {street/apartment address}
+        CITY:ADRS;
+        ZIPCODE:ZIP;
+        STATE:ST;
+        PHONE:FONE
+      end;
+
+      PERSON_NODE=packed record  {b-tree node of "many" persons}
+        NODESIZE:SIZENODE;
+        P0:integer;  {pointer to successor node}
+        DATA:packed array[1..MAX_NODE_SIZE] of PERSON;
+           {array of person records}
+      end;
+
+      CONTROLDATA=packed record {file management data}
+        PERSON_AVAIL:integer;    {pointer to empty node}
+        PERSON_ROOT:integer;     {pointer to root PERSON_NODE}
+        PERSON_UNUSED:integer;   {how many nodes are unused}
+        PERSON_MIN:integer;      {minimum required for insertion}
+      end;
+
+      PERSFILE=file of PERSON_NODE;      {person b-tree}
+      CONTFILE=file of CONTROLDATA;      {file management data}
+
+var   I,J,K,N:integer;          {loop variables}
+      OUTFILE:interactive;      {to change output device from CRT to printer}
+      FAKE_KEY:FNAME;           {what user thinks the key is}
+      REAL_KEY:FNAME;           {the actual key}
+      LEAVE:boolean;            {to control program exit from segments}
+      DUPLICATE:boolean;        {indicates there is a duplicate key}
+      CHANGED:boolean;          {indicates retrieved record modified}
+      NEW_HEIGHT:boolean;       {indicates that tree must grow or shrink}
+      SPLIT:boolean;            {indicates if node is split}
+      CH,AN:char;               {used for primarily for option selection}
+      FILE_LEN:CONTROLDATA;     {file management data}
+      CONTROLFILE:CONTFILE;     {file management data}
+      PERSONPTR:PERSON;         {dynamic pointer to a single person record}
+      PERSONS:PERSFILE;         {person b-tree}
+
+
+
+
+

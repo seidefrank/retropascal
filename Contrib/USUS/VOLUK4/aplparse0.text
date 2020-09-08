@@ -1,0 +1,257 @@
+procedure parser(var tokentabptr: tokenptr;
+                 var ptrtoda: typevaltabptr);
+var
+  vfunchold: ^vfunc;              (* hold while searching *)
+  auxopertabptr: ^operandtab;
+  auxsubrtabptr: ^subrtab;
+  auxrparmptr: ^fparmtab;
+  auxlparmptr: ^fparmtab;
+  validexp: boolean;              (* true if valid expression *)
+  cnt: integer;
+  npv: integer;                   (* number of indices *)
+  assign, assign1: boolean;       (* assignment in progress *)
+  donesuccessor: boolean;
+  doneparse: boolean;
+
+procedure expression(var validexp: boolean); forward;
+
+procedure error(errorindex: integer);
+begin
+  writeln(outfile, 'error ',errorindex,': ', errormsgs[errorindex]);
+  exit(parser) (* return to scanner *)
+end; {error}
+
+procedure release;
+begin (* realease oprtab *)
+  opertabptr := ptrlastoper;
+  while opertabptr^.lastoper <> nil do
+    begin
+      auxopertabptr := opertabptr;
+      opertabptr := opertabptr^.lastoper;
+      ridoper(auxopertabptr)
+    end
+end; {release}
+
+procedure returntocallingsubr;
+var
+  nameptr: ^vartab;
+begin (* returntocallingsubr *)
+  if subrtabptr^.calledsubr^.result
+  then
+    begin (* place explicit result in opertab *)
+      if not nameinvartable(subrtabptr^.calledsubr^.resultname,
+                            nameptr, subrtabptr^.calledsubr)
+      then error(11) (* symbol not found *)
+      else
+        begin
+          auxopertabptr := opertabptr;
+          getoper(opertabptr);
+          opertabptr^.lastoper := auxopertabptr;
+          ptrlastoper := opertabptr;
+          opertabptr^.operptr := nameptr^.valtabptr
+        end
+    end;
+  (* return to calling function *)
+  vfuncptr := subrtabptr^.statemcallingsubr;
+  tokentabptr := subrtabptr^.tokencallingsubr^.nextoken;
+  if subrtabptr^.calledsubr^.arity <> niladic
+  then
+    begin (* monadic or dyadic *)
+      auxrparmptr := rparmptr;
+      rparmptr := rparmptr^.lastparm;
+      ridfparm(auxrparmptr);
+      if subrtabptr^.calledsubr^.arity = dyadic
+      then
+        begin (* dyadic only *)
+          auxlparmptr := lparmptr;
+          lparmptr := lparmptr^.lastparm;
+          ridfparm(auxlparmptr)
+        end
+    end;
+  auxsubrtabptr := subrtabptr;
+  subrtabptr := subrtabptr^.lastsubrptr;
+  ridsubr(auxsubrtabptr)
+end; {returntocallingsubr}
+
+function specsymbol(sym: integer): boolean;
+var
+  validsym: boolean;
+begin (* specsymbol *)
+  validsym := false;
+  if tokentabptr^.noun = specoper
+  then
+    if tokentabptr^.charindx = sym
+    then
+      begin
+        hold := tokentabptr;
+        tokentabptr := tokentabptr^.nextoken;
+        validsym := true
+      end;
+  specsymbol := validsym
+end; {specsymbol}
+
+procedure callsubr;
+var
+  ptrtovartab: ^vartab;
+begin (* callsubr *)
+  if subrtabptr^.calledsubr^.arity <> niladic
+  then
+    begin
+      if not nameinvartable(subrtabptr^.calledsubr^.rightarg,
+                            ptrtovartab, subrtabptr^.calledsubr)
+      then error(32); (* error in function argument *)
+      if ptrtovartab^.functabptr <> subrtabptr^.calledsubr
+      then error(32); (* program logic error, variable name of *)
+                      (* function argument not found in symbol table *)
+      auxrparmptr := rparmptr;
+      getfparm(rparmptr);
+      rparmptr^.lastparm := auxrparmptr;
+      ptrtovartab^.deferedvaltabptr := rparmptr;
+      if subrtabptr^.calledsubr^.arity = dyadic
+      then
+        begin (* if dyadic *)
+          if not nameinvartable(subrtabptr^.calledsubr^.leftarg,
+                                ptrtovartab, subrtabptr^.calledsubr)
+          then error(33); (* same as error(32) *)
+          if ptrtovartab^.functabptr <> subrtabptr^.calledsubr
+          then error(33);
+          auxlparmptr := lparmptr;
+          getfparm(lparmptr);
+          lparmptr^.lastparm := auxlparmptr;
+          ptrtovartab^.deferedvaltabptr := lparmptr;
+          lparmptr^.ptrval := opertabptr^.operptr;
+          auxopertabptr := opertabptr;
+          opertabptr := opertabptr^.lastoper;
+          ridoper(auxopertabptr);
+          ptrlastoper := opertabptr
+        end;
+      rparmptr^.ptrval := opertabptr^.operptr;
+      auxopertabptr := opertabptr;
+      opertabptr := opertabptr^.lastoper;
+      ridoper(auxopertabptr);
+      ptrlastoper := opertabptr
+    end;
+  subrtabptr^.tokencallingsubr := tokentabptr;
+  tokentabptr := subrtabptr^.calledsubr^.firstatement^.nextstmnt;
+  vfuncptr := subrtabptr^.calledsubr^.firstatement
+end; {callsubr}
+
+function functcall: boolean;
+var
+  ptrtofunctab: ^functab;
+  nameoffunc: packedstring;
+  validfn: boolean;
+begin (* functcall *)
+  validfn := false;
+  if tokentabptr^.noun = globvar
+  then
+    begin
+      nameoffunc := tokentabptr^.vartabptr^.varname;
+      if funcalreadydefined(nameoffunc, ptrtofunctab)
+      then
+        begin
+          auxsubrtabptr := subrtabptr;
+          getsubr(subrtabptr);
+          subrtabptr^.lastsubrptr := auxsubrtabptr;
+          subrtabptr^.calledsubr := ptrtofunctab;
+          subrtabptr^.tokencallingsubr := tokentabptr;
+          subrtabptr^.statemcallingsubr := vfuncptr;
+          hold := tokentabptr;
+          tokentabptr := tokentabptr^.nextoken;
+          validfn := true
+        end
+    end;
+  functcall := validfn
+end; {functcall}
+
+procedure numwrite(realno: real);
+var
+  prefix, root: integer;
+  sigdig, colcnt: integer;
+begin (* output a number *)
+  if realno >= 0.0
+  then write(outfile, ' ', realno:totaldigs:afterdigs)
+    (* output positive number *)
+  else
+    begin (* output negative number *)
+      realno := -1.0 * realno;
+      sigdig := trunc((ln(realno))/(ln(10.0)));
+      for colcnt := 1 to (((totaldigs - afterdigs) - 3) - sigdig) do
+        write(outfile, ' ');
+      write(outfile, character[negative]);
+      sigdig := sigdig + afterdigs + 3;
+      write(outfile, realno:sigdig:afterdigs)
+    end
+end; {numwrite}
+
+procedure outputval;
+var
+  cnt: integer;
+  auxvaluesptr: ^values;
+  dimhold: integer;
+  dimen1, dimen2, dimen3: integer;
+  outcnt1, outcnt2, outcnt3: integer;
+  idimens: integer;
+begin (* outputval *)
+  cnt := 0;
+  write(outfile, indent);
+  if not opertabptr^.operptr^.forwardorder
+  then reverselinklist(opertabptr^.operptr);
+  auxvaluesptr := opertabptr^.operptr^.firstvalue;
+  idimens := opertabptr^.operptr^.dimensions;
+  if not (idimens in [0..3])
+  then write(outfile, errormsgs[60])
+  else
+    if auxvaluesptr = nil
+    then write(outfile, errormsgs[61])
+    else
+      if idimens = 0
+      then numwrite(auxvaluesptr^.realval)
+      else
+        begin
+          dimen1 := opertabptr^.operptr^.firstdimen^.dimenlength;
+          if idimens >= 2
+          then
+            dimen2 := opertabptr^.operptr^.firstdimen^.nextdimen^.dimenlength
+          else dimen2 := 1;
+          if idimens = 3
+          then dimen3 :=
+            opertabptr^.operptr^.firstdimen^.nextdimen^.nextdimen^.dimenlength
+          else dimen3 := 1;
+          if idimens = 3
+          then
+            begin (* rotate dimensions *)
+              dimhold := dimen1;
+              dimen1 := dimen2;
+              dimen2 := dimen3;
+              dimen3 := dimhold
+            end;
+          for outcnt3 := 1 to dimen3 do
+            begin
+              for outcnt2 := 1 to dimen1 do
+                begin
+                  for outcnt1 := 1 to dimen2 do
+                    begin
+                      cnt := cnt + 1;
+                      if (((cnt-1) mod realsperline) = 0) and (cnt <> 1)
+                      then writeln(outfile);
+                      numwrite(auxvaluesptr^.realval);
+                      auxvaluesptr := auxvaluesptr^.nextvalue
+                    end;
+                  if idimens >= 2
+                  then
+                    begin
+                      writeln(outfile); write(outfile, indent);
+                      cnt := 0
+                    end
+                end;
+              if idimens = 3
+              then
+                begin
+                  writeln(outfile); writeln(outfile); write(outfile, indent)
+                end
+            end
+        end;
+  writeln(outfile)
+end; {outputval}
+

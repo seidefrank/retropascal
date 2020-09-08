@@ -1,0 +1,2858 @@
+     2   1    1:D     1 {.fs} {$L L.SYSTEM.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+     3   1    1:D     1 
+     3   1    1:D     1 {$I GLOBALS }
+     4   1    1:D     1 
+     5   1    1:D     1 {.fs modifications marked by this}
+     6   1    1:D     1 
+     7   1    1:D     1 {$S+}
+     8   1    1:D     1 (*$U-*)
+     9   1    1:D     1     (******************************************************************)
+    10   1    1:D     1     (*                                                                *)
+    11   1    1:D     1     (*  Copyright (c) 1978 Regents of the University of California.   *)
+    12   1    1:D     1     (*  Permission to copy or distribute this software or documen-    *)
+    13   1    1:D     1     (*  tation in hard or soft copy granted only by written license   *) 
+    14   1    1:D     1     (*  obtained from the Institute for Information Systems.          *)
+    15   1    1:D     1     (*                                                                *)
+    16   1    1:D     1     (******************************************************************)
+    17   1    1:D     1     
+    18   0    1:D     1 PROGRAM PASCALSYSTEM;
+    19   0    1:D     1 
+    20   0    1:D     1 (************************************************)
+    21   0    1:D     1 (*                                              *)
+    22   0    1:D     1 (*    UCSD PASCAL OPERATING SYSTEM              *)
+    23   0    1:D     1 (*                                              *)
+    24   0    1:D     1 (*    RELEASE LEVEL:  I.3   AUGUST, 1977        *)
+    25   0    1:D     1 (*                    I.4   JANUARY, 1978       *)
+    26   0    1:D     1 (*                    I.5   SEPTEMBER, 1978     *)
+    27   0    1:D     1 (*                    II.0  FEBRUARY, 1979 BD   *)
+    28   0    1:D     1 (*                                              *)
+    29   0    1:D     1 (*    WRITTEN BY ROGER T. SUMNER                *)
+    30   0    1:D     1 (*    WINTER 1977                               *)
+    31   0    1:D     1 (*                                              *)
+    32   0    1:D     1 (*    INSTITUTE FOR INFORMATION SYSTEMS         *)
+    33   0    1:D     1 (*    UC SAN DIEGO, LA JOLLA, CA                *)
+    34   0    1:D     1 (*                                              *)
+    35   0    1:D     1 (*    KENNETH L. BOWLES, DIRECTOR               *)
+    36   0    1:D     1 (*                                              *)
+    37   0    1:D     1 (************************************************)
+    38   0    1:D     1 
+    39   0    1:D     1 CONST
+    40   0    1:D     1      MMAXINT = 32767;   (*MAXIMUM INTEGER VALUE*)
+    41   0    1:D     1      MAXUNIT = 12;      (*MAXIMUM PHYSICAL UNIT # FOR UREAD*)
+    42   0    1:D     1      MAXDIR = 77;       (*MAX NUMBER OF ENTRIES IN A DIRECTORY*)
+    43   0    1:D     1      VIDLENG = 7;       (*NUMBER OF CHARS IN A VOLUME ID*)
+    44   0    1:D     1      TIDLENG = 15;      (*NUMBER OF CHARS IN TITLE ID*)
+    45   0    1:D     1 {.fs#MAX_SEG = 31; }    (*MAX CODE SEGMENT NUMBER*)
+    46   0    1:D     1 {.fs}MAX_SEG = 15;      (*MAX CODE SEGMENT NUMBER*) { this is for the disk header, so must be 15 }
+    47   0    1:D     1 {.fs}MAX_RSEG = 31;     (*max resident code segment number*) { as loaded to mem }
+    48   0    1:D     1      FBLKSIZE = 512;    (*STANDARD DISK BLOCK LENGTH*)
+    49   0    1:D     1      DIRBLK = 2;        (*DISK ADDR OF DIRECTORY*)
+    50   0    1:D     1      AGELIMIT = 300;    (*MAX AGE FOR GDIRP...IN TICKS*)
+    51   0    1:D     1      EOL = 13;          (*END-OF-LINE...ASCII CR*)
+    52   0    1:D     1      DLE = 16;          (*BLANK COMPRESSION CODE*)
+    53   0    1:D     1      NAME_LEN = 23;     {Length of CONCAT(VIDLENG,':',TIDLENG)}
+    54   0    1:D     1      FILL_LEN = 11;     {Maximum # of nulls in FILLER}
+    55   0    1:D     1 
+    56   0    1:D     1 TYPE
+    57   0    1:D     1 
+    58   0    1:D     1      IORSLTWD = (INOERROR,IBADBLOCK,IBADUNIT,IBADMODE,ITIMEOUT,
+    59   0    1:D     1 	         ILOSTUNIT,ILOSTFILE,IBADTITLE,INOROOM,INOUNIT,
+    60   0    1:D     1 	         INOFILE,IDUPFILE,INOTCLOSED,INOTOPEN,IBADFORMAT,
+    61   0    1:D     1 	         ISTRGOVFL);
+    62   0    1:D     1 
+    63   0    1:D     1 	                                (*COMMAND STATES...SEE GETCMD*)
+    64   0    1:D     1 
+    65   0    1:D     1      CMDSTATE = (HALTINIT,DEBUGCALL,
+    66   0    1:D     1 	         UPROGNOU,UPROGUOK,SYSPROG,
+    67   0    1:D     1 	         COMPONLY,COMPANDGO,COMPDEBUG,
+    68   0    1:D     1                  LINKANDGO,LINKDEBUG);
+    69   0    1:D     1      
+    70   0    1:D     1                                         (*CODE FILES USED IN GETCMD*)
+    71   0    1:D     1                                         
+    72   0    1:D     1      SYSFILE = (ASSMBLER,COMPILER,EDITOR,FILER,LINKER);
+    73   0    1:D     1 
+    74   0    1:D     1 	                                (*ARCHIVAL INFO...THE DATE*)
+    75   0    1:D     1 
+    76   0    1:D     1      DATEREC = PACKED RECORD
+    77   0    1:D     1 	         MONTH: 0..12;          (*0 IMPLIES DATE NOT MEANINGFUL*)
+    78   0    1:D     1 	         DAY: 0..31;            (*DAY OF MONTH*)
+    79   0    1:D     1 	         YEAR: 0..100           (*100 IS TEMP DISK FLAG*)
+    80   0    1:D     1 	       END (*DATEREC*) ;
+    81   0    1:D     1 
+    82   0    1:D     1 	                                (*VOLUME TABLES*)
+    83   0    1:D     1      UNITNUM = 0..MAXUNIT;
+    84   0    1:D     1      VID = STRING[VIDLENG];
+    85   0    1:D     1 
+    86   0    1:D     1 	                                (*DISK DIRECTORIES*)
+    87   0    1:D     1      DIRRANGE = 0..MAXDIR;
+    88   0    1:D     1      TID = STRING[TIDLENG];
+    89   0    1:D     1      FULL_ID = STRING[NAME_LEN];
+    90   0    1:D     1 
+    91   0    1:D     1      FILE_TABLE = ARRAY [SYSFILE] OF FULL_ID;
+    92   0    1:D     1 
+    93   0    1:D     1      FILEKIND = (UNTYPEDFILE,XDSKFILE,CODEFILE,TEXTFILE,
+    94   0    1:D     1 	         INFOFILE,DATAFILE,GRAFFILE,FOTOFILE,SECUREDIR);
+    95   0    1:D     1 
+    96   0    1:D     1      DIRENTRY = PACKED RECORD
+    97   0    1:D     1 	          DFIRSTBLK: INTEGER;   (*FIRST PHYSICAL DISK ADDR*)
+    98   0    1:D     1 	          DLASTBLK: INTEGER;    (*POINTS AT BLOCK FOLLOWING*)
+    99   0    1:D     1 	          CASE DFKIND: FILEKIND OF
+   100   0    1:D     1                     SECUREDIR,
+   101   0    1:D     1 	            UNTYPEDFILE: (*ONLY IN DIR[0]...VOLUME INFO*)
+   102   0    1:D     1 	               (FILLER1 : 0..2048; {for downward compatibility,13 bits}
+   103   0    1:D     1 			DVID: VID;              (*NAME OF DISK VOLUME*)
+   104   0    1:D     1 	                DEOVBLK: INTEGER;       (*LASTBLK OF VOLUME*)
+   105   0    1:D     1 	                DNUMFILES: DIRRANGE;    (*NUM FILES IN DIR*)
+   106   0    1:D     1 	                DLOADTIME: INTEGER;     (*TIME OF LAST ACCESS*)
+   107   0    1:D     1 	                DLASTBOOT: DATEREC);    (*MOST RECENT DATE SETTING*)
+   108   0    1:D     1 	            XDSKFILE,CODEFILE,TEXTFILE,INFOFILE,
+   109   0    1:D     1 	            DATAFILE,GRAFFILE,FOTOFILE:
+   110   0    1:D     1 	               (FILLER2 : 0..1024; {for downward compatibility}
+   111   0    1:D     1 			STATUS : BOOLEAN;        {for FILER wildcards}
+   112   0    1:D     1 			DTID: TID;              (*TITLE OF FILE*)
+   113   0    1:D     1 			DLASTBYTE: 1..FBLKSIZE; (*NUM BYTES IN LAST BLOCK*)
+   114   0    1:D     1 	                DACCESS: DATEREC)       (*LAST MODIFICATION DATE*)
+   115   0    1:D     1 	        END (*DIRENTRY*) ;
+   116   0    1:D     1 
+   117   0    1:D     1      DIRP = ^DIRECTORY;
+   118   0    1:D     1 
+   119   0    1:D     1      DIRECTORY = ARRAY [DIRRANGE] OF DIRENTRY;
+   120   0    1:D     1 
+   121   0    1:D     1 	                                (*FILE INFORMATION*)
+   122   0    1:D     1 
+   123   0    1:D     1      CLOSETYPE = (CNORMAL,CLOCK,CPURGE,CCRUNCH);
+   124   0    1:D     1      WINDOWP = ^WINDOW;
+   125   0    1:D     1      WINDOW = PACKED ARRAY [0..0] OF CHAR;
+   126   0    1:D     1      FIBP = ^FIB;
+   127   0    1:D     1 
+   128   0    1:D     1      FIB = RECORD
+   129   0    1:D     1 	     FWINDOW: WINDOWP;  (*USER WINDOW...F^, USED BY GET-PUT*)
+   130   0    1:D     1 	     FEOF,FEOLN: BOOLEAN;
+   131   0    1:D     1 	     FSTATE: (FJANDW,FNEEDCHAR,FGOTCHAR);
+   132   0    1:D     1 	     FRECSIZE: INTEGER; (*IN BYTES...0=>BLOCKFILE, 1=>CHARFILE*)
+   133   0    1:D     1 	     CASE FISOPEN: BOOLEAN OF
+   134   0    1:D     1 	       TRUE: (FISBLKD: BOOLEAN; (*FILE IS ON BLOCK DEVICE*)
+   135   0    1:D     1 	              FUNIT: UNITNUM;   (*PHYSICAL UNIT #*)
+   136   0    1:D     1 	              FVID: VID;        (*VOLUME NAME*)
+   137   0    1:D     1 	              FREPTCNT,         (* # TIMES F^ VALID W/O GET*)
+   138   0    1:D     1 	              FNXTBLK,          (*NEXT REL BLOCK TO IO*)
+   139   0    1:D     1 	              FMAXBLK: INTEGER; (*MAX REL BLOCK ACCESSED*)
+   140   0    1:D     1 	              FMODIFIED:BOOLEAN;(*PLEASE SET NEW DATE IN CLOSE*)
+   141   0    1:D     1 	              FHEADER: DIRENTRY;(*COPY OF DISK DIR ENTRY*)
+   142   0    1:D     1 	              CASE FSOFTBUF: BOOLEAN OF (*DISK GET-PUT STUFF*)
+   143   0    1:D     1 	                TRUE: (FNXTBYTE,FMAXBYTE: INTEGER;
+   144   0    1:D     1 	                       FBUFCHNGD: BOOLEAN;
+   145   0    1:D     1 	                       FBUFFER: PACKED ARRAY [0..FBLKSIZE] OF CHAR))
+   146   0    1:D     1 	   END (*FIB*) ;
+   147   0    1:D     1 
+   148   0    1:D     1 	                                (*USER WORKFILE STUFF*)
+   149   0    1:D     1 
+   150   0    1:D     1      INFOREC = RECORD
+   151   0    1:D     1 	         SYMFIBP,CODEFIBP: FIBP;        (*WORKFILES FOR SCRATCH*)
+   152   0    1:D     1 	         ERRSYM,ERRBLK,ERRNUM: INTEGER; (*ERROR STUFF IN EDIT*)
+   153   0    1:D     1 	         SLOWTERM,STUPID: BOOLEAN;      (*STUDENT PROGRAMMER ID!!*)
+   154   0    1:D     1 	         ALTMODE: CHAR;                 (*WASHOUT CHAR FOR COMPILER*)
+   155   0    1:D     1 	         GOTSYM,GOTCODE: BOOLEAN;       (*TITLES ARE MEANINGFUL*)
+   156   0    1:D     1 	         WORKVID,SYMVID,CODEVID: VID;   (*PERM&CUR WORKFILE VOLUMES*)
+   157   0    1:D     1 	         WORKTID,SYMTID,CODETID: TID    (*PERM&CUR WORKFILES TITLE*)
+   158   0    1:D     1 	       END (*INFOREC*) ;
+   159   0    1:D     1 
+   160   0    1:D     1 	                                (*CODE SEGMENT LAYOUTS*)
+   161   0    1:D     1 
+   162   0    1:D     1      SEG_RANGE = 0..MAX_SEG;
+   163   0    1:D     1      SEG_DESC = RECORD
+   164   0    1:D     1 	         DISKADDR: INTEGER;     (*REL BLK IN CODE...ABS IN SYSCOM^*)
+   165   0    1:D     1 	         CODELENG: INTEGER      (*# BYTES TO READ IN*)
+   166   0    1:D     1 	       END (*SEGDESC*) ;
+   167   0    1:D     1 
+   168   0    1:D     1 					(*DEBUGGER STUFF*)
+   169   0    1:D     1 
+   170   0    1:D     1      BYTERANGE = 0..255;
+   171   0    1:D     1      TRICKARRAY = RECORD        {Memory diddling for execerror}
+   172   0    1:D     1 		    CASE BOOLEAN OF
+   173   0    1:D     1 		      TRUE : (WORD : ARRAY [0..0] OF INTEGER); 
+   174   0    1:D     1 		      FALSE : (BYTE : PACKED ARRAY [0..0] OF BYTERANGE)
+   175   0    1:D     1 		    END;
+   176   0    1:D     1      MSCWP = ^ MSCW;            (*MARK STACK RECORD POINTER*)
+   177   0    1:D     1      MSCW = RECORD
+   178   0    1:D     1 	      STATLINK: MSCWP;  (*POINTER TO PARENT MSCW*)
+   179   0    1:D     1 	      DYNLINK: MSCWP;   (*POINTER TO CALLER'S MSCW*)
+   180   0    1:D     1 	      MSSEG,MSJTAB: ^TRICKARRAY;
+   181   0    1:D     1 	      MSIPC: INTEGER;
+   182   0    1:D     1 	      LOCALDATA: TRICKARRAY
+   183   0    1:D     1 	    END (*MSCW*) ;
+   184   0    1:D     1 
+   185   0    1:D     1 	                                (*SYSTEM COMMUNICATION AREA*)
+   186   0    1:D     1 	                                (*SEE INTERPRETERS...NOTE  *)
+   187   0    1:D     1 	                                (*THAT WE ASSUME BACKWARD  *)
+   188   0    1:D     1 	                                (*FIELD ALLOCATION IS DONE *)
+   189   0    1:D     1      SEG_ENTRY = RECORD
+   190   0    1:D     1 		   CODEUNIT: UNITNUM;
+   191   0    1:D     1 		   CODEDESC: SEGDESC
+   192   0    1:D     1 		 END;
+   193   0    1:D     1      SYSCOMREC = RECORD
+   194   0    1:D     1 	           IORSLT: IORSLTWD;    (*RESULT OF LAST IO CALL*)
+   195   0    1:D     1 	           XEQERR: INTEGER;     (*REASON FOR EXECERROR CALL*)
+   196   0    1:D     1 	           SYSUNIT: UNITNUM;    (*PHYSICAL UNIT OF BOOTLOAD*)
+   197   0    1:D     1 	           BUGSTATE: INTEGER;   (*DEBUGGER INFO*)
+   198   0    1:D     1 	           GDIRP: DIRP;         (*GLOBAL DIR POINTER,SEE VOLSEARCH*)
+   199   0    1:D     1 	           LASTMP,STKBASE,BOMBP: MSCWP;
+   200   0    1:D     1 	           MEMTOP,SEG,JTAB: INTEGER;
+   201   0    1:D     1 	           BOMBIPC: INTEGER;    (*WHERE XEQERR BLOWUP WAS*)
+   202   0    1:D     1 	           HLTLINE: INTEGER;    (*MORE DEBUGGER STUFF*)
+   203   0    1:D     1 	           BRKPTS: ARRAY [0..3] OF INTEGER;
+   204   0    1:D     1 	           RETRIES: INTEGER;    (*DRIVERS PUT RETRY COUNTS*)
+   205   0    1:D     1 	           EXPANSION: ARRAY [0..8] OF INTEGER;
+   206   0    1:D     1 	           HIGHTIME,LOWTIME: INTEGER;
+   207   0    1:D     1 	           MISCINFO: PACKED RECORD
+   208   0    1:D     1 	                       NOBREAK,STUPID,SLOWTERM,
+   209   0    1:D     1 	                       HASXYCRT,HASLCCRT,HAS8510A,HASCLOCK: BOOLEAN;
+   210   0    1:D     1 	                       USERKIND:(NORMAL, AQUIZ, BOOKER, PQUIZ);
+   211   0    1:D     1 	                       WORD_MACH, IS_FLIPT : BOOLEAN
+   212   0    1:D     1 			     END;
+   213   0    1:D     1 	           CRTTYPE: INTEGER;
+   214   0    1:D     1 	           CRTCTRL: PACKED RECORD
+   215   0    1:D     1 	                      RLF,NDFS,ERASEEOL,ERASEEOS,HOME,ESCAPE: CHAR;
+   216   0    1:D     1 	                      BACKSPACE: CHAR;
+   217   0    1:D     1 	                      FILLCOUNT: 0..255;
+   218   0    1:D     1                               CLEARSCREEN, CLEARLINE: CHAR;
+   219   0    1:D     1                               PREFIXED: PACKED ARRAY [0..15] OF BOOLEAN
+   220   0    1:D     1 	                    END;
+   221   0    1:D     1 	           CRTINFO: PACKED RECORD
+   222   0    1:D     1 	                      WIDTH,HEIGHT: INTEGER;
+   223   0    1:D     1 	                      RIGHT,LEFT,DOWN,UP: CHAR;
+   224   0    1:D     1 	                      BADCH,CHARDEL,STOP,BREAK,FLUSH,EOF: CHAR;
+   225   0    1:D     1 	                      ALTMODE,LINEDEL: CHAR;
+   226   0    1:D     1                               ALPHA_LOCK,ETX,PREFIX: CHAR;
+   227   0    1:D     1                               PREFIXED: PACKED ARRAY [0..15] OF BOOLEAN
+   228   0    1:D     1 	                    END;
+   229   0    1:D     1 {.fs#	           SEGTABLE: ARRAY [SEG_RANGE] OF SEG_ENTRY; }  { Apple II support }
+   230   0    1:D     1 {.fs}	           SEGTABLE: ARRAY [0..MAX_RSEG] OF SEG_ENTRY;  { resident seg table }
+   231   0    1:D     1 	         END (*SYSCOM*);
+   232   0    1:D     1 
+   233   0    1:D     1      MISCINFOREC = RECORD
+   234   0    1:D     1 	             MSYSCOM: SYSCOMREC
+   235   0    1:D     1 	           END;
+   236   0    1:D     1 
+   237   0    1:D     1 {.fs}  { for FREADDEC; copied from PASCALIO II.0.A UNIT interface }
+   238   0    1:D     1 {.fs}  DECMAX = INTEGER[36];
+   239   0    1:D     1 {.fs}  STUNT = RECORD CASE INTEGER OF
+   240   0    1:D     1 {.fs}		 2:(W2:INTEGER[4]);
+   241   0    1:D     1 {.fs}		 3:(W3:INTEGER[8]);
+   242   0    1:D     1 {.fs}		 4:(W4:INTEGER[12]);
+   243   0    1:D     1 {.fs}		 5:(W5:INTEGER[16]);
+   244   0    1:D     1 {.fs}		 6:(W6:INTEGER[20]);
+   245   0    1:D     1 {.fs}		 7:(W7:INTEGER[24]);
+   246   0    1:D     1 {.fs}		 8:(W8:INTEGER[28]);
+   247   0    1:D     1 {.fs}		 9:(W9:INTEGER[32]);
+   248   0    1:D     1 {.fs}		 10:(W10:INTEGER[36])
+   249   0    1:D     1 {.fs}	       END;
+   250   0    1:D     1 
+   251   0    1:D     1 
+   252   0    1:D     1 VAR
+   253   0    1:D     1     SYSCOM: ^SYSCOMREC;                 (*MAGIC PARAM...SET UP IN BOOT*)
+   254   0    1:D     2     GFILES: ARRAY [0..5] OF FIBP;       (*GLOBAL FILES, 0=INPUT, 1=OUTPUT*)
+   255   0    1:D     8     USERINFO: INFOREC;                  (*WORK STUFF FOR COMPILER ETC*)
+   256   0    1:D    54     EMPTYHEAP: ^INTEGER;                (*HEAP MARK FOR MEM MANAGING*)
+   257   0    1:D    55     INPUTFIB,OUTPUTFIB,                 (*CONSOLE FILES...GFILES ARE COPIES*)
+   258   0    1:D    55     SYSTERM,SWAPFIB: FIBP;              (*CONTROL AND SWAPSPACE FILES*)
+   259   0    1:D    59     SYVID,DKVID: VID;                   (*SYSUNIT VOLID & DEFAULT VOLID*)
+   260   0    1:D    67     THEDATE: DATEREC;                   (*TODAY...SET IN FILER OR SIGN ON*)
+   261   0    1:D    68 {.fs} { Note: do not change any variable above; interpreter accesses some }
+   262   0    1:D    68     DEBUGINFO: ^INTEGER;                (*DEBUGGERS GLOBAL INFO WHILE RUNIN*)
+   263   0    1:D    69     STATE: CMDSTATE;                    (*FOR GETCOMMAND*)
+   264   0    1:D    70     PL: STRING;                         (*PROMPTLINE STRING...SEE PROMPT*)
+   265   0    1:D   111     IPOT: ARRAY [0..4] OF INTEGER;      (*INTEGER POWERS OF TEN*)
+   266   0    1:D   116     FILLER: STRING[FILL_LEN];           (*NULLS FOR CARRIAGE DELAY*)
+   267   0    1:D   122     DIGITS: SET OF '0'..'9';
+   268   0    1:D   126     UNITABLE: ARRAY [UNITNUM] OF (*0 NOT USED*)
+   269   0    1:D   126 	        RECORD
+   270   0    1:D   126 	          UVID: VID;    (*VOLUME ID FOR UNIT*)
+   271   0    1:D   126 	          CASE UISBLKD: BOOLEAN OF
+   272   0    1:D   126 	            TRUE: (UEOVBLK: INTEGER)
+   273   0    1:D   126 	        END (*UNITABLE*) ;
+   274   0    1:D   204     FILENAME : FILE_TABLE;
+   275   0    1:D   264 
+   276   0    1:D   264 (*-------------------------------------------------------------------------*)
+   277   0    1:D   264 (* SYSTEM PROCEDURE FORWARD DECLARATIONS *)
+   278   0    1:D   264 (* THESE ARE ADDRESSED BY OBJECT CODE... *)
+   279   0    1:D   264 (*  DO NOT MOVE WITHOUT CAREFUL THOUGHT  *)
+   280   0    1:D   264 
+   281   0    2:D     1 PROCEDURE EXECERROR;
+   282   0    2:D     1   FORWARD;
+   283   0    3:D     1 PROCEDURE FINIT(VAR F: FIB; WINDOW: WINDOWP; RECWORDS: INTEGER);
+   284   0    3:D     4   FORWARD;
+   285   0    4:D     1 PROCEDURE FRESET(VAR F: FIB);
+   286   0    4:D     2   FORWARD;
+   287   0    5:D     1 PROCEDURE FOPEN(VAR F: FIB; VAR FTITLE: STRING;
+   288   0    5:D     3 	        FOPENOLD: BOOLEAN; JUNK: FIBP);
+   289   0    5:D     5   FORWARD;
+   290   0    6:D     1 PROCEDURE FCLOSE(VAR F: FIB; FTYPE: CLOSETYPE);
+   291   0    6:D     3   FORWARD;
+   292   0    7:D     1 PROCEDURE FGET(VAR F: FIB);
+   293   0    7:D     2   FORWARD;
+   294   0    8:D     1 PROCEDURE FPUT(VAR F: FIB);
+   295   0    8:D     2   FORWARD;
+   296   0    8:D     2 {.fs# PROCEDURE XSEEK; }
+   297   0    9:D     1 {.fs} PROCEDURE FSEEK(VAR F: FIB; RECNUM: INTEGER); { from PASCALIO }
+   298   0    9:D     3   FORWARD;
+   299   0   10:D     3 FUNCTION FEOF(VAR F: FIB): BOOLEAN;
+   300   0   10:D     4   FORWARD;
+   301   0   11:D     3 FUNCTION FEOLN(VAR F: FIB): BOOLEAN;
+   302   0   11:D     4   FORWARD;
+   303   0   12:D     1 PROCEDURE FREADINT(VAR F: FIB; VAR I: INTEGER);
+   304   0   12:D     3   FORWARD;
+   305   0   13:D     1 PROCEDURE FWRITEINT(VAR F: FIB; I,RLENG: INTEGER);
+   306   0   13:D     4   FORWARD;
+   307   0   13:D     4 {.fs# PROCEDURE XREADREAL; }
+   308   0   14:D     1 {.fs} PROCEDURE FREADREAL(VAR F: FIB; VAR X: REAL); { from PASCALIO }
+   309   0   14:D     3   FORWARD;
+   310   0   14:D     3 {.fs# PROCEDURE XWRITEREAL; }
+   311   0   15:D     1 {.fs} PROCEDURE FWRITEREAL(VAR F: FIB; X: REAL; W, D: INTEGER); { from PASCALIO }
+   312   0   15:D     6   FORWARD;
+   313   0   16:D     1 PROCEDURE FREADCHAR(VAR F: FIB; VAR CH: CHAR);
+   314   0   16:D     3   FORWARD;
+   315   0   17:D     1 PROCEDURE FWRITECHAR(VAR F: FIB; CH: CHAR; RLENG: INTEGER);
+   316   0   17:D     4   FORWARD;
+   317   0   18:D     1 PROCEDURE FREADSTRING(VAR F: FIB; VAR S: STRING; SLENG: INTEGER);
+   318   0   18:D     4   FORWARD;
+   319   0   19:D     1 PROCEDURE FWRITESTRING(VAR F: FIB; VAR S: STRING; RLENG: INTEGER);
+   320   0   19:D     4   FORWARD;
+   321   0   20:D     1 PROCEDURE FWRITEBYTES(VAR F: FIB; VAR A: WINDOW; RLENG,ALENG: INTEGER);
+   322   0   20:D     5   FORWARD;
+   323   0   21:D     1 PROCEDURE FREADLN(VAR F: FIB);
+   324   0   21:D     2   FORWARD;
+   325   0   22:D     1 PROCEDURE FWRITELN(VAR F: FIB);
+   326   0   22:D     2   FORWARD;
+   327   0   23:D     1 PROCEDURE SCONCAT(VAR DEST,SRC: STRING; DESTLENG: INTEGER);
+   328   0   23:D     4   FORWARD;
+   329   0   24:D     1 PROCEDURE SINSERT(VAR SRC,DEST: STRING; DESTLENG,INSINX: INTEGER);
+   330   0   24:D     5   FORWARD;
+   331   0   25:D     1 PROCEDURE SCOPY(VAR SRC,DEST: STRING; SRCINX,COPYLENG: INTEGER);
+   332   0   25:D     5   FORWARD;
+   333   0   26:D     1 PROCEDURE SDELETE(VAR DEST: STRING; DELINX,DELLENG: INTEGER);
+   334   0   26:D     4   FORWARD;
+   335   0   27:D     3 FUNCTION SPOS(VAR TARGET,SRC: STRING): INTEGER;
+   336   0   27:D     5   FORWARD;
+   337   0   28:D     3 FUNCTION FBLOCKIO(VAR F: FIB; VAR A: WINDOW; I: INTEGER;
+   338   0   28:D     6 	          NBLOCKS,RBLOCK: INTEGER; DOREAD: BOOLEAN): INTEGER;
+   339   0   28:D     9   FORWARD;
+   340   0   29:D     1 PROCEDURE FGOTOXY(X,Y: INTEGER);
+   341   0   29:D     3   FORWARD;
+   342   0   29:D     3 
+   343   0   29:D     3 (* NON FIXED FORWARD DECLARATIONS *)
+   344   0   29:D     3 {.fs} { Do not move these either, as interpreter accesses some for emulations }
+   345   0   29:D     3 
+   346   0   30:D     3 FUNCTION VOLSEARCH(VAR FVID: VID; LOOKHARD: BOOLEAN;
+   347   0   30:D     5 	           VAR FDIR: DIRP): UNITNUM;
+   348   0   30:D     6   FORWARD;
+   349   0   31:D     1 PROCEDURE WRITEDIR(FUNIT: UNITNUM; FDIR: DIRP);
+   350   0   31:D     3   FORWARD;
+   351   0   32:D     3 FUNCTION DIRSEARCH(VAR FTID: TID; FINDPERM: BOOLEAN; FDIR: DIRP): DIRRANGE;
+   352   0   32:D     6   FORWARD;
+   353   0   33:D     3 FUNCTION SCANTITLE(FTITLE: STRING; VAR FVID: VID; VAR FTID: TID;
+   354   0   33:D     6 	           VAR FSEGS: INTEGER; VAR FKIND: FILEKIND): BOOLEAN;
+   355   0   33:D    49   FORWARD;
+   356   0   34:D     1 PROCEDURE DELENTRY(FINX: DIRRANGE; FDIR: DIRP);
+   357   0   34:D     3   FORWARD;
+   358   0   35:D     1 PROCEDURE INSENTRY(VAR FENTRY: DIRENTRY; FINX: DIRRANGE; FDIR: DIRP);
+   359   0   35:D     4   FORWARD;
+   360   0   36:D     1 PROCEDURE HOMECURSOR;
+   361   0   36:D     1   FORWARD;
+   362   0   37:D     1 PROCEDURE CLEARSCREEN;
+   363   0   37:D     1   FORWARD;
+   364   0   38:D     1 PROCEDURE CLEARLINE;
+   365   0   38:D     1   FORWARD;
+   366   0   39:D     1 PROCEDURE PROMPT;
+   367   0   39:D     1   FORWARD;
+   368   0   40:D     3 FUNCTION SPACEWAIT(FLUSH: BOOLEAN): BOOLEAN;
+   369   0   40:D     4   FORWARD;
+   370   0   41:D     3 FUNCTION GETCHAR(FLUSH: BOOLEAN): CHAR;
+   371   0   41:D     4   FORWARD;
+   372   0   42:D     3 FUNCTION FETCHDIR(FUNIT:UNITNUM) : BOOLEAN;
+   373   0   42:D     4   FORWARD;
+   374   0   43:D     1 PROCEDURE COMMAND;
+   375   0   43:D     1   FORWARD;
+   376   0   43:D     1 
+   377   0   43:D     1 {.fs} { two more fixed forward declarations, to eliminate PASCALIO UNIT }
+   378   0   43:D     1 {.fs} { we do not insert them before VOLSEARCH to maintain compatibility }
+   379   0   43:D     1 {.fs} { with other builds; e.g. FILER uses VOLSEARCH etc. }
+   380   0   44:D     1 {.fs} PROCEDURE FREADDEC(VAR F: FIB; VAR D: STUNT; L: INTEGER);
+   381   0   44:D     4 {.fs}   FORWARD;
+   382   0   45:D     1 {.fs} PROCEDURE FWRITEDEC(VAR F: FIB; D: DECMAX; RLENG: INTEGER);
+   383   0   45:D    13 {.fs}   FORWARD;
+   384   0   45:D    13 
+   385   0   45:D    13 {$I GLOBALS }
+   386   0   45:D    13 
+   387   0   45:D    13 (* --- SYSSEGS.A  --- *)
+   388   0   45:D    13 
+   389   0   45:D    13     (******************************************************************)
+   390   0   45:D    13     (*                                                                *)
+   391   0   45:D    13     (*  Copyright (c) 1978 Regents of the University of California.   *)
+   392   0   45:D    13     (*  Permission to copy or distribute this software or documen-    *)
+   393   0   45:D    13     (*  tation in hard or soft copy granted only by written license   *) 
+   394   0   45:D    13     (*  obtained from the Institute for Information Systems.          *)
+   395   0   45:D    13     (*                                                                *)
+   396   0   45:D    13     (******************************************************************)
+   397   0   45:D    13     
+   398   1    1:D     1 SEGMENT PROCEDURE USERPROGRAM(INPUT,OUTPUT: FIBP);
+   399   1    1:0     0 BEGIN FWRITELN(SYSTERM^);
+   400   1    1:1     6   PL := 'No user program';
+   401   1    1:1    29   FWRITESTRING(SYSTERM^,PL,0)
+   402   1    1:0    36 END (*USERPROGRAM*) ;
+   403   1    1:0    52 
+   404   1    1:0    52 {.fs} { cram all in one segment since we have unlimited code-space }
+   405   0   46:D     1 {.fs# SEGMENT } PROCEDURE DEBUGGER;
+   406   0   46:0     0 BEGIN FWRITELN(SYSTERM^);
+   407   0   46:1     5   PL := 'No debugger in system';
+   408   0   46:1    34   FWRITESTRING(SYSTERM^,PL,0)
+   409   0   46:0    41 END (*DEBUGGER*) ;
+   410   0   46:0    56 
+   411   0   46:0    56 {.fs} { cram all in one segment since we have unlimited code-space }
+   412   0   47:D     1 {.fs# SEGMENT } PROCEDURE PRINTERROR(XEQERR,IORSLT: INTEGER);
+   413   0   47:D     3   VAR S: STRING[40];
+   414   0   47:0     0 BEGIN S := 'Unknown run-time error';
+   415   0   47:1    29   CASE XEQERR OF
+   416   0   47:1    32     1:  S := 'Value range error';
+   417   0   47:1    58     2:  S := 'No proc in seg-table';
+   418   0   47:1    87     3:  S := 'Exit from uncalled proc';
+   419   0   47:1   119     4:  S := 'Stack overflow';
+   420   0   47:1   142     5:  S := 'Integer overflow';
+   421   0   47:1   167     6:  S := 'Divide by zero';
+   422   0   47:1   190     7:  S := 'NIL pointer reference';
+   423   0   47:1   220     8:  S := 'Program interrupted by user';
+   424   0   47:1   256     9:  S := 'System IO error';
+   425   0   47:1   280    10:  BEGIN S := 'unknown cause';
+   426   0   47:3   300 	  CASE IORSLT OF
+   427   0   47:3   303 	    1:  S := 'parity (CRC)';
+   428   0   47:3   324 	    2:  S := 'illegal unit #';
+   429   0   47:3   347 	    3:  S := 'illegal IO request';
+   430   0   47:3   374 	    4:  S := 'data-com timeout';
+   431   0   47:3   399 	    5:  S := 'vol went off-line';
+   432   0   47:3   425 	    6:  S := 'file lost in dir';
+   433   0   47:3   450 	    7:  S := 'bad file name';
+   434   0   47:3   472 	    8:  S := 'no room on vol';
+   435   0   47:3   495 	    9:  S := 'vol not found';
+   436   0   47:3   517 	   10:  S := 'file not found';
+   437   0   47:3   540 	   11:  S := 'dup dir entry';
+   438   0   47:3   562 	   12:  S := 'file already open';
+   439   0   47:3   588 	   13:  S := 'file not open';
+   440   0   47:3   610 	   14:  S := 'bad input format';
+   441   0   47:3   635 	   15:  S := 'ring buffer overflow';
+   442   0   47:3   664 	   16:  S := 'disk write protected';
+   443   0   47:3   693 	   17:  S := 'illegal block #';
+   444   0   47:3   717 	   18:  S := 'bad byte count';
+   445   0   47:3   740 	   19:  S := 'bad init record'
+   446   0   47:3   742 	  END (*IO ERRORS*) ;
+   447   0   47:3   810 	INSERT('IO error: ',S,1)
+   448   0   47:2   830       END;
+   449   0   47:1   832    11:  S := 'Unimplemented instruction';
+   450   0   47:1   866    12:  S := 'Floating point error';
+   451   0   47:1   895    13:  S := 'String overflow';
+   452   0   47:1   919    14:  S := 'Programmed HALT';
+   453   0   47:1   943    15:  S := 'Programmed break-point'
+   454   0   47:1   945   END (*XEQ ERRORS*) ;
+   455   0   47:1  1012   WRITELN(OUTPUT,S);
+   456   0   47:0  1027 END (*PRINTERROR*) ;
+   457   0   47:0  1048 
+   458   0   47:0  1048 {.fs} { cram all in one segment since we have unlimited code-space }
+   459   0   48:D     1 {.fs# SEGMENT } PROCEDURE INITIALIZE;
+   460   0   48:D     1   VAR JUSTBOOTED: BOOLEAN; LTITLE: STRING[40];
+   461   0   48:D    23       MONTHS: ARRAY [0..15] OF STRING[3];
+   462   0   48:D    55       STARTUP : BOOLEAN;
+   463   0   48:D    56       STKFILL: ARRAY [0..1199] OF INTEGER;
+   464   0   48:D  1256 
+   465   0   49:D     1   PROCEDURE INITSYSCOM;
+   466   0   49:D     1     VAR TITLE: STRING;
+   467   0   49:D    42         F: FILE OF MISCINFOREC;
+   468   0   49:D   486     
+   469   0   50:D     1     PROCEDURE INIT_FILLER(VAR  FILLER : STRING);
+   470   0   50:0     0       BEGIN
+   471   0   50:1     0 	WITH SYSCOM^.CRTCTRL DO
+   472   0   50:2     7 	  BEGIN
+   473   0   50:3     7 	    IF FILLCOUNT > FILL_LEN THEN
+   474   0   50:4    17 	      FILLCOUNT := FILL_LEN;
+   475   0   50:3    24 	    FILLER[0] := CHR(FILLCOUNT);
+   476   0   50:3    33 	    FILLCHAR(FILLER[1],FILLCOUNT,CHR(0));
+   477   0   50:2    44 	    END;
+   478   0   50:0    44       END  {of INIT_FILLER};
+   479   0   50:0    56 
+   480   0   49:0     0     BEGIN               {of INITSYSCOM}
+   481   0   49:1     0       INIT_FILLER(FILLER);
+   482   0   49:1    16       DEBUGINFO := NIL;
+   483   0   49:1    20       IPOT[0] := 1; IPOT[1] := 10; IPOT[2] := 100;
+   484   0   49:1    44       IPOT[3] := 1000; IPOT[4] := 10000; DIGITS := ['0'..'9'];
+   485   0   49:1    83       WITH SYSCOM^ DO
+   486   0   49:2    89 	BEGIN
+   487   0   49:3    89 	XEQERR := 0;    IORSLT := INOERROR;
+   488   0   49:3   101 	BUGSTATE :=0
+   489   0   49:2   106 	END;
+   490   0   49:1   108       TITLE := '*SYSTEM.MISCINFO' ;
+   491   0   49:1   131       RESET( F, TITLE );
+   492   0   49:1   140       IF IORESULT = ORD(INOERROR) THEN
+   493   0   49:2   146 	BEGIN
+   494   0   49:3   146 	IF NOT EOF( F ) THEN
+   495   0   49:4   156 	  WITH SYSCOM^, F^ DO
+   496   0   49:5   167 	    BEGIN
+   497   0   49:6   167 	    MISCINFO := MSYSCOM.MISCINFO;
+   498   0   49:6   179             CRTTYPE := MSYSCOM.CRTTYPE;
+   499   0   49:6   190             CRTCTRL := MSYSCOM.CRTCTRL;
+   500   0   49:6   202 	    CRTINFO := MSYSCOM.CRTINFO;
+   501   0   49:6   214 	    INIT_FILLER(FILLER);
+   502   0   49:5   219 	    END;
+   503   0   49:3   219 	CLOSE( F, NORMAL )
+   504   0   49:2   225 	END;
+   505   0   49:1   225       UNITCLEAR(1) (*GIVE BIOS NEW SOFT CHARACTERS FOR CONSOLE*)
+   506   0   49:0   226     END (*INITSYSCOM*) ;
+   507   0   49:0   246 
+   508   0   51:D     1   PROCEDURE INITUNITABLE;
+   509   0   51:D     1   VAR LUNIT: UNITNUM;
+   510   0   51:D     2       LDIR: DIRP;
+   511   0   51:D     3       LFIB : FIB;
+   512   0   51:D   293       F : SYSFILE;
+   513   0   51:D   294       TEMP_NAMES : FILE_TABLE;
+   514   0   51:D   354       NOT_FOUND : SET OF SYSFILE;
+   515   0   51:D   355 
+   516   0   52:D     1     PROCEDURE INIT_ENTRY(LUNIT : UNITNUM; UNIT_NAME : VID);
+   517   0   52:0     0     BEGIN
+   518   0   52:1     0       UNITCLEAR(LUNIT);
+   519   0   52:1     8       IF IORESULT = ORD(INOERROR) THEN
+   520   0   52:2    14 	UNITABLE[LUNIT].UVID := UNIT_NAME;
+   521   0   52:0    24       END  {of INIT_ENTRY};
+   522   0   52:0    36 
+   523   0   51:0     0   BEGIN         {of INITUNITABLE}
+   524   0   51:1     0     FILENAME[ASSMBLER] := ':SYSTEM.ASSMBLER';
+   525   0   51:1    28     FILENAME[COMPILER] := ':SYSTEM.COMPILER';
+   526   0   51:1    56     FILENAME[EDITOR] := ':SYSTEM.EDITOR';
+   527   0   51:1    82     FILENAME[FILER] := ':SYSTEM.FILER';
+   528   0   51:1   107     FILENAME[LINKER] := ':SYSTEM.LINKER';
+   529   0   51:1   133     TEMP_NAMES := FILENAME;
+   530   0   51:1   142     NOT_FOUND := [ASSMBLER .. LINKER];
+   531   0   51:1   149     FINIT(LFIB,NIL,-1);
+   532   0   51:1   156 {.fs} IF JUSTBOOTED THEN    { prefix will be the second disk }
+   533   0   51:2   159 {.fs}   DKVID := '';
+   534   0   51:1   167     FOR LUNIT := 0 TO MAXUNIT DO
+   535   0   51:2   181       WITH UNITABLE[LUNIT] DO
+   536   0   51:3   190 	BEGIN
+   537   0   51:4   190 	  UVID := '';
+   538   0   51:4   198 	  UISBLKD := LUNIT IN [4,5,9..12];
+   539   0   51:4   210 	  IF UISBLKD THEN
+   540   0   51:5   216 	    BEGIN
+   541   0   51:6   216 	      UEOVBLK := MMAXINT;
+   542   0   51:6   225 	      UNITCLEAR(LUNIT);
+   543   0   51:6   228 	      IF IORESULT = ORD(INOERROR) THEN
+   544   0   51:7   234 		IF FETCHDIR(LUNIT) THEN
+   545   0   51:8   241 		  BEGIN
+   546   0   51:9   241 		    UVID := SYSCOM^.GDIRP^[0].DVID;
+   547   0   51:9   255 		    IF LUNIT = SYSCOM^.SYSUNIT THEN
+   548   0   51:0   263 		      BEGIN
+   549   0   51:1   263 			SYVID := UVID;
+   550   0   51:1   271 			LTITLE := '*SYSTEM.STARTUP';
+   551   0   51:1   293 			FOPEN(LFIB,LTITLE,TRUE,NIL);
+   552   0   51:1   301 		        STARTUP := LFIB.FISOPEN;
+   553   0   51:1   304 			FCLOSE(LFIB,CNORMAL);
+   554   0   51:1   309 {.fs#			END; }
+   555   0   51:0   309 		      END
+   556   0   51:9   309 {.fs}               ELSE IF DKVID='' THEN   { prefix := second disk we find }
+   557   0   51:1   321 {.fs}                 DKVID := UVID;
+   558   0   51:9   329 		    FOR F := ASSMBLER TO LINKER DO
+   559   0   51:0   346 		      IF (LUNIT = SYSCOM^.SYSUNIT) OR (F IN NOT_FOUND) THEN
+   560   0   51:1   363 			BEGIN
+   561   0   51:2   363 			  LTITLE := CONCAT(UVID,TEMP_NAMES[F]);
+   562   0   51:2   399 			  FOPEN(LFIB,LTITLE,TRUE,NIL);
+   563   0   51:2   407 			  IF LFIB.FISOPEN THEN
+   564   0   51:3   410 			    BEGIN
+   565   0   51:4   410 			      FILENAME[F] := LTITLE;
+   566   0   51:4   423 			      NOT_FOUND := NOT_FOUND - [F];
+   567   0   51:3   437 			      END;
+   568   0   51:2   437 			  FCLOSE(LFIB,CNORMAL);
+   569   0   51:1   442 		          END {of IF (LUNIT ...};
+   570   0   51:8   452 		    END {of IF FETCHDIR .. } ;
+   571   0   51:5   452 	      END  {of IF UISBLKD .. };
+   572   0   51:3   452 	  END {of WITH};
+   573   0   51:3   459 {.fs# IF JUSTBOOTED THEN }
+   574   0   51:1   459 {.fs} IF DKVID='' THEN
+   575   0   51:2   469       DKVID := SYVID;
+   576   0   51:1   477     LUNIT := VOLSEARCH(SYVID,FALSE,LDIR);
+   577   0   51:1   489     IF LDIR = NIL THEN 
+   578   0   51:2   494       HALT;
+   579   0   51:1   496     THEDATE := LDIR^[0].DLASTBOOT;
+   580   0   51:1   507     INIT_ENTRY(1,'CONSOLE');
+   581   0   51:1   520     INIT_ENTRY(2,'SYSTERM');
+   582   0   51:1   533     INIT_ENTRY(3,'GRAPHIC');
+   583   0   51:1   546     INIT_ENTRY(6,'PRINTER');
+   584   0   51:1   559 {.fs# INIT_ENTRY(7,'REMIN');  }
+   585   0   51:1   559 {.fs# INIT_ENTRY(8,'REMOUT'); }
+   586   0   51:1   559     INIT_ENTRY(7,'CLIP');
+   587   0   51:1   569     INIT_ENTRY(8,'AUDIO');
+   588   0   51:0   580     END {of INITUNITABLE};
+   589   0   51:0   604   
+   590   0   53:D     1   PROCEDURE INITCHARSET;
+   591   0   53:D     1   TYPE CHARSET= ARRAY [32..127] OF
+   592   0   53:D     1 	          PACKED ARRAY [0..9] OF 0..255;
+   593   0   53:D     1   VAR I: INTEGER;
+   594   0   53:D     2       DOTRITON : BOOLEAN;
+   595   0   53:D     3       TRIX: RECORD CASE BOOLEAN OF
+   596   0   53:D     3 	      TRUE:  (CHARADDR: INTEGER);
+   597   0   53:D     3 	      FALSE: (CHARBUFP: ^ CHAR)
+   598   0   53:D     3 	    END;
+   599   0   53:D     4       DISPLAY: ARRAY [0..79,0..19] OF INTEGER; (*FOR TRITON*)
+   600   0   53:D  1604       CHARBUF: RECORD
+   601   0   53:D  1604 	           SET1: CHARSET;
+   602   0   53:D  1604 	           FILLER1: PACKED ARRAY [0..63] OF CHAR;
+   603   0   53:D  1604 	           SET2: CHARSET;
+   604   0   53:D  1604 	           FILLER2: PACKED ARRAY [0..63] OF CHAR;
+   605   0   53:D  1604 	           TRITON: ARRAY [0..63,0..3] OF INTEGER
+   606   0   53:D  1604 	         END (*CHARBUF*) ;
+   607   0   53:D  2884       LFIB: FIB;
+   608   0   53:0     0   BEGIN FINIT(LFIB,NIL,-1);
+   609   0   53:1     8     LTITLE := '*SYSTEM.CHARSET';
+   610   0   53:1    30     FOPEN(LFIB,LTITLE,TRUE,NIL);
+   611   0   53:1    39     IF LFIB.FISOPEN THEN
+   612   0   53:2    44       BEGIN 
+   613   0   53:3    44 	UNITCLEAR(3);
+   614   0   53:3    47 	IF IORESULT = ORD(INOERROR) THEN
+   615   0   53:4    53 	  BEGIN
+   616   0   53:5    53 	    UNITWRITE(3,TRIX,128);
+   617   0   53:5    64 	    WITH LFIB.FHEADER DO
+   618   0   53:6    64 	      BEGIN 
+   619   0   53:7    64 		DOTRITON := DLASTBLK-DFIRSTBLK > 4;
+   620   0   53:7    75 	        UNITREAD(LFIB.FUNIT,CHARBUF,SIZEOF(CHARBUF),DFIRSTBLK)
+   621   0   53:6    91 	      END;
+   622   0   53:5    91 	    TRIX.CHARADDR := 512-8192;  (*UNIBUS TRICKYNESS!*)
+   623   0   53:5   100 	    FOR I := 32 TO 127 DO
+   624   0   53:6   114 	      BEGIN
+   625   0   53:7   114 	        MOVERIGHT(CHARBUF.SET1[I],TRIX.CHARBUFP^,10);
+   626   0   53:7   128 	        TRIX.CHARADDR := TRIX.CHARADDR+16
+   627   0   53:6   129 	      END;
+   628   0   53:5   140 	    TRIX.CHARADDR := 512-6144;
+   629   0   53:5   149 	    FOR I := 32 TO 127 DO
+   630   0   53:6   163 	      BEGIN
+   631   0   53:7   163 	        MOVERIGHT(CHARBUF.SET2[I],TRIX.CHARBUFP^,10);
+   632   0   53:7   177 	        TRIX.CHARADDR := TRIX.CHARADDR+16
+   633   0   53:6   178 	      END;
+   634   0   53:5   189 	    IF JUSTBOOTED AND DOTRITON AND NOT STARTUP THEN
+   635   0   53:6   198 	      BEGIN (*INITIALIZE DISPLAY ARRAY*)
+   636   0   53:7   198 		FILLCHAR(DISPLAY,SIZEOF(DISPLAY),0);
+   637   0   53:7   207 		FOR I := 0 TO 63 DO
+   638   0   53:8   221 		  MOVELEFT(CHARBUF.TRITON[I],DISPLAY[I,10],8);
+   639   0   53:7   247 		UNITWRITE(3,DISPLAY[-80],23)
+   640   0   53:6   260 		END  ELSE
+   641   0   53:6   262 		  UNITWRITE(3,DISPLAY,7);
+   642   0   53:4   271 	  END
+   643   0   53:2   271       END
+   644   0   53:1   271     ELSE
+   645   0   53:2   273       SYSCOM^.MISCINFO.HAS8510A := FALSE;
+   646   0   53:1   282     FCLOSE(LFIB,CNORMAL)
+   647   0   53:0   286   END (*INITCHARSET*) ;
+   648   0   53:0   310 
+   649   0   54:D     1   PROCEDURE INITHEAP;
+   650   0   54:D     1   VAR LWINDOW: WINDOWP;
+   651   0   54:0     0   BEGIN (*BASIC FILE AND HEAP SETTUP*)
+   652   0   54:1     0     SYSCOM^.GDIRP := NIL; (* MUST PRECEDE THE FIRST "NEW" EXECUTED *)
+   653   0   54:1     7     NEW(SWAPFIB,TRUE,FALSE); FINIT(SWAPFIB^,NIL,-1);
+   654   0   54:1    21     NEW(INPUTFIB,TRUE,FALSE);  NEW(LWINDOW);
+   655   0   54:1    32     FINIT(INPUTFIB^,LWINDOW,0);
+   656   0   54:1    39     NEW(OUTPUTFIB,TRUE,FALSE);  NEW(LWINDOW);
+   657   0   54:1    50     FINIT(OUTPUTFIB^,LWINDOW,0);
+   658   0   54:1    57     NEW(SYSTERM,TRUE,FALSE);  NEW(LWINDOW);
+   659   0   54:1    68     FINIT(SYSTERM^,LWINDOW,0);
+   660   0   54:1    75     GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+   661   0   54:1    95     WITH USERINFO DO
+   662   0   54:2    95       BEGIN
+   663   0   54:3    95 	NEW(SYMFIBP,TRUE,FALSE); FINIT(SYMFIBP^,NIL,-1);
+   664   0   54:3   109 	NEW(CODEFIBP,TRUE,FALSE); FINIT(CODEFIBP^,NIL,-1)
+   665   0   54:2   121       END;
+   666   0   54:1   123     MARK(EMPTYHEAP)
+   667   0   54:0   126   END (*INITHEAP*) ;
+   668   0   54:0   140 
+   669   0   55:D     1   PROCEDURE INITWORKFILE;
+   670   0   55:D     1     
+   671   0   56:D     1     PROCEDURE TRY_OPEN(VAR WORK_FIB : FIB; FIRST : FULL_ID; VAR SEC_VOL : VID;
+   672   0   56:D     4                        VAR SEC_NAME : TID; VAR FLAG : BOOLEAN);
+   673   0   56:D    18     VAR  LTITLE : FULL_ID;
+   674   0   56:0     0     BEGIN
+   675   0   56:1     0       FOPEN(WORK_FIB,FIRST,TRUE,NIL);
+   676   0   56:1    12       IF NOT WORK_FIB.FISOPEN THEN
+   677   0   56:2    17 	IF SEC_NAME <> '' THEN
+   678   0   56:3    25 	  BEGIN
+   679   0   56:4    25 	    LTITLE := CONCAT(SEC_VOL,':',SEC_NAME);
+   680   0   56:4    58 	    FOPEN(WORK_FIB,LTITLE,TRUE,NIL);
+   681   0   56:3    65 	    END;
+   682   0   56:1    65       FLAG := WORK_FIB.FISOPEN;
+   683   0   56:1    69       IF FLAG THEN
+   684   0   56:2    73 	BEGIN 
+   685   0   56:3    73 	  SEC_VOL := WORK_FIB.FVID;
+   686   0   56:3    79 	  SEC_NAME := WORK_FIB.FHEADER.DTID
+   687   0   56:2    81 	  END;
+   688   0   56:1    85       FCLOSE(WORK_FIB,CNORMAL);
+   689   0   56:0    89       END;  {of TRY_OPEN}
+   690   0   56:0   102 
+   691   0   55:0     0   BEGIN
+   692   0   55:1     0     WITH USERINFO DO
+   693   0   55:2     0       BEGIN (*INITIALIZE WORK FILES ETC*)
+   694   0   55:3     0 	ERRNUM := 0; ERRBLK := 0; ERRSYM := 0;
+   695   0   55:3    12 	IF JUSTBOOTED THEN
+   696   0   55:4    15 	  BEGIN
+   697   0   55:5    15 	    SYMTID := ''; CODETID := ''; WORKTID := '';
+   698   0   55:5    39 	    SYMVID := SYVID; CODEVID := SYVID; WORKVID := SYVID
+   699   0   55:4    58 	  END;
+   700   0   55:3    63 	TRY_OPEN(SYMFIBP^,'*SYSTEM.WRK.TEXT',SYMVID,SYMTID,GOTSYM);
+   701   0   55:3    96 	TRY_OPEN(CODEFIBP^,'*SYSTEM.WRK.CODE',CODEVID,CODETID,GOTCODE);
+   702   0   55:3   129 	ALTMODE := SYSCOM^.CRTINFO.ALTMODE;
+   703   0   55:3   140 	SLOWTERM := SYSCOM^.MISCINFO.SLOWTERM;
+   704   0   55:3   151 	STUPID := SYSCOM^.MISCINFO.STUPID;
+   705   0   55:2   162       END
+   706   0   55:0   162   END (*INITWORKFILE*) ;
+   707   0   55:0   174   
+   708   0   57:D     1 PROCEDURE INITFILES;
+   709   0   57:0     0   BEGIN
+   710   0   57:1     0     FCLOSE(SWAPFIB^,CNORMAL);
+   711   0   57:1     6     FCLOSE(USERINFO.SYMFIBP^,CNORMAL);
+   712   0   57:1    12     FCLOSE(USERINFO.CODEFIBP^,CNORMAL);
+   713   0   57:1    18     FCLOSE(INPUTFIB^,CNORMAL);
+   714   0   57:1    24     FCLOSE(OUTPUTFIB^,CNORMAL);
+   715   0   57:1    30     LTITLE := 'CONSOLE:';
+   716   0   57:1    45     FOPEN(INPUTFIB^,LTITLE,TRUE,NIL);
+   717   0   57:1    54     FOPEN(OUTPUTFIB^,LTITLE,TRUE,NIL);
+   718   0   57:1    63     IF JUSTBOOTED THEN
+   719   0   57:2    66       BEGIN LTITLE := 'SYSTERM:';
+   720   0   57:3    81 	FOPEN(SYSTERM^,LTITLE,TRUE,NIL)
+   721   0   57:2    88       END;
+   722   0   57:1    90     GFILES[0] := INPUTFIB;
+   723   0   57:1   100     GFILES[1] := OUTPUTFIB;
+   724   0   57:1   110     GFILES[2] := SYSTERM;
+   725   0   57:1   120     GFILES[3] := NIL; GFILES[4] := NIL; GFILES[5] := NIL;
+   726   0   57:0   144   END (*INITFILES*) ;
+   727   0   57:0   156 
+   728   0   57:0   156 {.fs} { determine free data memory in bytes--code dup from RETROSTUFF unit }
+   729   0   58:D     3   function datamemavail: real;
+   730   0   58:D     3     type sixteenk = packed array [0..16383] of char;
+   731   0   58:D     3     var mema: integer; extra: real;
+   732   0   58:D     6         heapmark: ^integer; dummyalloc: ^sixteenk;
+   733   0   58:0     0   begin
+   734   0   58:1     0     extra := 0.0;
+   735   0   58:1    10     mema := memavail;
+   736   0   58:1    14     if (mema = 32767) { ReTro } or (memavail < 0) { other systems } then begin
+   737   0   58:3    26       mark(heapmark);               { too large: alloc 16k blocks until <32k }
+   738   0   58:3    30       repeat
+   739   0   58:4    30         new(dummyalloc);
+   740   0   58:4    37         extra := extra + sizeof(sixteenk);
+   741   0   58:4    50         mema := memavail;
+   742   0   58:3    54       until (mema <> 32767) and (memavail >= 0);
+   743   0   58:3    66       release(heapmark);
+   744   0   58:2    70     end;
+   745   0   58:1    70     datamemavail := extra + mema;   { now it returns a meaningful value }
+   746   0   58:0    81   end;
+   747   0   58:0    96 {.fs}
+   748   0   58:0    96 
+   749   0   48:0     0 BEGIN (*INITIALIZE*)
+   750   0   48:1     0   JUSTBOOTED := EMPTYHEAP = NIL;
+   751   0   48:1     7   MONTHS[ 0] := '???'; MONTHS[ 1] := 'Jan';
+   752   0   48:1    33   MONTHS[ 2] := 'Feb'; MONTHS[ 3] := 'Mar';
+   753   0   48:1    59   MONTHS[ 4] := 'Apr'; MONTHS[ 5] := 'May';
+   754   0   48:1    85   MONTHS[ 6] := 'Jun'; MONTHS[ 7] := 'Jul';
+   755   0   48:1   111   MONTHS[ 8] := 'Aug'; MONTHS[ 9] := 'Sep';
+   756   0   48:1   137   MONTHS[10] := 'Oct'; MONTHS[11] := 'Nov';
+   757   0   48:1   163   MONTHS[12] := 'Dec'; MONTHS[13] := '???';
+   758   0   48:1   189   MONTHS[14] := '???'; MONTHS[15] := '???';
+   759   0   48:1   215   IF JUSTBOOTED THEN INITHEAP
+   760   0   48:1   218   ELSE RELEASE(EMPTYHEAP);
+   761   0   48:1   227   INITUNITABLE; {and the date, filenames, *SYSTEM.STARTUP} 
+   762   0   48:1   229   INITFILES;
+   763   0   48:1   231   INITSYSCOM; (*AND SOME GLOBALS*)
+   764   0   48:1   233   INITWORKFILE;
+   765   0   48:1   235   CLEARSCREEN;
+   766   0   48:1   237   IF SYSCOM^.MISCINFO.HAS8510A THEN
+   767   0   48:2   247     INITCHARSET;
+   768   0   48:1   249   WRITELN(OUTPUT);
+   769   0   48:1   255   IF JUSTBOOTED THEN
+   770   0   48:2   258     IF NOT STARTUP THEN
+   771   0   48:3   263       WITH SYSCOM^ DO
+   772   0   48:4   269 	BEGIN
+   773   0   48:5   269 	  IF MISCINFO.HASXYCRT THEN
+   774   0   48:6   279 	    BEGIN
+   775   0   48:7   279 	      FGOTOXY(0,CRTINFO.HEIGHT DIV 3);
+   776   0   48:7   289 	      IF FILL_LEN > 0 THEN
+   777   0   48:8   294 		WRITE(OUTPUT,FILLER);
+   778   0   48:6   304 	      END;
+   779   0   48:5   304 	  WRITELN(OUTPUT,'Welcome  ',SYVID,',  to');
+   780   0   48:5   354 	  WRITELN(OUTPUT);
+   781   0   48:5   360 	  WRITELN(OUTPUT,'U.C.S.D.  Pascal  System  II.0');
+   782   0   48:5   406 	  WRITELN(OUTPUT);
+   783   0   48:5   412 {.fs}     FWRITEREAL(OUTPUTFIB^,DATAMEMAVAIL,0,5);
+   784   0   48:5   423 {.fs}	  WRITELN(OUTPUT,' bytes of data memory available');
+   785   0   48:5   470 {.fs}	  WRITELN(OUTPUT);
+   786   0   48:5   476 	  WITH THEDATE DO
+   787   0   48:6   476 	    WRITE(OUTPUT,'Current date is  ',DAY,'-',MONTHS[MONTH],'-',YEAR);
+   788   0   48:5   562 	  WRITELN(OUTPUT);
+   789   0   48:4   568 	END  ELSE  {nothing}
+   790   0   48:1   570   ELSE
+   791   0   48:2   572     WRITELN(OUTPUT,'System re-initialized')
+   792   0   48:0   609 END (*INITIALIZE*) ;
+   793   0   48:0   626 
+   794   0   48:0   626 (* --- SYSSEGS.B  --- *)
+   795   0   48:0   626 
+   796   0   48:0   626     (******************************************************************)
+   797   0   48:0   626     (*                                                                *)
+   798   0   48:0   626     (*  Copyright (c) 1978 Regents of the University of California.   *)
+   799   0   48:0   626     (*  Permission to copy or distribute this software or documen-    *)
+   800   0   48:0   626     (*  tation in hard or soft copy granted only by written license   *) 
+   801   0   48:0   626     (*  obtained from the Institute for Information Systems.          *)
+   802   0   48:0   626     (*                                                                *)
+   803   0   48:0   626     (******************************************************************)
+   804   0   48:0   626     
+   805   0   48:0   626 
+   806   0   48:0   626 {.fs} { cram all in one segment since we have unlimited code-space }
+   807   0   59:D     3 {.fs# SEGMENT } FUNCTION GETCMD(LASTST: CMDSTATE): CMDSTATE;
+   808   0   59:D     4   CONST ASSEMONLY = LINKANDGO;
+   809   0   59:D     4   TYPE  STATUS_ASSOCIATE = (FOUND_OK,FOUND_BAD,NOT_FOUND);
+   810   0   59:D     4   VAR CH: CHAR; BADCMD: BOOLEAN;
+   811   0   59:D     6       DONT_CARE : STATUS_ASSOCIATE;
+   812   0   59:D     7 
+   813   0   60:D     1   PROCEDURE RUNWORKFILE(OKTOLINK, RUNONLY: BOOLEAN);
+   814   0   60:D     3     FORWARD;
+   815   0   60:D     3 
+   816   0   61:D     3   FUNCTION SYS_ASSOCIATE(SYS_NAME:SYSFILE):BOOLEAN;
+   817   0   61:D     4     FORWARD;
+   818   0   61:D     4 
+   819   0   62:D     3   FUNCTION ASSOCIATE(TITLE: STRING; OKTOLINK, RUNONLY,ERROR_OK: BOOLEAN; 
+   820   0   62:D     7 		     VAR ASS_STATUS : STATUS_ASSOCIATE): BOOLEAN;
+   821   0   62:D    49     LABEL 1;
+   822   0   62:D    49     VAR RSLT: IORSLTWD; LSEG: SEGRANGE;
+   823   0   62:D    51 {.fs}   RSEG: 0..255;  { resident segment index }
+   824   0   62:D    52 	SEGTBL: RECORD
+   825   0   62:D    52 	          DISKINFO: ARRAY [SEGRANGE] OF SEGDESC;
+   826   0   62:D    52 	          SEGNAME: ARRAY [SEGRANGE] OF 
+   827   0   62:D    52 	                     PACKED ARRAY [0..7] OF CHAR;
+   828   0   62:D    52 	          SEGKIND: ARRAY [SEGRANGE] OF
+   829   0   62:D    52 	                     (LINKED,HOSTSEG,SEGPROC,UNITSEG,SEPRTSEG);
+   830   0   62:D    52 {.fs#	          FILLER: ARRAY [0..143] OF INTEGER } { Apple .CODE files uses this }
+   831   0   62:D    52 {.fs}             TEXTADDR: ARRAY [SEGRANGE] OF INTEGER;    { cf. LIBRARY.TEXT }
+   832   0   62:D    52 {.fs}             SEGINFO: PACKED ARRAY [SEGRANGE] OF PACKED RECORD
+   833   0   62:D    52 {.fs}                        SEGNUM: 0..255;                { actual seg no }
+   834   0   62:D    52 {.fs}                        MTYPE: 0..15;                  { 2=p-code l.-end }
+   835   0   62:D    52 {.fs}                        UNUSED: BOOLEAN;
+   836   0   62:D    52 {.fs}                        VERSION: 0..7;                 { 2, 3: Apple ][, /// }
+   837   0   62:D    52 {.fs}                      END;
+   838   0   62:D    52 {.fs}             INTRINS_SEGS: PACKED ARRAY [0..63] OF BOOLEAN;    { per Apple doc }
+   839   0   62:D    52 {.fs}             FILLER: ARRAY [1..68] OF INTEGER;
+   840   0   62:D    52 {.fs}             NOTICE: STRING[79]
+   841   0   62:D    52 	        END { SEGTBL } ;
+   842   0   62:0     0   BEGIN 
+   843   0   62:1     0     ASS_STATUS := NOT_FOUND;
+   844   0   62:1     8     ASSOCIATE := FALSE;
+   845   0   62:1    11     FOPEN(USERINFO.CODEFIBP^,TITLE,TRUE,NIL);
+   846   0   62:1    20     RSLT := SYSCOM^.IORSLT;
+   847   0   62:1    26     IF RSLT <> INOERROR THEN
+   848   0   62:2    32       BEGIN
+   849   0   62:3    32 	IF ERROR_OK THEN
+   850   0   62:4    35           IF RSLT = IBADTITLE THEN
+   851   0   62:5    41             WRITE(OUTPUT,'Illegal file name')
+   852   0   62:4    68           ELSE
+   853   0   62:5    70             WRITE(OUTPUT,'No file ',TITLE);
+   854   0   62:3    97         GOTO 1
+   855   0   62:2    99       END;
+   856   0   62:1    99     ASS_STATUS := FOUND_BAD; {until shown otherwise}
+   857   0   62:1   102     WITH USERINFO,SYSCOM^ DO
+   858   0   62:2   108       IF CODEFIBP^.FHEADER.DFKIND <> CODEFILE THEN
+   859   0   62:3   120 	BEGIN
+   860   0   62:4   120 	  WRITE(OUTPUT,TITLE,' not code');
+   861   0   62:4   148 	  GOTO 1
+   862   0   62:3   150 	END
+   863   0   62:2   150       ELSE
+   864   0   62:3   152 	BEGIN
+   865   0   62:4   152 	  UNITREAD(CODEFIBP^.FUNIT,SEGTBL,SIZEOF(SEGTBL),
+   866   0   62:4   162 	                CODEFIBP^.FHEADER.DFIRSTBLK);
+   867   0   62:4   170 	  IF IORESULT <> ORD(INOERROR) THEN
+   868   0   62:5   176 	    BEGIN
+   869   0   62:6   176 	      WRITE(OUTPUT,'Bad block #0');
+   870   0   62:6   198 	      GOTO 1
+   871   0   62:5   200 	    END;
+   872   0   62:5   200 {.fs#     // This is no longer needed:                                   }
+   873   0   62:5   200 {.fs#	  WITH SEGTBL DO                                                 }
+   874   0   62:5   200 {.fs#	    FOR LSEG := 0 TO MAXSEG DO                                   }
+   875   0   62:5   200 {.fs#         IF (SEGKIND[LSEG]<LINKED) OR (SEGKIND[LSEG]>SEPRTSEG) THEN }
+   876   0   62:5   200 {.fs#	        BEGIN } { PRE I.5 CODE...FIX UP! }
+   877   0   62:5   200 {.fs#	          FILLCHAR(SEGKIND, SIZEOF(SEGKIND), ORD(LINKED));       }
+   878   0   62:5   200 {.fs#	          FILLCHAR(FILLER, SIZEOF(FILLER), 0);                   }
+   879   0   62:5   200 {.fs#	          UNITWRITE(CODEFIBP^.FUNIT, SEGTBL, SIZEOF(SEGTBL),     }
+   880   0   62:5   200 {.fs#	                        CODEFIBP^.FHEADER.DFIRSTBLK)             }
+   881   0   62:5   200 {.fs#	        END;                                                     }
+   882   0   62:4   200 	  WITH SEGTBL DO
+   883   0   62:5   200 	    FOR LSEG := 0 TO MAXSEG DO
+   884   0   62:6   215 	      IF SEGKIND[LSEG] <> LINKED THEN
+   885   0   62:7   227 	      BEGIN
+   886   0   62:8   227 	        IF OKTOLINK THEN
+   887   0   62:9   230 	          BEGIN WRITELN(OUTPUT,'Linking...');
+   888   0   62:0   256 	            FCLOSE(CODEFIBP^, CNORMAL);
+   889   0   62:0   262 	            IF SYS_ASSOCIATE(LINKER) THEN
+   890   0   62:1   269 	              BEGIN
+   891   0   62:2   269 	                IF RUNONLY THEN GETCMD := LINKANDGO
+   892   0   62:2   272 	                ELSE GETCMD := LINKDEBUG;
+   893   0   62:2   280 	                EXIT(GETCMD)
+   894   0   62:1   284 	              END
+   895   0   62:9   284 	          END
+   896   0   62:8   284 	        ELSE
+   897   0   62:9   286 	          IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+   898   0   62:0   295                     WRITE(OUTPUT,'Must L(ink first');
+   899   0   62:8   321 	        GOTO 1
+   900   0   62:7   323 	      END;
+   901   0   62:7   331 
+   902   0   62:7   331 {.fs#	  FOR LSEG := 0 TO MAXSEG DO }
+   903   0   62:7   331 {.fs#       { original code cannot handle Apple disks' seg redirections }
+   904   0   62:7   331 {.fs#	    IF (LSEG = 1) OR (LSEG >= 7) THEN              }
+   905   0   62:7   331 {.fs#	      WITH SEGTABLE[LSEG],SEGTBL.DISKINFO[LSEG] DO }
+   906   0   62:7   331 
+   907   0   62:7   331 {.fs}     { apply seg mapping as used in Apple .CODE files }
+   908   0   62:4   331 {.fs}	  FOR RSEG := 0 TO MAX_RSEG DO              { clear out resident seg table }
+   909   0   62:5   346 {.fs}	    IF (RSEG > 0) THEN                      { protect SYSTEM segment #0 }
+   910   0   62:6   352 {.fs} 	      WITH SEGTABLE[RSEG] DO BEGIN
+   911   0   62:8   364 {.fs}	        CODEUNIT := 0; CODEDESC.CODELENG := 0; CODEDESC.DISKADDR := 0
+   912   0   62:7   381 {.fs}	      END;
+   913   0   62:4   391 {.fs}	  FOR LSEG := 0 TO MAXSEG DO                { set up new CODE-file segments }
+   914   0   62:5   406 {.fs}       IF SEGTBL.DISKINFO[LSEG].CODELENG > 0 THEN BEGIN
+   915   0   62:7   417 {.fs}         RSEG := SEGTBL.SEGINFO[LSEG].SEGNUM;  { map to resident seg no }
+   916   0   62:7   429 {.fs}         IF RSEG = 0 THEN RSEG := LSEG;        { 0 means old file }
+   917   0   62:7   439 {.fs}	      IF (RSEG > 0) THEN                    { protect SYSTEM segment #0 }
+   918   0   62:8   445 {.fs} 	        WITH SEGTABLE[RSEG],SEGTBL.DISKINFO[LSEG] DO
+   919   0   62:9   466 	        BEGIN CODEUNIT := CODEFIBP^.FUNIT;
+   920   0   62:0   474 	          CODEDESC.CODELENG := CODELENG;
+   921   0   62:0   484 	          CODEDESC.DISKADDR := DISKADDR+
+   922   0   62:0   493 	                                CODEFIBP^.FHEADER.DFIRSTBLK
+   923   0   62:9   496 	        END
+   924   0   62:6   500 {.fs}	    END
+   925   0   62:6   500 {.fs}       { TODO: Apple system also sets up instrinsic segments here }
+   926   0   62:3   500 	END;
+   927   0   62:1   508     ASS_STATUS := FOUND_OK;
+   928   0   62:1   511     ASSOCIATE := TRUE;
+   929   0   62:1   514 1:  FCLOSE(USERINFO.CODEFIBP^,CNORMAL)
+   930   0   62:0   518   END (*ASSOCIATE*) ;
+   931   0   62:0   542 
+   932   0   61:D     3   FUNCTION SYS_ASSOCIATE{(SYS_NAME:SYSFILE):BOOLEAN};
+   933   0   61:D     4   VAR  VOL : VID;
+   934   0   61:D     8        TITLE : TID;
+   935   0   61:D    16        SEGS : INTEGER;
+   936   0   61:D    17        KIND : FILEKIND;
+   937   0   61:D    18        LUNIT : UNITNUM;
+   938   0   61:D    19        LTITLE : FULL_ID;
+   939   0   61:D    31        ASS_STATUS : STATUS_ASSOCIATE;
+   940   0   61:0     0   BEGIN
+   941   0   61:1     0     SYS_ASSOCIATE := ASSOCIATE(FILENAME[SYS_NAME],FALSE,FALSE,FALSE,ASS_STATUS);
+   942   0   61:1    18     IF ASS_STATUS = NOT_FOUND THEN
+   943   0   61:2    24       IF SCANTITLE(FILENAME[SYS_NAME],VOL,TITLE,SEGS,KIND) THEN
+   944   0   61:3    45 	BEGIN
+   945   0   61:4    45 	  LUNIT := 0;
+   946   0   61:4    48 	  REPEAT
+   947   0   61:5    48 	    LUNIT := LUNIT + 1;
+   948   0   61:5    54 	    WITH UNITABLE[LUNIT] DO
+   949   0   61:6    63 	      IF UISBLKD THEN
+   950   0   61:7    68 		BEGIN
+   951   0   61:8    68 		  UVID := '';
+   952   0   61:8    75 		  IF FETCHDIR(LUNIT) THEN
+   953   0   61:9    83 		    BEGIN
+   954   0   61:0    83 		      UVID := SYSCOM^.GDIRP^[0].DVID;
+   955   0   61:0    96 		      LTITLE := CONCAT(UVID,':',TITLE);
+   956   0   61:0   131 		      IF LTITLE <> FILENAME[SYS_NAME] THEN
+   957   0   61:1   144 			IF ASSOCIATE(LTITLE,FALSE,FALSE,FALSE,ASS_STATUS) THEN 
+   958   0   61:2   157 			  FILENAME[SYS_NAME] := LTITLE;
+   959   0   61:9   168 		      END;
+   960   0   61:7   168 		  END; { of IF ISBLOCKED ...}
+   961   0   61:4   168 	    UNTIL (LUNIT = MAXUNIT) OR (ASS_STATUS IN [FOUND_OK,FOUND_BAD]);
+   962   0   61:4   180 	  SYS_ASSOCIATE := ASS_STATUS = FOUND_OK;
+   963   0   61:4   186 	  IF ASS_STATUS = NOT_FOUND THEN
+   964   0   61:5   192 	    IF ASSOCIATE(FILENAME[SYS_NAME],FALSE,FALSE,TRUE,ASS_STATUS) THEN;
+   965   0   61:5   210 			{just to get the appropriate error}
+   966   0   61:3   210 	  END; {of IF SCANTITLE...}
+   967   0   61:0   210     END;  {of SYS_ASSOCIATE}
+   968   0   61:0   228 
+   969   0   61:0   228 {.fs} { from EDITOR source }
+   970   0   63:D     3 {.fs} FUNCTION UCLC(CH:CHAR):CHAR; (* Map Lower Case to Upper Case *)
+   971   0   63:0     0 {.fs} BEGIN
+   972   0   63:1     0 {.fs}   IF CH IN ['a'..'z'] THEN UCLC:=CHR(ORD(CH)-32) ELSE UCLC:=CH
+   973   0   63:0    31 {.fs} END;
+   974   0   63:0    46 
+   975   0   63:0    46 {.fs} { based on EDITOR source }
+   976   0   64:D     1 {.fs} PROCEDURE INSERTEXT(VAR FILENAME: STRING; EXT: STRING);
+   977   0   64:D    44 {.fs}   VAR I, XLEN: INTEGER;
+   978   0   64:0     0 {.fs} BEGIN
+   979   0   64:1     0 {.fs}   XLEN:=LENGTH(EXT)-1;
+   980   0   64:1    13 {.fs}   FOR I:=1 TO LENGTH(FILENAME) DO FILENAME[I]:=UCLC(FILENAME[I]);
+   981   0   64:1    48 {.fs}   IF ((POS(EXT,FILENAME)<>LENGTH(FILENAME)-XLEN) OR
+   982   0   64:1    63 {.fs}      (LENGTH(FILENAME)<=XLEN)) AND (FILENAME[LENGTH(FILENAME)]<>'.') THEN
+   983   0   64:2    80 {.fs}     FILENAME:=CONCAT(FILENAME,EXT);
+   984   0   64:1   105 {.fs}   IF FILENAME[LENGTH(FILENAME)]='.' THEN 
+   985   0   64:2   114 {.fs}     DELETE(FILENAME,LENGTH(FILENAME),1);
+   986   0   64:0   122 {.fs} END;
+   987   0   64:0   136 
+   988   0   65:D     1 PROCEDURE STARTCOMPILE(NEXTST: CMDSTATE);
+   989   0   65:D     2     LABEL 1;
+   990   0   65:D     2     VAR TEXT_TITLE,TITLE: STRING[40];   
+   991   0   65:D    44 	I : INTEGER;
+   992   0   65:D    45 	CODE_NAME : FULL_ID;
+   993   0   65:D    57 	SYS_TYPE : SYSFILE;
+   994   0   65:0     0   BEGIN
+   995   0   65:1     0     IF NEXTST = ASSEMONLY THEN
+   996   0   65:2     5       WRITE(OUTPUT,'Assembling')
+   997   0   65:1    25     ELSE
+   998   0   65:2    27       WRITE(OUTPUT,'Compiling');
+   999   0   65:1    46     WRITELN(OUTPUT,'...');
+  1000   0   65:1    65     IF NEXTST = ASSEMONLY THEN
+  1001   0   65:2    70       SYS_TYPE := ASSMBLER
+  1002   0   65:1    70     ELSE
+  1003   0   65:2    75       SYS_TYPE := COMPILER;
+  1004   0   65:1    78     IF SYS_ASSOCIATE(SYS_TYPE) THEN
+  1005   0   65:2    86       WITH USERINFO DO
+  1006   0   65:3    86         BEGIN
+  1007   0   65:4    86 {.fs}     TEXT_TITLE := '';     { used for $ expansion }
+  1008   0   65:4    93 	  IF GOTSYM THEN
+  1009   0   65:5    98 	    TITLE := CONCAT(SYMVID,':',SYMTID)
+  1010   0   65:4   133 	  ELSE
+  1011   0   65:5   137 	    BEGIN
+  1012   0   65:6   137 	      IF NEXTST = ASSEMONLY THEN
+  1013   0   65:7   142 		WRITE(OUTPUT, 'Assemble')
+  1014   0   65:6   160 	      ELSE
+  1015   0   65:7   162 		WRITE(OUTPUT, 'Compile');
+  1016   0   65:6   179 	      WRITE(OUTPUT,' what text? ');
+  1017   0   65:6   201 	      READLN(INPUT, TEXT_TITLE);
+  1018   0   65:6   216 	      IF TEXT_TITLE = '' THEN GOTO 1;
+  1019   0   65:6   227 {.fs#	      TITLE := CONCAT(TEXT_TITLE,'.TEXT'); } { concat ext only if not there }
+  1020   0   65:6   227 {.fs}	      INSERTEXT(TEXT_TITLE,'.TEXT');
+  1021   0   65:6   239 {.fs}	      TITLE := TEXT_TITLE;
+  1022   0   65:6   245 {.fs}         I := POS('.TEXT',TEXT_TITLE);     { remove extension if any because }
+  1023   0   65:6   262 {.fs}         IF I=LENGTH(TEXT_TITLE)-4 THEN    { TEXT_TITLE used for $ expansion }
+  1024   0   65:7   273 {.fs}           DELETE(TEXT_TITLE,I,5);
+  1025   0   65:5   281 	    END;
+  1026   0   65:4   281 	  FOPEN(SYMFIBP^,TITLE,TRUE,NIL);
+  1027   0   65:4   290 	  IF IORESULT <> ORD(INOERROR) THEN
+  1028   0   65:5   296 	    BEGIN 
+  1029   0   65:6   296 	      WRITE(OUTPUT,'Can''t find ', TITLE);
+  1030   0   65:6   326 	      GOTSYM := FALSE; GOTO 1
+  1031   0   65:5   332 	    END;
+  1032   0   65:4   332 	  TITLE := CONCAT(COPY(FILENAME[SYS_TYPE],1,
+  1033   0   65:4   351 			  POS(':',FILENAME[SYS_TYPE])),'SYSTEM.SWAPDISK');
+  1034   0   65:4   406 	  FOPEN(SWAPFIB^,TITLE,TRUE,NIL);
+  1035   0   65:4   415 	  CODE_NAME := '*SYSTEM.WRK.CODE[*]';
+  1036   0   65:4   441 	  IF NOT GOTSYM THEN
+  1037   0   65:5   447 	    BEGIN
+  1038   0   65:6   447 	      WRITE(OUTPUT, 'To what codefile? ');
+  1039   0   65:6   475 	      READLN(INPUT, TITLE);
+  1040   0   65:6   490 	      IF TITLE <> '' THEN
+  1041   0   65:7   499 		IF TITLE[1] = SYSCOM^.CRTINFO.ALTMODE THEN
+  1042   0   65:8   514 		  GOTO 1  ELSE
+  1043   0   65:8   518 		  BEGIN       {Treat '$' as a wildcard}
+  1044   0   65:9   518 		    I := POS('$',TITLE);
+  1045   0   65:9   531 		    WHILE I <> 0 DO
+  1046   0   65:0   537 		      BEGIN
+  1047   0   65:1   537 			DELETE(TITLE,I,1);
+  1048   0   65:1   545 			INSERT(COPY(TEXT_TITLE,1,LENGTH(TEXT_TITLE)),
+  1049   0   65:1   559 			       TITLE,I);
+  1050   0   65:1   567 			I := POS('$',TITLE);
+  1051   0   65:0   580 			END;
+  1052   0   65:9   582 		    IF TITLE[LENGTH(TITLE)] <> ']' THEN
+  1053   0   65:9   593 {.fs#		      CODE_NAME := CONCAT(TITLE,'.CODE[*]')  ELSE  } { handle consistently }
+  1054   0   65:0   593 {.fs}                 BEGIN
+  1055   0   65:1   593 {.fs}		        CODE_NAME := TITLE;
+  1056   0   65:1   599 {.fs}                   INSERTEXT(CODE_NAME,'.CODE'); { concat only if not there }
+  1057   0   65:1   611 {.fs}	                INSERT('[*]',CODE_NAME,LENGTH(CODE_NAME)+1);
+  1058   0   65:0   629 {.fs}                 END ELSE
+  1059   0   65:0   631 		        CODE_NAME := TITLE;     
+  1060   0   65:8   637 		  END;
+  1061   0   65:5   637 	    END;
+  1062   0   65:4   637 	  FOPEN(CODEFIBP^,CODE_NAME,FALSE,NIL);
+  1063   0   65:4   646 	  IF IORESULT <> ORD(INOERROR) THEN
+  1064   0   65:5   652 	    BEGIN 
+  1065   0   65:6   652 	      WRITE(OUTPUT,'Can''t open ',CODE_NAME);
+  1066   0   65:6   682 	      GOTO 1
+  1067   0   65:5   684 	    END;
+  1068   0   65:4   684 	  ERRNUM := 0; ERRBLK := 0; ERRSYM := 0;
+  1069   0   65:4   696 	  IF NEXTST = ASSEMONLY THEN
+  1070   0   65:5   701 	    NEXTST := COMPONLY;
+  1071   0   65:4   704 	  GETCMD := NEXTST; EXIT(GETCMD);
+  1072   0   65:4   711 	1:
+  1073   0   65:4   711 	  FCLOSE(SYMFIBP^,CNORMAL);
+  1074   0   65:4   717 	  FCLOSE(SWAPFIB^,CNORMAL);
+  1075   0   65:3   723         END;
+  1076   0   65:0   723   END (*STARTCOMPILE*) ;
+  1077   0   65:0   748 
+  1078   0   66:D     1   PROCEDURE FINISHCOMPILE;
+  1079   0   66:D     1   VAR  RESULT : INTEGER;
+  1080   0   66:0     0   BEGIN
+  1081   0   66:1     0     FCLOSE(USERINFO.SYMFIBP^,CNORMAL);
+  1082   0   66:1     6     FCLOSE(SWAPFIB^,CNORMAL);
+  1083   0   66:1    12     IF SYSCOM^.MISCINFO.HAS8510A THEN
+  1084   0   66:2    22       UNITCLEAR(3);
+  1085   0   66:1    25     WITH USERINFO DO
+  1086   0   66:2    25       IF ERRNUM > 0 THEN
+  1087   0   66:3    32 	BEGIN GOTCODE := FALSE;
+  1088   0   66:4    36 	  FCLOSE(CODEFIBP^,CPURGE);
+  1089   0   66:4    42 	  IF ERRBLK > 0 THEN
+  1090   0   66:5    49 	    BEGIN CLEARSCREEN; WRITELN(OUTPUT);
+  1091   0   66:6    57 	      IF SYS_ASSOCIATE(EDITOR) THEN
+  1092   0   66:7    64 	        BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+  1093   0   66:5    71 	    END
+  1094   0   66:3    71 	END
+  1095   0   66:2    71       ELSE
+  1096   0   66:3    73 	BEGIN 
+  1097   0   66:4    73 	  IF CODETID <> 'SYSTEM.WRK.CODE' THEN
+  1098   0   66:5    98 	    BEGIN
+  1099   0   66:6    98 	      CODEVID := CODEFIBP^.FVID;
+  1100   0   66:6   108 	      CODETID := CODEFIBP^.FHEADER.DTID;
+  1101   0   66:6   118 	      IF CODETID <> 'SYSTEM.WRK.CODE' THEN
+  1102   0   66:7   143 		BEGIN
+  1103   0   66:8   143 		  WORKVID := CODEVID;
+  1104   0   66:8   151 		  IF LENGTH(CODETID) > 5 THEN
+  1105   0   66:9   160 		    IF COPY(CODETID,LENGTH(CODETID)-4,5) = '.CODE' THEN
+  1106   0   66:0   190 		      WORKTID := COPY(CODETID,1,LENGTH(CODETID)-5);
+  1107   0   66:7   213 		  END;
+  1108   0   66:5   213 	      END;
+  1109   0   66:4   213 	  GOTCODE := TRUE;
+  1110   0   66:4   217 	  {FIB for codefile was closed in COMMAND}
+  1111   0   66:4   217 	  IF LASTST IN [COMPANDGO,COMPDEBUG] THEN
+  1112   0   66:5   225 	    RUNWORKFILE(TRUE, LASTST = COMPANDGO)
+  1113   0   66:3   229 	END
+  1114   0   66:0   231   END (*FINISHCOMPILE*) ;
+  1115   0   66:0   246 
+  1116   0   67:D     1   PROCEDURE EXECUTE;
+  1117   0   67:D     1     VAR TITLE: STRING[255];
+  1118   0   67:0     0   BEGIN
+  1119   0   67:1     0     WRITE(OUTPUT,'Execute');
+  1120   0   67:1    17     IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+  1121   0   67:2    28       WRITE(OUTPUT,' what file');
+  1122   0   67:1    48     WRITE(OUTPUT,'? '); READLN(TITLE);
+  1123   0   67:1    77     IF LENGTH(TITLE) > 0 THEN
+  1124   0   67:2    85       BEGIN
+  1125   0   67:2    85 {.fs#	IF TITLE[LENGTH(TITLE)] = '.' THEN       } { handle this consistently }
+  1126   0   67:2    85 {.fs#	  DELETE(TITLE,LENGTH(TITLE),1)          }
+  1127   0   67:2    85 {.fs#	ELSE                                     }
+  1128   0   67:2    85 {.fs#	  INSERT('.CODE',TITLE,LENGTH(TITLE)+1); }
+  1129   0   67:3    85 {.fs}   INSERTEXT(TITLE,'.CODE');
+  1130   0   67:3    97 	IF ASSOCIATE(TITLE, FALSE, FALSE, TRUE, DONT_CARE) THEN
+  1131   0   67:4   110 	  BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+  1132   0   67:2   117       END
+  1133   0   67:0   117   END (*EXECUTE*) ;
+  1134   0   67:0   130 
+  1135   0   60:D     1   PROCEDURE RUNWORKFILE;
+  1136   0   60:0     0   BEGIN
+  1137   0   60:1     0     WITH USERINFO DO
+  1138   0   60:2     0     IF GOTCODE THEN
+  1139   0   60:3     5       BEGIN 
+  1140   0   60:4     5 	CLEARSCREEN;
+  1141   0   60:4     7 	WRITELN(OUTPUT);
+  1142   0   60:4    13 	IF ASSOCIATE(CONCAT(CODEVID,':',CODETID), OKTOLINK, RUNONLY, TRUE, 
+  1143   0   60:4    49 		     DONT_CARE) THEN
+  1144   0   60:5    57 	  BEGIN
+  1145   0   60:6    57 	    WRITELN(OUTPUT,'Running...');
+  1146   0   60:6    83 	    IF RUNONLY THEN
+  1147   0   60:7    86 	        GETCMD := SYSPROG
+  1148   0   60:6    86 	    ELSE
+  1149   0   60:7    91 	        GETCMD := DEBUGCALL;
+  1150   0   60:6    94 	    EXIT(GETCMD)
+  1151   0   60:5    98 	  END;
+  1152   0   60:4    98 	IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+  1153   0   60:5   107           GOTCODE := FALSE
+  1154   0   60:3   107       END
+  1155   0   60:2   111     ELSE
+  1156   0   60:3   113       IF RUNONLY THEN
+  1157   0   60:4   116 	STARTCOMPILE(COMPANDGO)
+  1158   0   60:3   117       ELSE
+  1159   0   60:4   121 	STARTCOMPILE(COMPDEBUG)
+  1160   0   60:0   122   END { RUNWORKFILE } ;
+  1161   0   60:0   136 
+  1162   0   59:0     0 BEGIN (*GETCMD*)
+  1163   0   59:1     0   INPUTFIB^.FEOF := FALSE;
+  1164   0   59:1     7   OUTPUTFIB^.FEOF := FALSE;
+  1165   0   59:1    14   SYSTERM^.FEOF := FALSE;
+  1166   0   59:1    21   GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+  1167   0   59:1    41   IF LASTST = HALTINIT THEN
+  1168   0   59:2    46     IF ASSOCIATE('*SYSTEM.STARTUP',FALSE,FALSE,FALSE,DONT_CARE) THEN
+  1169   0   59:3    75       BEGIN CLEARSCREEN;
+  1170   0   59:4    77         GETCMD := SYSPROG; EXIT(GETCMD)
+  1171   0   59:3    84       END;
+  1172   0   59:1    84   IF LASTST IN [COMPONLY,COMPANDGO,COMPDEBUG] THEN
+  1173   0   59:2    92     FINISHCOMPILE;
+  1174   0   59:1    94   IF LASTST IN [LINKANDGO,LINKDEBUG] THEN
+  1175   0   59:2   102     RUNWORKFILE(FALSE, LASTST = LINKANDGO);
+  1176   0   59:1   108   IF SYSCOM^.MISCINFO.USERKIND = AQUIZ THEN
+  1177   0   59:2   120     IF LASTST = HALTINIT THEN
+  1178   0   59:3   125       BEGIN LASTST := COMPANDGO; RUNWORKFILE(TRUE, TRUE) END
+  1179   0   59:2   132     ELSE
+  1180   0   59:3   134       BEGIN
+  1181   0   59:4   134         EMPTYHEAP := NIL;
+  1182   0   59:4   138         GETCMD := HALTINIT;
+  1183   0   59:4   141         EXIT(GETCMD)
+  1184   0   59:3   145       END;
+  1185   0   59:1   145   WITH USERINFO DO
+  1186   0   59:2   145     BEGIN ERRNUM := 0; ERRBLK := 0; ERRSYM := 0 END;
+  1187   0   59:1   157   BADCMD := FALSE;
+  1188   0   59:1   160   REPEAT
+  1189   0   59:2   160     PL :=
+  1190   0   59:2   163 {.fs# 'Command: E(dit, R(un, F(ile, C(omp, L(ink, X(ecute, A(ssem, D(ebug,? [II.0]';}
+  1191   0   59:2   163 {.fs} 'Command: E(dit, R(un, F(ile, C(ompile, L(ink, X(ecute, D(ebug, ? [II.0.fs]';
+  1192   0   59:2   242     PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN;
+  1193   0   59:2   253     IF CH = '?' THEN
+  1194   0   59:3   258       BEGIN PL := 'Command: U(ser restart, I(nitialize, H(alt';
+  1195   0   59:4   308         PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN
+  1196   0   59:3   317       END;
+  1197   0   59:2   319     BADCMD := NOT (CH IN ['E','R','F','C','L','X','A','D','U','I','H','?']);
+  1198   0   59:2   339     IF NOT BADCMD THEN
+  1199   0   59:3   343       CASE CH OF
+  1200   0   59:3   346 	'E':  BEGIN WRITELN(OUTPUT);
+  1201   0   59:5   352 	        IF SYS_ASSOCIATE(EDITOR) THEN
+  1202   0   59:6   359 	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+  1203   0   59:4   366 	      END;
+  1204   0   59:3   368 	'F':  BEGIN WRITELN(OUTPUT);
+  1205   0   59:5   374 	        IF SYS_ASSOCIATE(FILER) THEN
+  1206   0   59:6   381 	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+  1207   0   59:4   388 	      END;
+  1208   0   59:3   390 	'L':  BEGIN WRITELN(OUTPUT,'Linking...');
+  1209   0   59:5   416 	        IF SYS_ASSOCIATE(LINKER) THEN
+  1210   0   59:6   423 	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+  1211   0   59:4   430 	      END;
+  1212   0   59:3   432 	'X':  EXECUTE;
+  1213   0   59:3   436 	'C':  STARTCOMPILE(COMPONLY);
+  1214   0   59:3   441 {.fs#	'A':  STARTCOMPILE(ASSEMONLY); }
+  1215   0   59:3   441         'U':  IF LASTST <> UPROGNOU THEN
+  1216   0   59:5   446 	        BEGIN
+  1217   0   59:6   446 	          WRITELN(OUTPUT,'Restarting...');
+  1218   0   59:6   475 	          GETCMD := SYSPROG; EXIT(GETCMD)
+  1219   0   59:5   482 	        END
+  1220   0   59:4   482 	      ELSE
+  1221   0   59:5   484 	        BEGIN WRITELN(OUTPUT); WRITE(OUTPUT,'U not allowed') END;
+  1222   0   59:3   515     'R','D':  RUNWORKFILE(TRUE, CH = 'R');
+  1223   0   59:3   523     'I','H':  BEGIN
+  1224   0   59:5   523 	        GETCMD := HALTINIT;
+  1225   0   59:5   526 	        IF CH = 'H' THEN
+  1226   0   59:6   531 	          EMPTYHEAP := NIL;
+  1227   0   59:5   535 	        EXIT(GETCMD)
+  1228   0   59:4   539 	      END
+  1229   0   59:3   539       END
+  1230   0   59:1   592   UNTIL FALSE
+  1231   0   59:0   592 END (*GETCMD*) ;
+  1232   0   59:0   616 
+  1233   0   59:0   616 (* --- SYSTEM.A --- *)
+  1234   0   59:0   616 
+  1235   0   59:0   616     (******************************************************************)
+  1236   0   59:0   616     (*                                                                *)
+  1237   0   59:0   616     (*  Copyright (c) 1978 Regents of the University of California.   *)
+  1238   0   59:0   616     (*  Permission to copy or distribute this software or documen-    *)
+  1239   0   59:0   616     (*  tation in hard or soft copy granted only by written license   *) 
+  1240   0   59:0   616     (*  obtained from the Institute for Information Systems.          *)
+  1241   0   59:0   616     (*                                                                *)
+  1242   0   59:0   616     (******************************************************************)
+  1243   0   59:0   616     
+  1244   0   59:0   616 
+  1245   0    2:D     1 PROCEDURE EXECERROR;
+  1246   0    2:D     1 
+  1247   0   68:D     1   PROCEDURE PRINTLOCS;
+  1248   0   68:0     0   BEGIN
+  1249   0   68:1     0     WITH SYSCOM^,SYSCOM^.BOMBP^ DO
+  1250   0   68:2    11       BEGIN
+  1251   0   68:3    11 	WRITE(OUTPUT,'S# ',MSSEG^.BYTE[0],
+  1252   0   68:3    35 		   ', P# ',MSJTAB^.BYTE[0],
+  1253   0   68:3    61 		   ', I# ');
+  1254   0   68:3    76 	IF MISCINFO.IS_FLIPT THEN
+  1255   0   68:4    84 	  WRITELN(MSIPC)
+  1256   0   68:3    99 	ELSE
+  1257   0   68:4   101 	  WRITELN(MSIPC - (ORD(MSJTAB) - 2 - MSJTAB^.WORD[-1]));
+  1258   0   68:2   129       END;
+  1259   0   68:0   129     END {of printlocs};
+  1260   0   68:0   142 
+  1261   0    2:0     0 BEGIN
+  1262   0    2:1     0   WITH SYSCOM^ DO
+  1263   0    2:2     5     BEGIN
+  1264   0    2:3     5       IF XEQERR = 4 THEN
+  1265   0    2:4    11 	BEGIN RELEASE(EMPTYHEAP);
+  1266   0    2:5    16 	  PL := '*STK OFLOW*';
+  1267   0    2:5    35 	  UNITWRITE(2,PL[1],LENGTH(PL));
+  1268   0    2:5    49 	  EXIT(COMMAND)
+  1269   0    2:4    53 	END;
+  1270   0    2:3    53       BOMBP^.MSIPC := BOMBIPC;
+  1271   0    2:3    61       IF BUGSTATE <> 0 THEN
+  1272   0    2:4    67 	BEGIN DEBUGGER; XEQERR := 0 END
+  1273   0    2:3    74       ELSE
+  1274   0    2:4    76 	BEGIN RELEASE(EMPTYHEAP);
+  1275   0    2:5    81 	  GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+  1276   0    2:5   101 	  BOMBIPC := IORESULT; FWRITELN(SYSTERM^);
+  1277   0    2:5   112 	  IF SYSUNIT = VOLSEARCH(SYVID,FALSE,SYSCOM^.GDIRP{watch out}) THEN
+  1278   0    2:6   130 	    PRINTERROR(XEQERR,BOMBIPC)
+  1279   0    2:5   135 	  ELSE
+  1280   0    2:6   139 	    BEGIN
+  1281   0    2:7   139 	      WRITELN(OUTPUT,'Exec err # ',XEQERR);
+  1282   0    2:7   175 	      IF XEQERR = 10 THEN
+  1283   0    2:8   181 	        WRITE(OUTPUT,',',BOMBIPC)
+  1284   0    2:6   199 	    END;
+  1285   0    2:5   199 	  PRINTLOCS;
+  1286   0    2:5   201 	  IF NOT SPACEWAIT(TRUE) THEN EXIT(COMMAND)
+  1287   0    2:4   213 	END
+  1288   0    2:2   213     END
+  1289   0    2:0   213 END (*EXECERROR*) ;
+  1290   0    2:0   228 
+  1291   0   69:D     3 FUNCTION CHECKDEL(CH: CHAR; VAR SINX: INTEGER): BOOLEAN;
+  1292   0   69:0     0 BEGIN CHECKDEL := FALSE;
+  1293   0   69:1     3   WITH SYSCOM^,CRTCTRL DO
+  1294   0   69:2    13     BEGIN
+  1295   0   69:3    13       IF CH = CRTINFO.LINEDEL THEN
+  1296   0   69:4    23 	BEGIN CHECKDEL := TRUE;
+  1297   0   69:5    26 	  IF (BACKSPACE = CHR(0)) OR (ERASEEOL = CHR(0)) THEN
+  1298   0   69:6    45 	    BEGIN SINX := 1;
+  1299   0   69:7    48 	      WRITELN(OUTPUT,'<DEL')
+  1300   0   69:6    68 	    END
+  1301   0   69:5    68 	  ELSE
+  1302   0   69:6    70 	    BEGIN
+  1303   0   69:7    70 	      WHILE SINX > 1 DO
+  1304   0   69:8    76 	        BEGIN SINX := SINX-1; WRITE(OUTPUT,BACKSPACE) END;
+  1305   0   69:7    97 	      WRITE(OUTPUT,ESCAPE,ERASEEOL)
+  1306   0   69:6   121 	    END
+  1307   0   69:4   121 	END;
+  1308   0   69:3   121       IF CH = CRTINFO.CHARDEL THEN
+  1309   0   69:4   131 	BEGIN CHECKDEL := TRUE;
+  1310   0   69:5   134 	  IF SINX > 1 THEN
+  1311   0   69:6   140 	    BEGIN SINX := SINX-1;
+  1312   0   69:7   146 	      IF BACKSPACE = CHR(0) THEN
+  1313   0   69:8   156 	        IF CRTINFO.CHARDEL < ' ' THEN
+  1314   0   69:9   166 	          WRITE(OUTPUT,'_')
+  1315   0   69:8   174 	        ELSE (*ASSUME PRINTABLE*)
+  1316   0   69:7   176 	      ELSE
+  1317   0   69:8   178 	        BEGIN
+  1318   0   69:9   178 	          IF CRTINFO.CHARDEL <> BACKSPACE THEN
+  1319   0   69:0   193 	            WRITE(OUTPUT,BACKSPACE);
+  1320   0   69:9   206 	          WRITE(OUTPUT,' ',BACKSPACE)
+  1321   0   69:8   227 	        END
+  1322   0   69:6   227 	    END
+  1323   0   69:5   227 	  ELSE
+  1324   0   69:6   229 	    IF CRTINFO.CHARDEL = BACKSPACE THEN
+  1325   0   69:7   244 	      WRITE(OUTPUT,' ')
+  1326   0   69:4   252 	END
+  1327   0   69:2   252     END
+  1328   0   69:0   252 END (*CHECKDEL*) ;
+  1329   0   69:0   266 
+  1330   0   69:0   266 
+  1331   0   70:D     1 PROCEDURE PUTPREFIXED(WHICH:INTEGER; COMMANDCHAR:CHAR);
+  1332   0   70:0     0 BEGIN
+  1333   0   70:1     0   WITH SYSCOM^ DO
+  1334   0   70:2     5     IF COMMANDCHAR <> CHR(0) THEN
+  1335   0   70:3    10       BEGIN
+  1336   0   70:4    10         IF CRTCTRL.PREFIXED[WHICH] THEN
+  1337   0   70:5    20           WRITE(OUTPUT,CRTCTRL.ESCAPE);
+  1338   0   70:4    33         WRITE(OUTPUT,COMMANDCHAR);
+  1339   0   70:4    41         IF FILL_LEN>0 THEN
+  1340   0   70:5    46           WRITE(OUTPUT,FILLER);
+  1341   0   70:3    56       END;
+  1342   0   70:0    56 END;
+  1343   0   70:0    68 
+  1344   0   36:D     1 PROCEDURE HOMECURSOR;
+  1345   0   36:0     0 BEGIN
+  1346   0   36:1     0   PUTPREFIXED(4,SYSCOM^.CRTCTRL.HOME);
+  1347   0   36:0    11 END (*HOMECURSOR*) ;
+  1348   0   36:0    24 
+  1349   0   37:D     1 PROCEDURE CLEARSCREEN;
+  1350   0   37:0     0 BEGIN HOMECURSOR;
+  1351   0   37:1     2   WITH SYSCOM^,CRTCTRL DO
+  1352   0   37:2    12     BEGIN
+  1353   0   37:3    12       UNITCLEAR(3);
+  1354   0   37:3    15       IF ERASEEOS <> CHR(0) THEN
+  1355   0   37:4    25         PUTPREFIXED(3,ERASEEOS)
+  1356   0   37:3    32       ELSE
+  1357   0   37:4    36         PUTPREFIXED(6,CLEARSCREEN)
+  1358   0   37:2    43     END
+  1359   0   37:0    45 END (*CLEARSCREEN*) ;
+  1360   0   37:0    58 
+  1361   0   38:D     1 PROCEDURE CLEARLINE;
+  1362   0   38:0     0 BEGIN
+  1363   0   38:1     0   PUTPREFIXED(2,SYSCOM^.CRTCTRL.ERASEEOL)
+  1364   0   38:0     9 END (*CLEARLINE*) ;
+  1365   0   38:0    24 
+  1366   0   39:D     1 PROCEDURE PROMPT;
+  1367   0   39:D     1   VAR I: INTEGER;
+  1368   0   39:0     0 BEGIN HOMECURSOR;
+  1369   0   39:1     2   WITH SYSCOM^ DO
+  1370   0   39:2     7     BEGIN
+  1371   0   39:3     7       CLEARLINE;
+  1372   0   39:3     9       IF MISCINFO.SLOWTERM THEN
+  1373   0   39:4    17 	BEGIN
+  1374   0   39:5    17 	  I := SCAN(LENGTH(PL),=':',PL[1]);
+  1375   0   39:5    33 	  IF I <> LENGTH(PL) THEN PL[0] := CHR(I+1)
+  1376   0   39:4    49 	END
+  1377   0   39:2    50     END;
+  1378   0   39:1    50   WRITE(OUTPUT,PL)
+  1379   0   39:0    60 END (*PROMPT*) ;
+  1380   0   39:0    72 
+  1381   0   29:D     1 PROCEDURE FGOTOXY(*X,Y: INTEGER*);
+  1382   0   29:0     0 BEGIN (*ASSUME DATA MEDIA*)
+  1383   0   29:1     0   WITH SYSCOM^.CRTINFO DO
+  1384   0   29:2     7     BEGIN
+  1385   0   29:3     7       IF X < 0 THEN X := 0;
+  1386   0   29:3    15       IF X > WIDTH THEN X := WIDTH;
+  1387   0   29:3    25       IF Y < 0 THEN Y := 0;
+  1388   0   29:3    33       IF Y > HEIGHT THEN Y := HEIGHT
+  1389   0   29:2    39     END;
+  1390   0   29:1    43   WRITE(OUTPUT,CHR(30),CHR(X+32),CHR(Y+32))
+  1391   0   29:0    71 END (*GOTOXY*) ;
+  1392   0   29:0    84 
+  1393   0   41:D     3 FUNCTION GETCHAR(*FLUSH: BOOLEAN*);
+  1394   0   41:D     4   VAR CH: CHAR;
+  1395   0   41:0     0 BEGIN
+  1396   0   41:1     0   IF FLUSH THEN UNITCLEAR(1);
+  1397   0   41:1     6   IF INPUTFIB^.FEOF THEN EXIT(COMMAND);
+  1398   0   41:1    16   INPUTFIB^.FSTATE := FNEEDCHAR;
+  1399   0   41:1    23   READ(INPUT,CH);
+  1400   0   41:1    31   IF (CH >= 'a') AND (CH <= 'z') THEN
+  1401   0   41:2    40     CH := CHR(ORD(CH)-ORD('a')+ORD('A'));
+  1402   0   41:1    47   GETCHAR := CH
+  1403   0   41:0    47 END (*GETCHAR*) ;
+  1404   0   41:0    62 
+  1405   0   40:D     3 FUNCTION SPACEWAIT(*FLUSH: BOOLEAN*);
+  1406   0   40:D     4   VAR CH: CHAR;
+  1407   0   40:0     0 BEGIN
+  1408   0   40:1     0   REPEAT
+  1409   0   40:2     0     WRITE(OUTPUT,'Type <space>');
+  1410   0   40:2    22     IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+  1411   0   40:3    33       WRITE(OUTPUT,' to continue');
+  1412   0   40:2    55     CH := GETCHAR(FLUSH);
+  1413   0   40:2    62     IF NOT EOLN(INPUT) THEN
+  1414   0   40:3    73       WRITELN(OUTPUT);
+  1415   0   40:2    79     CLEARLINE
+  1416   0   40:1    79   UNTIL (CH = ' ') OR (CH = SYSCOM^.CRTINFO.ALTMODE);
+  1417   0   40:1    97   SPACEWAIT := CH <> ' '
+  1418   0   40:0    98 END (*SPACEWAIT*) ;
+  1419   0   40:0   116 
+  1420   0    1:D     3 FUNCTION SCANTITLE(*FTITLE: STRING; VAR FVID: VID; VAR FTID: TID;
+  1421   0   33:D    49 	            VAR FSEGS: INTEGER; VAR FKIND: FILEKIND*);
+  1422   0   33:D    49   VAR I,RBRACK: INTEGER; CH: CHAR; OK: BOOLEAN;
+  1423   0   33:0     0 BEGIN
+  1424   0   33:1     0   FVID := ''; FTID := '';
+  1425   0   33:1    17   FSEGS := 0; FKIND := UNTYPEDFILE;
+  1426   0   33:1    23   SCANTITLE := FALSE; I := 1;
+  1427   0   33:1    29   WHILE I <= LENGTH(FTITLE) DO
+  1428   0   33:2    38     BEGIN CH := FTITLE[I];
+  1429   0   33:3    45       IF CH <= ' ' THEN DELETE(FTITLE,I,1)
+  1430   0   33:3    59       ELSE
+  1431   0   33:4    61 	BEGIN
+  1432   0   33:5    61 	  IF (CH >= 'a') AND (CH <= 'z') THEN
+  1433   0   33:6    72 	    FTITLE[I] := CHR(ORD(CH)-ORD('a')+ORD('A'));
+  1434   0   33:5    83 	  I := I+1
+  1435   0   33:4    85 	END
+  1436   0   33:2    89     END;
+  1437   0   33:1    91   IF LENGTH(FTITLE) > 0 THEN
+  1438   0   33:2    99     BEGIN
+  1439   0   33:3    99       IF FTITLE[1] = '*' THEN
+  1440   0   33:4   107 	BEGIN FVID := SYVID; DELETE(FTITLE,1,1) END;
+  1441   0   33:3   120       I := POS(':',FTITLE);
+  1442   0   33:3   133       IF I <= 1 THEN
+  1443   0   33:4   139 	BEGIN
+  1444   0   33:5   139 	  IF LENGTH(FVID) = 0 THEN FVID := DKVID;
+  1445   0   33:5   152 	  IF I = 1 THEN DELETE(FTITLE,1,1)
+  1446   0   33:4   165 	END
+  1447   0   33:3   165       ELSE
+  1448   0   33:4   167 	IF I-1 <= VIDLENG THEN
+  1449   0   33:5   175 	  BEGIN
+  1450   0   33:6   175 	    FVID := COPY(FTITLE,1,I-1);
+  1451   0   33:6   192 	    DELETE(FTITLE,1,I)
+  1452   0   33:5   200 	  END;
+  1453   0   33:3   200       IF LENGTH(FVID) > 0 THEN
+  1454   0   33:4   207 	BEGIN
+  1455   0   33:5   207 	  I := POS('[',FTITLE);
+  1456   0   33:5   220 	  IF I > 0 THEN I := I-1
+  1457   0   33:5   228 	  ELSE I := LENGTH(FTITLE);
+  1458   0   33:5   240 	  IF I <= TIDLENG THEN
+  1459   0   33:6   246 	    BEGIN
+  1460   0   33:7   246 	      IF I > 0 THEN
+  1461   0   33:8   252 	        BEGIN FTID := COPY(FTITLE,1,I); DELETE(FTITLE,1,I) END;
+  1462   0   33:7   275 	      IF LENGTH(FTITLE) = 0 THEN OK := TRUE
+  1463   0   33:7   283 	      ELSE
+  1464   0   33:8   288 	        BEGIN OK := FALSE;
+  1465   0   33:9   291 	          RBRACK := POS(']',FTITLE);
+  1466   0   33:9   304 	          IF RBRACK = 2 THEN OK := TRUE
+  1467   0   33:9   310 	          ELSE
+  1468   0   33:0   315 	            IF RBRACK > 2 THEN
+  1469   0   33:1   321 	              BEGIN OK := TRUE; I := 2;
+  1470   0   33:2   327 	                REPEAT CH := FTITLE[I];
+  1471   0   33:3   334 	                  IF CH IN DIGITS THEN
+  1472   0   33:4   345 	                    FSEGS := FSEGS*10+(ORD(CH)-ORD('0'))
+  1473   0   33:3   354 	                  ELSE OK := FALSE;
+  1474   0   33:3   361 	                  I := I+1
+  1475   0   33:2   363 	                UNTIL (I = RBRACK) OR NOT OK;
+  1476   0   33:2   378 	                IF (I = 3) AND (RBRACK = 3) THEN
+  1477   0   33:3   389 	                  IF FTITLE[I-1] = '*' THEN
+  1478   0   33:4   400 	                    BEGIN FSEGS := -1; OK := TRUE END
+  1479   0   33:1   407 	              END
+  1480   0   33:8   407 	        END;
+  1481   0   33:7   407 	      SCANTITLE := OK;
+  1482   0   33:7   411 	      IF OK AND (LENGTH(FTID) > 5) THEN
+  1483   0   33:8   421 	        BEGIN
+  1484   0   33:9   421 	          FTITLE := COPY(FTID,LENGTH(FTID)-4,5);
+  1485   0   33:9   439 	          IF FTITLE = '.TEXT' THEN FKIND := TEXTFILE
+  1486   0   33:9   454 	          ELSE
+  1487   0   33:0   458 	          IF FTITLE = '.CODE' THEN FKIND := CODEFILE
+  1488   0   33:0   473 	          ELSE
+  1489   0   33:1   477 	          IF FTITLE = '.BACK' THEN FKIND := TEXTFILE
+  1490   0   33:1   492 		  ELSE
+  1491   0   33:2   496 		  IF FTITLE = '.INFO' THEN FKIND := INFOFILE
+  1492   0   33:2   511 	          ELSE
+  1493   0   33:3   515 	          IF FTITLE = '.GRAF' THEN FKIND := GRAFFILE
+  1494   0   33:3   530 	          ELSE
+  1495   0   33:4   534 	          IF FTITLE = '.FOTO' THEN FKIND := FOTOFILE
+  1496   0   33:8   549 	        END
+  1497   0   33:6   551 	    END
+  1498   0   33:4   551 	END
+  1499   0   33:2   551     END
+  1500   0   33:0   551 END (*SCANTITLE*) ;
+  1501   0   33:0   576 
+  1502   0   33:0   576 (* VOLUME AND DIRECTORY HANDLERS *)
+  1503   0   33:0   576 
+  1504   0   42:D     3 FUNCTION FETCHDIR{(FUNIT: UNITNUM): BOOLEAN};
+  1505   0   42:D     4   VAR LINX: DIRRANGE; OK: BOOLEAN; HNOW: INTEGER;
+  1506   0   42:0     0 BEGIN FETCHDIR := FALSE;
+  1507   0   42:1     3   WITH SYSCOM^,UNITABLE[FUNIT] DO
+  1508   0   42:2    16     BEGIN (*READ IN AND VALIDATE DIR*)
+  1509   0   42:3    16       IF GDIRP = NIL THEN NEW(GDIRP);
+  1510   0   42:3    30       UNITREAD(FUNIT,GDIRP^,SIZEOF(DIRECTORY),DIRBLK);
+  1511   0   42:3    41       OK := IORSLT = INOERROR;
+  1512   0   42:3    47       IF OK THEN
+  1513   0   42:4    50 	WITH GDIRP^[0] DO
+  1514   0   42:5    57 	  BEGIN OK := FALSE; (*CHECK OUT DIR*)
+  1515   0   42:6    60 	    IF (DFIRSTBLK = 0) AND 
+  1516   0   42:6    64 	        (  (MISCINFO.USERKIND=BOOKER)
+  1517   0   42:6    72               OR ( (MISCINFO.USERKIND IN [AQUIZ,PQUIZ]) AND (DFKIND=SECUREDIR) )
+  1518   0   42:6    90 	          OR ( (MISCINFO.USERKIND=NORMAL) AND (DFKIND=UNTYPEDFILE) ) ) 
+  1519   0   42:6   109 	      THEN
+  1520   0   42:7   112 	      IF (LENGTH(DVID) > 0) AND (LENGTH(DVID) <= VIDLENG) AND
+  1521   0   42:7   127 	         (DNUMFILES >= 0) AND (DNUMFILES <= MAXDIR) THEN
+  1522   0   42:8   141 	        BEGIN OK := TRUE; (*SO FAR SO GOOD*)
+  1523   0   42:9   144 	          IF DVID <> UVID THEN
+  1524   0   42:0   152 	            BEGIN (*NEW VOLUME IN UNIT...CAREFUL*)
+  1525   0   42:1   152 	              LINX := 1;
+  1526   0   42:1   155 	              WHILE LINX <= DNUMFILES DO
+  1527   0   42:2   162 	                WITH GDIRP^[LINX] DO
+  1528   0   42:3   169 	                  IF (LENGTH(DTID) <= 0) OR
+  1529   0   42:3   176 	                     (LENGTH(DTID) > TIDLENG) OR
+  1530   0   42:3   184 	                     (DLASTBLK < DFIRSTBLK) OR
+  1531   0   42:3   190 	                     (DLASTBYTE > FBLKSIZE) OR
+  1532   0   42:3   198 	                     (DLASTBYTE <= 0) OR
+  1533   0   42:3   204 	                     (DACCESS.YEAR >= 100) THEN
+  1534   0   42:4   215 	                    BEGIN OK := FALSE; DELENTRY(LINX,GDIRP) END
+  1535   0   42:3   223 	                  ELSE
+  1536   0   42:4   225 	                    LINX := LINX+1;
+  1537   0   42:1   232 	              IF NOT OK THEN
+  1538   0   42:2   236 	                BEGIN (*MUST HAVE BEEN CHANGED...WRITEIT*)
+  1539   0   42:3   236 	                  UNITWRITE(FUNIT,GDIRP^,
+  1540   0   42:3   240 	                        (DNUMFILES+1)*SIZEOF(DIRENTRY),DIRBLK);
+  1541   0   42:3   251 	                  OK := IORSLT = INOERROR
+  1542   0   42:2   253 	                END
+  1543   0   42:0   257 	            END
+  1544   0   42:8   257 	        END;
+  1545   0   42:6   257 	    IF OK THEN
+  1546   0   42:7   260 	      BEGIN UVID := DVID; UEOVBLK := DEOVBLK;
+  1547   0   42:8   272 	        TIME(HNOW,DLOADTIME)
+  1548   0   42:7   279 	      END
+  1549   0   42:5   279 	  END;
+  1550   0   42:3   279       FETCHDIR := OK;
+  1551   0   42:3   282       IF NOT OK THEN
+  1552   0   42:4   286 	BEGIN UVID := ''; UEOVBLK := MMAXINT;
+  1553   0   42:5   299 	  RELEASE(GDIRP); GDIRP := NIL
+  1554   0   42:4   307 	END
+  1555   0   42:2   309     END
+  1556   0   42:0   309 END (*FETCHDIR*) ;
+  1557   0   42:0   328 
+  1558   0   31:D     1 PROCEDURE WRITEDIR(*FUNIT: UNITNUM; FDIR: DIRP*);
+  1559   0   31:D     3   VAR HNOW,LNOW: INTEGER; OK: BOOLEAN; LDE: DIRENTRY;
+  1560   0   31:0     0 BEGIN
+  1561   0   31:1     0   WITH UNITABLE[FUNIT],FDIR^[0] DO
+  1562   0   31:2    14     BEGIN OK := (UVID = DVID) AND ((DFKIND = UNTYPEDFILE) OR
+  1563   0   31:3    31 	                           (DFKIND = SECUREDIR));
+  1564   0   31:3    44       IF OK THEN
+  1565   0   31:4    47 	BEGIN TIME(HNOW,LNOW);
+  1566   0   31:5    53 	  OK := (LNOW-DLOADTIME <= AGELIMIT) AND
+  1567   0   31:5    63                 ((LNOW-DLOADTIME) >= 0) AND
+  1568   0   31:5    72 	            SYSCOM^.MISCINFO.HASCLOCK;
+  1569   0   31:5    83 	  IF NOT OK THEN
+  1570   0   31:6    87 	    BEGIN (*NO CLOCK OR TOO OLD*)
+  1571   0   31:7    87 	      UNITREAD(FUNIT,LDE,SIZEOF(DIRENTRY),DIRBLK);
+  1572   0   31:7    96 	      IF IORESULT = ORD(INOERROR) THEN
+  1573   0   31:8   102 	        OK := DVID = LDE.DVID;
+  1574   0   31:6   112 	    END;
+  1575   0   31:5   112 	  IF OK THEN
+  1576   0   31:6   115 	    BEGIN (*WE GUESS ALL IS SAFE...WRITEIT*)
+  1577   0   31:7   115 	      DFIRSTBLK := 0;   (*DIRTY FIX FOR YALOE BUGS*)
+  1578   0   31:7   119 	      UNITWRITE(FUNIT,FDIR^,
+  1579   0   31:7   122 	                (DNUMFILES+1)*SIZEOF(DIRENTRY),DIRBLK);
+  1580   0   31:7   134 	      OK := IORESULT = ORD(INOERROR);
+  1581   0   31:7   140 	      IF DLASTBLK = 10 THEN (*REDUNDANT AFTERTHOUGHT*)
+  1582   0   31:8   147 	        UNITWRITE(FUNIT,FDIR^,
+  1583   0   31:8   150 	                  (DNUMFILES+1)*SIZEOF(DIRENTRY),6);
+  1584   0   31:7   162 	      IF OK THEN TIME(HNOW,DLOADTIME)
+  1585   0   31:6   173 	    END
+  1586   0   31:4   173 	END;
+  1587   0   31:3   173       IF NOT OK THEN
+  1588   0   31:4   177 	BEGIN UVID := ''; UEOVBLK := MMAXINT  END
+  1589   0   31:2   192     END
+  1590   0   31:0   192 END (*WRITEDIR*) ;
+  1591   0   31:0   204 
+  1592   0   30:D     3 FUNCTION VOLSEARCH(*VAR FVID: VID; LOOKHARD: BOOLEAN; VAR FDIR: DIRP*);
+  1593   0   30:D     6   VAR LUNIT: UNITNUM; OK,PHYSUNIT: BOOLEAN; HNOW,LNOW: INTEGER;
+  1594   0   30:0     0 BEGIN VOLSEARCH := 0; FDIR := NIL;
+  1595   0   30:1     6   OK := FALSE; PHYSUNIT := FALSE;
+  1596   0   30:1    12   IF LENGTH(FVID) > 0 THEN
+  1597   0   30:2    19     BEGIN
+  1598   0   30:3    19       IF (FVID[1] = '#') AND (LENGTH(FVID) > 1) THEN
+  1599   0   30:4    32 	BEGIN OK := TRUE;
+  1600   0   30:5    35 	  LUNIT := 0; HNOW := 2;
+  1601   0   30:5    41 	  REPEAT
+  1602   0   30:6    41 	    IF FVID[HNOW] IN DIGITS THEN
+  1603   0   30:7    53 	      LUNIT := LUNIT*10+ORD(FVID[HNOW])-ORD('0')
+  1604   0   30:6    61 	    ELSE OK := FALSE;
+  1605   0   30:6    69 	    HNOW := HNOW+1
+  1606   0   30:5    70 	  UNTIL (HNOW > LENGTH(FVID)) OR NOT OK;
+  1607   0   30:5    84 	  PHYSUNIT := OK AND (LUNIT > 0) AND (LUNIT <= MAXUNIT)
+  1608   0   30:4    92 	END;
+  1609   0   30:3    95       IF NOT PHYSUNIT THEN
+  1610   0   30:4    99 	BEGIN OK := FALSE; LUNIT := MAXUNIT;
+  1611   0   30:5   105 	  REPEAT
+  1612   0   30:6   105 	    OK := FVID = UNITABLE[LUNIT].UVID;
+  1613   0   30:6   116 	    IF NOT OK THEN LUNIT := LUNIT-1
+  1614   0   30:5   121 	  UNTIL OK OR (LUNIT = 0)
+  1615   0   30:4   129 	END
+  1616   0   30:2   132     END;
+  1617   0   30:1   132   IF OK THEN
+  1618   0   30:2   135     IF UNITABLE[LUNIT].UISBLKD THEN
+  1619   0   30:3   144       WITH SYSCOM^ DO
+  1620   0   30:4   149 	BEGIN OK := FALSE;  (*SEE IF GDIRP IS GOOD*)
+  1621   0   30:5   152 	  IF GDIRP <> NIL THEN
+  1622   0   30:6   158 	    IF FVID = GDIRP^[0].DVID THEN
+  1623   0   30:7   170 	      BEGIN TIME(HNOW,LNOW);
+  1624   0   30:8   176 	        OK := LNOW-GDIRP^[0].DLOADTIME <= AGELIMIT
+  1625   0   30:7   185 	      END;
+  1626   0   30:5   191 	  IF NOT OK THEN
+  1627   0   30:6   195 	    BEGIN OK := PHYSUNIT;
+  1628   0   30:7   198 	      IF FETCHDIR(LUNIT) THEN
+  1629   0   30:8   205 	        IF NOT PHYSUNIT THEN
+  1630   0   30:9   209 	          OK := FVID = GDIRP^[0].DVID
+  1631   0   30:8   215 	        ELSE
+  1632   0   30:7   223 	      ELSE
+  1633   0   30:8   225 		OK := IORESULT = ORD(INOERROR);{Rely on IORESULT from FETCHDIR}
+  1634   0   30:6   231 	      END
+  1635   0   30:4   231 	END;
+  1636   0   30:1   231   IF NOT OK AND LOOKHARD THEN
+  1637   0   30:2   237     BEGIN LUNIT := MAXUNIT; (*CHECK EACH DISK UNIT*)
+  1638   0   30:3   240       REPEAT
+  1639   0   30:4   240 	WITH UNITABLE[LUNIT] DO
+  1640   0   30:5   248 	  IF UISBLKD THEN
+  1641   0   30:6   252 	    IF FETCHDIR(LUNIT) THEN
+  1642   0   30:7   259 	      OK := FVID = UVID;
+  1643   0   30:4   265 	IF NOT OK THEN LUNIT := LUNIT-1
+  1644   0   30:3   270       UNTIL OK OR (LUNIT = 0)
+  1645   0   30:2   278     END;
+  1646   0   30:1   281   IF OK THEN
+  1647   0   30:2   284     WITH UNITABLE[LUNIT] DO
+  1648   0   30:3   292       BEGIN VOLSEARCH := LUNIT;
+  1649   0   30:4   295 	IF LENGTH(UVID) > 0 THEN FVID := UVID;
+  1650   0   30:4   306 	IF UISBLKD AND (SYSCOM^.GDIRP <> NIL) THEN
+  1651   0   30:5   317 	  BEGIN FDIR := SYSCOM^.GDIRP;
+  1652   0   30:6   323 	    TIME(HNOW,FDIR^[0].DLOADTIME)
+  1653   0   30:5   334 	  END
+  1654   0   30:3   334       END
+  1655   0   30:0   334 END (*VOLSEARCH*) ;
+  1656   0   30:0   352 
+  1657   0   30:0   352 (* --- SYSTEM.B --- *)
+  1658   0   30:0   352 
+  1659   0   30:0   352     (******************************************************************)
+  1660   0   30:0   352     (*                                                                *)
+  1661   0   30:0   352     (*  Copyright (c) 1978 Regents of the University of California.   *)
+  1662   0   30:0   352     (*  Permission to copy or distribute this software or documen-    *)
+  1663   0   30:0   352     (*  tation in hard or soft copy granted only by written license   *) 
+  1664   0   30:0   352     (*  obtained from the Institute for Information Systems.          *)
+  1665   0   30:0   352     (*                                                                *)
+  1666   0   30:0   352     (******************************************************************)
+  1667   0   30:0   352     
+  1668   0   30:0   352 
+  1669   0   32:D     3 FUNCTION DIRSEARCH(*VAR FTID: TID; FINDPERM: BOOLEAN; FDIR: DIRP*);
+  1670   0   32:D     6   VAR I: DIRRANGE; FOUND: BOOLEAN;
+  1671   0   32:0     0 BEGIN DIRSEARCH := 0; FOUND := FALSE; I := 1;
+  1672   0   32:1     9   WHILE (I <= FDIR^[0].DNUMFILES) AND NOT FOUND DO
+  1673   0   32:2    22     BEGIN
+  1674   0   32:3    22       WITH FDIR^[I] DO
+  1675   0   32:4    28 	IF DTID = FTID THEN
+  1676   0   32:5    36 	  IF FINDPERM = (DACCESS.YEAR <> 100) THEN
+  1677   0   32:6    49 	    BEGIN DIRSEARCH := I; FOUND := TRUE END;
+  1678   0   32:3    55       I := I+1
+  1679   0   32:2    56     END
+  1680   0   32:0    60 END (*DIRSEARCH*) ;
+  1681   0   32:0    76 
+  1682   0   34:D     1 PROCEDURE DELENTRY(*FINX: DIRRANGE; FDIR: DIRP*);
+  1683   0   34:D     3   VAR I: DIRRANGE;
+  1684   0   34:0     0 BEGIN
+  1685   0   34:1     0   WITH FDIR^[0] DO
+  1686   0   34:2     6     BEGIN
+  1687   0   34:3     6       FOR I := FINX TO DNUMFILES-1 DO
+  1688   0   34:4    21 	FDIR^[I] := FDIR^[I+1];
+  1689   0   34:3    40       FDIR^[DNUMFILES].DTID := '';
+  1690   0   34:3    53       DNUMFILES := DNUMFILES-1
+  1691   0   34:2    59     END
+  1692   0   34:0    62 END (*DELENTRY*) ;
+  1693   0   34:0    76 
+  1694   0   35:D     1 PROCEDURE INSENTRY(*VAR FENTRY: DIRENTRY; FINX: DIRRANGE; FDIR: DIRP*);
+  1695   0   35:D     4   VAR I: DIRRANGE;
+  1696   0   35:0     0 BEGIN
+  1697   0   35:1     0   WITH FDIR^[0] DO
+  1698   0   35:2     6     BEGIN
+  1699   0   35:3     6       FOR I := DNUMFILES DOWNTO FINX DO
+  1700   0   35:4    19 	FDIR^[I+1] := FDIR^[I];
+  1701   0   35:3    38       FDIR^[FINX] := FENTRY;
+  1702   0   35:3    45       DNUMFILES := DNUMFILES+1
+  1703   0   35:2    51     END
+  1704   0   35:0    54 END (*INSENTRY*) ;
+  1705   0   35:0    68 
+  1706   0   71:D     3 FUNCTION ENTERTEMP(VAR FTID: TID; FSEGS: INTEGER;
+  1707   0   71:D     5 	              FKIND: FILEKIND; FDIR: DIRP): DIRRANGE;
+  1708   0   71:D     7   VAR I,LASTI,DINX,SINX: DIRRANGE; RT11ISH: BOOLEAN;
+  1709   0   71:D    12       SSEGS: INTEGER; LDE: DIRENTRY;
+  1710   0   71:D    26 
+  1711   0   72:D     1   PROCEDURE FINDMAX(CURINX: DIRRANGE; FIRSTOPEN,NEXTUSED: INTEGER);
+  1712   0   72:D     4     VAR FREEAREA: INTEGER;
+  1713   0   72:0     0   BEGIN
+  1714   0   72:1     0     FREEAREA := NEXTUSED-FIRSTOPEN;
+  1715   0   72:1     5     IF FREEAREA > FSEGS THEN
+  1716   0   72:2    10       BEGIN
+  1717   0   72:3    10 	SINX := DINX; SSEGS := FSEGS;
+  1718   0   72:3    16 	DINX := CURINX; FSEGS := FREEAREA
+  1719   0   72:2    19       END
+  1720   0   72:1    22     ELSE
+  1721   0   72:2    24       IF FREEAREA > SSEGS THEN
+  1722   0   72:3    29 	BEGIN SSEGS := FREEAREA; SINX := CURINX END
+  1723   0   72:0    35   END (*FINDMAX*) ;
+  1724   0   72:0    48 
+  1725   0   71:0     0 BEGIN (*ENTERTEMP*)
+  1726   0   71:1     0   DINX := 0; LASTI := FDIR^[0].DNUMFILES;
+  1727   0   71:1    11   SINX := 0; SSEGS := 0;
+  1728   0   71:1    17   IF FSEGS <= 0 THEN
+  1729   0   71:2    22     BEGIN RT11ISH := FSEGS < 0;
+  1730   0   71:3    27       FOR I := 1 TO LASTI DO
+  1731   0   71:4    39 	FINDMAX(I,FDIR^[I-1].DLASTBLK,FDIR^[I].DFIRSTBLK);
+  1732   0   71:3    61       FINDMAX(LASTI+1,FDIR^[LASTI].DLASTBLK,FDIR^[0].DEOVBLK);
+  1733   0   71:3    76       IF RT11ISH THEN
+  1734   0   71:4    79 	IF FSEGS DIV 2 <= SSEGS THEN
+  1735   0   71:5    86 	  BEGIN FSEGS := SSEGS; DINX := SINX END
+  1736   0   71:4    92 	ELSE FSEGS := (FSEGS+1) DIV 2
+  1737   0   71:2    97     END
+  1738   0   71:1   101   ELSE
+  1739   0   71:2   103     BEGIN I := 1;
+  1740   0   71:3   106       WHILE I <= LASTI DO
+  1741   0   71:4   111 	BEGIN
+  1742   0   71:5   111 	  IF FDIR^[I].DFIRSTBLK-FDIR^[I-1].DLASTBLK >= FSEGS THEN
+  1743   0   71:6   128 	    BEGIN DINX := I; I := LASTI END;
+  1744   0   71:5   134 	  I := I+1
+  1745   0   71:4   135 	END;
+  1746   0   71:3   141       IF DINX = 0 THEN
+  1747   0   71:4   146 	IF FDIR^[0].DEOVBLK-FDIR^[LASTI].DLASTBLK >= FSEGS THEN
+  1748   0   71:5   161 	  DINX := LASTI+1
+  1749   0   71:2   162     END;
+  1750   0   71:1   166   IF LASTI = MAXDIR THEN DINX := 0;
+  1751   0   71:1   174   IF DINX > 0 THEN
+  1752   0   71:2   179     BEGIN
+  1753   0   71:3   179       WITH LDE DO
+  1754   0   71:4   179 	BEGIN
+  1755   0   71:5   179 	  DFIRSTBLK := FDIR^[DINX-1].DLASTBLK;
+  1756   0   71:5   188 	  DLASTBLK := DFIRSTBLK+FSEGS;
+  1757   0   71:5   193 	  DFKIND := FKIND; DTID := FTID;
+  1758   0   71:5   204 	  DLASTBYTE := FBLKSIZE;
+  1759   0   71:5   209 	  WITH DACCESS DO
+  1760   0   71:6   209 	    BEGIN MONTH := 0; DAY := 0; YEAR := 100 END
+  1761   0   71:4   227 	END;
+  1762   0   71:3   227       INSENTRY(LDE,DINX,FDIR)
+  1763   0   71:2   231     END;
+  1764   0   71:1   233   ENTERTEMP := DINX
+  1765   0   71:0   233 END (*ENTERTEMP*) ;
+  1766   0   71:0   252 
+  1767   0   71:0   252 (* FILE STATE HANDLERS *)
+  1768   0   71:0   252 
+  1769   0    3:D     1 PROCEDURE FINIT(*VAR F: FIB; WINDOW: WINDOWP; RECWORDS: INTEGER*);
+  1770   0    3:0     0 BEGIN
+  1771   0    3:1     0   WITH F DO
+  1772   0    3:2     3     BEGIN FSTATE := FJANDW;
+  1773   0    3:3     8       FISOPEN := FALSE; FEOF := TRUE;
+  1774   0    3:3    18       FEOLN := TRUE; FWINDOW := WINDOW;
+  1775   0    3:3    26       IF (RECWORDS = 0) OR (RECWORDS = -2) THEN
+  1776   0    3:4    36 	BEGIN
+  1777   0    3:5    36 	  FWINDOW^[1] := CHR(0); FRECSIZE := 1;
+  1778   0    3:5    46 	  IF RECWORDS = 0 THEN FSTATE := FNEEDCHAR
+  1779   0    3:4    54 	END
+  1780   0    3:3    56       ELSE
+  1781   0    3:4    58 	IF RECWORDS < 0 THEN
+  1782   0    3:5    63 	  BEGIN FWINDOW := NIL; FRECSIZE := 0 END
+  1783   0    3:4    71 	ELSE FRECSIZE := RECWORDS+RECWORDS
+  1784   0    3:2    77     END
+  1785   0    3:0    80 END (*FINIT*) ;
+  1786   0    3:0    92 
+  1787   0   73:D     1 PROCEDURE RESETER(VAR F:FIB);
+  1788   0   73:D     2   VAR BIGGER: BOOLEAN; 
+  1789   0   73:0     0 BEGIN
+  1790   0   73:1     0   WITH F DO
+  1791   0   73:2     3      BEGIN FREPTCNT := 0;
+  1792   0   73:3     8 	FEOLN := FALSE; FEOF := FALSE;
+  1793   0   73:3    18 	IF FISBLKD THEN
+  1794   0   73:4    22 	  BEGIN BIGGER := FNXTBLK > FMAXBLK;
+  1795   0   73:5    31 	    IF BIGGER THEN FMAXBLK := FNXTBLK;
+  1796   0   73:5    41 	    IF FSOFTBUF THEN
+  1797   0   73:6    46 	      BEGIN
+  1798   0   73:7    46 	        IF BIGGER THEN FMAXBYTE := FNXTBYTE
+  1799   0   73:7    52 	        ELSE
+  1800   0   73:8    58 	          IF FNXTBLK = FMAXBLK THEN
+  1801   0   73:9    67 	            IF FNXTBYTE > FMAXBYTE THEN
+  1802   0   73:0    76 	                BEGIN BIGGER := TRUE; FMAXBYTE := FNXTBYTE END;
+  1803   0   73:7    86 	        IF FBUFCHNGD THEN
+  1804   0   73:8    91 	          BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+  1805   0   73:9   101 	            IF BIGGER THEN
+  1806   0   73:0   104 	              FILLCHAR(FBUFFER[FNXTBYTE],FBLKSIZE-FNXTBYTE,0);
+  1807   0   73:9   120 	            UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,
+  1808   0   73:9   129 	                            FHEADER.DFIRSTBLK+FNXTBLK-1);
+  1809   0   73:9   141 	            IF BIGGER AND (FHEADER.DFKIND = TEXTFILE) 
+  1810   0   73:9   150 	                AND ODD(FNXTBLK) THEN
+  1811   0   73:0   157 	              BEGIN FMAXBLK := FMAXBLK+1;
+  1812   0   73:1   166 	                FILLCHAR(FBUFFER,FBLKSIZE,0);
+  1813   0   73:1   176 	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,
+  1814   0   73:1   185 	                                FHEADER.DFIRSTBLK+FNXTBLK)
+  1815   0   73:0   195 	              END
+  1816   0   73:8   195 	          END;
+  1817   0   73:7   195 	        FNXTBYTE := FBLKSIZE
+  1818   0   73:6   198 	      END;
+  1819   0   73:5   202 	    FNXTBLK := 0;
+  1820   0   73:5   207 	    IF FSOFTBUF AND (FHEADER.DFKIND = TEXTFILE) THEN
+  1821   0   73:6   221 	        FNXTBLK := 2
+  1822   0   73:4   224 	  END
+  1823   0   73:2   226      END
+  1824   0   73:0   226 END (*RESETER*) ;
+  1825   0   73:0   242 
+  1826   0    1:D     1 PROCEDURE FOPEN(*VAR F: FIB; VAR FTITLE: STRING;
+  1827   0    5:D     5 	         FOPENOLD: BOOLEAN; JUNK PARAM*);
+  1828   0    5:D     5   LABEL 1;
+  1829   0    5:D     5   VAR LDIR: DIRP; LUNIT: UNITNUM; LINX: DIRRANGE;
+  1830   0    5:D     8       LSEGS,NBYTES: INTEGER; LKIND: FILEKIND;
+  1831   0    5:D    11       OLDHEAP: ^INTEGER; SWAPPED: BOOLEAN;
+  1832   0    5:D    13       SAVERSLT: IORSLTWD; LVID: VID; LTID: TID;
+  1833   0    5:0     0 BEGIN SYSCOM^.IORSLT := INOERROR;
+  1834   0    5:1     5   WITH F DO
+  1835   0    5:2     8     IF FISOPEN THEN SYSCOM^.IORSLT := INOTCLOSED
+  1836   0    5:2    16     ELSE
+  1837   0    5:3    20       IF SCANTITLE(FTITLE,LVID,LTID,LSEGS,LKIND) THEN
+  1838   0    5:4    35 	BEGIN (*GOT AN OK TITLE*)
+  1839   0    5:5    35 	  IF ORD(FOPENOLD) > 1 THEN (*OLD CODE SPECIAL CASE*)
+  1840   0    5:6    40 	    FOPENOLD := (ORD(FOPENOLD) = 2) OR (ORD(FOPENOLD) = 4);
+  1841   0    5:5    49 	  SWAPPED := FALSE;
+  1842   0    5:5    52 	  WITH SWAPFIB^ DO
+  1843   0    5:6    57 	    IF FISOPEN AND (SYSCOM^.GDIRP = NIL) THEN
+  1844   0    5:7    69 	      BEGIN MARK(OLDHEAP);
+  1845   0    5:8    73 	        NBYTES := ORD(SYSCOM^.LASTMP)-ORD(OLDHEAP);
+  1846   0    5:8    81 	        IF (NBYTES > 0) AND (NBYTES < SIZEOF(DIRECTORY)+400) THEN
+  1847   0    5:9    96 	          BEGIN
+  1848   0    5:0    96 	            NBYTES := ORD(OLDHEAP)-ORD(EMPTYHEAP);
+  1849   0    5:0   103 	            IF (NBYTES > 0) AND (NBYTES > SIZEOF(DIRECTORY)) AND
+  1850   0    5:0   112 	                (UNITABLE[FUNIT].UVID = FVID) THEN
+  1851   0    5:1   129 	              BEGIN
+  1852   0    5:2   129 	                UNITWRITE(FUNIT,EMPTYHEAP^,SIZEOF(DIRECTORY),
+  1853   0    5:2   139 	                                FHEADER.DFIRSTBLK);
+  1854   0    5:2   146 	                RELEASE(EMPTYHEAP); SWAPPED := TRUE
+  1855   0    5:1   151 	              END
+  1856   0    5:9   154 	          END
+  1857   0    5:7   154 	      END;
+  1858   0    5:5   154 	  LUNIT := VOLSEARCH(LVID,TRUE,LDIR);
+  1859   0    5:5   165 	  IF LUNIT = 0 THEN SYSCOM^.IORSLT := INOUNIT
+  1860   0    5:5   173 	  ELSE
+  1861   0    5:6   177 	    WITH UNITABLE[LUNIT] DO
+  1862   0    5:7   185 	      BEGIN (*OK...OPEN UP FILE*)
+  1863   0    5:8   185 	        FISOPEN := TRUE; FMODIFIED := FALSE;
+  1864   0    5:8   197 	        FUNIT := LUNIT; FVID := LVID;
+  1865   0    5:8   211 	        FNXTBLK := 0; FISBLKD := UISBLKD;
+  1866   0    5:8   225 	        FSOFTBUF := UISBLKD AND (FRECSIZE <> 0);
+  1867   0    5:8   239 	        IF (LDIR <> NIL) AND (LENGTH(LTID) > 0) THEN
+  1868   0    5:9   251 	          BEGIN (*LOOKUP OR ENTER FHEADER IN DIRECTORY*)
+  1869   0    5:0   251 	            LINX := DIRSEARCH(LTID,FOPENOLD,LDIR);
+  1870   0    5:0   261 	            IF FOPENOLD THEN
+  1871   0    5:1   264 	              IF LINX = 0 THEN
+  1872   0    5:2   269 	                BEGIN SYSCOM^.IORSLT := INOFILE; GOTO 1 END
+  1873   0    5:1   276 	              ELSE FHEADER := LDIR^[LINX]
+  1874   0    5:0   286 	            ELSE (*OPEN NEW FILE*)
+  1875   0    5:1   290 	              IF LINX > 0 THEN
+  1876   0    5:2   295 	                BEGIN SYSCOM^.IORSLT := IDUPFILE; GOTO 1 END
+  1877   0    5:1   302 	              ELSE
+  1878   0    5:2   304 	                BEGIN (*MAKE A TEMP ENTRY*)
+  1879   0    5:3   304 	                  IF LKIND = UNTYPEDFILE THEN LKIND := DATAFILE;
+  1880   0    5:3   312 	                  LINX := ENTERTEMP(LTID,LSEGS,LKIND,LDIR);
+  1881   0    5:3   323 	                  IF (LINX > 0) AND (LKIND = TEXTFILE) THEN
+  1882   0    5:4   332 	                    WITH LDIR^[LINX] DO
+  1883   0    5:5   338 	                      BEGIN
+  1884   0    5:6   338 	                        IF ODD(DLASTBLK-DFIRSTBLK) THEN
+  1885   0    5:7   347 	                          DLASTBLK := DLASTBLK-1;
+  1886   0    5:6   357 	                        IF DLASTBLK-DFIRSTBLK < 4 THEN
+  1887   0    5:7   368 	                          BEGIN DELENTRY(LINX,LDIR); LINX := 0 END
+  1888   0    5:5   375 	                      END;
+  1889   0    5:3   375 	                  IF LINX = 0 THEN
+  1890   0    5:4   380 	                    BEGIN SYSCOM^.IORSLT := INOROOM; GOTO 1 END;
+  1891   0    5:3   387 	                  FHEADER := LDIR^[LINX]; FMODIFIED := TRUE;
+  1892   0    5:3   403 	                  WRITEDIR(LUNIT,LDIR)
+  1893   0    5:2   405 	                END
+  1894   0    5:9   407 	          END
+  1895   0    5:8   407 	        ELSE (*FHEADER NOT IN DIRECTORY*)
+  1896   0    5:9   409 		  BEGIN
+  1897   0    5:0   409 		    IF FOPENOLD AND (LENGTH(LTID) <> 0) THEN
+  1898   0    5:1   419 		      BEGIN
+  1899   0    5:2   419 			SYSCOM^.IORSLT := INOFILE; 
+  1900   0    5:2   424 			GOTO 1;
+  1901   0    5:1   426 			END;
+  1902   0    5:0   426 		    WITH FHEADER DO
+  1903   0    5:1   432 		      BEGIN (*DIRECT UNIT OPEN, SET UP DUMMY FHEADER*)
+  1904   0    5:2   432 			DFIRSTBLK := 0; DLASTBLK := MMAXINT;
+  1905   0    5:2   444 			IF UISBLKD THEN DLASTBLK := UEOVBLK;
+  1906   0    5:2   457 			DFKIND := LKIND; DTID := '';
+  1907   0    5:2   474 			DLASTBYTE := FBLKSIZE;
+  1908   0    5:2   482 			WITH DACCESS DO
+  1909   0    5:3   488 			  BEGIN MONTH := 0; DAY := 0; YEAR := 0 END
+  1910   0    5:1   506 		      END; {of WITH}
+  1911   0    5:9   506 	            END;  {of ELSE}
+  1912   0    5:8   506 		IF FOPENOLD THEN
+  1913   0    5:9   509 	          FMAXBLK := FHEADER.DLASTBLK-FHEADER.DFIRSTBLK
+  1914   0    5:8   519 	        ELSE FMAXBLK := 0;
+  1915   0    5:8   531 	        IF FSOFTBUF THEN
+  1916   0    5:9   537 	          BEGIN
+  1917   0    5:0   537 	            FNXTBYTE := FBLKSIZE; FBUFCHNGD := FALSE;
+  1918   0    5:0   551 	            IF FOPENOLD THEN FMAXBYTE := FHEADER.DLASTBYTE
+  1919   0    5:0   560 	            ELSE FMAXBYTE := FBLKSIZE;
+  1920   0    5:0   573 	            WITH FHEADER DO
+  1921   0    5:1   579 	              IF DFKIND = TEXTFILE THEN
+  1922   0    5:2   590 	                BEGIN FNXTBLK := 2;
+  1923   0    5:3   596 	                  IF NOT FOPENOLD THEN
+  1924   0    5:4   600 	                    BEGIN (*NEW .TEXT, PUT NULLS IN FIRST PAGE*)
+  1925   0    5:5   600 	                      FILLCHAR(FBUFFER,SIZEOF(FBUFFER),0);
+  1926   0    5:5   611 	                      UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK);
+  1927   0    5:5   628 	                      UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+1)
+  1928   0    5:4   647 	                    END
+  1929   0    5:2   647 	                END
+  1930   0    5:9   647 	          END;
+  1931   0    5:8   647 	        IF FOPENOLD THEN FRESET(F)
+  1932   0    5:8   651 	        ELSE RESETER(F); (*NO GET!*)
+  1933   0    5:8   658 	1:      IF SYSCOM^.IORSLT <> INOERROR THEN
+  1934   0    5:9   666 	          BEGIN FISOPEN := FALSE; FEOF := TRUE; FEOLN := TRUE END
+  1935   0    5:7   684 	      END;
+  1936   0    5:5   684 	  IF SWAPPED THEN
+  1937   0    5:6   687 	    BEGIN RELEASE(OLDHEAP); SYSCOM^.GDIRP := NIL;
+  1938   0    5:7   698 	      SAVERSLT := SYSCOM^.IORSLT;
+  1939   0    5:7   704 	      UNITREAD(SWAPFIB^.FUNIT,EMPTYHEAP^,SIZEOF(DIRECTORY),
+  1940   0    5:7   715 	                        SWAPFIB^.FHEADER.DFIRSTBLK);
+  1941   0    5:7   723 	      SYSCOM^.IORSLT := SAVERSLT
+  1942   0    5:6   726 	    END
+  1943   0    5:4   728 	END
+  1944   0    5:3   728       ELSE SYSCOM^.IORSLT := IBADTITLE
+  1945   0    5:0   733 END (*FOPEN*) ;
+  1946   0    5:0   758 
+  1947   0    6:D     1 PROCEDURE FCLOSE(*VAR F: FIB; FTYPE: CLOSETYPE*);
+  1948   0    6:D     3   LABEL 1;
+  1949   0    6:D     3   VAR LINX,DUPINX: DIRRANGE; LDIR: DIRP; FOUND: BOOLEAN;
+  1950   0    6:0     0 BEGIN SYSCOM^.IORSLT := INOERROR;
+  1951   0    6:1     5   WITH F DO
+  1952   0    6:2     8     IF FISOPEN AND (FWINDOW <> SYSTERM^.FWINDOW) THEN
+  1953   0    6:3    20       BEGIN
+  1954   0    6:4    20 	IF FISBLKD THEN
+  1955   0    6:5    24 	  WITH FHEADER DO
+  1956   0    6:6    29 	    IF LENGTH(DTID) > 0 THEN
+  1957   0    6:7    38 	      BEGIN (*FILE IN A DISK DIRECTORY...FIXUP MAYBE*)
+  1958   0    6:8    38 		IF FTYPE = CCRUNCH THEN
+  1959   0    6:9    43 	          BEGIN FMAXBLK := FNXTBLK;
+  1960   0    6:0    50 	            DACCESS.YEAR := 100; FTYPE := CLOCK;
+  1961   0    6:0    60 	            IF FSOFTBUF THEN FMAXBYTE := FNXTBYTE
+  1962   0    6:9    68 	          END;
+  1963   0    6:8    72 	        RESETER(F);
+  1964   0    6:8    75 		IF FMODIFIED OR (DACCESS.YEAR = 100) OR (FTYPE = CPURGE) THEN
+  1965   0    6:9    93 	          BEGIN (*HAVE TO CHANGE DIRECTORY ENTRY*)
+  1966   0    6:0    93 		    IF FUNIT <> VOLSEARCH(FVID,FALSE,LDIR) THEN
+  1967   0    6:1   108 	              BEGIN SYSCOM^.IORSLT := ILOSTUNIT; GOTO 1 END;
+  1968   0    6:0   115 	            LINX := 1; FOUND := FALSE;
+  1969   0    6:0   121 	            WHILE (LINX <= LDIR^[0].DNUMFILES) AND NOT FOUND DO
+  1970   0    6:1   134 	              BEGIN (*LOOK FOR FIRST BLOCK MATCH*)
+  1971   0    6:2   134 	                FOUND := (LDIR^[LINX].DFIRSTBLK = DFIRSTBLK) AND
+  1972   0    6:2   142 	                         (LDIR^[LINX].DLASTBLK = DLASTBLK);
+  1973   0    6:2   153 	                LINX := LINX + 1
+  1974   0    6:1   154 	              END;
+  1975   0    6:0   160 	            IF NOT FOUND THEN
+  1976   0    6:1   164 	              BEGIN SYSCOM^.IORSLT := ILOSTFILE; GOTO 1 END;
+  1977   0    6:0   171 		    LINX := LINX - 1; (*CORRECT OVERRUN*)
+  1978   0    6:0   176 	            IF ((FTYPE = CNORMAL) AND (LDIR^[LINX].DACCESS.YEAR = 100)) 
+  1979   0    6:0   191 	                   OR (FTYPE = CPURGE) THEN
+  1980   0    6:1   197 	                DELENTRY(LINX,LDIR)  (*ZAP FILE OUT OF EXISTANCE*)
+  1981   0    6:0   199 	            ELSE
+  1982   0    6:1   203 	              BEGIN (*WELL...LOCK IN A PERM DIR ENTRY*)
+  1983   0    6:2   203 	                DUPINX := DIRSEARCH(DTID,TRUE,LDIR);
+  1984   0    6:2   214 			IF (DUPINX <> 0) AND (DUPINX <> LINX) THEN
+  1985   0    6:3   223 	                  BEGIN (*A DUPLICATE PERM ENTRY...ZAP OLD ONE*)
+  1986   0    6:4   223 	                    DELENTRY(DUPINX,LDIR);
+  1987   0    6:4   227 	                    IF DUPINX < LINX THEN LINX := LINX-1
+  1988   0    6:3   233 	                  END;
+  1989   0    6:2   237 	                IF LDIR^[LINX].DACCESS.YEAR = 100 THEN
+  1990   0    6:3   250 	                  IF DACCESS.YEAR = 100 THEN
+  1991   0    6:4   260 	                    DACCESS := THEDATE
+  1992   0    6:3   263 	                  ELSE (*LEAVE ALONE...FILER SPECIAL CASE*)
+  1993   0    6:2   270 	                ELSE
+  1994   0    6:3   272 	                  IF FMODIFIED AND (THEDATE.MONTH <> 0) THEN
+  1995   0    6:4   286 	                    DACCESS := THEDATE
+  1996   0    6:3   289 	                  ELSE
+  1997   0    6:4   296 	                    DACCESS := LDIR^[LINX].DACCESS;
+  1998   0    6:2   307 	                DLASTBLK := DFIRSTBLK+FMAXBLK;
+  1999   0    6:2   317 	                IF FSOFTBUF THEN DLASTBYTE := FMAXBYTE;
+  2000   0    6:2   329 			FHEADER.FILLER1 := 0;  {This had better work, Steve}
+  2001   0    6:2   336 	                FMODIFIED := FALSE; LDIR^[LINX] := FHEADER
+  2002   0    6:1   345 	              END;
+  2003   0    6:0   350 	            WRITEDIR(FUNIT,LDIR)
+  2004   0    6:9   353 	          END
+  2005   0    6:7   355 	      END;
+  2006   0    6:4   355 	IF FTYPE = CPURGE THEN
+  2007   0    6:5   360 	  IF LENGTH(FHEADER.DTID) = 0 THEN
+  2008   0    6:6   369 	    UNITABLE[FUNIT].UVID := '';
+  2009   0    6:4   381 1:      FEOF := TRUE; FEOLN := TRUE; FISOPEN := FALSE
+  2010   0    6:3   394       END;
+  2011   0    6:0   396 END (*FCLOSE*) ;
+  2012   0    6:0   422 
+  2013   0    6:0   422 (* --- PASCALIO --- *)
+  2014   0    6:0   422 {.fs} { we include the PASCALIO IMPLEMENTATION part directly here }
+  2015   0    6:0   422 {Version II.0.A}
+  2016   0    6:0   422 
+  2017   0    9:D     1   PROCEDURE FSEEK(*VAR F: FIB; RECNUM: INTEGER*);
+  2018   0    9:D     3     LABEL 1;
+  2019   0    9:D     3     VAR BYTE,BLOCK,N: INTEGER;
+  2020   0    9:0     0   BEGIN SYSCOM^.IORSLT := INOERROR;
+  2021   0    9:1     5     IF F.FISOPEN THEN
+  2022   0    9:2     9       WITH F,FHEADER DO
+  2023   0    9:3    17 	BEGIN 
+  2024   0    9:4    17 	  IF (RECNUM < 0) OR NOT FSOFTBUF OR
+  2025   0    9:4    25 		  ((DFKIND = TEXTFILE) AND (FRECSIZE = 1)) THEN
+  2026   0    9:5    41 	    GOTO 1; (*NO SEEK ALLOWED*)
+  2027   0    9:4    43 	  BLOCK :=RECNUM*(FRECSIZE DIV 512)
+  2028   0    9:4    50 		 +(RECNUM DIV 512)*(FRECSIZE MOD 512)
+  2029   0    9:4    62 		 +( (RECNUM MOD 512)*((FRECSIZE MOD 512) DIV 64)
+  2030   0    9:4    77 		   +((RECNUM MOD 512)*(FRECSIZE MOD 64)) DIV 64
+  2031   0    9:4    88 		  ) DIV 8
+  2032   0    9:4    91 		  + 1;
+  2033   0    9:4    98 		  {RECNUM*FRECSIZE DIV FBLKSIZE + 1;}
+  2034   0    9:4    98 	  BYTE := ( (RECNUM MOD 512)*(FRECSIZE MOD 32)
+  2035   0    9:4   107 		   +( (RECNUM MOD 16)*32*((FRECSIZE MOD 512) DIV 32) )
+  2036   0    9:4   122 		  ) MOD 512;
+  2037   0    9:4   129 		 {BYTE := RECNUM*FRECSIZE MOD FBLKSIZE;}
+  2038   0    9:4   129 	  IF BYTE = 0 THEN 
+  2039   0    9:5   134 	    BEGIN
+  2040   0    9:6   134 	      BYTE := FBLKSIZE;     
+  2041   0    9:6   139 	      BLOCK := BLOCK - 1;
+  2042   0    9:5   144 	      END;
+  2043   0    9:4   144 	  N := DLASTBLK-DFIRSTBLK;
+  2044   0    9:4   151 	  IF (BLOCK > N) OR ((BLOCK = N) AND (BYTE >= DLASTBYTE)) THEN
+  2045   0    9:5   166 	    BEGIN BLOCK := N; BYTE := DLASTBYTE END;
+  2046   0    9:4   174 	  IF BLOCK <> FNXTBLK THEN
+  2047   0    9:5   181 	    BEGIN
+  2048   0    9:6   181 	      IF FBUFCHNGD THEN
+  2049   0    9:7   186 		BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+  2050   0    9:8   196 		  UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1);
+  2051   0    9:8   216 		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+  2052   0    9:7   224 		END;
+  2053   0    9:6   224 	      IF (BLOCK <= FMAXBLK) AND (BYTE <> FBLKSIZE) THEN
+  2054   0    9:7   237 		BEGIN
+  2055   0    9:8   237 		  UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+BLOCK-1);
+  2056   0    9:8   255 		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+  2057   0    9:7   263 		END
+  2058   0    9:5   263 	    END;
+  2059   0    9:4   263 	  IF FNXTBLK > FMAXBLK THEN
+  2060   0    9:5   272 	    BEGIN FMAXBLK := FNXTBLK; FMAXBYTE := FNXTBYTE END
+  2061   0    9:4   286 	  ELSE
+  2062   0    9:5   288 	    IF (FNXTBLK = FMAXBLK) AND (FNXTBYTE > FMAXBYTE) THEN
+  2063   0    9:6   305 	      FMAXBYTE := FNXTBYTE;
+  2064   0    9:4   312 	  FEOF := FALSE; FEOLN := FALSE; FREPTCNT := 0;
+  2065   0    9:4   327 	  IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR;
+  2066   0    9:4   338 	  FNXTBLK := BLOCK; FNXTBYTE := BYTE
+  2067   0    9:3   346 	END
+  2068   0    9:1   348     ELSE SYSCOM^.IORSLT := INOTOPEN;
+  2069   0    9:1   355   1:
+  2070   0    9:0   355   END (*FSEEK*) ;
+  2071   0    9:0   372 
+  2072   0   14:D     1   PROCEDURE FREADREAL(*VAR F: FIB; VAR X: REAL*);
+  2073   0   14:D     3     LABEL 1;
+  2074   0   14:D     3     VAR CH: CHAR; NODEC,NEG,XVALID: BOOLEAN; IPOT,ICNT: INTEGER;
+  2075   0   14:0     0   BEGIN
+  2076   0   14:1     0     WITH F DO
+  2077   0   14:2     3 	BEGIN X := 0; NEG := FALSE; XVALID := FALSE;
+  2078   0   14:3    14 	    IPOT := 0; NODEC:=TRUE;
+  2079   0   14:3    20 	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+  2080   0   14:3    29 	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+  2081   0   14:3    46 	  IF FEOF THEN GOTO 1;
+  2082   0   14:3    52 	  CH := FWINDOW^[0];
+  2083   0   14:3    58 	  IF (CH = '+') OR (CH = '-') THEN
+  2084   0   14:4    67 	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+  2085   0   14:3    81 	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+  2086   0   14:4    95 	    BEGIN XVALID := TRUE;
+  2087   0   14:5    98 	      X := X*10 + (ORD(CH)-ORD('0'));
+  2088   0   14:5   112 	      FGET(F); CH := FWINDOW^[0]
+  2089   0   14:4   118 	    END;
+  2090   0   14:3   123 	  IF FEOF THEN GOTO 1;
+  2091   0   14:3   129 	  IF CH = '.' THEN
+  2092   0   14:4   134 	    BEGIN NODEC:=FALSE;
+  2093   0   14:5   137 	      REPEAT FGET(F); CH := FWINDOW^[0];
+  2094   0   14:6   146 		IF CH IN DIGITS THEN
+  2095   0   14:7   156 		  BEGIN XVALID := TRUE; IPOT := IPOT - 1;
+  2096   0   14:8   164 		    X := X*10 + (ORD(CH)-ORD('0'))
+  2097   0   14:7   174 		  END
+  2098   0   14:5   178 	      UNTIL FEOF OR NOT (CH IN DIGITS);
+  2099   0   14:5   192 	      IF FEOF THEN GOTO 1
+  2100   0   14:4   198 	    END;
+  2101   0   14:3   198 	  IF ((CH = 'e') OR (CH = 'E')) AND (XVALID OR NODEC) THEN
+  2102   0   14:4   211 	    BEGIN
+  2103   0   14:5   211 	      IF FSTATE = FJANDW THEN FGET(F)
+  2104   0   14:5   218 	      ELSE FSTATE := FNEEDCHAR;
+  2105   0   14:5   227 	      FREADINT(F,ICNT);
+  2106   0   14:5   232 	      IF FEOF THEN GOTO 1;
+  2107   0   14:5   238 	      IPOT:=ICNT+IPOT;
+  2108   0   14:5   243 	      IF NOT XVALID THEN X := 1; XVALID := TRUE;
+  2109   0   14:4   255 	    END;
+  2110   0   14:3   255 	  IF XVALID THEN
+  2111   0   14:4   258 	    IF NEG THEN X := -X
+  2112   0   14:4   262 	    ELSE
+  2113   0   14:3   270 	  ELSE SYSCOM^.IORSLT := IBADFORMAT
+  2114   0   14:2   275 	END;
+  2115   0   14:1   277   1:   IF IPOT < 0 THEN X := X/PWROFTEN(ABS(IPOT))
+  2116   0   14:1   288        ELSE X := X*PWROFTEN(IPOT);
+  2117   0   14:0   305   END (*FREADREAL*) ;
+  2118   0   14:0   326 
+  2119   0   15:D     1   PROCEDURE FWRITEREAL(*VAR F: FIB; X: REAL; W, D: INTEGER*);
+  2120   0   15:D     6   VAR J, TRUNCX, EXPX: INTEGER;
+  2121   0   15:D     9       NORMX: REAL;  S: STRING[30];
+  2122   0   15:D    27 
+  2123   0   15:0     0   BEGIN
+  2124   0   15:0     0   (* Check W and D for validity *)
+  2125   0   15:1     0   IF (W < 0) OR (D < 0) THEN  BEGIN W := 0;  D := 0 END;
+  2126   0   15:1    15 
+  2127   0   15:1    15   (* Take abs(x), normalize it and calculate exponent *)
+  2128   0   15:1    15   IF X < 0 THEN  BEGIN X := -X;  S[1] := '-' END
+  2129   0   15:1    39 	   ELSE  S[1] := ' ';
+  2130   0   15:1    46   EXPX := 0;  NORMX := X;
+  2131   0   15:1    57   IF X >= PWROFTEN(0) THEN  (* divide down to size *)
+  2132   0   15:2    68     WHILE NORMX >= PWROFTEN(1) DO
+  2133   0   15:3    79       BEGIN EXPX := EXPX+1;  NORMX := X/PWROFTEN(EXPX) END
+  2134   0   15:1    96   ELSE
+  2135   0   15:2   100     IF X <> 0 THEN  (* multiply up to size *)
+  2136   0   15:3   110       REPEAT
+  2137   0   15:4   110 	EXPX := EXPX-1;  NORMX := X*PWROFTEN(-EXPX)
+  2138   0   15:3   123       UNTIL NORMX >= PWROFTEN(0);
+  2139   0   15:3   139 
+  2140   0   15:3   139   (* Round number according to some very tricky rules *)
+  2141   0   15:1   139   IF (D=0) OR (D+EXPX+1 > 6) THEN  (* scientific notation, or decimal places *)
+  2142   0   15:2   152     NORMX := NORMX + 5/PWROFTEN(6)        (* overspecified *)
+  2143   0   15:1   160   ELSE IF D+EXPX+1 >= 0 THEN
+  2144   0   15:3   178     NORMX := NORMX + 5/PWROFTEN(D+EXPX+1);
+  2145   0   15:3   197   (* if D+EXPX+1 < 0, then number is effectively 0.0 *)
+  2146   0   15:3   197 
+  2147   0   15:3   197   (* If we just blew normalized stuff then fix it up *)
+  2148   0   15:1   197   IF NORMX >= PWROFTEN(1) THEN
+  2149   0   15:2   208     BEGIN  EXPX := EXPX+1;  NORMX := NORMX/PWROFTEN(1) END;
+  2150   0   15:2   225 
+  2151   0   15:2   225   (* Put the digits into a string *)
+  2152   0   15:1   225   FOR J := 3 TO 8 DO
+  2153   0   15:2   237     BEGIN
+  2154   0   15:3   237       TRUNCX := TRUNC(NORMX);
+  2155   0   15:3   245       S[J] := CHR(TRUNCX+ORD('0'));
+  2156   0   15:3   252       NORMX := (NORMX-TRUNCX)*PWROFTEN(1)
+  2157   0   15:2   262     END;
+  2158   0   15:2   274 
+  2159   0   15:2   274   (* Put number into proper form *)
+  2160   0   15:1   274   IF (D=0) OR (EXPX >= 6) THEN  (* scientific notation *)
+  2161   0   15:2   283     BEGIN
+  2162   0   15:3   283       S[2] := S[3];
+  2163   0   15:3   291       S[3] := '.';
+  2164   0   15:3   296       J := 8;
+  2165   0   15:3   299       IF EXPX <> 0 THEN 
+  2166   0   15:4   304 	BEGIN
+  2167   0   15:5   304 	  J := 10;
+  2168   0   15:5   307 	  S[9] := 'E';
+  2169   0   15:5   312 	  IF EXPX < 0 THEN
+  2170   0   15:6   317 	    BEGIN J := 11;  S[10] := '-';  EXPX := -EXPX END;
+  2171   0   15:5   329 	  IF EXPX > 9 THEN
+  2172   0   15:6   334 	    BEGIN
+  2173   0   15:7   334 	      S[J] := CHR(EXPX DIV 10 + ORD('0'));
+  2174   0   15:7   343 	      J := J+1;
+  2175   0   15:6   348 	    END;
+  2176   0   15:5   348 	  S[J] := CHR(EXPX MOD 10 + ORD('0'))
+  2177   0   15:4   356 	END;
+  2178   0   15:3   357       S[0] := CHR(J);
+  2179   0   15:2   362     END
+  2180   0   15:1   362   ELSE  (* some kind of fixed point notation *)
+  2181   0   15:2   364     IF EXPX >= 0 THEN
+  2182   0   15:3   369       BEGIN
+  2183   0   15:4   369 	MOVELEFT(S[3], S[2], EXPX+1);
+  2184   0   15:4   380 	S[3+EXPX] := '.';
+  2185   0   15:4   387 	FILLCHAR(S[9], D-(5-EXPX), ' '); (* blank fill at end if precision *)
+  2186   0   15:4   398 	S[0] := CHR(3+D+EXPX);           (* was over-specified *)
+  2187   0   15:3   407       END
+  2188   0   15:2   407     ELSE
+  2189   0   15:3   409       BEGIN
+  2190   0   15:4   409 	MOVERIGHT(S[3], S[3-EXPX], 6);  (* make room for leading zeroes *)
+  2191   0   15:4   420 	S[2] := '0';
+  2192   0   15:4   425 	S[3] := '.';
+  2193   0   15:4   430 	FILLCHAR(S[4], -EXPX-1, '0');  (* put in leading zeroes *)
+  2194   0   15:4   440 	FILLCHAR(S[9-EXPX], D-6+EXPX, ' ');(* put in blanks for over-precision*)
+  2195   0   15:4   453 	S[0] := CHR(3+D);
+  2196   0   15:3   460       END;
+  2197   0   15:1   460   IF W < LENGTH(S) THEN W := LENGTH(S);
+  2198   0   15:1   474   FWRITESTRING( F, S, W );
+  2199   0   15:0   480   END;  (*procedure write_real *)
+  2200   0   15:0   498 
+  2201   0   45:D     1   PROCEDURE FWRITEDEC(*VAR F: FIB; D: DECMAX; RLENG: INTEGER*);
+  2202   0   45:D    13   VAR S: STRING[38]; I: INTEGER;
+  2203   0   45:0     0   BEGIN
+  2204   0   45:1     0     STR(D,S);
+  2205   0   45:1    11     FWRITESTRING(F,S,RLENG)
+  2206   0   45:0    15   END (*FWRITEDEC*) ;
+  2207   0   45:0    30 
+  2208   0   45:0    30 
+  2209   0   44:D     1   PROCEDURE FREADDEC(*VAR F:FIB; VAR D: STUNT; L: INTEGER*);
+  2210   0   44:D     4     LABEL 1;
+  2211   0   44:D     4     VAR CH: CHAR;
+  2212   0   44:D     5 	NEG,DVALID: BOOLEAN; DIG,I: INTEGER;
+  2213   0   44:0     0   BEGIN
+  2214   0   44:1     0     WITH F DO
+  2215   0   44:2     3 	BEGIN 
+  2216   0   44:3     3 	  WITH D DO
+  2217   0   44:4     6 	    CASE L OF
+  2218   0   44:4     9 	      2: W2 := 0;      3: W3 := 0;       4: W4 := 0;
+  2219   0   44:4    48 	      5: W5 := 0;      6: W6 := 0;       7: W7 := 0;
+  2220   0   44:4    87 	      8: W8 := 0;      9: W9 := 0;      10: W10 := 0
+  2221   0   44:4   114 	    END;
+  2222   0   44:3   152 	  NEG := FALSE; DVALID := FALSE;
+  2223   0   44:3   158 	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+  2224   0   44:3   167 	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+  2225   0   44:3   184 	  IF FEOF THEN GOTO 1;
+  2226   0   44:3   190 	  CH := FWINDOW^[0];
+  2227   0   44:3   196 	  IF (CH = '+') OR (CH = '-') THEN
+  2228   0   44:4   205 	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+  2229   0   44:3   219 	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+  2230   0   44:4   233 	    BEGIN DVALID := TRUE;
+  2231   0   44:5   236 	      DIG:=ORD(CH)-ORD('0');
+  2232   0   44:5   241 	      IF NEG THEN DIG:=-DIG;
+  2233   0   44:5   248 	      WITH D DO
+  2234   0   44:6   251 		CASE L OF
+  2235   0   44:6   254 		  2:W2:=10*W2+DIG;
+  2236   0   44:6   281 		  3:W3:=10*W3+DIG;
+  2237   0   44:6   308 		  4:W4:=10*W4+DIG;
+  2238   0   44:6   335 		  5:W5:=10*W5+DIG;
+  2239   0   44:6   362 		  6:W6:=10*W6+DIG;
+  2240   0   44:6   389 		  7:W7:=10*W7+DIG;
+  2241   0   44:6   416 		  8:W8:=10*W8+DIG;
+  2242   0   44:6   443 		  9:W9:=10*W9+DIG;
+  2243   0   44:6   470 		  10:W10:=10*W10+DIG;
+  2244   0   44:6   497 		END;
+  2245   0   44:5   522 	      FGET(F); CH := FWINDOW^[0]
+  2246   0   44:4   528 	    END;
+  2247   0   44:3   533 	  IF NOT (DVALID OR FEOF) THEN SYSCOM^.IORSLT := IBADFORMAT
+  2248   0   44:2   543 	END;
+  2249   0   44:1   545   1:
+  2250   0   44:0   545   END(*FREADDEC*) ;
+  2251   0   44:0   572 
+  2252   0   44:0   572 (* --- SYSTEM.C --- *)
+  2253   0   44:0   572 
+  2254   0   44:0   572     (******************************************************************)
+  2255   0   44:0   572     (*                                                                *)
+  2256   0   44:0   572     (*  Copyright (c) 1978 Regents of the University of California.   *)
+  2257   0   44:0   572     (*  Permission to copy or distribute this software or documen-    *)
+  2258   0   44:0   572     (*  tation in hard or soft copy granted only by written license   *) 
+  2259   0   44:0   572     (*  obtained from the Institute for Information Systems.          *)
+  2260   0   44:0   572     (*                                                                *)
+  2261   0   44:0   572     (******************************************************************)
+  2262   0   44:0   572     
+  2263   0   44:0   572 (* INPUT-OUTPUT PRIMITIVES *)
+  2264   0   44:0   572 
+  2265   0   44:0   572 {.fs#} { removed since we include the actual functions in PASCALIO }
+  2266   0   44:0   572 {.fs# PROCEDURE XSEEK;        }
+  2267   0   44:0   572 {.fs# BEGIN                   }
+  2268   0   44:0   572 {.fs#   SYSCOM^.XEQERR := 11; } { NOT IMP ERR }
+  2269   0   44:0   572 {.fs#   EXECERROR             }
+  2270   0   44:0   572 {.fs# END (*XSEEK*) ;         }
+  2271   0   44:0   572 
+  2272   0   44:0   572 {.fs# PROCEDURE XREADREAL;    }
+  2273   0   44:0   572 {.fs# BEGIN                   }
+  2274   0   44:0   572 {.fs#   SYSCOM^.XEQERR := 11; { NOT IMP ERR }
+  2275   0   44:0   572 {.fs#   EXECERROR             }
+  2276   0   44:0   572 {.fs# END (*XREADREAL*) ;     }
+  2277   0   44:0   572 
+  2278   0   44:0   572 {.fs# PROCEDURE XWRITEREAL;   }
+  2279   0   44:0   572 {.fs# BEGIN                   }
+  2280   0   44:0   572 {.fs#   SYSCOM^.XEQERR := 11; { NOT IMP ERR }
+  2281   0   44:0   572 {.fs#   EXECERROR             }
+  2282   0   44:0   572 {.fs# END (*XWRITEREAL*) ;    }
+  2283   0   44:0   572 
+  2284   0   75:D     3 FUNCTION CANTSTRETCH(VAR F: FIB): BOOLEAN; (*REPLACED BY RJH 2Mar78*)
+  2285   0   75:D     4   LABEL 1;
+  2286   0   75:D     4   VAR LINX: DIRRANGE; FOUND,OK: BOOLEAN; LAVAILBLK: INTEGER; LDIR: DIRP;
+  2287   0   75:0     0 BEGIN CANTSTRETCH := TRUE; OK := FALSE;
+  2288   0   75:0     6 
+  2289   0   75:1     6   WITH F,FHEADER DO
+  2290   0   75:2    14     IF LENGTH(DTID) > 0 THEN
+  2291   0   75:3    23       BEGIN (*IN A DIRECTORY FOR SURE*)
+  2292   0   75:4    23 	IF FUNIT <> VOLSEARCH(FVID,FALSE,LDIR) THEN
+  2293   0   75:5    38 	  BEGIN SYSCOM^.IORSLT := ILOSTUNIT; GOTO 1 END;
+  2294   0   75:4    45 	FOUND := FALSE; LINX := 1;
+  2295   0   75:4    51 	WHILE (LINX <= LDIR^[0].DNUMFILES) AND NOT FOUND DO
+  2296   0   75:5    64 	  BEGIN
+  2297   0   75:6    64 	    FOUND := (LDIR^[LINX].DFIRSTBLK = DFIRSTBLK) AND
+  2298   0   75:6    72 	             (LDIR^[LINX].DLASTBLK = DLASTBLK);
+  2299   0   75:6    83 	    LINX := LINX+1
+  2300   0   75:5    84 	  END;
+  2301   0   75:4    90 	IF NOT FOUND THEN
+  2302   0   75:5    94 	  BEGIN SYSCOM^.IORSLT := ILOSTFILE; GOTO 1 END;
+  2303   0   75:4   101         IF LINX > LDIR^[0].DNUMFILES THEN
+  2304   0   75:5   111 	  LAVAILBLK := LDIR^[0].DEOVBLK
+  2305   0   75:4   115 	ELSE LAVAILBLK := LDIR^[LINX].DFIRSTBLK;
+  2306   0   75:4   127 	IF (DLASTBLK < LAVAILBLK) OR (DLASTBYTE < FBLKSIZE) THEN
+  2307   0   75:5   141 	  BEGIN
+  2308   0   75:6   141 	    WITH LDIR^[LINX-1] DO
+  2309   0   75:7   149 	      BEGIN
+  2310   0   75:8   149 	        DLASTBLK := LAVAILBLK; DLASTBYTE := FBLKSIZE;
+  2311   0   75:8   161                 WRITEDIR(FUNIT,LDIR);
+  2312   0   75:8   166 	        IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+  2313   0   75:7   174 	      END;
+  2314   0   75:6   174 	    FEOF := FALSE; FEOLN := FALSE;
+  2315   0   75:6   184             IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR; (*RJH 2Mar78*)
+  2316   0   75:6   195             DLASTBLK := LAVAILBLK; DLASTBYTE := FBLKSIZE;
+  2317   0   75:6   207 	    DACCESS.YEAR := 100; CANTSTRETCH := FALSE
+  2318   0   75:5   214 	  END;
+  2319   0   75:4   217         OK := TRUE;
+  2320   0   75:3   220       END;
+  2321   0   75:1   220 1:  IF NOT OK THEN
+  2322   0   75:2   224       BEGIN F.FEOF := TRUE; F.FEOLN := TRUE END
+  2323   0   75:0   234 END (*CANTSTRETCH*) ;
+  2324   0   75:0   252 
+  2325   0    4:D     1 PROCEDURE FRESET(*VAR F: FIB*);
+  2326   0    4:0     0 BEGIN SYSCOM^.IORSLT := INOERROR;
+  2327   0    4:1     5   WITH F DO
+  2328   0    4:2     8     IF FISOPEN THEN
+  2329   0    4:3    12       BEGIN RESETER(F);
+  2330   0    4:4    15 	IF FRECSIZE > 0 THEN
+  2331   0    4:5    21 	  IF FSTATE = FJANDW THEN FGET(F)
+  2332   0    4:5    28 	  ELSE FSTATE := FNEEDCHAR
+  2333   0    4:3    35       END
+  2334   0    4:0    37 END (*FRESET*) ;
+  2335   0    4:0    50 
+  2336   0    1:D     3 FUNCTION FBLOCKIO(*VAR F: FIB; VAR A: WINDOW; I: INTEGER;
+  2337   0   28:D     9 	           NBLOCKS,RBLOCK: INTEGER; DOREAD: BOOLEAN*);
+  2338   0   28:0     0 BEGIN FBLOCKIO := 0; SYSCOM^.IORSLT := INOERROR;
+  2339   0   28:1     8   WITH F DO
+  2340   0   28:2    11     IF FISOPEN AND (NBLOCKS >= 0) THEN
+  2341   0   28:3    19       IF FISBLKD THEN
+  2342   0   28:4    23 	WITH FHEADER DO
+  2343   0   28:5    28 	  BEGIN
+  2344   0   28:6    28 	    IF RBLOCK < 0 THEN RBLOCK := FNXTBLK;
+  2345   0   28:6    38 	    RBLOCK := DFIRSTBLK+RBLOCK;
+  2346   0   28:6    44 	    IF RBLOCK+NBLOCKS > DLASTBLK THEN
+  2347   0   28:7    52 	      IF NOT DOREAD THEN
+  2348   0   28:8    56 	        IF CANTSTRETCH( F ) THEN;
+  2349   0   28:6    63 	    IF RBLOCK+NBLOCKS > DLASTBLK THEN
+  2350   0   28:7    71 	      NBLOCKS := DLASTBLK-RBLOCK;
+  2351   0   28:6    77 	    FEOF := RBLOCK >= DLASTBLK;
+  2352   0   28:6    85 	    IF NOT FEOF THEN
+  2353   0   28:7    90 	      BEGIN
+  2354   0   28:8    90 	        IF DOREAD THEN
+  2355   0   28:9    93 	          UNITREAD(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+  2356   0   28:8   106 	        ELSE
+  2357   0   28:9   108 	          BEGIN FMODIFIED := TRUE;
+  2358   0   28:0   113 	            UNITWRITE(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+  2359   0   28:9   126 	          END;
+  2360   0   28:8   126 	        FBLOCKIO := NBLOCKS;
+  2361   0   28:8   129 	        RBLOCK := RBLOCK+NBLOCKS;
+  2362   0   28:8   134 	        FEOF := RBLOCK = DLASTBLK;
+  2363   0   28:8   142 	        FNXTBLK := RBLOCK-DFIRSTBLK;
+  2364   0   28:8   150 	        IF FNXTBLK > FMAXBLK THEN FMAXBLK := FNXTBLK
+  2365   0   28:7   162 	      END
+  2366   0   28:5   166 	  END
+  2367   0   28:3   166       ELSE
+  2368   0   28:4   168 	BEGIN FBLOCKIO := NBLOCKS;
+  2369   0   28:5   171 	  IF DOREAD THEN
+  2370   0   28:6   174 	    UNITREAD(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+  2371   0   28:5   187 	  ELSE
+  2372   0   28:6   189 	    UNITWRITE(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK);
+  2373   0   28:5   202 	  IF IORESULT = ORD(INOERROR) THEN
+  2374   0   28:6   208 	    IF DOREAD THEN
+  2375   0   28:7   211 	      BEGIN RBLOCK := NBLOCKS*FBLKSIZE;
+  2376   0   28:8   218 	        RBLOCK := RBLOCK+SCAN(-RBLOCK,<>CHR(0),A[I+RBLOCK-1]);
+  2377   0   28:8   235 	        RBLOCK := (RBLOCK+FBLKSIZE-1) DIV FBLKSIZE;
+  2378   0   28:8   248 	        FBLOCKIO := RBLOCK;
+  2379   0   28:8   251 	        FEOF := RBLOCK < NBLOCKS
+  2380   0   28:7   255 	      END
+  2381   0   28:6   258 	    ELSE
+  2382   0   28:5   260 	  ELSE FBLOCKIO := 0
+  2383   0   28:4   262 	END
+  2384   0   28:2   265     ELSE
+  2385   0   28:3   267       SYSCOM^.IORSLT := INOTOPEN
+  2386   0   28:0   270 END (*FBLOCKIO*) ;
+  2387   0   28:0   288 
+  2388   0    7:D     1 PROCEDURE FGET(*VAR F: FIB*);
+  2389   0    7:D     2   LABEL 1, 2;
+  2390   0    7:D     2   VAR LEFTOGET,WININX,LEFTINBUF,AMOUNT: INTEGER;
+  2391   0    7:D     6       DONE: BOOLEAN;
+  2392   0    7:0     0 BEGIN SYSCOM^.IORSLT := INOERROR;
+  2393   0    7:1     5   WITH F DO
+  2394   0    7:2     8     IF FISOPEN THEN
+  2395   0    7:3    12       BEGIN
+  2396   0    7:4    12 	IF FREPTCNT > 0 THEN
+  2397   0    7:5    19 	  BEGIN FREPTCNT := FREPTCNT-1; IF FREPTCNT > 0 THEN GOTO 2 END;
+  2398   0    7:4    37 	IF FSOFTBUF THEN
+  2399   0    7:5    42 	  WITH FHEADER DO
+  2400   0    7:6    47 	    BEGIN
+  2401   0    7:7    47 	      LEFTOGET := FRECSIZE; WININX := 0;
+  2402   0    7:7    54 	      REPEAT
+  2403   0    7:8    54 	        IF FNXTBLK = FMAXBLK THEN
+  2404   0    7:9    63 	          IF FNXTBYTE+LEFTOGET > FMAXBYTE THEN GOTO 1
+  2405   0    7:9    76 	          ELSE LEFTINBUF := DLASTBYTE-FNXTBYTE
+  2406   0    7:8    81 	        ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE;
+  2407   0    7:8    98 	        AMOUNT := LEFTOGET;
+  2408   0    7:8   101 	        IF AMOUNT > LEFTINBUF THEN AMOUNT := LEFTINBUF;
+  2409   0    7:8   109 	        IF AMOUNT > 0 THEN
+  2410   0    7:9   114 	          BEGIN
+  2411   0    7:0   114 	            MOVELEFT(FBUFFER[FNXTBYTE],FWINDOW^[WININX],AMOUNT);
+  2412   0    7:0   126 	            FNXTBYTE := FNXTBYTE+AMOUNT;
+  2413   0    7:0   135 	            WININX := WININX+AMOUNT;
+  2414   0    7:0   140 	            LEFTOGET := LEFTOGET-AMOUNT
+  2415   0    7:9   141 	          END;
+  2416   0    7:8   145 	        DONE := LEFTOGET = 0;
+  2417   0    7:8   150 	        IF NOT DONE THEN
+  2418   0    7:9   154 	          BEGIN
+  2419   0    7:0   154 	            IF FBUFCHNGD THEN
+  2420   0    7:1   159 	              BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+  2421   0    7:2   169 	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1)
+  2422   0    7:1   189 	              END;
+  2423   0    7:0   189 	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+  2424   0    7:0   197 	            UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK);
+  2425   0    7:0   215 	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+  2426   0    7:0   223 	            FNXTBLK := FNXTBLK+1; FNXTBYTE := 0
+  2427   0    7:9   235 	          END
+  2428   0    7:7   237 	      UNTIL DONE
+  2429   0    7:6   237 	    END
+  2430   0    7:4   240 	ELSE
+  2431   0    7:5   242 	  BEGIN
+  2432   0    7:6   242 	    UNITREAD(FUNIT,FWINDOW^,FRECSIZE);
+  2433   0    7:6   253 	    IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+  2434   0    7:5   261 	  END;
+  2435   0    7:4   261 	IF FRECSIZE = 1 THEN (*FILE OF CHAR*)
+  2436   0    7:5   267 	  BEGIN FEOLN := FALSE;
+  2437   0    7:6   272 	    IF FSTATE <> FJANDW THEN FSTATE := FGOTCHAR;
+  2438   0    7:6   283 	    IF FWINDOW^[0] = CHR(EOL) THEN
+  2439   0    7:7   291 	      BEGIN FWINDOW^[0] := ' '; FEOLN := TRUE; GOTO 2 END;
+  2440   0    7:6   303 	    IF FWINDOW^[0] = CHR(DLE) THEN
+  2441   0    7:7   311 	      BEGIN FGET(F);
+  2442   0    7:8   314 	        AMOUNT := ORD(FWINDOW^[0])-32;
+  2443   0    7:8   322 	        IF (AMOUNT > 0) AND (AMOUNT <= 127) THEN
+  2444   0    7:9   331 	          BEGIN
+  2445   0    7:0   331 	            FWINDOW^[0] := ' ';
+  2446   0    7:0   336 	            FREPTCNT := AMOUNT;
+  2447   0    7:0   341 	            GOTO 2
+  2448   0    7:9   343 	          END;
+  2449   0    7:8   343 	        FGET(F)
+  2450   0    7:7   344 	      END;
+  2451   0    7:6   346 	    IF FWINDOW^[0] = CHR(0) THEN
+  2452   0    7:7   354 	      BEGIN (*EOF HANDLING*)
+  2453   0    7:8   354 	        IF FSOFTBUF AND (FHEADER.DFKIND = TEXTFILE) THEN
+  2454   0    7:9   368 	          BEGIN (*END OF 2 BLOCK PAGE*)
+  2455   0    7:0   368 	            IF ODD(FNXTBLK) THEN FNXTBLK := FNXTBLK+1;
+  2456   0    7:0   382 	            FNXTBYTE := FBLKSIZE; FGET(F)
+  2457   0    7:9   390 	          END
+  2458   0    7:8   392 	        ELSE
+  2459   0    7:9   394 	          BEGIN FWINDOW^[0] := ' '; GOTO 1 END
+  2460   0    7:7   401 	      END
+  2461   0    7:5   401 	  END
+  2462   0    7:3   401       END
+  2463   0    7:2   401     ELSE
+  2464   0    7:3   403       BEGIN
+  2465   0    7:4   403 	SYSCOM^.IORSLT := INOTOPEN;
+  2466   0    7:4   408 1:      FEOF := TRUE; FEOLN := TRUE
+  2467   0    7:3   416       END;
+  2468   0    7:1   418 2:
+  2469   0    7:0   418 END (*FGET*) ;
+  2470   0    7:0   442 
+  2471   0    8:D     1 PROCEDURE FPUT(*VAR F: FIB*);
+  2472   0    8:D     2   LABEL 1;
+  2473   0    8:D     2   VAR LEFTOPUT,WININX,LEFTINBUF,AMOUNT: INTEGER;
+  2474   0    8:D     6       DONE: BOOLEAN;
+  2475   0    8:0     0 BEGIN SYSCOM^.IORSLT := INOERROR;
+  2476   0    8:1     5   WITH F DO
+  2477   0    8:2     8     IF FISOPEN THEN
+  2478   0    8:3    12       BEGIN
+  2479   0    8:4    12 	IF FSOFTBUF THEN
+  2480   0    8:5    17 	  WITH FHEADER DO
+  2481   0    8:6    22 	    BEGIN
+  2482   0    8:7    22 	      LEFTOPUT := FRECSIZE; WININX := 0;
+  2483   0    8:7    29 	      REPEAT
+  2484   0    8:8    29 	        IF DFIRSTBLK+FNXTBLK = DLASTBLK THEN
+  2485   0    8:9    40 	          IF FNXTBYTE+LEFTOPUT > DLASTBYTE THEN
+  2486   0    8:0    51 	            IF CANTSTRETCH( F ) THEN 
+  2487   0    8:1    58 	                BEGIN SYSCOM^.IORSLT := INOROOM; GOTO 1 END
+  2488   0    8:0    65 	            ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE
+  2489   0    8:9    70 	          ELSE LEFTINBUF := DLASTBYTE-FNXTBYTE
+  2490   0    8:8    81 	        ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE;
+  2491   0    8:8    98 	        AMOUNT := LEFTOPUT;
+  2492   0    8:8   101 	        IF AMOUNT > LEFTINBUF THEN AMOUNT := LEFTINBUF;
+  2493   0    8:8   109 	        IF AMOUNT > 0 THEN
+  2494   0    8:9   114 	          BEGIN FBUFCHNGD := TRUE;
+  2495   0    8:0   119 	            MOVELEFT(FWINDOW^[WININX],FBUFFER[FNXTBYTE],AMOUNT);
+  2496   0    8:0   131 	            FNXTBYTE := FNXTBYTE+AMOUNT;
+  2497   0    8:0   140 	            WININX := WININX+AMOUNT;
+  2498   0    8:0   145 	            LEFTOPUT := LEFTOPUT-AMOUNT
+  2499   0    8:9   146 	          END;
+  2500   0    8:8   150 	        DONE := LEFTOPUT = 0;
+  2501   0    8:8   155 	        IF NOT DONE THEN
+  2502   0    8:9   159 	          BEGIN
+  2503   0    8:0   159 	            IF FBUFCHNGD THEN
+  2504   0    8:1   164 	              BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+  2505   0    8:2   174 	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1)
+  2506   0    8:1   194 	              END;
+  2507   0    8:0   194 	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+  2508   0    8:0   202 	            IF FNXTBLK < FMAXBLK THEN
+  2509   0    8:1   211 	              UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK)
+  2510   0    8:0   229 	            ELSE
+  2511   0    8:1   231 	              FILLCHAR(FBUFFER,FBLKSIZE,CHR(0));
+  2512   0    8:0   241 	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+  2513   0    8:0   249 	            FNXTBLK := FNXTBLK+1; FNXTBYTE := 0
+  2514   0    8:9   261 	          END
+  2515   0    8:7   263 	      UNTIL DONE;
+  2516   0    8:7   266 	      IF FRECSIZE = 1 THEN
+  2517   0    8:8   272 	        IF FWINDOW^[0] = CHR(EOL) THEN
+  2518   0    8:9   280 	          IF DFKIND = TEXTFILE THEN
+  2519   0    8:0   290 	            IF (FNXTBYTE >= FBLKSIZE-127) AND NOT ODD(FNXTBLK) THEN
+  2520   0    8:1   306 	              BEGIN
+  2521   0    8:2   306 	                FNXTBYTE := FBLKSIZE-1;
+  2522   0    8:2   315 	                FWINDOW^[0] := CHR(0);
+  2523   0    8:2   320 	                FPUT(F)
+  2524   0    8:1   321 	              END
+  2525   0    8:6   323 	    END
+  2526   0    8:4   323 	ELSE
+  2527   0    8:5   325 	  BEGIN
+  2528   0    8:6   325 	    UNITWRITE(FUNIT,FWINDOW^,FRECSIZE);
+  2529   0    8:6   336 	    IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+  2530   0    8:5   344 	  END
+  2531   0    8:3   344       END
+  2532   0    8:2   344     ELSE
+  2533   0    8:3   346       BEGIN
+  2534   0    8:4   346 	SYSCOM^.IORSLT := INOTOPEN;
+  2535   0    8:4   351 1:      FEOF := TRUE; FEOLN := TRUE
+  2536   0    8:3   359       END
+  2537   0    8:0   361 END (*FPUT*) ;
+  2538   0    8:0   382 
+  2539   0   10:D     3 FUNCTION FEOF(*VAR F: FIB*);
+  2540   0   10:0     0 BEGIN FEOF := F.FEOF END;
+  2541   0   10:0    16 
+  2542   0   10:0    16 (* TEXT FILE INTRINSICS *)
+  2543   0   10:0    16 
+  2544   0   11:D     3 FUNCTION FEOLN(*VAR F: FIB*);
+  2545   0   11:0     0 BEGIN FEOLN := F.FEOLN END;
+  2546   0   11:0    16 
+  2547   0   22:D     1 PROCEDURE FWRITELN(*VAR F: FIB*);
+  2548   0   22:0     0 BEGIN
+  2549   0   22:1     0   F.FWINDOW^[0] := CHR(EOL); FPUT(F)
+  2550   0   22:0     6 END (*FWRITELN*) ;
+  2551   0   22:0    20 
+  2552   0   17:D     1 PROCEDURE FWRITECHAR(*VAR F: FIB; CH: CHAR; RLENG: INTEGER*);
+  2553   0   17:D     4   LABEL  1;
+  2554   0   17:0     0 BEGIN
+  2555   0   17:1     0   WITH F DO
+  2556   0   17:2     3     IF FISOPEN THEN
+  2557   0   17:3     7       IF FSOFTBUF THEN
+  2558   0   17:4    12 	BEGIN
+  2559   0   17:5    12 	  WHILE RLENG > 1 DO
+  2560   0   17:6    17 	    BEGIN FWINDOW^[0] := ' '; FPUT(F);
+  2561   0   17:7    25 	      RLENG := RLENG-1
+  2562   0   17:6    26 	    END;
+  2563   0   17:5    32 	  FWINDOW^[0] := CH; FPUT(F)
+  2564   0   17:4    38 	END
+  2565   0   17:3    40       ELSE
+  2566   0   17:4    42 	BEGIN
+  2567   0   17:5    42 	  WHILE RLENG > 1 DO
+  2568   0   17:6    47 	    BEGIN FWINDOW^[0] := ' ';
+  2569   0   17:7    52 	      UNITWRITE(FUNIT,FWINDOW^,1);
+  2570   0   17:7    62 	      RLENG := RLENG-1
+  2571   0   17:6    63 	    END;
+  2572   0   17:5    69 	  FWINDOW^[0] := CH;
+  2573   0   17:5    74 	  UNITWRITE(FUNIT,FWINDOW^,1)
+  2574   0   17:4    84 	END
+  2575   0   17:2    84     ELSE SYSCOM^.IORSLT := INOTOPEN;
+  2576   0   17:1    91 1:
+  2577   0   17:0    91 END (*FWRITECHAR*) ;
+  2578   0   17:0   108 
+  2579   0   13:D     1 PROCEDURE FWRITEINT(*VAR F: FIB; I,RLENG: INTEGER*);
+  2580   0   13:D     4   LABEL 1;
+  2581   0   13:D     4   VAR POT,COL: INTEGER; CH: CHAR;
+  2582   0   13:D     7       SUPPRESSING: BOOLEAN; S: STRING[10];
+  2583   0   13:0     0 BEGIN COL := 1;
+  2584   0   13:1     3   S[0] := CHR(10); SUPPRESSING := TRUE;
+  2585   0   13:1    11   IF I < 0 THEN
+  2586   0   13:2    16     BEGIN I := ABS(I); S[1] := '-'; COL := 2;
+  2587   0   13:3    28       IF I = 0 THEN (*HARDWARE SPECIAL CASE*)
+  2588   0   13:4    33 	BEGIN S := '-32768'; GOTO 1 END
+  2589   0   13:2    48     END;
+  2590   0   13:1    48   FOR POT := 4 DOWNTO 0 DO
+  2591   0   13:2    59     BEGIN CH := CHR(I DIV IPOT[POT] + ORD('0'));
+  2592   0   13:3    72       IF (CH = '0') AND (POT > 0) AND SUPPRESSING THEN
+  2593   0   13:3    83       ELSE (*FORMAT THE CHAR*)
+  2594   0   13:4    85 	BEGIN SUPPRESSING := FALSE;
+  2595   0   13:5    88 	  S[COL] := CH; COL := COL+1;
+  2596   0   13:5    98 	  IF CH <> '0' THEN I := I MOD IPOT[POT]
+  2597   0   13:4   110 	END
+  2598   0   13:2   114     END;
+  2599   0   13:1   121   S[0] := CHR(COL-1);
+  2600   0   13:1   128 1:IF RLENG < LENGTH(S) THEN
+  2601   0   13:2   136     RLENG := LENGTH(S);
+  2602   0   13:1   142   FWRITESTRING(F,S,RLENG)
+  2603   0   13:0   146 END (*FWRITEINT*) ;
+  2604   0   13:0   162 
+  2605   0   19:D     1 PROCEDURE FWRITESTRING(*VAR F: FIB; VAR S: STRING; RLENG: INTEGER*);
+  2606   0   19:D     4   VAR SINX: INTEGER;
+  2607   0   19:0     0 BEGIN
+  2608   0   19:1     0   WITH F DO
+  2609   0   19:2     3     IF FISOPEN THEN
+  2610   0   19:3     7       BEGIN
+  2611   0   19:4     7 	IF RLENG <= 0 THEN RLENG := LENGTH(S);
+  2612   0   19:4    17 	IF RLENG > LENGTH(S) THEN
+  2613   0   19:5    24 	  BEGIN FWRITECHAR(F,' ',RLENG-LENGTH(S)); RLENG := LENGTH(S) END;
+  2614   0   19:4    38 	IF FSOFTBUF THEN
+  2615   0   19:5    43 	  BEGIN SINX := 1;
+  2616   0   19:6    46 	    WHILE (SINX <= RLENG) AND NOT FEOF DO
+  2617   0   19:7    55 	      BEGIN FWINDOW^[0] := S[SINX]; FPUT(F); SINX := SINX+1 END
+  2618   0   19:5    70 	  END
+  2619   0   19:4    72 	ELSE
+  2620   0   19:5    74 	  UNITWRITE(FUNIT,S[1],RLENG)
+  2621   0   19:3    83       END
+  2622   0   19:2    83     ELSE SYSCOM^.IORSLT := INOTOPEN
+  2623   0   19:0    88 END (*FWRITESTRING*) ;
+  2624   0   19:0   104 
+  2625   0   18:D     1 PROCEDURE FREADSTRING(*VAR F: FIB; VAR S: STRING; SLENG: INTEGER*);
+  2626   0   18:D     4   VAR SINX: INTEGER; CH: CHAR;
+  2627   0   18:0     0 BEGIN
+  2628   0   18:1     0   WITH F DO
+  2629   0   18:2     3       BEGIN SINX := 1;
+  2630   0   18:3     6 {.fs}	S[0] := CHR(0);     { let UNITREAD emulation intercept a correct string }
+  2631   0   18:3    10 	IF FSTATE = FNEEDCHAR THEN FGET(F);
+  2632   0   18:3    19 {.fs#	S[0] := CHR(SLENG); (*NO INV INDEX*) }
+  2633   0   18:3    19 	WHILE (SINX <= SLENG) AND NOT (FEOLN OR FEOF) DO
+  2634   0   18:4    31 	  BEGIN CH := FWINDOW^[0];
+  2635   0   18:5    37 {.fs}	    S[0] := CHR(SINX); (*NO INV INDEX*)
+  2636   0   18:5    41 	    IF FUNIT = 1 THEN
+  2637   0   18:6    47 	      IF CHECKDEL(CH,SINX) THEN
+  2638   0   18:6    56 	      ELSE
+  2639   0   18:7    58 	        BEGIN S[SINX] := CH; SINX := SINX + 1 END
+  2640   0   18:5    67 	    ELSE
+  2641   0   18:6    69 	      BEGIN S[SINX] := CH; SINX := SINX + 1 END;
+  2642   0   18:5    78 {.fs}	    S[0] := CHR(SINX - 1);  { let UNITREAD emu intercept a correct string }
+  2643   0   18:5    84 	    FGET(F)
+  2644   0   18:4    85 	  END;
+  2645   0   18:3    89 	S[0] := CHR(SINX - 1);
+  2646   0   18:3    95 	WHILE NOT FEOLN DO FGET(F)
+  2647   0   18:2   101       END
+  2648   0   18:0   105 END (*FREADSTRING*) ;
+  2649   0   18:0   122 
+  2650   0   20:D     1 PROCEDURE FWRITEBYTES(*VAR F: FIB; VAR A: WINDOW; RLENG,ALENG: INTEGER*);
+  2651   0   20:D     5   VAR AINX: INTEGER;
+  2652   0   20:0     0 BEGIN
+  2653   0   20:1     0   WITH F DO
+  2654   0   20:2     3     IF FISOPEN THEN
+  2655   0   20:3     7       BEGIN
+  2656   0   20:4     7 	IF RLENG > ALENG THEN
+  2657   0   20:5    12 	  BEGIN FWRITECHAR(F,' ',RLENG-ALENG); RLENG := ALENG END;
+  2658   0   20:4    22 	IF FSOFTBUF THEN
+  2659   0   20:5    27 	  BEGIN AINX := 0;
+  2660   0   20:6    30 	    WHILE (AINX < RLENG) AND NOT FEOF DO
+  2661   0   20:7    39 	      BEGIN FWINDOW^[0] := A[AINX]; FPUT(F); AINX := AINX+1 END
+  2662   0   20:5    54 	  END
+  2663   0   20:4    56 	ELSE
+  2664   0   20:5    58 	  UNITWRITE(FUNIT,A,RLENG)
+  2665   0   20:3    67       END
+  2666   0   20:2    67     ELSE SYSCOM^.IORSLT := INOTOPEN
+  2667   0   20:0    72 END (*FWRITEBYTES*) ;
+  2668   0   20:0    88 
+  2669   0   21:D     1 PROCEDURE FREADLN(*VAR F: FIB*);
+  2670   0   21:0     0 BEGIN
+  2671   0   21:1     0   WHILE NOT F.FEOLN DO FGET(F);
+  2672   0   21:1    10   IF F.FSTATE = FJANDW THEN FGET(F)
+  2673   0   21:1    17   ELSE
+  2674   0   21:2    21     BEGIN F.FSTATE := FNEEDCHAR; F.FEOLN := FALSE END
+  2675   0   21:0    31 END (*FREADLN*) ;
+  2676   0   21:0    46 
+  2677   0   16:D     1 PROCEDURE FREADCHAR(*VAR F: FIB; VAR CH: CHAR*);
+  2678   0   16:0     0 BEGIN
+  2679   0   16:1     0   WITH F DO
+  2680   0   16:2     3       BEGIN SYSCOM^.IORSLT := INOERROR;
+  2681   0   16:3     8 	IF FSTATE = FNEEDCHAR THEN FGET(F);
+  2682   0   16:3    17 	CH := FWINDOW^[0];
+  2683   0   16:3    23 	IF FSTATE = FJANDW THEN FGET(F)
+  2684   0   16:3    30 	ELSE FSTATE := FNEEDCHAR
+  2685   0   16:2    37       END
+  2686   0   16:0    39 END (*FREADCHAR*) ;
+  2687   0   16:0    52 
+  2688   0   12:D     1 PROCEDURE FREADINT(*VAR F: FIB; VAR I: INTEGER*);
+  2689   0   12:D     3   LABEL 1;
+  2690   0   12:D     3   VAR CH: CHAR; NEG,IVALID: BOOLEAN; SINX: INTEGER;
+  2691   0   12:0     0 BEGIN
+  2692   0   12:1     0   WITH F DO
+  2693   0   12:2     3       BEGIN I := 0; NEG := FALSE; IVALID := FALSE;
+  2694   0   12:3    12 	IF FSTATE = FNEEDCHAR THEN FGET(F);
+  2695   0   12:3    21 	WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+  2696   0   12:3    38 	IF FEOF THEN GOTO 1;
+  2697   0   12:3    44 	CH := FWINDOW^[0];
+  2698   0   12:3    50 	IF (CH = '+') OR (CH = '-') THEN
+  2699   0   12:4    59 	  BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+  2700   0   12:3    73 	IF CH IN DIGITS THEN
+  2701   0   12:4    83           BEGIN  IVALID := TRUE; SINX := 1;
+  2702   0   12:5    89             REPEAT
+  2703   0   12:6    89               I := I*10+ORD(CH)-ORD('0');
+  2704   0   12:6    99               FGET(F); CH := FWINDOW^[0]; SINX := SINX+1;
+  2705   0   12:6   113               IF FUNIT = 1 THEN
+  2706   0   12:7   119                 WHILE CHECKDEL(CH,SINX) DO
+  2707   0   12:8   128                   BEGIN
+  2708   0   12:9   128                     IF SINX = 1 THEN I := 0 ELSE I := I DIV 10;
+  2709   0   12:9   144                     FGET(F); CH := FWINDOW^[0]
+  2710   0   12:8   150                   END
+  2711   0   12:5   153             UNTIL NOT (CH IN DIGITS) OR FEOLN
+  2712   0   12:4   164           END;
+  2713   0   12:3   169 	IF IVALID OR FEOF THEN
+  2714   0   12:4   175 	  IF NEG THEN I := -I ELSE (*NADA*)
+  2715   0   12:3   185 	ELSE SYSCOM^.IORSLT := IBADFORMAT
+  2716   0   12:2   190       END;
+  2717   0   12:1   192 1:
+  2718   0   12:0   192 END (*FREADINT*) ;
+  2719   0   12:0   212 
+  2720   0   12:0   212 (* STRING VARIABLE INTRINSICS *)
+  2721   0   12:0   212 
+  2722   0   23:D     1 PROCEDURE SCONCAT(*VAR SRC,DEST: STRING; DESTLENG: INTEGER*);
+  2723   0   23:0     0 BEGIN
+  2724   0   23:1     0   IF LENGTH(SRC)+LENGTH(DEST) <= DESTLENG THEN
+  2725   0   23:2    11     BEGIN
+  2726   0   23:3    11       MOVELEFT(SRC[1],DEST[LENGTH(DEST)+1],LENGTH(SRC));
+  2727   0   23:3    24       DEST[0] := CHR(LENGTH(SRC)+LENGTH(DEST))
+  2728   0   23:2    33     END
+  2729   0   23:0    34 END (*SCONCAT*) ;
+  2730   0   23:0    46 
+  2731   0   24:D     1 PROCEDURE SINSERT(*VAR SRC,DEST: STRING; DESTLENG,INSINX: INTEGER*);
+  2732   0   24:D     5   VAR ONRIGHT: INTEGER;
+  2733   0   24:0     0 BEGIN
+  2734   0   24:1     0   IF (INSINX > 0) AND (LENGTH(SRC) > 0) AND
+  2735   0   24:1     9       (LENGTH(SRC)+LENGTH(DEST) <= DESTLENG) THEN
+  2736   0   24:2    21     BEGIN
+  2737   0   24:3    21       ONRIGHT := LENGTH(DEST)-INSINX+1;
+  2738   0   24:3    30       IF ONRIGHT > 0 THEN
+  2739   0   24:4    35 	BEGIN
+  2740   0   24:5    35 	  MOVERIGHT(DEST[INSINX],DEST[INSINX+LENGTH(SRC)],ONRIGHT);
+  2741   0   24:5    46 	  ONRIGHT := 0
+  2742   0   24:4    46 	END;
+  2743   0   24:3    49       IF ONRIGHT = 0 THEN
+  2744   0   24:4    54 	BEGIN
+  2745   0   24:5    54 	  MOVELEFT(SRC[1],DEST[INSINX],LENGTH(SRC));
+  2746   0   24:5    63 	  DEST[0] := CHR(LENGTH(DEST)+LENGTH(SRC))
+  2747   0   24:4    72 	END
+  2748   0   24:2    73     END
+  2749   0   24:0    73 END (*SINSERT*) ;
+  2750   0   24:0    86 
+  2751   0   25:D     1 PROCEDURE SCOPY(*VAR SRC,DEST: STRING; SRCINX,COPYLENG: INTEGER*);
+  2752   0   25:0     0 BEGIN DEST := '';
+  2753   0   25:1     6   IF (SRCINX > 0) AND (COPYLENG > 0) AND
+  2754   0   25:1    13       (SRCINX+COPYLENG-1 <= LENGTH(SRC)) THEN
+  2755   0   25:2    25     BEGIN
+  2756   0   25:3    25       MOVELEFT(SRC[SRCINX],DEST[1],COPYLENG);
+  2757   0   25:3    32       DEST[0] := CHR(COPYLENG)
+  2758   0   25:2    35     END
+  2759   0   25:0    36 END (*SCOPY*) ;
+  2760   0   25:0    48 
+  2761   0   26:D     1 PROCEDURE SDELETE(*VAR DEST: STRING; DELINX,DELLENG: INTEGER*);
+  2762   0   26:D     4   VAR ONRIGHT: INTEGER;
+  2763   0   26:0     0 BEGIN
+  2764   0   26:1     0   IF (DELINX > 0) AND (DELLENG > 0) THEN
+  2765   0   26:2     9     BEGIN
+  2766   0   26:3     9       ONRIGHT := LENGTH(DEST)-DELINX-DELLENG+1;
+  2767   0   26:3    20       IF ONRIGHT = 0 THEN DEST[0] := CHR(DELINX-1)
+  2768   0   26:3    30       ELSE
+  2769   0   26:4    33 	IF ONRIGHT > 0 THEN
+  2770   0   26:5    38 	  BEGIN
+  2771   0   26:6    38 	    MOVELEFT(DEST[DELINX+DELLENG],DEST[DELINX],ONRIGHT);
+  2772   0   26:6    47 	    DEST[0] := CHR(LENGTH(DEST)-DELLENG)
+  2773   0   26:5    54 	  END
+  2774   0   26:2    55     END
+  2775   0   26:0    55 END (*SDELETE*) ;
+  2776   0   26:0    68 
+  2777   0   27:D     3 FUNCTION SPOS(*VAR TARGET, SRC: STRING*);
+  2778   0   27:D     5 LABEL 1;
+  2779   0   27:D     5 VAR  TEMPLOC,DIST: INTEGER;
+  2780   0   27:D     7      FIRSTCH: CHAR;
+  2781   0   27:D     8      TEMP: STRING;
+  2782   0   27:0     0 BEGIN SPOS := 0;
+  2783   0   27:1     3   IF LENGTH(TARGET) > 0 THEN
+  2784   0   27:2    10     BEGIN
+  2785   0   27:3    10       FIRSTCH := TARGET[1];
+  2786   0   27:3    15       TEMPLOC := 1;
+  2787   0   27:3    18       DIST := LENGTH(SRC)-LENGTH(TARGET) + 1;
+  2788   0   27:3    29       TEMP[0] :=  TARGET[0];
+  2789   0   27:3    36       WHILE TEMPLOC <= DIST DO
+  2790   0   27:4    41         BEGIN
+  2791   0   27:5    41           TEMPLOC := TEMPLOC + SCAN(DIST-TEMPLOC,=FIRSTCH,SRC[TEMPLOC]) ;
+  2792   0   27:5    55           IF TEMPLOC>DIST THEN
+  2793   0   27:6    60              GOTO 1;
+  2794   0   27:5    62           MOVELEFT(SRC[TEMPLOC],TEMP[1],LENGTH(TARGET));
+  2795   0   27:5    72           IF TEMP=TARGET THEN
+  2796   0   27:6    79             BEGIN SPOS := TEMPLOC; GOTO 1 END;
+  2797   0   27:5    84           TEMPLOC := TEMPLOC+1
+  2798   0   27:4    85         END
+  2799   0   27:2    89     END;
+  2800   0   27:1    91 1:
+  2801   0   27:0    91 END (*SPOS*) ;
+  2802   0   27:0   106 
+  2803   0   27:0   106 (* MAIN DRIVER OF SYSTEM *)
+  2804   0   27:0   106 
+  2805   0   43:D     1 PROCEDURE COMMAND;
+  2806   0   43:D     1   VAR T: INTEGER;
+  2807   0   43:0     0 BEGIN STATE := HALTINIT;
+  2808   0   43:1     4   REPEAT
+  2809   0   43:2     4     RELEASE(EMPTYHEAP);
+  2810   0   43:2     9     WHILE UNITABLE[SYSCOM^.SYSUNIT].UVID <> SYVID DO
+  2811   0   43:3    25       BEGIN
+  2812   0   43:4    25 	PL := 'Put in :';
+  2813   0   43:4    41 	INSERT(SYVID,PL,8);
+  2814   0   43:4    52 	PROMPT; T := 4000;
+  2815   0   43:4    59 	REPEAT T := T-1
+  2816   0   43:4    60 	UNTIL T = 0;
+  2817   0   43:4    69 	IF FETCHDIR(SYSCOM^.SYSUNIT) THEN
+  2818   0   43:3    79       END;
+  2819   0   43:2    81     STATE := GETCMD(STATE);
+  2820   0   43:2    91     CASE STATE OF
+  2821   0   43:2    96       UPROGNOU,UPROGUOK,SYSPROG,
+  2822   0   43:2    96       COMPONLY,COMPANDGO,COMPDEBUG,
+  2823   0   43:2    96       LINKANDGO,LINKDEBUG:
+  2824   0   43:3    96         USERPROGRAM(NIL,NIL);
+  2825   0   43:2   103       DEBUGCALL:
+  2826   0   43:3   103 	DEBUGGER
+  2827   0   43:2   103     END;
+  2828   0   43:2   132     IF STATE IN [COMPONLY,COMPANDGO,COMPDEBUG] THEN
+  2829   0   43:3   142       IF USERINFO.ERRNUM = 0 THEN
+  2830   0   43:4   149 	BEGIN    {this is continued in FINISHCOMP}
+  2831   0   43:5   149 	  FCLOSE(USERINFO.CODEFIBP^,CLOCK);
+  2832   0   43:5   155 	  IF ORD(IORESULT) <> ORD(INOERROR) THEN
+  2833   0   43:6   161 	    BEGIN
+  2834   0   43:7   161 	      T := IORESULT;
+  2835   0   43:7   165 	      WRITELN(OUTPUT);
+  2836   0   43:7   171 	      CLEARLINE;
+  2837   0   43:7   173 	      PRINTERROR(10{IOERROR},T);
+  2838   0   43:6   177 	      END;
+  2839   0   43:4   177 	  END;
+  2840   0   43:2   177     IF STATE IN [UPROGNOU,UPROGUOK] THEN
+  2841   0   43:3   185       BEGIN
+  2842   0   43:4   185 	FCLOSE(GFILES[0]^,CNORMAL);
+  2843   0   43:4   195 	FCLOSE(GFILES[1]^,CLOCK)
+  2844   0   43:3   203       END;
+  2845   0   43:2   205     IF UNITBUSY(1) OR UNITBUSY(2) THEN
+  2846   0   43:3   214       UNITCLEAR(1)
+  2847   0   43:1   215   UNTIL STATE = HALTINIT
+  2848   0   43:0   220 END (*COMMAND*) ;
+  2849   0   43:0   242 
+  2850   0    1:0     0 BEGIN (*UCSD PASCAL SYSTEM*)
+  2851   0    1:1     0   EMPTYHEAP := NIL;
+  2852   0    1:1     3   INITIALIZE;
+  2853   0    1:1     5   REPEAT
+  2854   0    1:2     5     COMMAND;
+  2855   0    1:2     7     IF EMPTYHEAP <> NIL THEN
+  2856   0    1:3    13       INITIALIZE
+  2857   0    1:1    13   UNTIL EMPTYHEAP = NIL
+  2858   0    1:0    17 END (*PASCALSYSTEM*) .

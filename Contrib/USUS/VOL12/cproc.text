@@ -1,0 +1,285 @@
+{ L cplist.text}
+{$U-}
+PROGRAM cproc;
+
+(* Chris Lee, INMOS, 10-Feb-82  *)
+
+(* A toy program whcih demonstrates how to use COMMANDIO routine
+   to implement a user interface of your choice.
+   
+   This program builds a menu by searching all volumes online
+   for files of name xxx.UTIL or xxx.SMAC.
+   
+   UTIL files should be renamed CODE files
+   
+   SMAC files should be renamed M(onitor or TEXT files
+   
+   The menu is drawn down the right side of the screen. To select an entry
+   start typing it. As soon as enough has been typed to make the
+   selection unambiguous the program types the rest. As soon as a
+   definite error has occurred it is reported, and all input so far
+   thrown away.
+   
+   Certain functions which are difficult to implement via UTIL or SMAC
+   files are 'built in'. See Build_Menu to see how to add to the 
+   built in commands
+   
+ *)
+USES {$U  kernel.code}    kernel,
+     {$U *screenops.code} screenops,
+     {$U *commandio.code} commandio;
+
+CONST   
+  ESC                   =       27;
+  max_token_length      =       15;
+  sc_width              =       78;
+  sc_height             =       23;
+        
+TYPE
+
+  token                 =       STRING[max_token_length];
+  
+  cmd_types             =       (c_duff,c_menu,c_macro,c_prog,c_standard);
+  
+  vol_selector          =       STRING[10];
+  
+  token_table           =       RECORD
+                                  table_size    :       INTEGER;
+                                  values        :       ARRAY [1..20] OF
+                                                          token;
+                                END;
+                                
+  info_table            =       ARRAY [1..20] OF RECORD
+                                  CASE cmd_type : cmd_types OF
+                                    c_menu:( new_menu : char);
+                                    c_prog:( vol      : vol_selector);
+                                END;
+VAR
+  command   : token;
+  table     : token_table;
+  info      : info_table;
+  ch        : char;
+  cmd_no    : INTEGER;
+  xstr      : STRING;
+
+FUNCTION lookup ( target : token ; tokens : token_table) : INTEGER;
+
+  VAR
+    lo,hi,probe : integer;
+    trial       : token;
+    
+BEGIN
+WITH tokens DO
+BEGIN
+  lo:=1;
+  hi:=table_size;
+  WHILE lo<hi DO
+  BEGIN
+    probe:=((hi-lo) DIV 2)+lo;
+    trial:=copy(values[probe],1,length(target));
+    IF target>trial THEN lo:=probe+1
+      ELSE hi:=probe;
+  END;
+  lookup:=lo;
+  trial:=copy(values[lo],1,length(target));
+  IF target<>trial THEN lookup:=-1;
+  trial:=copy(values[lo+1],1,length(target));
+  IF target=trial THEN lookup:=0
+END;
+END;
+
+
+PROCEDURE insert_token ( value : token ; ctype : cmd_types ;
+                         v_id: vol_selector;
+                         VAR tokens : token_table ;
+                         VAR info : info_table) ;
+
+  VAR
+    i,lo,hi,probe : integer;
+    trial       : token;
+    
+BEGIN
+WITH tokens DO
+BEGIN
+  lo:=1;
+  hi:=table_size;
+  WHILE lo<hi DO
+  BEGIN
+    probe:=((hi-lo) DIV 2)+lo;
+    trial:=values[probe];
+    IF value>trial THEN lo:=probe+1
+      ELSE hi:=probe;
+  END;
+  IF table_size<>0 THEN BEGIN
+    trial:=values[lo];
+    IF value=trial THEN EXIT(insert_token);
+    IF value>trial THEN lo:=lo+1;
+  END;
+  table_size:=table_size+1;
+  FOR i:=table_size DOWNTO lo+1 DO
+    values[i]:=values[i-1];
+  FOR i:=table_size DOWNTO lo+1 DO
+    info[i]:=info[i-1];
+   CASE c_type OF
+     c_menu:
+       BEGIN
+         values[lo]:=copy(value,1,length(value)-1);
+         info[lo].new_menu:=value[length(value)];
+       END;
+     c_macro,
+     c_prog,
+     c_standard:
+       BEGIN
+         values[lo]:=copy(value,1,length(value));
+         info[lo].vol:=v_id;
+       END;
+   END;
+  info[lo].cmd_type:=c_type;
+END;
+END;
+
+
+PROCEDURE build_menu(VAR table : token_table
+                        VAR info : info_table);
+
+  VAR
+    sys_dir     :       directory;
+    i,j         :       INTEGER;
+    dot         :       INTEGER;
+    ctype       :       token;
+    cname       :       token;
+    v_id        :       vol_selector;
+    c_tipe      :       cmd_types;
+
+BEGIN
+WITH table DO
+BEGIN
+  table_size:=0;
+  FOR j:=0 TO 12 DO
+    IF j IN [4,5,9..12] THEN
+      BEGIN
+        v_id:='XXX';        {to set length}
+        v_id[1]:='#';
+        v_id[2]:=chr((j DIV 10)+ord('0'));
+        v_id[3]:=chr((j MOD 10)+ord('0'));
+        unitread(j,sys_dir,sizeof(directory),dirblk);
+        FOR i:=1 TO sys_dir[0].dnumfiles DO
+          WITH sys_dir[i] DO
+            IF length(dtid)>6 THEN
+              BEGIN
+                dot:=length(dtid)-4;
+                ctype:=copy(dtid,dot,5);
+                ctipe:=c_duff;
+                cname:=copy(dtid,1,dot-1);
+                IF ctype='.SMAC' THEN c_tipe:=c_macro
+                ELSE IF ctype='.UTIL' THEN c_tipe:=c_prog;
+                IF ctipe<>c_duff THEN insert_token(cname,c_tipe,v_id,table,info);
+              END;
+      END;
+  insert_token('FILER',          c_standard,'F',         table,info);
+  insert_token('COMPILE',        c_standard,'C',         table,info);
+  insert_token('EDIT',           c_standard,'E',         table,info);
+  insert_token('EXECUTE',        c_standard,'X',         table,info);
+  insert_token('RUN',            c_standard,'R',         table,info);
+  insert_token('HALT',           c_standard,'I',         table,info);
+END;
+END;
+
+PROCEDURE show_menu(table:token_table);
+
+VAR
+  i,x,y : INTEGER;
+  
+BEGIN
+  y:=1;
+  x:=0;
+  sc_goto_xy(x,y);
+  x:=sc_width-sizeof(token);
+  WITH table DO
+    FOR i:=1 TO table_size DO
+      BEGIN
+        sc_goto_xy(x,y);
+        sc_erase_to_eol(x,y);
+        write(values[i]);
+        y:=y+1;
+      END;
+END;
+  
+BEGIN
+WITH table DO
+BEGIN
+  {sc_init;
+  sc_clr_screen;}
+  sc_erase_to_eol(0,0);
+  build_menu(table,info);
+  show_menu(table);
+  REPEAT
+    exception(TRUE);
+    sc_goto_xy(0,0);
+    write('?');
+    command:='';
+    REPEAT
+      read(keyboard,ch);
+      IF ch IN ['a'..'z'] THEN ch:=chr(ord(ch)-ord('a')+ord('A'));
+      
+      IF ORD(ch)=ESC THEN 
+        BEGIN
+          sc_goto_xy(0,0);
+          sc_clr_screen;
+          exception(TRUE);
+          EXIT(PROGRAM);
+        END;
+      
+      write(ch);
+      IF ord(command[0])=0 THEN sc_erase_to_eol(2,0);
+      command[0]:=chr(ord(command[0])+1);
+      command[ord(command[0])]:=ch;
+      cmd_no:=lookup(command,table);
+    UNTIL cmd_no<>0;
+    IF cmd_no<0 THEN 
+      BEGIN
+        write(' - not found');
+      END
+    ELSE 
+      BEGIN
+        writeln(copy(values[cmd_no],length(command)+1,
+                        length(values[cmd_no])-length(command)));
+        CASE info[cmd_no].cmd_type OF
+        
+       c_macro: BEGIN
+                   sc_eras_eos(0,1);
+                   exception(TRUE);
+                   chain(concat('I=',info[cmd_no].vol,':',
+                                     values[cmd_no],'.SMAC'));
+                   chain('CPROC');
+                 END;
+                 
+        c_prog:  BEGIN
+                   sc_eras_eos(0,1);
+                   exception(TRUE);
+                   chain(concat(info[cmd_no].vol,':',values[cmd_no],'.UTIL.'));
+                   chain('CPROC');
+                 END;
+
+    c_standard:  BEGIN
+                   sc_eras_eos(0,1);
+                   exception(TRUE);
+                   if info[cmd_no].vol='X' then
+                     begin
+                       gotoxy(0,0);
+                       write('Execute what file? ');
+                       readln(xstr);
+                       {should check availability of code file now}
+                       {otherwise the CPROC command interpreter may not}
+                       {regain control after the exception}
+                       chain(xstr);
+                     end
+                   else chain(concat('I="',info[cmd_no].vol,'"'));
+                   {chain back to command interpreter unless HALTing}
+                   if info[cmd_no].vol<>'I' then chain('CPROC');
+                 END;
+        END;
+      END;
+  UNTIL info[cmd_no].cmd_type IN [c_prog,c_macro,c_standard];
+END;
+END.

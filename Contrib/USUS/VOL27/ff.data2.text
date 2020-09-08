@@ -1,0 +1,302 @@
+SEGMENT PROCEDURE LIST;
+
+SEGMENT PROCEDURE OPENOUTPUTFILE( OLD: BOOLEAN );
+BEGIN
+  REPEAT
+    GETRESPONSE(TRUE,'Volume Name: ',VOL,':',7,VOL);
+    IF VOL   = 'ESCAPE' THEN LEAVE;
+    GETRESPONSE(TRUE,'File Name: ',FNAME,'.TEXT',10,FNAME);
+    IF FNAME = 'ESCAPE' THEN LEAVE;
+    IF OLD THEN   RESET(PRINTER,CONCAT(VOL,':',FNAME,'.TEXT'))
+    ELSE        REWRITE(PRINTER,CONCAT(VOL,':',FNAME,'.TEXT'));
+    PRINTER_ON := IORESULT = 0;
+    IF NOT PRINTER_ON THEN
+      PRESSRETURN(CONCAT('Unable to open ',VOL,':',FNAME,'.TEXT'),MSG_LINE)
+  UNTIL PRINTER_ON;
+END;   (* of open output file *)
+
+SEGMENT PROCEDURE CLOSEFILE;
+BEGIN
+  CLOSE(PRINTER,LOCK);  PRINTER_ON := FALSE;
+END;
+
+SEGMENT PROCEDURE LISTIT;
+CONST
+     RUNOFFCH = '';    (* CHR(31), which is the same as the Editor uses *)
+
+VAR
+     OFFSET, CNT, PT, BEG, LAST: INTEGER;
+     
+PROCEDURE DOWRITELN;                              FORWARD;
+
+SEGMENT PROCEDURE HEADINGS;                       FORWARD;
+SEGMENT PROCEDURE DOBOTTOM;                       FORWARD;
+
+SEGMENT PROCEDURE HEADINGS;
+VAR TEMP, TABSTOP: INTEGER;
+
+FUNCTION MAX( X, Y: INTEGER ): INTEGER;
+BEGIN
+  IF X > Y THEN MAX := X ELSE MAX := Y
+END;
+
+BEGIN
+  IF WPFILE THEN   (* Set up tab stops after a Save settings command *)
+    BEGIN
+      WRITE(PRINTER,'[SS/TA=');
+      TABSTOP := COL_POS[0];
+      FOR TEMP := 1 TO COL_CNT DO
+        WITH OUT_COL[TEMP] DO BEGIN
+          TABSTOP := TABSTOP + COL_WIDTH;
+          WRITE(PRINTER,'R',TABSTOP);
+          IF TEMP <> COL_CNT THEN WRITE(PRINTER,',')
+        END;
+      WRITE(PRINTER,']')
+    END;
+  DOWRITELN;
+  TEMP := LENGTH(TITLE1);
+  WRITE(PRINTER,TITLE1: MAX( TEMP, TEMP + ( (WIDTH-TEMP) DIV 2 ) ));  DOWRITELN;
+  TEMP := LENGTH(TITLE2);
+  WRITE(PRINTER,TITLE2: MAX( TEMP, TEMP + ( (WIDTH-TEMP) DIV 2 ) ));  DOWRITELN;
+  TEMP := LENGTH(TITLE3);
+  WRITE(PRINTER,TITLE3: MAX( TEMP, TEMP + ( (WIDTH-TEMP) DIV 2 ) ));  DOWRITELN;
+  DOWRITELN;
+  TEMP := LENGTH(PAGE_TITLE);
+  WRITE(PRINTER,PAGE_TITLE: MAX( TEMP, TEMP + ( (WIDTH-TEMP) DIV 2 ) ));
+  DOWRITELN;
+  DOWRITELN;
+  IF NOT WPFILE THEN WRITE(PRINTER,' ':COL_POS[0]);
+  FOR TEMP := 1 TO COL_CNT DO
+    WITH OUT_COL[TEMP] DO BEGIN
+      IF PLANE = ROWPAGE THEN      (* Addtion  SDA 5/5/81 *)
+        BEGIN
+          ENCODE(COL_NUMBER,IS);
+          IS := CONCAT('Page ',IS)
+        END
+      ELSE
+        BEGIN
+          SEEKCTL(FORM_CTL_FILE,TRUE,COL_NUMBER,ANDGET);
+          IS := FORM_CTL_FILE^.CTL_DESC
+        END;
+      IF WPFILE THEN WRITE(PRINTER,TAB)
+      ELSE WRITE(PRINTER,' ':COL_WIDTH-LENGTH(IS));
+      WRITE(PRINTER,IS);
+    END;
+  DOWRITELN;
+  PRINT_LINE := 8;
+END;
+
+SEGMENT PROCEDURE DOBOTTOM;
+BEGIN
+  DOWRITELN;  DOWRITELN;  DOWRITELN;
+  WRITE(PRINTER, FOOTING);
+  IF TOPRINTER THEN
+    {WRITE(PRINTER,CLEAR)}  (** ??? *)
+  ELSE
+    IF WPFILE THEN BEGIN DOWRITELN;  WRITE(PRINTER,'[PA/RS]')  END;
+  DOWRITELN
+END;
+
+PROCEDURE DOWRITELN;
+BEGIN
+  IF WPFILE THEN WRITE(PRINTER,RUNOFFCH);
+  WRITELN(PRINTER);
+  IF IORESULT <> 0 THEN
+    BEGIN
+      IF TOPRINTER THEN ERROR(0) ELSE ERROR(2);
+      LEAVE
+    END
+END;
+
+BEGIN  (* LISTIT *)
+  ONEMOMENT('Listing');
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO BEGIN
+    HEADINGS;   (* write out titles and column headings *)
+    CNT := 0;  PT := 1;
+    THELIST := CONCAT(LISTROW,',');
+    REPEAT
+      ONEPAIR(PT,BEG,LAST);
+      IF BEG <= LAST THEN OFFSET := 1 ELSE OFFSET := -1;
+      ROW := BEG - OFFSET;
+      REPEAT
+        ROW := ROW + OFFSET;
+        IF PLANE = PAGECOL THEN         (* BUG FIX   SDA 11/6/81 *)
+          BEGIN
+            SEEKCTL(FORM_CTL_FILE,FALSE,CUR_PAGE,ANDGET);
+            ENCODE(ROW,IS);
+            IS := CONCAT('Page ',IS)
+          END
+        ELSE BEGIN SEEKCTL(FORM_CTL_FILE,FALSE,ROW,ANDGET); IS := CTL_DESC END;
+        WRITE(PRINTER,IS);
+        IF NOT WPFILE THEN WRITE(PRINTER,' ':COL_POS[0]-LENGTH(IS));
+        IF CTL_TYPE <> HEADING THEN
+          FOR J := 1 TO COL_CNT DO
+            WITH OUT_COL[J] DO BEGIN
+              IF FORMAT = FCOL THEN                 (* BUG FIX   SDA 11/6/81 *)
+                IF PLANE = ROWPAGE THEN
+                  SEEKCTL(FORM_CTL_FILE,TRUE,CUR_PAGE,  ANDGET)
+                ELSE
+                  SEEKCTL(FORM_CTL_FILE,TRUE,COL_NUMBER,ANDGET);
+              IF MAP_PAGE THEN CTL_FORMAT := MAP_FORMAT;
+              BEFOREAFTER(CTL_FORMAT);
+              NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,CUR_PAGE,ROW,COL_NUMBER,
+                                                            ANUMBER,ANDGET,ERR);
+              CALLNUMBER(CUR_PAGE,ROW,COL_NUMBER,ANDGET);  (* New SDA 5/5/81 *)
+              NUMTOSTR(IS,ANUMBER,BEFORE,AFTER);
+              IF WPFILE THEN WRITE(PRINTER,TAB)
+              ELSE WRITE(PRINTER,' ':COL_WIDTH-LENGTH(IS));
+              WRITE(PRINTER,IS)
+            END;
+        DOWRITELN;
+        PRINT_LINE := PRINT_LINE + 1;
+        IF PRINT_LINE > PAPER_LENGTH-12 THEN
+          BEGIN DOBOTTOM;  HEADINGS  END;
+        CNT := CNT + 1
+      UNTIL ROW = LAST
+    UNTIL CNT = ROW_CNT;
+    DOBOTTOM;
+  END;
+END;   (* of listit *)
+
+BEGIN  (* LIST *)
+  PROMPT('List',MSG_LINE-1);
+  
+  MEMORY;
+  
+  VOL := DISKDRIVE;  FNAME := '';
+  TOPRINTER := YESNO('List to the Printer','Y');
+  IF TOPRINTER THEN
+    (*$B 40COL- *)
+    GETNUM(1,999,CHARS_PER_LINE,'How many characters wide is the paper ?',
+                    CHARS_PER_LINE);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETNUM(1,999,CHARS_PER_LINE,'How wide is paper ?',CHARS_PER_LINE);
+    (*$E 40COL  *)
+    
+  IF YESNO('Is there a Control file to use','N') THEN
+    BEGIN
+      OPENOUTPUTFILE(TRUE);
+      READLN(PRINTER,TITLE1);
+      READLN(PRINTER,TITLE2);
+      READLN(PRINTER,TITLE3);
+      READLN(PRINTER,FOOTING);
+      READLN(PRINTER,LISTROW);
+      READLN(PRINTER,LISTCOL);
+      CLOSEFILE
+    END;
+  
+  SETUP(ROW_CNT,TRUE,LISTROW,'List');      (* get list of rows to print    *)
+  SETUP(COL_CNT,FALSE,LISTCOL,'List');     (* get list of columns to print *)
+  GETRESPONSE(TRUE,'Title 1 -> ',TITLE1, '',T_LENGTH,TITLE1);
+  GETRESPONSE(TRUE,'Title 2 -> ',TITLE2, '',T_LENGTH,TITLE2);
+  GETRESPONSE(TRUE,'Title 3 -> ',TITLE3, '',T_LENGTH,TITLE3);
+  GETRESPONSE(TRUE,'Footing -> ',FOOTING,'',T_LENGTH,FOOTING);
+  
+  (*$B 40COL- *)
+  IF YESNO('Save this information in a Control file','N') THEN
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  IF YESNO('Save info in a Control file','N') THEN
+  (*$E 40COL  *)
+    BEGIN
+      OPENOUTPUTFILE(FALSE);
+      WRITELN(PRINTER,TITLE1);
+      WRITELN(PRINTER,TITLE2);
+      WRITELN(PRINTER,TITLE3);
+      WRITELN(PRINTER,FOOTING);
+      WRITELN(PRINTER,LISTROW);
+      WRITELN(PRINTER,LISTCOL);
+      CLOSEFILE
+    END;
+  
+  IF TOPRINTER THEN
+    BEGIN
+      WPFILE := FALSE;
+      SETPRINTER;
+      IF NOT PRINTER_ON THEN LEAVE
+    END
+  ELSE
+    BEGIN
+      FNAME := 'LISTING';
+      OPENOUTPUTFILE(FALSE);
+      (*$B 40COL- *)
+      WPFILE := YESNO('Create output for Word Processing','Y');
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      WPFILE := YESNO('Output for Word Processing','Y');
+      (*$E 40COL  *)
+    END;
+  LISTIT;
+  CLOSEFILE
+END;   (* of list *)
+
+SEGMENT PROCEDURE ZEROIT{ DOWHAT: STRING;  TOZEROS: BOOLEAN };
+VAR
+     OFFSET, CNT, PT, BEG, LAST: INTEGER;
+     DUMYLIST: STRING[T_LENGTH];
+
+BEGIN
+  
+  MEMORY;
+  
+  PROMPT(DOWHAT, MSG_LINE-1);
+  THELIST := '';   DUMYLIST := '';
+  SETUP(ROW_CNT, TRUE, THELIST, DOWHAT);    (* Gather rows to ZERO    *)
+  SETUP(COL_CNT, FALSE, DUMYLIST, DOWHAT);  (* Gather columns to ZERO *)
+  ONEMOMENT(CONCAT(DOWHAT,'ing'));
+  DIDDLED := TRUE;
+  IF TOZEROS THEN ANUMBER := ZERO ELSE ANUMBER := EMPTY;
+  CNT := 0;    PT := 1;
+  THELIST := CONCAT(THELIST, ',');
+  REPEAT
+    ONEPAIR(PT, BEG, LAST);
+    IF BEG <= LAST THEN OFFSET := 1 ELSE OFFSET := -1;
+    ROW := BEG - OFFSET;
+    REPEAT
+      ROW := ROW + OFFSET;
+      CNT := CNT + 1;
+      FOR I := 1 TO COL_CNT DO                        (* Change  SDA 5/5/81 *)
+        CALLNUMBER(CUR_PAGE,ROW,OUT_COL[I].COL_NUMBER,ANDPUT)
+    UNTIL ROW = LAST
+  UNTIL CNT = ROW_CNT;
+  DISPLAY(FALSE)
+END;   (* of zeroit *)
+
+PROCEDURE LEAVE;
+BEGIN
+  ERASE(MSG_LINE+1);  EXIT(LISTORZERO)
+END;
+
+PROCEDURE ONEPAIR{ VAR PT, BEG, LAST: INTEGER };
+VAR
+     FIRSTONE, SECOND: BOOLEAN;
+     NUM, START: INTEGER;
+BEGIN
+  FIRSTONE := TRUE;  SECOND := FALSE;  LAST := -1;
+  REPEAT
+    WHILE NOT ( (THELIST[PT] IN DIGITS) OR (THELIST[PT]=',') ) DO
+      PT := PT + 1;
+    IF THELIST[PT] = ',' THEN
+      BEGIN  PT := PT + 1;  FIRSTONE := TRUE;  SECOND := LAST <> -1  END
+    ELSE  (* must be a number *)
+      BEGIN
+        START := PT;
+        WHILE THELIST[PT] IN DIGITS DO PT := PT+1; (* find end of number *)
+        VALUE(TRUE,COPY(THELIST,START,PT-START),FAKE,NUM);
+        IF FIRSTONE THEN
+          BEGIN  BEG := NUM;  LAST := NUM;  FIRSTONE := FALSE  END
+        ELSE  (* second number *)
+          BEGIN  SECOND := TRUE;  LAST := NUM  END
+       END
+   UNTIL (LAST <> -1) AND SECOND;
+END;   (* of onepair *)
+
+BEGIN  (* LISTORZERO *)
+  CASE COMMAND OF
+    'L': LIST;
+    'Z': ZEROIT('Zero',TRUE);
+    'N': ZEROIT('Nullify',FALSE)
+  END
+END;   (* of listorzero *)
+

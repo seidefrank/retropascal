@@ -1,0 +1,2480 @@
+     2   1    1:D     1 {.fs} {$L L.LINKER.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+     3   1    1:D     1 
+     4   1    1:D     1 {.fs --- link0 --- }
+     5   1    1:D     1 
+     6   1    1:D     1     (******************************************************************)
+     7   1    1:D     1     (*                                                                *)
+     8   1    1:D     1     (*  Copyright (c) 1979 Regents of the University of California.   *)
+     9   1    1:D     1     (*  Permission to copy or distribute this software or documen-    *)
+    10   1    1:D     1     (*  tation in hard or soft copy granted only by written license   *) 
+    11   1    1:D     1     (*  obtained from the Institute for Information Systems.          *)
+    12   1    1:D     1     (*                                                                *)
+    13   1    1:D     1     (******************************************************************)
+    14   1    1:D     1 
+    15   1    1:D     1 {$S+,U-,R+
+    16   1    1:D     1 
+    17   1    1:D     1 
+    18   1    1:D     1 	UCSD  PASCAL  SYSTEM
+    19   1    1:D     1 	  PROGRAM  LINKER
+    20   1    1:D     1 
+    21   1    1:D     1 	  (VERSION I.5f)
+    22   1    1:D     1 
+    23   1    1:D     1 	Written summer '78 by
+    24   1    1:D     1 	Roger T. Sumner, IIS
+    25   1    1:D     1 
+    26   1    1:D     1 	  (Version II.0)
+    27   1    1:D     1 	  March 1, 1979
+    28   1    1:D     1 
+    29   1    1:D     1 	Copyright (c) 1979, Regents of
+    30   1    1:D     1 	the University of California
+    31   1    1:D     1 
+    32   1    1:D     1     All hope abandon ye who enter here
+    33   1    1:D     1 			-Dante
+    34   1    1:D     1 
+    35   1    1:D     1 }
+    36   1    1:D     1 
+    37   0    1:D     1 program systemlevel;
+    38   0    1:D     1 
+    39   0    1:D     1 const
+    40   0    1:D     1     SYSPROG = 4;
+    41   0    1:D     1 
+    42   0    1:D     1 var
+    43   0    1:D     1     syscom: ^integer;
+    44   0    1:D     2     gfiles: array [0..5] of integer;
+    45   0    1:D     8     userinfo: record
+    46   0    1:D     8 		filler: array [0..4] of integer;
+    47   0    1:D     8 		slowterm, stupid: boolean;
+    48   0    1:D     8 		altmode: char;
+    49   0    1:D     8 		gotsym, gotcode: boolean;
+    50   0    1:D     8 		workvid, symvid, codevid: string[7];
+    51   0    1:D     8 		worktid, symtid, codetid: string[15]
+    52   0    1:D     8 	      end;
+    53   0    1:D    54     filler: array [0..4] of integer;
+    54   0    1:D    59     syvid, dkvid: string[7];
+    55   0    1:D    67     junk1, junk2: integer;
+    56   0    1:D    69     cmdstate: integer;
+    57   0    1:D    70 
+    58   0    1:D    70 {
+    59   0    1:D    70 *  The linker is made up of three phases:
+    60   0    1:D    70 *     Phase1 which open all input files, reads up seg tables
+    61   0    1:D    70 *            from them and decides which segments are to be
+    62   0    1:D    70 *            linked into the final code file.
+    63   0    1:D    70 *     Phase2 reads the linker info for each segment that is
+    64   0    1:D    70 *            going to be used, either to select sep procs from
+    65   0    1:D    70 *            or copy with modifications into output code.
+    66   0    1:D    70 *            The main symbol trees are built here, one for each
+    67   0    1:D    70 *            code segment.
+    68   0    1:D    70 *     Phase3 does the crunching of code segments into their
+    69   0    1:D    70 *            final form by figuring out the procs that need to 
+    70   0    1:D    70 *            be linked in, resolves all references (PUBLREF,
+    71   0    1:D    70 *            GLOBREF, etc), patches the code pointed to by their
+    72   0    1:D    70 *            reflists, and writes the final code seg(s).
+    73   0    1:D    70 }
+    74   0    1:D    70 
+    75   1    1:D     1 segment procedure linker(iii, jjj: integer);
+    76   1    1:D     3 
+    77   1    1:D     3 const
+    78   1    1:D     3     HEADER = 'Linker [II.0]';
+    79   1    1:D     3 
+    80   1    1:D     3     MAXSEG = 15;        { max code seg # in code files }
+    81   1    1:D     3     MAXSEG1 = 16;       { MAXSEG+1, useful for loop vars }
+    82   1    1:D     3     MASTERSEG = 1;      { USERHOST segment number # }
+    83   1    1:D     3     FIRSTSEG =  7;      { first linker assignable seg # }
+    84   1    1:D     3     MAXFILE = 10;       { number of lib files we can use }
+    85   1    1:D     3     MAXLC = MAXINT;     { max compiler assigned address }
+    86   1    1:D     3     MAXIC = 20000;      { max number bytes of code per proc }
+    87   1    1:D     3     MAXPROC = 160;      { max legal procedure number }
+    88   1    1:D     3     MSDELTA = 12;       { mark stack size for pub/priv fixup }
+    89   1    1:D     3 
+    90   1    1:D     3 type
+    91   1    1:D     3 
+    92   1    1:D     3     { subranges }
+    93   1    1:D     3     { --------- }
+    94   1    1:D     3 
+    95   1    1:D     3     segrange = 0..MAXSEG;       { seg table subscript type }
+    96   1    1:D     3     segindex = 0..MAXSEG1;      { wish we had const expressions! }
+    97   1    1:D     3     lcrange = 1..MAXLC;         { base offsets a la P-code }
+    98   1    1:D     3     icrange = 0..MAXIC;         { legal length for proc/func code }
+    99   1    1:D     3     procrange = 1..MAXPROC;     { legit procedure numbers }
+   100   1    1:D     3 
+   101   1    1:D     3     { miscellaneous }
+   102   1    1:D     3     { ------------- }
+   103   1    1:D     3 
+   104   1    1:D     3     alpha = packed array [0..7] of char;
+   105   1    1:D     3     diskblock = packed array [0..511] of 0..255;
+   106   1    1:D     3     codefile = file;            { trick compiler to get ^file }
+   107   1    1:D     3     filep = ^codefile;
+   108   1    1:D     3     codep = ^diskblock;         { space management...non-PASCAL kludge }
+   109   1    1:D     3 
+   110   1    1:D     3     { link info structures }
+   111   1    1:D     3     { ---- ---- ---------- }
+   112   1    1:D     3 
+   113   1    1:D     3     placep = ^placerec;         { position in source seg }
+   114   1    1:D     3     placerec = record
+   115   1    1:D     3 	         srcbase, destbase: integer;
+   116   1    1:D     3 		 length: icrange
+   117   1    1:D     3 	       end { placerec } ;
+   118   1    1:D     3 
+   119   1    1:D     3     refp = ^refnode;            { in-core version of ref lists }
+   120   1    1:D     3     refnode = record
+   121   1    1:D     3 		next: refp;
+   122   1    1:D     3 		refs: array [0..7] of integer;
+   123   1    1:D     3 	      end { refnode } ;
+   124   1    1:D     3 
+   125   1    1:D     3     litypes = (EOFMARK,         { end-of-link-info marker }
+   126   1    1:D     3 		   { ext ref types, designates      }
+   127   1    1:D     3 		   { fields to be updated by linker }
+   128   1    1:D     3 	       UNITREF,         { refs to invisibly used units (archaic?) }
+   129   1    1:D     3 	       GLOBREF,         { refs to external global addrs }
+   130   1    1:D     3 	       PUBLREF,         { refs to BASE lev vars in host }
+   131   1    1:D     3 	       PRIVREF,         { refs to BASE vars, allocated by linker }
+   132   1    1:D     3 	       CONSTREF,        { refs to host BASE lev constant }
+   133   1    1:D     3 	           { defining types, gives      }
+   134   1    1:D     3 		   { linker values to fix refs  }
+   135   1    1:D     3 	       GLOBDEF,         { global addr location }
+   136   1    1:D     3 	       PUBLDEF,         { BASE var location }
+   137   1    1:D     3 	       CONSTDEF,        { BASE const definition }
+   138   1    1:D     3 	           { proc/func info, assem }
+   139   1    1:D     3 		   { to PASCAL and PASCAL  }
+   140   1    1:D     3 		   { to PASCAL interface   }
+   141   1    1:D     3 	       EXTPROC,         { EXTERNAL proc to be linked into PASCAL }
+   142   1    1:D     3 	       EXTFUNC,         {    "     func "  "    "    "      "    }
+   143   1    1:D     3 	       SEPPROC,         { Separate proc definition record }
+   144   1    1:D     3 	       SEPFUNC,         {   "      func     "        "    }
+   145   1    1:D     3 	       SEPPREF,         { PASCAL ref to a sep proc }
+   146   1    1:D     3 	       SEPFREF);        {   "    ref to a sep func }
+   147   1    1:D     3     
+   148   1    1:D     3     liset = set of litypes;
+   149   1    1:D     3     opformat = (WORD, BYTE, BIG);       { instruction operand field formats }
+   150   1    1:D     3 
+   151   1    1:D     3     lientry = record    { format of link info records }
+   152   1    1:D     3 		name: alpha;
+   153   1    1:D     3 		case litype: litypes of
+   154   1    1:D     3 		  SEPPREF,
+   155   1    1:D     3 		  SEPFREF,
+   156   1    1:D     3 		  UNITREF,
+   157   1    1:D     3 		  GLOBREF,
+   158   1    1:D     3 		  PUBLREF,
+   159   1    1:D     3 		  PRIVREF,
+   160   1    1:D     3 		  CONSTREF:
+   161   1    1:D     3 			(format: opformat;      { how to deal with the refs }
+   162   1    1:D     3 			 nrefs: integer;        { words following with refs }
+   163   1    1:D     3 			 nwords: lcrange;       { size of private or nparams }
+   164   1    1:D     3 			 reflist: refp);        { list of refs after read in }
+   165   1    1:D     3                   EXTPROC, 
+   166   1    1:D     3 		  EXTFUNC,
+   167   1    1:D     3 		  SEPPROC, 
+   168   1    1:D     3 		  SEPFUNC:
+   169   1    1:D     3 			(srcproc: procrange;    { the procnum in source seg }
+   170   1    1:D     3 			 nparams: integer;      { words passed/expected }
+   171   1    1:D     3 			 place: placep);        { position in source/dest seg }
+   172   1    1:D     3 		  GLOBDEF:
+   173   1    1:D     3 			(homeproc: procrange;   { which proc it occurs in }
+   174   1    1:D     3 			 icoffset: icrange);    { its byte offset in pcode }
+   175   1    1:D     3 		  PUBLDEF:
+   176   1    1:D     3 			(baseoffset: lcrange);  { compiler assign word offset }
+   177   1    1:D     3 		  CONSTDEF:
+   178   1    1:D     3 			(constval: integer);    { users defined value }
+   179   1    1:D     3 		  EOFMARK:
+   180   1    1:D     3 			(nextlc: lcrange)       { private var alloc info }
+   181   1    1:D     3 		end { lientry } ;
+   182   1    1:D     3 
+   183   1    1:D     3     { symbol table items }
+   184   1    1:D     3     { ------ ----- ----- }
+   185   1    1:D     3 
+   186   1    1:D     3     symp = ^symbol;
+   187   1    1:D     3     symbol = record
+   188   1    1:D     3 	       llink, rlink,            { binary subtrees for diff names }
+   189   1    1:D     3 	       slink: symp;             { same name, diff litypes }
+   190   1    1:D     3 	       entry: lientry           { actual id information }
+   191   1    1:D     3 	     end { symbol } ;
+   192   1    1:D     3 
+   193   1    1:D     3     { segment information }
+   194   1    1:D     3     { ------- ----------- }
+   195   1    1:D     3 
+   196   1    1:D     3     segkinds =(LINKED,          { no work needed, executable as is }
+   197   1    1:D     3 	       HOSTSEG,         { PASCAL host program outer block  }
+   198   1    1:D     3 	       SEGPROC,         { PASCAL segment procedure, not host }
+   199   1    1:D     3 	       UNITSEG,         { library unit occurance/reference }
+   200   1    1:D     3 	       SEPRTSEG);       { library separate proc/func TLA segment }
+   201   1    1:D     3 
+   202   1    1:D     3     finfop = ^fileinforec;      { forward type dec }
+   203   1    1:D     3 
+   204   1    1:D     3     segp = ^segrec;             { this structure provides access to all }
+   205   1    1:D     3     segrec = record             { info for segs to be linked to/from    }
+   206   1    1:D     3 	       srcfile: finfop;         { source file of segment }
+   207   1    1:D     3 	       srcseg: segrange;        { source file seg # }
+   208   1    1:D     3 	       symtab: symp;            { symbol table tree }
+   209   1    1:D     3 	       case segkind: segkinds of
+   210   1    1:D     3 		 SEPRTSEG:
+   211   1    1:D     3 		        (next: segp)    { used for library sep seg list }
+   212   1    1:D     3 	     end { segrec } ;
+   213   1    1:D     3 
+   214   1    1:D     3     { host/lib file access info }
+   215   1    1:D     3     { ---- --- ---- ------ ---- }
+   216   1    1:D     3 
+   217   1    1:D     3     I5segtbl = record   { first full "block" of all code files }
+   218   1    1:D     3 		 diskinfo: array [segrange] of
+   219   1    1:D     3 			     record
+   220   1    1:D     3 			       codeleng, codeaddr: integer
+   221   1    1:D     3 			     end { diskinfo } ;
+   222   1    1:D     3                  segname: array [segrange] of alpha;
+   223   1    1:D     3 		 segkind: array [segrange] of segkinds
+   224   1    1:D     3 	       end { I5segtbl } ;
+   225   1    1:D     3 
+   226   1    1:D     3     filekind = (USERHOST, USERLIB, SYSTEMLIB);
+   227   1    1:D     3 
+   228   1    1:D     3     fileinforec = record
+   229   1    1:D     3 		    next: finfop;       { link to next file thats open }
+   230   1    1:D     3 		    code: filep;        { pointer to PASCAL file...sneaky! }
+   231   1    1:D     3                     fkind: filekind;    { used to validate the segkinds }
+   232   1    1:D     3 		    segtbl: I5segtbl    { disk seg table w/ source info }
+   233   1    1:D     3 		  end { fileinforec } ;
+   234   1    1:D     3 
+   235   1    1:D     3 
+   236   1    1:D     3 var
+   237   1    1:D     3     hostfile,           { host file info ptr, its next = libfiles }
+   238   1    1:D     3     libfiles: finfop;   { list of lib files, user and system }
+   239   1    1:D     5 
+   240   1    1:D     5     seplist: segp;      { list of sep segs to search through }
+   241   1    1:D     6     reflitypes: liset;  { those litypes with ref lists }
+   242   1    1:D     7 
+   243   1    1:D     7     talkative,
+   244   1    1:D     7     useworkfile: boolean;
+   245   1    1:D     9 
+   246   1    1:D     9     errcount: integer;
+   247   1    1:D    10     heapbase: ^integer;
+   248   1    1:D    11 
+   249   1    1:D    11     hostsp: segp;                       { ptr to host prog outer block }
+   250   1    1:D    12     nextbaselc: lcrange;                { next base offset for private alloc }
+   251   1    1:D    13     seginfo: array [segrange] of segp;  { seg is available if NIL }
+   252   1    1:D    29     nextseg: segindex;                  { next slot in seginfo available }
+   253   1    1:D    30 
+   254   1    1:D    30     mapname: string[39];
+   255   1    1:D    50 
+   256   1    1:D    50     code: codefile;                     { output code file, *system.wrk.code   }
+   257   1    1:D    90                                         { also source of FIB for dynamic files }
+   258   1    1:D    90 
+   259   1    1:D    90     flipped: boolean;                   { are files byte-flipped? }
+   260   1    1:D    91 {
+   261   1    1:D    91 *  Print an error message and bump
+   262   1    1:D    91 *  the error counter.
+   263   1    1:D    91 }
+   264   1    1:D    91 
+   265   1    2:D     1 procedure error(msg: string);
+   266   1    2:D    43   var ch: char;
+   267   1    2:0     0 begin
+   268   1    2:1     0   writeln(msg);
+   269   1    2:1    20   repeat
+   270   1    2:2    20     writeln('Type <sp>(continue), <esc>(terminate)');
+   271   1    2:2    73     read(keyboard, ch);
+   272   1    2:2    81     if ch = userinfo.altmode then
+   273   1    2:3    89       exit(linker)
+   274   1    2:1    93   until ch = ' ';
+   275   1    2:1    99   errcount := errcount+1
+   276   1    2:0   100 end { error } ;
+   277   1    2:0   118 
+   278   1    3:D     1 procedure byteswap(var word: integer);
+   279   1    3:D     2   var temp1,temp2: packed record
+   280   1    3:D     2 	      case boolean of
+   281   1    3:D     2 		TRUE: (val: integer);
+   282   1    3:D     2 		FALSE: (lowbyte: 0..255;
+   283   1    3:D     2 			highbyte: 0..255)
+   284   1    3:D     2 	    end;
+   285   1    3:0     0 begin
+   286   1    3:1     0   temp1.val := word;
+   287   1    3:1     4   temp2.lowbyte := temp1.highbyte;
+   288   1    3:1    19   temp2.highbyte := temp1.lowbyte;
+   289   1    3:1    34   word := temp2.val;
+   290   1    3:0    37 end;
+   291   1    3:0    50 
+   292   1    3:0    50 {
+   293   1    3:0    50 *  Routines to access object code segments.  There
+   294   1    3:0    50 *  is subtle business involving byte flipping with
+   295   1    3:0    50 *  the 16-bit operations.
+   296   1    3:0    50 }
+   297   1    3:0    50 {$R-}
+   298   1    3:0    50 
+   299   1    4:D     3 function fetchbyte(cp: codep; offset: integer): integer;
+   300   1    4:0     0 begin
+   301   1    4:1     0   fetchbyte := cp^[offset]
+   302   1    4:0     2 end { fetchbyte } ;
+   303   1    4:0    18 
+   304   1    5:D     3 function fetchword(cp: codep; offset: integer): integer;
+   305   1    5:D     5   var i: integer;
+   306   1    5:0     0 begin
+   307   1    5:1     0   moveleft(cp^[offset], i, 2);
+   308   1    5:1     8   { byte swap i }
+   309   1    5:1     8   if flipped then byteswap(i);
+   310   1    5:1    16   fetchword := i
+   311   1    5:0    16 end { fetchword } ;
+   312   1    5:0    32 
+   313   1    6:D     1 procedure storebyte(val: integer; cp: codep; offset: integer);
+   314   1    6:0     0 begin
+   315   1    6:1     0   cp^[offset] := val
+   316   1    6:0     2 end { storebyte } ;
+   317   1    6:0    16 
+   318   1    7:D     1 procedure storeword(val: integer; cp: codep; offset: integer);
+   319   1    7:0     0 begin
+   320   1    7:0     0   { byte swap val }
+   321   1    7:1     0   if flipped then byteswap(val);
+   322   1    7:1     8   moveleft(val, cp^[offset], 2)
+   323   1    7:0    16 end { storeword } ;
+   324   1    7:0    28 
+   325   1    8:D     1 procedure storebig(val: integer; cp: codep; offset: integer);
+   326   1    8:D     4   var  bigword: packed record
+   327   1    8:D     4 		  case boolean of
+   328   1    8:D     4 		    TRUE:  (integ: integer);
+   329   1    8:D     4 		    FALSE: (lowbyte: 0..255;
+   330   1    8:D     4 			    highbyte: 0..255)
+   331   1    8:D     4 		end;
+   332   1    8:0     0 begin
+   333   1    8:1     0   bigword.integ := val;
+   334   1    8:1     3   cp^[offset] := bigword.highbyte + 128;
+   335   1    8:1    15   cp^[offset + 1] := bigword.lowbyte;
+   336   1    8:0    25 end;
+   337   1    8:0    38 
+   338   1    8:0    38 {$R+}
+   339   1    8:0    38 
+   340   1    8:0    38 {
+   341   1    8:0    38 *  Byte-flip word quantities in segment dictionary
+   342   1    8:0    38 *  for byte-flipped file case on reading and writing
+   343   1    8:0    38 *  segtables.  Called by Phase1 and Phase3.
+   344   1    8:0    38 }
+   345   1    8:0    38 
+   346   1    9:D     1 procedure fliptable(var table: I5segtbl);
+   347   1    9:D     2   var  s: segrange;
+   348   1    9:D     3        word: record
+   349   1    9:D     3 	       case boolean of
+   350   1    9:D     3 		 TRUE:  (int: integer);
+   351   1    9:D     3 		 FALSE: (kind: segkinds)
+   352   1    9:D     3 	     end;
+   353   1    9:0     0 begin
+   354   1    9:1     0   for s := 0 to MAXSEG do
+   355   1    9:2    17     with table, diskinfo[s] do
+   356   1    9:3    29     begin
+   357   1    9:4    29       byteswap(codeaddr);
+   358   1    9:4    32       byteswap(codeleng);
+   359   1    9:4    37       word.kind := segkind[s];
+   360   1    9:4    49       byteswap(word.int);
+   361   1    9:4    53       segkind[s] := word.kind;
+   362   1    9:3    64     end;
+   363   1    9:0    71 end;
+   364   1    9:0    86 
+   365   1    9:0    86 {
+   366   1    9:0    86 *  Enter newsym in symtab tree.  The tree is binary for
+   367   1    9:0    86 *  different names and entries with the same name are entered
+   368   1    9:0    86 *  onto sideways links (slink).  No check is made for dup
+   369   1    9:0    86 *  entry types, caller must do that.  Nodes on slink will
+   370   1    9:0    86 *  always have NIL rlink and llink.
+   371   1    9:0    86 }
+   372   1    9:0    86 
+   373   1   10:D     1 procedure entersym(newsym: symp; var symtab: symp);
+   374   1   10:D     3   var syp, lastsyp: symp;
+   375   1   10:D     5       useleft: boolean;
+   376   1   10:0     0 begin
+   377   1   10:1     0   newsym^.llink := NIL;
+   378   1   10:1     5   newsym^.rlink := NIL;
+   379   1   10:1    10   newsym^.slink := NIL;
+   380   1   10:1    13   if symtab = NIL then
+   381   1   10:2    19     symtab := newsym
+   382   1   10:1    20   else
+   383   1   10:2    24     begin { search symtab and add newsym }
+   384   1   10:3    24       syp := symtab;
+   385   1   10:3    28       repeat
+   386   1   10:4    28 	lastsyp := syp;
+   387   1   10:4    31 	if syp^.entry.name > newsym^.entry.name then
+   388   1   10:5    42 	  begin syp := syp^.llink; useleft := TRUE end
+   389   1   10:4    49 	else
+   390   1   10:5    51 	  if syp^.entry.name < newsym^.entry.name then
+   391   1   10:6    62 	    begin syp := syp^.rlink; useleft := FALSE end
+   392   1   10:5    69 	  else { equal }
+   393   1   10:6    71 	    begin { add into sideways list }
+   394   1   10:7    71 	      newsym^.slink := syp^.slink;
+   395   1   10:7    75 	      syp^.slink := newsym;
+   396   1   10:7    78 	      lastsyp := NIL;     { already added flag }
+   397   1   10:7    81 	      syp := NIL          { stop repeat loop }
+   398   1   10:6    81 	    end
+   399   1   10:3    84       until syp = NIL;
+   400   1   10:3    89       if lastsyp <> NIL then
+   401   1   10:4    94 	begin { add to bottom of tree }
+   402   1   10:5    94 	  if useleft then
+   403   1   10:6    97 	    lastsyp^.llink := newsym
+   404   1   10:5   100 	  else
+   405   1   10:6   104 	    lastsyp^.rlink := newsym
+   406   1   10:4   107 	end
+   407   1   10:2   109     end { symtab <> NIL }
+   408   1   10:0   109 end { entersym } ;
+   409   1   10:0   124 
+   410   1   10:0   124 {
+   411   1   10:0   124 *  Look up name in symtab tree and return pointer
+   412   1   10:0   124 *  to it.  Oktype restricts what litype is
+   413   1   10:0   124 *  acceptable.  NIL is returned if name not found.
+   414   1   10:0   124 }
+   415   1   10:0   124 
+   416   1   11:D     3 function symsrch(var name: alpha; oktype: litypes; symtab: symp): symp;
+   417   1   11:D     6   var syp: symp;
+   418   1   11:0     0 begin
+   419   1   11:1     0   symsrch := NIL;
+   420   1   11:1     3   syp := symtab;
+   421   1   11:1     6   while syp <> NIL do
+   422   1   11:2    11     if syp^.entry.name > name then
+   423   1   11:3    20       syp := syp^.llink
+   424   1   11:2    21     else
+   425   1   11:3    26       if syp^.entry.name < name then
+   426   1   11:4    35 	syp := syp^.rlink
+   427   1   11:3    36       else { equal name }
+   428   1   11:4    41 	if syp^.entry.litype <> oktype then
+   429   1   11:5    47 	  syp := syp^.slink
+   430   1   11:4    48 	else { found! }
+   431   1   11:5    53 	  begin symsrch := syp; syp := NIL end
+   432   1   11:0    59 end { symsrch } ;
+   433   1   11:0    76 
+   434   1   11:0    76 {
+   435   1   11:0    76 *  Search for the occurance of the unit segment
+   436   1   11:0    76 *  given by name in the list of files in fp.
+   437   1   11:0    76 *  Return the file and segment number in seg.
+   438   1   11:0    76 *  NIL is returned for non-existant units and
+   439   1   11:0    76 *  an error is given.
+   440   1   11:0    76 }
+   441   1   11:0    76 
+   442   1   12:D     3 function unitsrch(fp: finfop; var name: alpha; var seg: segrange): finfop;
+   443   1   12:D     6   label 1;
+   444   1   12:D     6   var s: segindex;
+   445   1   12:0     0 begin seg := 0;
+   446   1   12:1     6   while fp <> NIL do
+   447   1   12:2    11     begin
+   448   1   12:3    11       with fp^.segtbl do
+   449   1   12:4    16 	for s := 0 to MAXSEG do
+   450   1   12:5    33 	  if segname[s] = name then
+   451   1   12:6    48 	    if segkind[s] = UNITSEG then
+   452   1   12:7    62 	      goto 1;
+   453   1   12:3    71       fp := fp^.next
+   454   1   12:2    72     end;
+   455   1   12:1    77   write('Unit ', name);
+   456   1   12:1   101   error(' not found');
+   457   1   12:1   116   s := 0;
+   458   1   12:1   122 1:
+   459   1   12:1   122   seg := s;
+   460   1   12:1   128   unitsrch := fp
+   461   1   12:0   128 end { unitsrch } ;
+   462   1   12:0   148 
+   463   1   12:0   148 {
+   464   1   12:0   148 *  Alphabetic returns TRUE if name contains all legal
+   465   1   12:0   148 *  characters for PASCAL identifiers.  Used to validate
+   466   1   12:0   148 *  segnames and link info entries.
+   467   1   12:0   148 }
+   468   1   12:0   148 
+   469   1   13:D     3 function alphabetic(var name: alpha): boolean;
+   470   1   13:D     4   label 1;
+   471   1   13:D     4   var i: integer;
+   472   1   13:0     0 begin
+   473   1   13:1     0   alphabetic := FALSE;
+   474   1   13:1     3   for i := 0 to 7 do
+   475   1   13:2    14     if not (name[i] in ['A'..'Z', '0'..'9', ' ', '_']) then
+   476   1   13:3    39       goto 1;
+   477   1   13:1    48   alphabetic := TRUE;
+   478   1   13:1    51 1:
+   479   1   13:0    51 end { alphabetic } ;
+   480   1   13:0    66 
+   481   1   13:0    66 {
+   482   1   13:0    66 *  Getcodep is a sneaky routine to point codep's anywhere
+   483   1   13:0    66 *  in memory.  It violates Robot's Rules of Order, but is
+   484   1   13:0    66 *  very useful for dealing with the variable size segments
+   485   1   13:0    66 }
+   486   1   13:0    66 
+   487   1   14:D     3 function getcodep(memaddr: integer): codep;
+   488   1   14:D     4   var r: record
+   489   1   14:D     4 	   case boolean of
+   490   1   14:D     4 	     TRUE:  (i: integer);
+   491   1   14:D     4 	     FALSE: (p: codep)
+   492   1   14:D     4 	   end;
+   493   1   14:0     0 begin
+   494   1   14:1     0   r.i := memaddr;
+   495   1   14:1     3   getcodep := r.p
+   496   1   14:0     3 end { getcodep } ;
+   497   1   14:0    18 
+   498   1   14:0    18 {.fs --- link1 --- }
+   499   1   14:0    18 
+   500   1   14:0    18     (******************************************************************)
+   501   1   14:0    18     (*                                                                *)
+   502   1   14:0    18     (*  Copyright (c) 1979 Regents of the University of California.   *)
+   503   1   14:0    18     (*  Permission to copy or distribute this software or documen-    *)
+   504   1   14:0    18     (*  tation in hard or soft copy granted only by written license   *) 
+   505   1   14:0    18     (*  obtained from the Institute for Information Systems.          *)
+   506   1   14:0    18     (*                                                                *)
+   507   1   14:0    18     (******************************************************************)
+   508   1   14:0    18 
+   509   1   14:0    18 {
+   510   1   14:0    18 *  Phase 1 opens host and library files and
+   511   1   14:0    18 *  reads in seg tables.  All fields are verified
+   512   1   14:0    18 *  and the hostfile/libfiles file list is built.
+   513   1   14:0    18 *  The prototype final seg table is set up in
+   514   1   14:0    18 *  seginfo[*] from the host file and the sep seg
+   515   1   14:0    18 *  list is set up for searching in later phases.
+   516   1   14:0    18 }
+   517   1   14:0    18 
+   518   1   15:D     1 procedure phase1;
+   519   1   15:D     1 
+   520   1   15:D     1   var  { for use with byte flipping }
+   521   1   15:D     1 	 highbyte: 0..1;
+   522   1   15:D     2 	 int: record
+   523   1   15:D     2 		case boolean of
+   524   1   15:D     2 		  TRUE:  (val: integer);
+   525   1   15:D     2 		  FALSE: (byte: packed array [0..1] of 0..255)
+   526   1   15:D     2 	      end;
+   527   1   15:D     3     {
+   528   1   15:D     3     *  Build file list opens input code files and reads segtbls.
+   529   1   15:D     3     *  The var hostfile is set up as head of linked list of file
+   530   1   15:D     3     *  info recs.  The order of these files determines how id's
+   531   1   15:D     3     *  will be searched for.  Note that libfiles points at the 
+   532   1   15:D     3     *  list just past the host file front entry.
+   533   1   15:D     3     }
+   534   1   15:D     3 
+   535   1   16:D     1     procedure buildfilelist;
+   536   1   16:D     1       label 1;
+   537   1   16:D     1       var f: 0..MAXFILE;
+   538   1   16:D     2 	  i: integer;
+   539   1   16:D     3 	  p, q: finfop;
+   540   1   16:D     5 	  fname: string[39];
+   541   1   16:D    25 
+   542   1   16:D    25 	{
+   543   1   16:D    25 	*  Setupfile opens file and enters new finfo rec in
+   544   1   16:D    25 	*  hostfile list.  Segtbl is read in and validated.
+   545   1   16:D    25 	}
+   546   1   16:D    25 
+   547   1   17:D     1 	procedure setupfile(kind: filekind; title: string);
+   548   1   17:D    44 	  label 1;
+   549   1   17:D    44 	  var errs: integer;
+   550   1   17:D    45 	      s: segindex;
+   551   1   17:D    46 	      cp: filep;
+   552   1   17:D    47 	      fp: finfop;
+   553   1   17:D    48 	      alllinked: boolean;
+   554   1   17:D    49 	      goodkinds: set of segkinds;
+   555   1   17:D    50 
+   556   1   17:D    50 
+   557   1   17:0     0 	begin { setupfile }
+   558   1   17:1     0 	  new(cp);               { create a file dynamically }
+   559   1   17:1    10 	  moveleft(code, cp^, sizeof(code));  { init new FIB }
+   560   1   17:1    19 	  reset(cp^, title);
+   561   1   17:1    28 	  if IORESULT <> 0 then
+   562   1   17:2    34 	    if title <> 'in workspace' then
+   563   1   17:3    55 	      begin
+   564   1   17:4    55 		insert('.CODE', title, length(title)+1);
+   565   1   17:4    75 		reset(cp^, title)
+   566   1   17:3    84 	      end;
+   567   1   17:1    84 	  if IORESULT <> 0 then
+   568   1   17:2    90 	    begin
+   569   1   17:3    90 	      release(cp); { discard FIB }
+   570   1   17:3    94 	      insert('No file ', title, 1);
+   571   1   17:3   112 	      error(title);
+   572   1   17:3   116 	      if kind <> USERHOST then
+   573   1   17:4   121 		errcount := errcount-1
+   574   1   17:2   122 	    end
+   575   1   17:1   126 	  else
+   576   1   17:2   128 	    begin { file open ok }
+   577   1   17:3   128 	      if talkative then
+   578   1   17:4   131 		writeln('Opening ', title);
+   579   1   17:3   164 	      new(fp);
+   580   1   17:3   169 	      fp^.next := hostfile;
+   581   1   17:3   173 	      fp^.code := cp;
+   582   1   17:3   180 	      fp^.fkind := kind;
+   583   1   17:3   186 	      if blockread(cp^, fp^.segtbl, 1, 0) <> 1 then
+   584   1   17:4   205 		error('segtbl read err')
+   585   1   17:3   223 	      else
+   586   1   17:4   227 		begin { now check segtbl values }
+   587   1   17:5   227 		  if kind = USERHOST then { determine if file is byte-flipped }
+   588   1   17:6   232 		    for s := 0 to MAXSEG do
+   589   1   17:7   251 		    begin
+   590   1   17:8   251 		      int.val := ord(fp^.segtbl.segkind[s]);
+   591   1   17:8   266 		      flipped := (int.byte[highbyte] <> 0);
+   592   1   17:8   280 		      if flipped then
+   593   1   17:9   284 			goto 1;
+   594   1   17:7   286 		    end;
+   595   1   17:5   294 	      1:  if flipped then
+   596   1   17:6   298 		    fliptable(fp^.segtbl);
+   597   1   17:6   304 
+   598   1   17:5   304 		  s := 0; alllinked := TRUE;
+   599   1   17:5   313 		  errs := errcount;
+   600   1   17:5   316 		  if kind = USERHOST then
+   601   1   17:6   321 		    goodkinds := [LINKED,SEGPROC,SEPRTSEG,HOSTSEG,UNITSEG]
+   602   1   17:5   321 		  else
+   603   1   17:6   329 		    goodkinds := [LINKED,UNITSEG,SEPRTSEG];
+   604   1   17:6   335 
+   605   1   17:5   335 		  with fp^.segtbl do
+   606   1   17:6   341 		    repeat
+   607   1   17:7   341 		      int.val := ord(segkind[s]);
+   608   1   17:7   356 		      if (int.byte[highbyte] <> 0) then
+   609   1   17:8   370 		      begin
+   610   1   17:9   370 			error('bad byte sex'); exit(linker)
+   611   1   17:8   391 		      end;
+   612   1   17:7   391 		      alllinked := alllinked and (segkind[s] = LINKED);
+   613   1   17:7   410 		      if (diskinfo[s].codeleng = 0)
+   614   1   17:7   422 		      and (segkind[s] <> LINKED) then
+   615   1   17:8   439 			if (kind <> USERHOST)
+   616   1   17:8   442 			or (segkind[s] <> UNITSEG) then
+   617   1   17:9   459 			  error('funny code seg');
+   618   1   17:7   478 		      if (diskinfo[s].codeleng < 0)
+   619   1   17:7   490 		      or (diskinfo[s].codeaddr < 0)
+   620   1   17:7   502 		      or (diskinfo[s].codeaddr > 300) then
+   621   1   17:8   520 			error('bad diskinfo');
+   622   1   17:7   537 		      if not (segkind[s] in goodkinds) then
+   623   1   17:8   556 			error('bad seg kind');
+   624   1   17:7   573 		      if not alphabetic(segname[s]) then
+   625   1   17:8   591 			error('bad seg name');
+   626   1   17:7   608 		      if errcount > errs then
+   627   1   17:8   614 			s := MAXSEG;
+   628   1   17:7   620 		      s := s+1
+   629   1   17:6   622 		    until s > MAXSEG;
+   630   1   17:5   635 		  if alllinked and (kind = USERHOST) then
+   631   1   17:6   643 		    begin
+   632   1   17:7   643 		      write('All segs linked');
+   633   1   17:7   668 		      exit(linker)
+   634   1   17:6   672 		    end;
+   635   1   17:5   672 		  if errcount = errs then
+   636   1   17:6   678 		    hostfile := fp            { ok file...link in }
+   637   1   17:4   678 		end
+   638   1   17:2   682 	    end
+   639   1   17:0   682 	end { setupfile } ;
+   640   1   17:0   702 
+   641   1   16:0     0     begin { buildfilelist }
+   642   1   16:1     0       if talkative then
+   643   1   16:2     3 	begin
+   644   1   16:3     3 	  for i := 1 to 7 do
+   645   1   16:4    15 	    writeln;
+   646   1   16:3    28 	  writeln( HEADER )
+   647   1   16:2    57 	end;
+   648   1   16:1    57       useworkfile := cmdstate <> SYSPROG;
+   649   1   16:1    64       with userinfo do
+   650   1   16:2    64 	if useworkfile then
+   651   1   16:3    67 	  begin
+   652   1   16:4    67 	    if gotcode then
+   653   1   16:5    72 	      fname := concat(codevid, ':', codetid)
+   654   1   16:4   107 	    else
+   655   1   16:5   111 	      fname := 'in workspace';
+   656   1   16:4   130 	    setupfile(USERHOST, fname);
+   657   1   16:4   135 	    setupfile(SYSTEMLIB, '*SYSTEM.LIBRARY')
+   658   1   16:3   154 	  end
+   659   1   16:2   156 	else
+   660   1   16:3   158           begin
+   661   1   16:4   158 	    write('Host file? ');
+   662   1   16:4   179 	    readln(fname);
+   663   1   16:4   194 	    if fname = '' then
+   664   1   16:5   203 	      if gotcode then
+   665   1   16:6   208 		fname := concat(codevid, ':', codetid)
+   666   1   16:5   243 	      else
+   667   1   16:6   247 		fname := 'in workspace';
+   668   1   16:4   266 	    setupfile(USERHOST, fname);
+   669   1   16:4   271 	    if errcount > 0 then
+   670   1   16:5   276 	      exit(linker); { no host! }
+   671   1   16:4   280 	    for f := 1 to MAXFILE do
+   672   1   16:5   298 	      begin
+   673   1   16:6   298 		write('Lib file? ');
+   674   1   16:6   318 		readln(fname);
+   675   1   16:6   333 		if fname = '' then
+   676   1   16:7   342 		  goto 1;
+   677   1   16:6   344 		if fname = '*' then
+   678   1   16:7   351 		  setupfile(SYSTEMLIB, '*SYSTEM.LIBRARY')
+   679   1   16:6   370 		else
+   680   1   16:7   374 		  setupfile(USERLIB, fname)
+   681   1   16:5   377 	      end;
+   682   1   16:4   386 	1:
+   683   1   16:4   386 	    write('Map name? ');
+   684   1   16:4   406 	    readln(mapname);
+   685   1   16:4   421 	    if mapname <> '' then
+   686   1   16:5   430 	      if mapname[length(mapname)] = '.' then
+   687   1   16:6   442 		delete(mapname, length(mapname), 1)
+   688   1   16:5   452 	      else
+   689   1   16:6   454 		insert('.TEXT', mapname, length(mapname)+1)
+   690   1   16:3   474 	  end;
+   691   1   16:3   474 
+   692   1   16:3   474       { now reverse list so host is }
+   693   1   16:3   474       { first and syslib is last    }
+   694   1   16:3   474 
+   695   1   16:1   474       p := hostfile; hostfile := NIL;
+   696   1   16:1   480       repeat
+   697   1   16:2   480 	q := p^.next;
+   698   1   16:2   484 	p^.next := hostfile;
+   699   1   16:2   487 	hostfile := p;
+   700   1   16:2   490 	p := q
+   701   1   16:1   490       until p = NIL;
+   702   1   16:1   498       libfiles := hostfile^.next;
+   703   1   16:0   502     end { buildfilelist } ;
+   704   1   16:0   522 
+   705   1   16:0   522     {
+   706   1   16:0   522     *  Buildseginfo initializes the seginfo table from
+   707   1   16:0   522     *  the host prototype seg table.  All legal states
+   708   1   16:0   522     *  are checked, and imported units found.  This
+   709   1   16:0   522     *  leaves a list of all segs to finally appear in
+   710   1   16:0   522     *  the output code file.
+   711   1   16:0   522     }
+   712   1   16:0   522 
+   713   1   18:D     1     procedure buildseginfo;
+   714   1   18:D     1       label 1;
+   715   1   18:D     1       var s: segindex;
+   716   1   18:D     2 	  errs: integer;
+   717   1   18:D     3 	  sp: segp;
+   718   1   18:0     0     begin
+   719   1   18:1     0       with hostfile^.segtbl do
+   720   1   18:2     5 	for s := 0 to MAXSEG do
+   721   1   18:3    22 	  if (segkind[s] = LINKED)
+   722   1   18:3    34 	  and (diskinfo[s].codeleng = 0) then
+   723   1   18:4    47 	    seginfo[s] := NIL   { not in use }
+   724   1   18:3    55 	  else
+   725   1   18:4    59 	    begin { do something with seg }
+   726   1   18:5    59 	      errs := errcount;
+   727   1   18:5    62 	      new(sp);
+   728   1   18:5    67 	      sp^.srcfile := hostfile;
+   729   1   18:5    70 	      sp^.srcseg := s;
+   730   1   18:5    78 	      sp^.symtab := NIL;
+   731   1   18:5    83 	      sp^.segkind := segkind[s];
+   732   1   18:5    97 	      case sp^.segkind of
+   733   1   18:5   101 		SEGPROC,
+   734   1   18:5   101 		LINKED:    ;  { nothing to check! }
+   735   1   18:5   103 
+   736   1   18:5   103 		HOSTSEG:   if s <> MASTERSEG then
+   737   1   18:7   108 			     error('bad host seg')
+   738   1   18:6   123 			   else
+   739   1   18:7   127 			     if hostsp <> NIL then
+   740   1   18:8   132 			       error('dup host seg')
+   741   1   18:7   147 			     else
+   742   1   18:8   151 			       hostsp := sp;
+   743   1   18:8   156 
+   744   1   18:5   156 		SEPRTSEG:  if s = MASTERSEG then
+   745   1   18:7   161 			     sp^.next := NIL
+   746   1   18:6   164 			   else
+   747   1   18:7   168 			     begin { put into seplist }
+   748   1   18:8   168 			       sp^.next := seplist;
+   749   1   18:8   173 			       seplist := sp;
+   750   1   18:8   176 			       sp := NIL
+   751   1   18:7   176 			     end;
+   752   1   18:7   181 
+   753   1   18:5   181 		UNITSEG:   if diskinfo[s].codeleng = 0 then
+   754   1   18:7   193 			     sp^.srcfile := unitsrch(libfiles,
+   755   1   18:7   195 						    segname[s],
+   756   1   18:7   204 						    sp^.srcseg)
+   757   1   18:5   207 	      end { cases } ;
+   758   1   18:5   232 	      if errs = errcount then
+   759   1   18:6   237 		seginfo[s] := sp
+   760   1   18:5   245 	      else
+   761   1   18:6   249 		seginfo[s] := NIL
+   762   1   18:4   257 	    end;
+   763   1   18:4   266 
+   764   1   18:4   266       { now find first assignable seg }
+   765   1   18:4   266 
+   766   1   18:1   266       for s := FIRSTSEG to MAXSEG do
+   767   1   18:2   283 	if seginfo[s] = NIL then
+   768   1   18:3   296 	  goto 1;
+   769   1   18:1   305       s := MAXSEG1;
+   770   1   18:1   311     1:
+   771   1   18:1   311       nextseg := s;
+   772   1   18:1   317       if seginfo[MASTERSEG] = NIL then
+   773   1   18:2   330 	error('weird host')
+   774   1   18:0   343     end { buildseginfo } ;
+   775   1   18:0   368 
+   776   1   18:0   368     {
+   777   1   18:0   368     *  Buildseplist searches through libraries and adds onto
+   778   1   18:0   368     *  a global list of sep segs that are to be searched
+   779   1   18:0   368     *  for procs and globals.  They are initially built in
+   780   1   18:0   368     *  the reverse order, then reversed again so searches
+   781   1   18:0   368     *  will go in the order the files were specified.
+   782   1   18:0   368     }
+   783   1   18:0   368 
+   784   1   19:D     1     procedure buildseplist;
+   785   1   19:D     1       var sp, p, q: segp;
+   786   1   19:D     4 	  fp: finfop;
+   787   1   19:D     5 	  s: segindex;
+   788   1   19:0     0     begin
+   789   1   19:1     0       fp := libfiles;
+   790   1   19:1     3       while fp <> NIL do
+   791   1   19:2     8 	begin
+   792   1   19:3     8 	  for s := 0 to MAXSEG do
+   793   1   19:4    25 	    if fp^.segtbl.segkind[s] = SEPRTSEG then
+   794   1   19:5    39 	      begin
+   795   1   19:6    39 		new(sp);
+   796   1   19:6    44 		sp^.next := seplist;
+   797   1   19:6    49 		sp^.srcfile := fp;
+   798   1   19:6    52 		sp^.srcseg := s;
+   799   1   19:6    60 		sp^.symtab := NIL;
+   800   1   19:6    65 		sp^.segkind := SEPRTSEG;
+   801   1   19:6    70 		sp^.next := seplist;
+   802   1   19:6    75 		seplist := sp
+   803   1   19:5    75 	      end;
+   804   1   19:3    85 	  fp := fp^.next
+   805   1   19:2    86 	end;
+   806   1   19:2    91 
+   807   1   19:2    91       { now reverse the list to maintain original order }
+   808   1   19:2    91 
+   809   1   19:1    91       p := seplist; seplist := NIL;
+   810   1   19:1    97       while p <> NIL do
+   811   1   19:2   102 	begin
+   812   1   19:3   102 	  q := p^.next;
+   813   1   19:3   106 	  p^.next := seplist;
+   814   1   19:3   111 	  seplist := p;
+   815   1   19:3   114 	  p := q
+   816   1   19:2   114 	end
+   817   1   19:0   117     end { buildseplist } ;
+   818   1   19:0   138 
+   819   1   15:0     0 begin { phase1 }
+   820   1   15:0     0 
+   821   1   15:0     0   { initialize globals }
+   822   1   15:0     0 
+   823   1   15:1     0   hostfile := NIL;
+   824   1   15:1     3   libfiles := NIL;
+   825   1   15:1     6   hostsp := NIL;
+   826   1   15:1     9   seplist := NIL;
+   827   1   15:1    12   reflitypes := [UNITREF, GLOBREF, PUBLREF,
+   828   1   15:1    12 		 PRIVREF, CONSTREF,
+   829   1   15:1    12 		 SEPPREF, SEPFREF];
+   830   1   15:1    20   errcount := 0;
+   831   1   15:1    23   nextbaselc := 3;
+   832   1   15:1    31   mapname := '';
+   833   1   15:1    38   talkative := not userinfo.slowterm;
+   834   1   15:1    44   mark(heapbase);
+   835   1   15:1    48   unitwrite(3, heapbase^, 35);
+   836   1   15:1    56 
+   837   1   15:1    56   { determine byte sex of machine }
+   838   1   15:1    56 
+   839   1   15:1    56   flipped := FALSE;
+   840   1   15:1    59   int.val := 1;
+   841   1   15:1    62   highbyte := ord( int.byte[0] = 1 );
+   842   1   15:1    76 
+   843   1   15:1    76   { build list of input files }
+   844   1   15:1    76 
+   845   1   15:1    76   buildfilelist;
+   846   1   15:1    78   if errcount > 0 then
+   847   1   15:2    83     exit(linker);
+   848   1   15:2    87 
+   849   1   15:2    87   { init basic seg info table }
+   850   1   15:2    87 
+   851   1   15:1    87   buildseginfo;
+   852   1   15:1    89   if errcount > 0 then
+   853   1   15:2    94     exit(linker);
+   854   1   15:2    98 
+   855   1   15:2    98   { finally build sep seg list }
+   856   1   15:2    98 
+   857   1   15:1    98   buildseplist;
+   858   1   15:1   100   if errcount > 0 then
+   859   1   15:2   105     exit(linker)
+   860   1   15:0   109 end { phase1 } ;
+   861   1   15:0   122 
+   862   1   15:0   122 {.fs --- link2 --- }
+   863   1   15:0   122 
+   864   1   15:0   122     (******************************************************************)
+   865   1   15:0   122     (*                                                                *)
+   866   1   15:0   122     (*  Copyright (c) 1979 Regents of the University of California.   *)
+   867   1   15:0   122     (*  Permission to copy or distribute this software or documen-    *)
+   868   1   15:0   122     (*  tation in hard or soft copy granted only by written license   *) 
+   869   1   15:0   122     (*  obtained from the Institute for Information Systems.          *)
+   870   1   15:0   122     (*                                                                *)
+   871   1   15:0   122     (******************************************************************)
+   872   1   15:0   122 
+   873   1   15:0   122 {
+   874   1   15:0   122 *  Phase2 reads in all linker info associated with
+   875   1   15:0   122 *  the segs in seginfo and sep seg list.  Again all
+   876   1   15:0   122 *  fields are checked carefully.  As a help to phase3,
+   877   1   15:0   122 *  ref lists are collected and place records for sep
+   878   1   15:0   122 *  proc/func are computed.  Some small optimization is
+   879   1   15:0   122 *  done to eliminate the sep seg list if it is not
+   880   1   15:0   122 *  going to be needed, saving a few disk IO's.
+   881   1   15:0   122 }
+   882   1   15:0   122 
+   883   1   20:D     1 procedure phase2;
+   884   1   20:D     1   var s: segindex;
+   885   1   20:D     2       sp: segp;
+   886   1   20:D     3       dumpseps: boolean;
+   887   1   20:D     4 
+   888   1   20:D     4     {
+   889   1   20:D     4     *  Readlinkinfo reads in the link info for segment sp
+   890   1   20:D     4     *  and builds its symtab.  Some simple disk io routines
+   891   1   20:D     4     *  do unblocking, and all fields are again verified.
+   892   1   20:D     4     *  The only legal litypes are in oktypes. Assume that
+   893   1   20:D     4     *  sp <> NIL
+   894   1   20:D     4     }
+   895   1   20:D     4 
+   896   1   21:D     1     procedure readlinkinfo(sp: segp; oktypes: liset);
+   897   1   21:D     3       var rp, rq: refp;
+   898   1   21:D     5 	  syp: symp;
+   899   1   21:D     6 	  w, errs, nrecs, nextblk, recsleft: integer;
+   900   1   21:D    11 	  entry, temp: lientry;
+   901   1   21:D    29 	  buf: array [0..31] of
+   902   1   21:D    29 		 array [0..7] of integer;
+   903   1   21:D   285 	  tentry: array [0..7] of integer;
+   904   1   21:D   293 	  oktoadd: boolean;
+   905   1   21:D   294 
+   906   1   21:D   294 	{
+   907   1   21:D   294 	*  Getentry reads an 8 word record from disk buf
+   908   1   21:D   294 	*  sequentially.  No validity checking is done here,
+   909   1   21:D   294 	*  only disk read errors.
+   910   1   21:D   294 	}
+   911   1   21:D   294 
+   912   1   22:D     1 	procedure getentry(var entry: lientry);
+   913   1   22:D     2 	  var err: boolean;
+   914   1   22:0     0 	begin
+   915   1   22:1     0 	  err := FALSE;
+   916   1   22:1     3 	  if recsleft = 0 then
+   917   1   22:2    10 	    begin
+   918   1   22:3    10 	      recsleft := 32;
+   919   1   22:3    14 	      err := blockread(sp^.srcfile^.code^, buf, 1, nextblk) <> 1;
+   920   1   22:3    37 	      if err then
+   921   1   22:4    40 		error('li read err') 
+   922   1   22:3    54 	      else
+   923   1   22:4    58 		nextblk := nextblk+1
+   924   1   22:2    61 	    end;
+   925   1   22:1    66 	  moveleft(buf[32-recsleft], entry, 16);
+   926   1   22:1    85 	  if err then
+   927   1   22:2    88 	    entry.litype := EOFMARK;
+   928   1   22:1    93 	  recsleft := recsleft-1
+   929   1   22:0    96 	end { getentry } ;
+   930   1   22:0   114 
+   931   1   22:0   114 	{
+   932   1   22:0   114 	*  Addunit is called to find or allocate a library unit
+   933   1   22:0   114 	*  that is found in link info as an external ref.  This
+   934   1   22:0   114 	*  occurs in lib units which use other units.  If
+   935   1   22:0   114 	*  the unit can't be found or no room, error is called.
+   936   1   22:0   114 	}
+   937   1   22:0   114 
+   938   1   23:D     1 	procedure addunit(var name: alpha);
+   939   1   23:D     2 	  var fp: finfop; seg: integer;
+   940   1   23:0     0 	begin
+   941   1   23:1     0 	  fp := unitsrch(hostfile, name, seg);
+   942   1   23:1    10 	  if fp <> NIL then
+   943   1   23:2    15 	    if fp <> hostfile then
+   944   1   23:3    20 	      if fp^.segtbl.diskinfo[seg].codeleng <> 0 then
+   945   1   23:4    34 		if nextseg = MAXSEG1 then
+   946   1   23:5    40 		  error('no room in seginfo')
+   947   1   23:4    61 		else
+   948   1   23:5    65 		  begin { allocate new seginfo el }
+   949   1   23:6    65 		    new(seginfo[nextseg]);
+   950   1   23:6    77 		    with seginfo[nextseg]^ do
+   951   1   23:7    89 		      begin
+   952   1   23:8    89 			srcfile := fp;
+   953   1   23:8    92 			srcseg := seg;
+   954   1   23:8   100 			segkind := UNITSEG;
+   955   1   23:8   105 			symtab := NIL
+   956   1   23:7   108 		      end;
+   957   1   23:6   110 		    nextseg := nextseg+1
+   958   1   23:5   112 		  end
+   959   1   23:0   119 	end { addunit } ;
+   960   1   23:0   132 
+   961   1   23:0   132 	{
+   962   1   23:0   132 	*  Validate verifies lientry format.
+   963   1   23:0   132 	*  If the entry is SEPPROC or FUNC
+   964   1   23:0   132 	*  then a place rec is allocated for buildplace.  If
+   965   1   23:0   132 	*  a UNITREF is found, it searched for and possibly
+   966   1   23:0   132 	*  allocated.  If the unit must be added to seginfo,
+   967   1   23:0   132 	*  it is placed after current position so it will have
+   968   1   23:0   132 	*  its link info read as well.
+   969   1   23:0   132 	}
+   970   1   23:0   132 
+   971   1   24:D     1 	procedure validate(var entry: lientry);
+   972   1   24:0     0 	begin
+   973   1   24:1     0 	  with entry do
+   974   1   24:2     3 	    if not alphabetic(name) then
+   975   1   24:3    11 	      error('non-alpha name')
+   976   1   24:2    28 	    else
+   977   1   24:3    32 	      case litype of
+   978   1   24:3    36 		SEPPREF,
+   979   1   24:3    36 		SEPFREF,
+   980   1   24:3    36 		UNITREF,
+   981   1   24:3    36 		GLOBREF,
+   982   1   24:3    36 		PUBLREF,
+   983   1   24:3    36 		PRIVREF,
+   984   1   24:3    36 		CONSTREF:  begin
+   985   1   24:5    36 			     reflist := NIL;
+   986   1   24:5    41 			     if (nrefs < 0)
+   987   1   24:5    45 			     or (nrefs > 500) then
+   988   1   24:6    54 			       error('too many refs');
+   989   1   24:5    72 			     if not (format in [WORD, BYTE, BIG]) then
+   990   1   24:6    80 			       error('bad format');
+   991   1   24:5    95 			     if litype = PRIVREF then
+   992   1   24:6   101 			       if (nwords <= 0)
+   993   1   24:6   105 			       or (nwords > MAXLC) then
+   994   1   24:7   114 				 error('bad private');
+   995   1   24:5   130 			     if litype = UNITREF then
+   996   1   24:6   136 			       if nrefs <> 0 then
+   997   1   24:7   142 				 addunit(name)
+   998   1   24:4   143 			   end;
+   999   1   24:3   147 		GLOBDEF:   if (homeproc <= 0)
+  1000   1   24:4   151 			   or (homeproc > MAXPROC)
+  1001   1   24:4   157 			   or (icoffset < 0)
+  1002   1   24:4   162 			   or (icoffset > MAXIC) then
+  1003   1   24:5   172 			     error('bad globdef');
+  1004   1   24:3   190 		PUBLDEF:   if (baseoffset <= 0)
+  1005   1   24:4   194 			   or (baseoffset > MAXLC) then
+  1006   1   24:5   203 			     error('bad publicdef');
+  1007   1   24:3   223 		EXTPROC,
+  1008   1   24:3   223 		EXTFUNC,
+  1009   1   24:3   223 		SEPPROC,
+  1010   1   24:3   223 		SEPFUNC:   begin
+  1011   1   24:5   223 			     if litype in [SEPPROC,SEPFUNC] then
+  1012   1   24:6   232 			       new(place) { for use in buildplaces }
+  1013   1   24:5   238 			     else
+  1014   1   24:6   240 			       place := NIL;
+  1015   1   24:5   245 			     if (srcproc <= 0)
+  1016   1   24:5   249 			     or (srcproc > MAXPROC)
+  1017   1   24:5   255 			     or (nparams < 0)
+  1018   1   24:5   260 			     or (nparams > 100) then
+  1019   1   24:6   268 			       error('bad proc/func')
+  1020   1   24:4   284 			   end
+  1021   1   24:3   286 	      end { case litype }
+  1022   1   24:0   324 	end { validate } ;
+  1023   1   24:0   342 
+  1024   1   21:0     0     begin { readlinkinfo }
+  1025   1   21:1     0       recsleft := 0;      { 8 wd recs left in buf }
+  1026   1   21:1     3       with sp^.srcfile^.segtbl, diskinfo[sp^.srcseg] do
+  1027   1   21:2    23 	begin { seek to linkinfo }
+  1028   1   21:3    23 	  nextblk := codeaddr + (codeleng+511) div 512;
+  1029   1   21:3    42 	  if talkative then
+  1030   1   21:4    45 	    writeln('Reading ', segname[sp^.srcseg])
+  1031   1   21:2    89 	end;
+  1032   1   21:1    89       repeat
+  1033   1   21:2    89 	oktoadd := TRUE;
+  1034   1   21:2    93 	getentry(entry);
+  1035   1   21:2    97 	if flipped then { flip word quantities in lientry }
+  1036   1   21:3   101 	begin
+  1037   1   21:4   101 	  moveleft(entry, tentry, 16);
+  1038   1   21:4   111 	  for w := 4 to 7 do
+  1039   1   21:5   125 	    byteswap(tentry[w]);
+  1040   1   21:4   143 	  moveleft(tentry, entry, 16);
+  1041   1   21:3   153 	end;
+  1042   1   21:2   153 	errs := errcount;
+  1043   1   21:2   156 	if entry.litype <> EOFMARK then
+  1044   1   21:3   162 	  if entry.litype in oktypes then
+  1045   1   21:4   169 	    validate(entry)
+  1046   1   21:3   171 	  else
+  1047   1   21:4   175 	    begin
+  1048   1   21:5   175 	      error('bad litype');
+  1049   1   21:5   190 	      entry.litype := EOFMARK
+  1050   1   21:4   190 	    end;
+  1051   1   21:2   193 	if dumpseps then
+  1052   1   21:3   198 	  if entry.litype in [SEPPREF, SEPFREF,
+  1053   1   21:3   200 			      EXTPROC, EXTFUNC,
+  1054   1   21:3   200 			      GLOBREF] then
+  1055   1   21:4   207 	    dumpseps := FALSE;  { we need them! }
+  1056   1   21:2   211 	if entry.litype in reflitypes then
+  1057   1   21:3   218 	  if entry.nrefs = 0 then
+  1058   1   21:4   224 	    oktoadd:= FALSE
+  1059   1   21:3   224 	  else
+  1060   1   21:4   230 	  begin { read ref list }
+  1061   1   21:5   230 	    nrecs := (entry.nrefs+7) div 8;
+  1062   1   21:5   238 	    while nrecs > 0 do
+  1063   1   21:6   243 	      begin { read ref rec }
+  1064   1   21:7   243 		getentry(temp);
+  1065   1   21:7   247 		new(rp);
+  1066   1   21:7   252 		moveleft(temp, rp^.refs, 16);
+  1067   1   21:7   262 		if flipped then { flip ref words }
+  1068   1   21:8   266 		  for w := 0 to 7 do
+  1069   1   21:9   280 		    byteswap(rp^.refs[w]);
+  1070   1   21:7   298 		rp^.next := entry.reflist;
+  1071   1   21:7   302 		entry.reflist := rp;
+  1072   1   21:7   305 		nrecs := nrecs-1
+  1073   1   21:6   306 	      end;
+  1074   1   21:6   312 	    { reverse ref list }
+  1075   1   21:5   312 	    rp := entry.reflist;
+  1076   1   21:5   316 	    entry.reflist := NIL;
+  1077   1   21:5   319 	    while rp <> NIL do
+  1078   1   21:6   324 	      begin
+  1079   1   21:7   324 		rq := rp^.next;
+  1080   1   21:7   328 		rp^.next := entry.reflist;
+  1081   1   21:7   332 		entry.reflist := rp;
+  1082   1   21:7   335 		rp := rq
+  1083   1   21:6   335 	      end
+  1084   1   21:4   338 	  end;
+  1085   1   21:2   340 	if entry.litype = EOFMARK then
+  1086   1   21:3   346 	  if sp^.segkind = HOSTSEG then
+  1087   1   21:4   352 	    if (entry.nextlc > 0)
+  1088   1   21:4   356 	    and (entry.nextlc <= MAXLC) then
+  1089   1   21:5   365 	      nextbaselc := entry.nextlc
+  1090   1   21:4   365 	    else
+  1091   1   21:5   376 	      error('bad host LC')
+  1092   1   21:3   390 	  else
+  1093   1   21:2   394 	else
+  1094   1   21:3   396 	  if (errs = errcount) and oktoadd then
+  1095   1   21:4   405 	    begin { ok...add to symtab }
+  1096   1   21:5   405 	      new(syp);
+  1097   1   21:5   410 	      syp^.entry := entry;
+  1098   1   21:5   417 	      entersym(syp, sp^.symtab)
+  1099   1   21:4   421 	    end
+  1100   1   21:1   423       until entry.litype = EOFMARK
+  1101   1   21:0   425     end { readlinkinfo } ;
+  1102   1   21:0   452 
+  1103   1   21:0   452     {
+  1104   1   21:0   452     *  Buildplaces reads code of sep segs from disk to generate
+  1105   1   21:0   452     *  the placerec entries for use during phase3.  The seg is
+  1106   1   21:0   452     *  read into the heap and the grossness begins. Assume that
+  1107   1   21:0   452     *  sp <> NIL
+  1108   1   21:0   452     }
+  1109   1   21:0   452 
+  1110   1   25:D     1     procedure buildplaces(sp: segp);
+  1111   1   25:D     2       var cp: codep; heap: ^integer;
+  1112   1   25:D     4 	  nbytes, nblocks, nprocs, n: integer;
+  1113   1   25:D     8 
+  1114   1   25:D     8 	{
+  1115   1   25:D     8 	*  procsrch recursivly searches symtab of sp to find
+  1116   1   25:D     8 	*  sepproc and sepfunc entries and build the actual
+  1117   1   25:D     8 	*  place record for the link info entry by indexing
+  1118   1   25:D     8 	*  thru proc dict to jtab and using entric field.
+  1119   1   25:D     8 	}
+  1120   1   25:D     8 
+  1121   1   26:D     1 	procedure procsrch(symtab: symp);
+  1122   1   26:D     2 	  var i, j: integer;
+  1123   1   26:0     0 	begin
+  1124   1   26:1     0 	  if symtab <> NIL then
+  1125   1   26:2     5 	    begin
+  1126   1   26:3     5 	      procsrch(symtab^.llink);
+  1127   1   26:3     9 	      procsrch(symtab^.rlink);
+  1128   1   26:3    13 	      procsrch(symtab^.slink);
+  1129   1   26:3    17 	      with symtab^.entry do
+  1130   1   26:4    22 		if litype in [SEPPROC, SEPFUNC] then
+  1131   1   26:5    31 		  if (srcproc <= 0) or (srcproc > nprocs) then
+  1132   1   26:6    44 		    error('bad proc #')
+  1133   1   26:5    57 		  else { find byte place in code }
+  1134   1   26:6    61 		    begin
+  1135   1   26:7    61 		      i := nbytes-2-2*srcproc;      { point i at proc dict }
+  1136   1   26:7    73 		      i := i-fetchword(cp, i);      { point i at jtab }
+  1137   1   26:7    85 		      if (fetchbyte(cp, i) <> srcproc)
+  1138   1   26:7    96 		      and (fetchbyte(cp, i) <> 0) then
+  1139   1   26:8   109 			error('disagreeing p #')
+  1140   1   26:7   127 		      else
+  1141   1   26:8   131 			begin
+  1142   1   26:9   131 			  j := fetchword(cp, i-2)+4;
+  1143   1   26:9   145 			  place^.srcbase := i+2-j;
+  1144   1   26:9   155 			  if (place^.srcbase < 0)
+  1145   1   26:9   160 			  or (j <= 0) or (j > MAXIC) then
+  1146   1   26:0   172 			    error('proc place err')
+  1147   1   26:9   189 			  else
+  1148   1   26:0   193 			    place^.length := j
+  1149   1   26:8   197 			end
+  1150   1   26:6   204 		    end
+  1151   1   26:2   204 	    end
+  1152   1   26:0   204 	end { procsrch } ;
+  1153   1   26:0   222 
+  1154   1   25:0     0     begin { buildplaces }
+  1155   1   25:1     0       nbytes := sp^.srcfile^.segtbl.diskinfo[sp^.srcseg].codeleng;
+  1156   1   25:1    14       nblocks := (nbytes+511) div 512;
+  1157   1   25:1    25       if memavail-400 < nblocks*256 then
+  1158   1   25:2    39 	error('sep seg 2 big')
+  1159   1   25:1    55       else
+  1160   1   25:2    59 	begin { alloc space in heap }
+  1161   1   25:3    59 	  mark(heap);
+  1162   1   25:3    63 	  n := nblocks;
+  1163   1   25:3    66 	  repeat
+  1164   1   25:4    66 	    new(cp);
+  1165   1   25:4    73 	    n := n-1
+  1166   1   25:3    74 	  until n <= 0;
+  1167   1   25:3    83 	  if blockread(sp^.srcfile^.code^, heap^, nblocks,
+  1168   1   25:3    89 	       sp^.srcfile^.segtbl.diskinfo[sp^.srcseg].codeaddr) <> nblocks then
+  1169   1   25:4   111 	    error('sep seg read err')
+  1170   1   25:3   130 	  else
+  1171   1   25:4   134 	    begin
+  1172   1   25:5   134 	      cp := getcodep(ord(heap));
+  1173   1   25:5   141 	      nprocs := fetchbyte(cp, nbytes-1);
+  1174   1   25:5   151 	      if (nprocs < 0) or (nprocs > MAXPROC) then
+  1175   1   25:6   162 		error('bad proc dict')
+  1176   1   25:5   178 	      else
+  1177   1   25:6   182 		procsrch(sp^.symtab)
+  1178   1   25:4   184 	    end;
+  1179   1   25:3   186 	  release(heap)
+  1180   1   25:2   188 	end
+  1181   1   25:0   190     end { buildplaces } ;
+  1182   1   25:0   206 
+  1183   1   20:0     0 begin { phase2 }
+  1184   1   20:0     0 
+  1185   1   20:1     0   mark(heapbase);
+  1186   1   20:1     4   unitwrite(3, heapbase^, 35);
+  1187   1   20:1    12 
+  1188   1   20:1    12   { read link info for host segs }
+  1189   1   20:1    12 
+  1190   1   20:1    12   dumpseps := TRUE;     { assume we don't need sep segs }
+  1191   1   20:1    15   for s := 0 to MAXSEG do
+  1192   1   20:2    32     if seginfo[s] <> NIL then
+  1193   1   20:3    45       case seginfo[s]^.segkind of
+  1194   1   20:3    57 	LINKED:    ; { nothin }
+  1195   1   20:3    59 	UNITSEG:   readlinkinfo(seginfo[s], [PUBLREF, PRIVREF, UNITREF,
+  1196   1   20:4    68 					     CONSTDEF,EXTPROC, EXTFUNC]);
+  1197   1   20:3    78 	SEPRTSEG:  readlinkinfo(seginfo[s], [GLOBREF, GLOBDEF, CONSTDEF,
+  1198   1   20:4    87 					     SEPPROC, SEPFUNC]);
+  1199   1   20:3    97 	HOSTSEG:   readlinkinfo(seginfo[s], [PUBLDEF, CONSTDEF,
+  1200   1   20:4   106 					     EXTPROC, EXTFUNC]);
+  1201   1   20:3   116 	SEGPROC:   readlinkinfo(seginfo[s], [EXTPROC, EXTFUNC])
+  1202   1   20:3   131       end { cases } ;
+  1203   1   20:3   159   
+  1204   1   20:3   159   { now do sep list elements }
+  1205   1   20:3   159 
+  1206   1   20:1   159   if dumpseps then
+  1207   1   20:2   162     seplist := NIL;
+  1208   1   20:1   165   sp := seplist;
+  1209   1   20:1   168   while sp <> NIL do
+  1210   1   20:2   173     begin
+  1211   1   20:3   173       readlinkinfo(sp, reflitypes+[GLOBDEF, CONSTDEF, SEPPROC, SEPFUNC]);
+  1212   1   20:3   185       sp := sp^.next
+  1213   1   20:2   186     end;
+  1214   1   20:2   191 
+  1215   1   20:2   191   { build proc place entries for sep segs }
+  1216   1   20:2   191 
+  1217   1   20:1   191   if seginfo[MASTERSEG]^.segkind = SEPRTSEG then
+  1218   1   20:2   205     buildplaces(seginfo[MASTERSEG]);
+  1219   1   20:2   216 
+  1220   1   20:1   216   sp := seplist;
+  1221   1   20:1   219   while sp <> NIL do
+  1222   1   20:2   224     begin
+  1223   1   20:3   224       buildplaces(sp);
+  1224   1   20:3   227       sp := sp^.next
+  1225   1   20:2   228     end;
+  1226   1   20:1   233   if errcount > 0 then
+  1227   1   20:2   238     exit(linker)
+  1228   1   20:0   242 end { phase2 } ;
+  1229   1   20:0   260 
+  1230   1   20:0   260 {.fs --- link3a --- }
+  1231   1   20:0   260 
+  1232   1   20:0   260     (******************************************************************)
+  1233   1   20:0   260     (*                                                                *)
+  1234   1   20:0   260     (*  Copyright (c) 1979 Regents of the University of California.   *)
+  1235   1   20:0   260     (*  Permission to copy or distribute this software or documen-    *)
+  1236   1   20:0   260     (*  tation in hard or soft copy granted only by written license   *) 
+  1237   1   20:0   260     (*  obtained from the Institute for Information Systems.          *)
+  1238   1   20:0   260     (*                                                                *)
+  1239   1   20:0   260     (******************************************************************)
+  1240   1   20:0   260 
+  1241   1   20:0   260 {
+  1242   1   20:0   260 *  Phase3 of the linker does all the real work of code
+  1243   1   20:0   260 *  massaging.  For each segment in seginfo to be placed
+  1244   1   20:0   260 *  into the output code file, all referenced procedures
+  1245   1   20:0   260 *  and functions are found, globals and other refs are
+  1246   1   20:0   260 *  resolved, and finally the final code segment is built.
+  1247   1   20:0   260 *  In the case of a SEPRTSEG host (eg an interpreter), then
+  1248   1   20:0   260 *  all the procs in it are put in the unresolved list and
+  1249   1   20:0   260 *  the host seg is made to appear as just another sep seg.
+  1250   1   20:0   260 *  This drags along all the original procedures and maintains
+  1251   1   20:0   260 *  their original ordering for possible ASECT integrity.
+  1252   1   20:0   260 }
+  1253   1   20:0   260 
+  1254   1   27:D     1 procedure phase3;
+  1255   1   27:D     1   type
+  1256   1   27:D     1       workp = ^workrec;         { all seg work is driven by these lists }
+  1257   1   27:D     1       workrec = record
+  1258   1   27:D     1 		  next: workp;          { list link }
+  1259   1   27:D     1 		  refsym,               { symtab entry of unresolved name }
+  1260   1   27:D     1 		  defsym: symp;         {   "      "   "  resolving entry }
+  1261   1   27:D     1 		  refseg,               { seg refls point into, refrange only }
+  1262   1   27:D     1 		  defseg: segp;         { seg where defsym was found }
+  1263   1   27:D     1 		  case litypes of       { same as litype in refsym^.entry }
+  1264   1   27:D     1 		    SEPPREF,
+  1265   1   27:D     1 		    SEPFREF,
+  1266   1   27:D     1 		    GLOBREF:
+  1267   1   27:D     1 			(defproc: workp);       { work item of homeproc }
+  1268   1   27:D     1 		    UNITREF:
+  1269   1   27:D     1 			(defsegnum: segrange);  { resolved seg #, def = ref }
+  1270   1   27:D     1 		    PRIVREF:
+  1271   1   27:D     1 			(newoffset: lcrange);   { newly assigned base offset }
+  1272   1   27:D     1 		    EXTPROC,
+  1273   1   27:D     1 		    EXTFUNC,
+  1274   1   27:D     1 		    SEPPROC,
+  1275   1   27:D     1 		    SEPFUNC:
+  1276   1   27:D     1 			(needsrch: boolean;     { refs haven't been found }
+  1277   1   27:D     1 			 newproc: 0..MAXPROC)   { proc #, comp or link chosen }
+  1278   1   27:D     1 		  end { workrec } ;             { 0 implies added proc }
+  1279   1   27:D     1 
+  1280   1   27:D     1   var s: segindex;
+  1281   1   27:D     2       segbase: codep;   { address of current seg being crunched }
+  1282   1   27:D     3       segleng,          { final code seg length for writeout }
+  1283   1   27:D     3       nextblk: integer; { next available output code block }
+  1284   1   27:D     5       uprocs,           { unresolved external proc/func work list }
+  1285   1   27:D     5       procs,            { resolved list of above items }
+  1286   1   27:D     5       ulocal,           { unresolved list of updates for seginfo entry }
+  1287   1   27:D     5       local,            { resolved list of fixups that came along with seg }
+  1288   1   27:D     5       uother,           { unresolved work list of things other than procs }
+  1289   1   27:D     5       other: workp;     { resolved list of above }
+  1290   1   27:D    11       sephost: boolean; { flag for interpreter host case (only seg #1) }
+  1291   1   27:D    12       fname: string[39];{ output code file name }
+  1292   1   27:D    32       segtbl: I5segtbl; { output code's seg table }
+  1293   1   27:D   144       filler: array [0..143] of integer;
+  1294   1   27:D   288 			{ necessary to fill out segtbl block! }
+  1295   1   27:D   288       map: text;        { map text output file }
+  1296   1   27:D   589 
+  1297   1   27:D   589     {
+  1298   1   27:D   589     *  Buildworklists is called for all segments which need to
+  1299   1   27:D   589     *  be copied, and maybe need to have sepprocs or others stuff
+  1300   1   27:D   589     *  fixed up within them.  The idea here is to get a list
+  1301   1   27:D   589     *  of procs and other item needing attention, with
+  1302   1   27:D   589     *  all the subtle implications of global defs falling
+  1303   1   27:D   589     *  in procs which are not yet selected for linking etc.
+  1304   1   27:D   589     *  In fact, three lists are built:
+  1305   1   27:D   589     *     The procs list with all procs and func to be grabbed
+  1306   1   27:D   589     *  from the various sep segs.
+  1307   1   27:D   589     *     The local list of refs in the original segment which must
+  1308   1   27:D   589     *  ALL be fixed up such as public or private refs in a unit seg.
+  1309   1   27:D   589     *     The other list which has work items which have at least one
+  1310   1   27:D   589     *  ref occuring in the procs or funcs in the procs list.
+  1311   1   27:D   589     }
+  1312   1   27:D   589 
+  1313   1   28:D     1     procedure buildworklists;
+  1314   1   28:D     1       var sp: segp;
+  1315   1   28:D     2           wp: workp;
+  1316   1   28:D     3 
+  1317   1   28:D     3 	{
+  1318   1   28:D     3 	*  Findprocs goes through symtab and builds a list of
+  1319   1   28:D     3 	*  procedure and functions which occur in the tree and
+  1320   1   28:D     3 	*  whose litype is in the okset.  The resulting list
+  1321   1   28:D     3 	*  is not ordered in any particular fashion.  It is
+  1322   1   28:D     3 	*  called to build initial uproc list.
+  1323   1   28:D     3 	}
+  1324   1   28:D     3 
+  1325   1   29:D     3 	function findprocs(okset: liset; symtab: symp): workp;
+  1326   1   29:D     5 	  var work: workp;
+  1327   1   29:D     6 
+  1328   1   29:D     6 	    {
+  1329   1   29:D     6 	    *  procsrch recursivly searches subtrees to pick out
+  1330   1   29:D     6 	    *  those symbols which are in the okset, generates 
+  1331   1   29:D     6 	    *  new work nodes, and puts them into local work list.
+  1332   1   29:D     6 	    }
+  1333   1   29:D     6 
+  1334   1   30:D     1 	    procedure procsrch(sym: symp);
+  1335   1   30:D     2 	      var wp: workp;
+  1336   1   30:0     0 	    begin
+  1337   1   30:1     0 	      if sym <> NIL then
+  1338   1   30:2     5 		begin
+  1339   1   30:3     5 		  procsrch(sym^.llink);
+  1340   1   30:3     9 		  procsrch(sym^.rlink);
+  1341   1   30:3    13 		  procsrch(sym^.slink);
+  1342   1   30:3    17 		  if sym^.entry.litype in okset then
+  1343   1   30:4    26 		    begin { place new node in list }
+  1344   1   30:5    26 		      new(wp);
+  1345   1   30:5    31 		      wp^.refsym := sym;
+  1346   1   30:5    36 		      wp^.refseg := NIL;
+  1347   1   30:5    41 		      wp^.defsym := NIL;
+  1348   1   30:5    46 		      wp^.defseg := NIL;
+  1349   1   30:5    51 		      wp^.needsrch := TRUE;
+  1350   1   30:5    56 		      if sephost then
+  1351   1   30:6    61 		        wp^.newproc := 0  { see readsrcseg! }
+  1352   1   30:5    64 		      else
+  1353   1   30:6    73 			wp^.newproc := sym^.entry.srcproc;
+  1354   1   30:5    85 		      wp^.next := work;
+  1355   1   30:5    90 		      work := wp
+  1356   1   30:4    90 		    end
+  1357   1   30:2    94 		end
+  1358   1   30:0    94 	    end { procsrch } ;
+  1359   1   30:0   106 
+  1360   1   29:0     0 	begin { findprocs }
+  1361   1   29:1     0 	  work := NIL;
+  1362   1   29:1     3 	  procsrch(symtab);
+  1363   1   29:1     6 	  findprocs := work
+  1364   1   29:0     6 	end { findprocs } ;
+  1365   1   29:0    22 
+  1366   1   29:0    22 	{
+  1367   1   29:0    22 	*  Findnewprocs is called to place new procedures into the
+  1368   1   29:0    22 	*  uprocs work list that are needed to resolve GLOBDEFs,
+  1369   1   29:0    22 	*  SEPPREFs, and SEPFREFs.  The other list is traversed and
+  1370   1   29:0    22 	*  for each element whose defining proc has not been added
+  1371   1   29:0    22 	*  into the uprocs list, the defining proc is located and
+  1372   1   29:0    22 	*  added into uprocs.
+  1373   1   29:0    22 	}
+  1374   1   29:0    22 
+  1375   1   31:D     1 	procedure findnewprocs;
+  1376   1   31:D     1 	  var wp, wp1: workp;
+  1377   1   31:D     3 	      pnum: integer;
+  1378   1   31:D     4 
+  1379   1   31:D     4 	    {
+  1380   1   31:D     4 	    *  Findnadd finds the procedure numbered pnum in the
+  1381   1   31:D     4 	    *  symbol table symtab.  An error is given if the 
+  1382   1   31:D     4 	    *  required proc cannot be found. It returns a work
+  1383   1   31:D     4 	    *  node for the proc once it has been found.  This
+  1384   1   31:D     4 	    *  node is also added into the uprocs list.  Any procs
+  1385   1   31:D     4 	    *  added this way are "invisible", dragged along because
+  1386   1   31:D     4 	    *  of global refs/defs.
+  1387   1   31:D     4 	    }
+  1388   1   31:D     4 
+  1389   1   32:D     3 	    function findnadd(symtab: symp): workp;
+  1390   1   32:D     4 
+  1391   1   32:D     4 		{
+  1392   1   32:D     4 		*  procsrch recursivly searches the sym tree looking
+  1393   1   32:D     4 		*  for the actual symbol containing pnum.  This does
+  1394   1   32:D     4 		*  most of the work of findnadd.
+  1395   1   32:D     4 		}
+  1396   1   32:D     4 
+  1397   1   33:D     1 		procedure procsrch(sym: symp);
+  1398   1   33:D     2 		  var wp: workp;
+  1399   1   33:0     0 		begin
+  1400   1   33:1     0 		  if sym <> NIL then
+  1401   1   33:2     5 		    begin
+  1402   1   33:3     5 		      procsrch(sym^.llink);
+  1403   1   33:3     9 		      procsrch(sym^.rlink);
+  1404   1   33:3    13 		      procsrch(sym^.slink);
+  1405   1   33:3    17 		      if sym^.entry.litype in [SEPPROC, SEPFUNC] then
+  1406   1   33:4    26 			if sym^.entry.srcproc = pnum then
+  1407   1   33:5    35 			  begin
+  1408   1   33:6    35 			    wp := uprocs;
+  1409   1   33:6    40 			    while wp <> NIL do
+  1410   1   33:7    45 			      begin
+  1411   1   33:8    45 				if wp^.refsym = sym then
+  1412   1   33:9    51 				  begin
+  1413   1   33:0    51 				    findnadd := wp;
+  1414   1   33:0    55 				    exit(findnadd)
+  1415   1   33:9    59 				  end;
+  1416   1   33:8    59 				wp := wp^.next
+  1417   1   33:7    60 			      end;
+  1418   1   33:6    65 			    new(wp);
+  1419   1   33:6    70 			    wp^.refsym := sym;
+  1420   1   33:6    75 			    wp^.refseg := NIL;
+  1421   1   33:6    80 			    wp^.defsym := NIL;
+  1422   1   33:6    85 			    wp^.defseg := NIL;
+  1423   1   33:6    90 			    wp^.needsrch := TRUE;
+  1424   1   33:6    95 			    wp^.newproc := 0;
+  1425   1   33:6   105 			    wp^.next := uprocs;
+  1426   1   33:6   110 			    uprocs := wp;
+  1427   1   33:6   114 			    findnadd := wp;
+  1428   1   33:6   118 			    exit(findnadd)
+  1429   1   33:5   122 			  end
+  1430   1   33:2   122 		    end
+  1431   1   33:0   122 		end { procsrch } ;
+  1432   1   33:0   136 
+  1433   1   32:0     0 	    begin { findnadd }
+  1434   1   32:1     0 	      findnadd := NIL;
+  1435   1   32:1     3 	      procsrch(symtab);
+  1436   1   32:1     6 	      { if we get here then didnt find it }
+  1437   1   32:1     6 	      error('missing proc')
+  1438   1   32:0    21 	    end { findnadd } ;
+  1439   1   32:0    36 
+  1440   1   31:0     0 	begin { findnewprocs }
+  1441   1   31:1     0 	  wp := other;      { assume only globref, seppref, sepfref in list }
+  1442   1   31:1     5 	  while wp <> NIL do
+  1443   1   31:2    10 	    begin
+  1444   1   31:3    10 	      if wp^.defproc = NIL then
+  1445   1   31:4    16 		begin { find proc/func needed }
+  1446   1   31:5    16 		  if wp^.refsym^.entry.litype = GLOBREF then
+  1447   1   31:6    23 		    pnum := wp^.defsym^.entry.homeproc
+  1448   1   31:5    25 		  else { assume a SEP proc/func }
+  1449   1   31:6    31 		    pnum := wp^.defsym^.entry.srcproc;
+  1450   1   31:5    37 		  wp1 := procs;
+  1451   1   31:5    42 		  while wp1 <> NIL do
+  1452   1   31:6    47 		    if wp^.defseg = wp1^.defseg then
+  1453   1   31:7    54 		      if wp1^.defsym^.entry.srcproc = pnum then
+  1454   1   31:8    62 			begin { already gonna be linked }
+  1455   1   31:9    62 			  wp^.defproc := wp1;
+  1456   1   31:9    67 			  wp1 := NIL
+  1457   1   31:8    67 			end
+  1458   1   31:7    70 		      else
+  1459   1   31:8    72 			wp1 := wp1^.next
+  1460   1   31:6    73 		    else
+  1461   1   31:7    78 		      wp1 := wp1^.next;
+  1462   1   31:5    84 		  if wp^.defproc = NIL then { forcibly link it }
+  1463   1   31:6    90 		    wp^.defproc := findnadd(wp^.defseg^.symtab)
+  1464   1   31:4    96 		end;
+  1465   1   31:3   101 	      wp := wp^.next
+  1466   1   31:2   102 	    end { while }
+  1467   1   31:0   105 	end { findnewprocs } ;
+  1468   1   31:0   124 
+  1469   1   31:0   124 	{
+  1470   1   31:0   124 	*  Resolve removes work items from inlist, searches symtabs
+  1471   1   31:0   124 	*  for its corresponding definition symbol (error if not found),
+  1472   1   31:0   124 	*  and moves the work item into the output list.  Each flavor
+  1473   1   31:0   124 	*  of work item needs some special handling to collect extra
+  1474   1   31:0   124 	*  info related to specific things.  In general, defsym and 
+  1475   1   31:0   124 	*  defseg are filled in.  The insert algorithm is special for
+  1476   1   31:0   124 	*  procedure types to make life easier on refsrch.
+  1477   1   31:0   124 	}
+  1478   1   31:0   124 
+  1479   1   34:D     1 	procedure resolve(var inlist, outlist: workp);
+  1480   1   34:D     3 	  var seg: segrange;
+  1481   1   34:D     4 	      err: boolean;
+  1482   1   34:D     5 	      wp: workp;
+  1483   1   34:D     6 
+  1484   1   34:D     6 	    {
+  1485   1   34:D     6 	    *  Sepsrch sequentially search the symtabs in the seplist
+  1486   1   34:D     6 	    *  to resolve the refsym of inlist^.  It basically just
+  1487   1   34:D     6 	    *  calls symsrch repetively and fixes up defsym and
+  1488   1   34:D     6 	    *  defseg fields.  If the name of the refsym could
+  1489   1   34:D     6 	    *  not be found, an error is given.
+  1490   1   34:D     6 	    }
+  1491   1   34:D     6 
+  1492   1   35:D     1 	    procedure sepsrch(oktype: litypes);
+  1493   1   35:D     2 	      var syp: symp;
+  1494   1   35:D     3 		  sp: segp;
+  1495   1   35:0     0 	    begin
+  1496   1   35:1     0 	      sp := seplist;
+  1497   1   35:1     3 	      while sp <> NIL do
+  1498   1   35:2     8 		begin
+  1499   1   35:3     8 		  syp := symsrch(inlist^.refsym^.entry.name,
+  1500   1   35:3    15 				 oktype, sp^.symtab);
+  1501   1   35:3    24 		  if syp <> NIL then
+  1502   1   35:4    29 		    begin
+  1503   1   35:5    29 		      inlist^.defsym := syp;
+  1504   1   35:5    37 		      inlist^.defseg := sp;
+  1505   1   35:5    45 		      sp := NIL
+  1506   1   35:4    45 		    end
+  1507   1   35:3    48 		  else
+  1508   1   35:4    50 		    sp := sp^.next
+  1509   1   35:2    51 		end
+  1510   1   35:0    54 	    end { sepsrch } ;
+  1511   1   35:0    70 
+  1512   1   35:0    70 	    {
+  1513   1   35:0    70 	    *  Procinsert is called to insert work into the procs
+  1514   1   35:0    70 	    *  list using a special set of sort keys so that copyin-
+  1515   1   35:0    70 	    *  procs will run reasonably fast and use the disk
+  1516   1   35:0    70 	    *  efficiently.  The procs list is sorted by segment,
+  1517   1   35:0    70 	    *  srcbase keys.  The seg ordering is dictated by the
+  1518   1   35:0    70 	    *  seplist, so user ASECTS etc will retain their original
+  1519   1   35:0    70 	    *  ordering.
+  1520   1   35:0    70 	    }
+  1521   1   35:0    70 
+  1522   1   36:D     1 	    procedure procinsert(work: workp);
+  1523   1   36:D     2 	      label 1;
+  1524   1   36:D     2 	      var crnt, prev: workp;
+  1525   1   36:D     4 		  sp: segp;
+  1526   1   36:0     0 	    begin
+  1527   1   36:1     0 	      prev := NIL;
+  1528   1   36:1     3 	      sp := seplist;
+  1529   1   36:1     6 	      while sp <> outlist^.defseg do
+  1530   1   36:2    15 		if sp = work^.defseg then
+  1531   1   36:3    21 		  goto 1
+  1532   1   36:2    23 		else
+  1533   1   36:3    25 		  sp := sp^.next;
+  1534   1   36:1    31 	      crnt := outlist;
+  1535   1   36:1    37 	      repeat
+  1536   1   36:2    37 		if crnt^.defseg = work^.defseg then
+  1537   1   36:3    44 		  repeat
+  1538   1   36:4    44 		    if work^.defsym^.entry.place^.srcbase <
+  1539   1   36:4    49 		       crnt^.defsym^.entry.place^.srcbase then
+  1540   1   36:5    57 		      goto 1;
+  1541   1   36:4    59 		    prev := crnt;
+  1542   1   36:4    62 		    crnt := crnt^.next;
+  1543   1   36:4    66 		    if crnt = NIL then
+  1544   1   36:5    71 		      goto 1
+  1545   1   36:3    73 		  until crnt^.defseg <> work^.defseg
+  1546   1   36:2    76 		else
+  1547   1   36:3    82 		  begin
+  1548   1   36:4    82 		    prev := crnt;
+  1549   1   36:4    85 		    crnt := crnt^.next;
+  1550   1   36:4    89 		    if crnt <> NIL then
+  1551   1   36:5    94 		      while sp <> crnt^.defseg do
+  1552   1   36:6   100 			if sp = work^.defseg then
+  1553   1   36:7   106 			  goto 1
+  1554   1   36:6   108 			else
+  1555   1   36:7   110 			  sp := sp^.next
+  1556   1   36:3   111 		  end
+  1557   1   36:1   116 	      until crnt = NIL;
+  1558   1   36:1   121 	  1:
+  1559   1   36:1   121 	      if prev = NIL then
+  1560   1   36:2   126 		begin
+  1561   1   36:3   126 		  work^.next := outlist;
+  1562   1   36:3   132 		  outlist := work
+  1563   1   36:2   135 		end
+  1564   1   36:1   137 	      else
+  1565   1   36:2   139 		begin
+  1566   1   36:3   139 		  work^.next := prev^.next;
+  1567   1   36:3   143 		  prev^.next := work
+  1568   1   36:2   144 		end
+  1569   1   36:0   146 	    end { procinsert } ;
+  1570   1   36:0   166 
+  1571   1   34:0     0 	begin { resolve }
+  1572   1   34:1     0 	  while inlist <> NIL do
+  1573   1   34:2     6 	    begin
+  1574   1   34:3     6 	      with inlist^, refsym^.entry do
+  1575   1   34:4    16 		case litype of
+  1576   1   34:4    20 		  GLOBREF:    begin
+  1577   1   34:6    20 				sepsrch(GLOBDEF);
+  1578   1   34:6    23 				defproc := NIL
+  1579   1   34:5    26 			      end;
+  1580   1   34:5    30 
+  1581   1   34:4    30 		  CONSTREF:   if hostsp <> NIL then
+  1582   1   34:6    35 				begin
+  1583   1   34:7    35 				  defsym := symsrch(name, CONSTDEF,
+  1584   1   34:7    40 						hostsp^.symtab);
+  1585   1   34:7    47 				  defseg := hostsp
+  1586   1   34:6    50 				end;
+  1587   1   34:6    54 
+  1588   1   34:4    54 		  PUBLREF:    if hostsp <> NIL then
+  1589   1   34:6    59 				begin
+  1590   1   34:7    59 				  defsym := symsrch(name, PUBLDEF,
+  1591   1   34:7    64 						hostsp^.symtab);
+  1592   1   34:7    71 				  defseg := hostsp
+  1593   1   34:6    74 				end;
+  1594   1   34:6    78 
+  1595   1   34:4    78 		  PRIVREF:    begin
+  1596   1   34:6    78 				newoffset := nextbaselc;
+  1597   1   34:6    88 				nextbaselc := nextbaselc+nwords;
+  1598   1   34:6    99 				if hostsp <> NIL then
+  1599   1   34:7   104 				  defsym := refsym;
+  1600   1   34:6   110 				defseg := hostsp
+  1601   1   34:5   113 			      end;
+  1602   1   34:4   117 		  EXTPROC,
+  1603   1   34:4   117 		  SEPPROC,
+  1604   1   34:4   117 		  SEPPREF:    begin
+  1605   1   34:6   117 				sepsrch(SEPPROC);
+  1606   1   34:6   120 				if litype = SEPPREF then
+  1607   1   34:7   126 				  defproc := NIL;
+  1608   1   34:6   131 				err := FALSE;
+  1609   1   34:6   134 				if defsym <> NIL then
+  1610   1   34:7   140 				  if litype = SEPPREF then
+  1611   1   34:8   146 				    err := defsym^.entry.nparams <> nwords
+  1612   1   34:7   150 				  else
+  1613   1   34:8   157 				    err := defsym^.entry.nparams <> nparams;
+  1614   1   34:6   166 				if err then
+  1615   1   34:7   169 				  begin
+  1616   1   34:8   169 				    write('Proc ', name);
+  1617   1   34:8   193 				    error(' param mismatch')
+  1618   1   34:7   211 				  end
+  1619   1   34:5   213 			      end;
+  1620   1   34:4   215 		  EXTFUNC,
+  1621   1   34:4   215 		  SEPFUNC,
+  1622   1   34:4   215 		  SEPFREF:    begin
+  1623   1   34:6   215 				sepsrch(SEPFUNC);
+  1624   1   34:6   218 				if litype = SEPFREF then
+  1625   1   34:7   224 				  defproc := NIL;
+  1626   1   34:6   229 				err := FALSE;
+  1627   1   34:6   232 				if defsym <> NIL then
+  1628   1   34:7   238 				  if litype = SEPFREF then
+  1629   1   34:8   244 				    err := defsym^.entry.nparams <> nwords
+  1630   1   34:7   248 				  else
+  1631   1   34:8   255 				    err := defsym^.entry.nparams <> nparams;
+  1632   1   34:6   264 				if err then
+  1633   1   34:7   267 				  begin
+  1634   1   34:8   267 				    write('Func ', name);
+  1635   1   34:8   291 				    error(' param mismatch')
+  1636   1   34:7   309 				  end
+  1637   1   34:5   311 			      end;
+  1638   1   34:5   313 
+  1639   1   34:4   313 		  UNITREF:    if unitsrch(hostfile, name, seg) = hostfile then
+  1640   1   34:6   325 				begin { will be found in host }
+  1641   1   34:7   325 				  defsym := refsym;
+  1642   1   34:7   331 				  defsegnum := seg
+  1643   1   34:6   334 				end
+  1644   1   34:5   339 		              else { "impossible" }
+  1645   1   34:6   341 				error('unit err')
+  1646   1   34:4   352 		end { cases } ;
+  1647   1   34:4   392 
+  1648   1   34:3   392 	      wp := inlist;
+  1649   1   34:3   396 	      inlist := wp^.next;
+  1650   1   34:3   400 	      if wp^.defsym = NIL then
+  1651   1   34:4   406 		with wp^.refsym^.entry do
+  1652   1   34:5   412 		  begin
+  1653   1   34:6   412 		    case litype of
+  1654   1   34:6   416 		      GLOBREF:  write('Global ');
+  1655   1   34:6   435 		      PUBLREF:  write('Public ');
+  1656   1   34:6   454 		      CONSTREF: write('Const ');
+  1657   1   34:6   472 		      SEPPREF,
+  1658   1   34:6   472 		      EXTPROC:  write('Proc ');
+  1659   1   34:6   489 		      SEPFREF,
+  1660   1   34:6   489 		      EXTFUNC:  write('Func ')
+  1661   1   34:6   504 		    end { cases } ;
+  1662   1   34:6   540 		    write(name);
+  1663   1   34:6   549 		    error(' undefined')
+  1664   1   34:5   562 		  end
+  1665   1   34:3   564 	      else
+  1666   1   34:4   566 		if  (wp^.defsym^.entry.litype in [SEPPROC, SEPFUNC])
+  1667   1   34:4   574 		and (outlist <> NIL) then
+  1668   1   34:5   581 		  procinsert(wp)
+  1669   1   34:4   582 		else
+  1670   1   34:5   586 		  begin
+  1671   1   34:6   586 		    wp^.next := outlist;
+  1672   1   34:6   590 		    outlist := wp
+  1673   1   34:5   591 		  end
+  1674   1   34:2   593 	    end { while }
+  1675   1   34:0   593 	end { resolve } ;
+  1676   1   34:0   618 
+  1677   1   34:0   618 	{
+  1678   1   34:0   618 	*  Refsrch slowly goes through all reference lists in symbols
+  1679   1   34:0   618 	*  which are in the okset to see if any "occur" within the
+  1680   1   34:0   618 	*  procedures/functions selected to be linked, that is contained
+  1681   1   34:0   618 	*  in procs list.  It is assumed that procs is sorted by defseg
+  1682   1   34:0   618 	*  so only the procs between ipl and lpl are searched.
+  1683   1   34:0   618 	*  Any symbols which have any refs in selected procs are given
+  1684   1   34:0   618 	*  work nodes and are placed in the uother list in no certain
+  1685   1   34:0   618 	*  order so resolve can be called right away.
+  1686   1   34:0   618 	}
+  1687   1   34:0   618 
+  1688   1   37:D     1 	procedure refsrch(okset: liset; sp: segp);
+  1689   1   37:D     3 	  var lpl, ipl: workp;
+  1690   1   37:D     5 	      diffseg: boolean;
+  1691   1   37:D     6 
+  1692   1   37:D     6 	    {
+  1693   1   37:D     6 	    *  Checkrefs recursivly searches sym tree to kind names
+  1694   1   37:D     6 	    *  in the okset.  When one is found, each of its ref pointers
+  1695   1   37:D     6 	    *  are checked to see if they fall in one of the procs
+  1696   1   37:D     6 	    *  to-be-linked (between ipl & lpl).  If so, a new work item
+  1697   1   37:D     6 	    *  is generated and it's put on the uother list.
+  1698   1   37:D     6 	    }
+  1699   1   37:D     6 
+  1700   1   38:D     1 	    procedure checkrefs(sym: symp);
+  1701   1   38:D     2 	      label 1, 2;
+  1702   1   38:D     2 	      var pl, wp: workp;
+  1703   1   38:D     4 		  i, n, ref: integer;
+  1704   1   38:D     7 		  rp: refp;
+  1705   1   38:0     0 	    begin
+  1706   1   38:1     0 	      if sym <> NIL then
+  1707   1   38:2     5 		begin
+  1708   1   38:3     5 		  checkrefs(sym^.llink);
+  1709   1   38:3     9 		  checkrefs(sym^.rlink);
+  1710   1   38:3    13 		  checkrefs(sym^.slink);
+  1711   1   38:3    17 		  with sym^.entry do
+  1712   1   38:4    22 		    if litype in okset then
+  1713   1   38:5    31 		      begin
+  1714   1   38:6    31 			n := nrefs;
+  1715   1   38:6    35 			rp := reflist;
+  1716   1   38:6    40 			while rp <> NIL do
+  1717   1   38:7    45 			  begin
+  1718   1   38:8    45 			    if n > 8 then
+  1719   1   38:9    50 			      begin
+  1720   1   38:0    50 				i := 7;
+  1721   1   38:0    53 				n := n-8
+  1722   1   38:9    54 			      end
+  1723   1   38:8    58 			    else
+  1724   1   38:9    60 			      i := n-1;
+  1725   1   38:8    65 			    repeat { for each ref }
+  1726   1   38:9    65 			      ref := rp^.refs[i];
+  1727   1   38:9    77 			      pl := ipl;
+  1728   1   38:9    82 			      repeat { search proc list }
+  1729   1   38:0    82 				if pl^.needsrch then
+  1730   1   38:1    86 				  with pl^.defsym^.entry.place^ do
+  1731   1   38:2    92 				    if ref < srcbase then
+  1732   1   38:3    98 				      goto 2 { terminate proc search }
+  1733   1   38:2   100 				    else
+  1734   1   38:3   102 				      if ref < srcbase+length then
+  1735   1   38:4   111 					begin { occurs in proc }
+  1736   1   38:5   111 					  new(wp);
+  1737   1   38:5   116 					  wp^.refsym := sym;
+  1738   1   38:5   121 					  wp^.refseg := sp;
+  1739   1   38:5   128 					  wp^.defsym := NIL;
+  1740   1   38:5   133 					  wp^.defseg := NIL;
+  1741   1   38:5   138 					  wp^.next := uother;
+  1742   1   38:5   143 					  uother := wp;
+  1743   1   38:5   147 					  goto 1
+  1744   1   38:4   149 					end;
+  1745   1   38:0   149 				pl := pl^.next
+  1746   1   38:9   150 			      until pl = lpl;
+  1747   1   38:9   160 			  2:
+  1748   1   38:9   160 			      i := i-1
+  1749   1   38:8   161 			    until i < 0;
+  1750   1   38:8   170 			    rp := rp^.next
+  1751   1   38:7   171 			  end { while }
+  1752   1   38:5   174 		      end
+  1753   1   38:2   176 		end;
+  1754   1   38:1   176 	  1:
+  1755   1   38:0   176 	    end { checkrefs } ;
+  1756   1   38:0   200 
+  1757   1   37:0     0 	begin { refsrch }
+  1758   1   37:1     0 	  ipl := NIL;
+  1759   1   37:1     3 	  lpl := procs;
+  1760   1   37:1     8 	  while lpl <> NIL do
+  1761   1   37:2    13 	    if (lpl^.defseg = sp)
+  1762   1   37:2    17 	    and lpl^.needsrch then
+  1763   1   37:3    22 	      begin
+  1764   1   37:4    22 		ipl := lpl;
+  1765   1   37:4    25 		lpl := NIL
+  1766   1   37:3    25 	      end
+  1767   1   37:2    28 	    else
+  1768   1   37:3    30 	      lpl := lpl^.next;
+  1769   1   37:1    36 	  if ipl <> NIL then
+  1770   1   37:2    41 	    begin
+  1771   1   37:3    41 	      lpl := ipl;
+  1772   1   37:3    44 	      repeat
+  1773   1   37:4    44 		diffseg := lpl^.defseg <> ipl^.defseg;
+  1774   1   37:4    51 		if not diffseg then
+  1775   1   37:5    55 		  lpl := lpl^.next
+  1776   1   37:3    56 	      until diffseg or (lpl = NIL);
+  1777   1   37:3    66 	      checkrefs(sp^.symtab);
+  1778   1   37:3    70 	      repeat
+  1779   1   37:4    70 		ipl^.needsrch := FALSE;
+  1780   1   37:4    75 		ipl := ipl^.next
+  1781   1   37:3    76 	      until ipl = lpl
+  1782   1   37:2    80 	    end
+  1783   1   37:0    84 	end { refsrch } ;
+  1784   1   37:0   102 
+  1785   1   37:0   102 	{
+  1786   1   37:0   102 	*  findlocals recursivly searches the main segs symtab to
+  1787   1   37:0   102 	*  place any unresolved things like public refs in unit
+  1788   1   37:0   102 	*  segs into the ulocal list so they can be fixed up in
+  1789   1   37:0   102 	*  fixuprefs in addition to the sep proc things.
+  1790   1   37:0   102 	}
+  1791   1   37:0   102 
+  1792   1   39:D     1 	procedure findlocals(sym: symp);
+  1793   1   39:D     2 	  var wp: workp;
+  1794   1   39:0     0 	begin
+  1795   1   39:1     0 	  if sym <> NIL then
+  1796   1   39:2     5 	    begin
+  1797   1   39:3     5 	      findlocals(sym^.llink);
+  1798   1   39:3     9 	      findlocals(sym^.rlink);
+  1799   1   39:3    13 	      findlocals(sym^.slink);
+  1800   1   39:3    17 	      if sym^.entry.litype in [UNITREF, PUBLREF, PRIVREF] then
+  1801   1   39:4    24 		begin
+  1802   1   39:5    24 		  new(wp);
+  1803   1   39:5    29 		  wp^.refsym := sym;
+  1804   1   39:5    34 		  wp^.refseg := NIL;
+  1805   1   39:5    39 		  wp^.defsym := NIL;
+  1806   1   39:5    44 		  wp^.defseg := NIL;
+  1807   1   39:5    49 		  wp^.next := ulocal;
+  1808   1   39:5    54 		  ulocal := wp
+  1809   1   39:4    54 		end
+  1810   1   39:2    58 	    end
+  1811   1   39:0    58 	end { findlocals } ;
+  1812   1   39:0    70 
+  1813   1   28:0     0     begin { buildworklists }
+  1814   1   28:1     0       procs := NIL;
+  1815   1   28:1     4       local := NIL;
+  1816   1   28:1     8       other := NIL;
+  1817   1   28:1    12       uprocs := NIL;
+  1818   1   28:1    16       ulocal := NIL;
+  1819   1   28:1    20       uother := NIL;
+  1820   1   28:1    24       with seginfo[s]^ do
+  1821   1   28:2    37 	if segkind <> LINKED then
+  1822   1   28:3    43 	  begin
+  1823   1   28:4    43 	    sephost := segkind = SEPRTSEG;
+  1824   1   28:4    50 	    if sephost then
+  1825   1   28:5    55 	      begin
+  1826   1   28:6    55 		next := seplist;
+  1827   1   28:6    60 		seplist := seginfo[s];
+  1828   1   28:6    73 		uprocs := findprocs([SEPPROC, SEPFUNC], symtab)
+  1829   1   28:5    81 	      end
+  1830   1   28:4    88 	    else
+  1831   1   28:5    90 	      uprocs := findprocs([EXTPROC, EXTFUNC], symtab);
+  1832   1   28:4   105 	    while uprocs <> NIL do
+  1833   1   28:5   112 	      begin
+  1834   1   28:6   112 		resolve(uprocs, procs);
+  1835   1   28:6   120 		sp := seplist;
+  1836   1   28:6   123 		while sp <> NIL do
+  1837   1   28:7   128 		  begin
+  1838   1   28:8   128 		    refsrch([GLOBREF, SEPPREF, SEPFREF], sp);
+  1839   1   28:8   137 		    sp := sp^.next
+  1840   1   28:7   138 		  end;
+  1841   1   28:6   143 		resolve(uother, other);
+  1842   1   28:6   151 		findnewprocs
+  1843   1   28:5   151 	      end;
+  1844   1   28:4   155 	    if not sephost then
+  1845   1   28:5   161 	      begin
+  1846   1   28:6   161 		findlocals(symtab);
+  1847   1   28:6   165 		resolve(ulocal, local)
+  1848   1   28:5   171 	      end;
+  1849   1   28:4   173 	    wp := procs;
+  1850   1   28:4   178 	    while wp <> NIL do
+  1851   1   28:5   183 	      begin
+  1852   1   28:6   183 		wp^.needsrch := TRUE;
+  1853   1   28:6   188 		wp := wp^.next
+  1854   1   28:5   189 	      end;
+  1855   1   28:4   194 	    sp := seplist;
+  1856   1   28:4   197 	    while sp <> NIL do
+  1857   1   28:5   202 	      begin
+  1858   1   28:6   202 		refsrch([PUBLREF, PRIVREF, CONSTREF], sp);
+  1859   1   28:6   209 		sp := sp^.next
+  1860   1   28:5   210 	      end;
+  1861   1   28:4   215 	    resolve(uother, other)
+  1862   1   28:3   221 	  end
+  1863   1   28:0   223     end { buildworklists } ;
+  1864   1   28:0   246 
+  1865   1   28:0   246 {.fs --- link3b --- }
+  1866   1   28:0   246 
+  1867   1   28:0   246     (******************************************************************)
+  1868   1   28:0   246     (*                                                                *)
+  1869   1   28:0   246     (*  Copyright (c) 1979 Regents of the University of California.   *)
+  1870   1   28:0   246     (*  Permission to copy or distribute this software or documen-    *)
+  1871   1   28:0   246     (*  tation in hard or soft copy granted only by written license   *) 
+  1872   1   28:0   246     (*  obtained from the Institute for Information Systems.          *)
+  1873   1   28:0   246     (*                                                                *)
+  1874   1   28:0   246     (******************************************************************)
+  1875   1   28:0   246 
+  1876   1   28:0   246     {
+  1877   1   28:0   246     *  Readsrcseg determines the final segment size after adding
+  1878   1   28:0   246     *  in the external procs/funcs, allocates enough area for the
+  1879   1   28:0   246     *  entire output code seg, reads in the original code (or uses
+  1880   1   28:0   246     *  identity segment for sephost special case), and splits the
+  1881   1   28:0   246     *  segdict off from the code.  For all procs to-be-linked, a new
+  1882   1   28:0   246     *  destbase position is assigned in seg and the new proc num is
+  1883   1   28:0   246     *  set up in pdict.  The segment number field of the pdict is
+  1884   1   28:0   246     *  also updated to the value of s.  All is ready to copy in the
+  1885   1   28:0   246     *  sep procs/funcs.  The values for segbase and segleng are set
+  1886   1   28:0   246     *  here too.
+  1887   1   28:0   246     }
+  1888   1   28:0   246 
+  1889   1   40:D     1     procedure readsrcseg;
+  1890   1   40:D     1       var orgleng, addr,
+  1891   1   40:D     1 	  addleng, addprocs,
+  1892   1   40:D     1 	  nextspot: integer;
+  1893   1   40:D     6 	  last: 0..MAXPROC;
+  1894   1   40:D     7 	  wp: workp;
+  1895   1   40:D     8 	  lheap: ^integer;
+  1896   1   40:D     9 
+  1897   1   40:D     9 	{
+  1898   1   40:D     9 	*  Readnsplit arranges for the source seg to be placed in
+  1899   1   40:D     9 	*  room allocated for segbase.  This may involve disk read
+  1900   1   40:D     9 	*  or perhaps only creating an empty segment.  In any case
+  1901   1   40:D     9 	*  segbase points at lowest addr, and nextspot is pointed
+  1902   1   40:D     9 	*  at the next place code can be copied into.  This is used
+  1903   1   40:D     9 	*  for destbase assignment in readsrcseg.
+  1904   1   40:D     9 	}
+  1905   1   40:D     9 
+  1906   1   41:D     1 	procedure readnsplit;
+  1907   1   41:D     1 	  var nblocks, n, pdleng,
+  1908   1   41:D     1 	      pddelta, nprocs: integer;
+  1909   1   41:D     6 	      cp0, cp1: codep;
+  1910   1   41:0     0 	begin
+  1911   1   41:1     0 	  nblocks := (segleng+511) div 512;
+  1912   1   41:1    13 	  if memavail-400 < nblocks*256 then
+  1913   1   41:2    27 	    begin
+  1914   1   41:3    27 	      error('no mem room');
+  1915   1   41:3    43 	      exit(linker)
+  1916   1   41:2    47 	    end;
+  1917   1   41:1    47 	  n := nblocks;
+  1918   1   41:1    50 	  repeat
+  1919   1   41:1    50 	    { alloc heap space }
+  1920   1   41:2    50 	    new(cp1);
+  1921   1   41:2    57 	    n := n-1
+  1922   1   41:1    58 	  until n <= 0;
+  1923   1   41:1    67 	  if sephost then
+  1924   1   41:2    72 	    begin { set up identity seg }
+  1925   1   41:3    72 	      storeword(0, segbase, segleng-2);
+  1926   1   41:3    83 	      nextspot := 0
+  1927   1   41:2    83 	    end
+  1928   1   41:1    87 	  else
+  1929   1   41:2    89 	    begin { read from disk }
+  1930   1   41:3    89 	      nblocks := (orgleng+511) div 512;
+  1931   1   41:3   102 	      if blockread(seginfo[s]^.srcfile^.code^, segbase^,
+  1932   1   41:3   119 			nblocks, addr) <> nblocks then
+  1933   1   41:4   133 		begin
+  1934   1   41:5   133 		  error('seg read err');
+  1935   1   41:5   150 		  exit(linker)
+  1936   1   41:4   154 		end;
+  1937   1   41:3   154 	      pddelta := segleng-orgleng;
+  1938   1   41:3   163 	      nprocs := fetchbyte(segbase, orgleng-1);
+  1939   1   41:3   177 	      pdleng := nprocs*2+2;
+  1940   1   41:3   184               nextspot := orgleng-pdleng;
+  1941   1   41:3   192 	      cp0 := getcodep(ord(segbase)+orgleng-pdleng);
+  1942   1   41:3   207 	      cp1 := getcodep(ord(segbase)+segleng-pdleng);
+  1943   1   41:3   222               if cp0 <> cp1 then
+  1944   1   41:4   227 		begin { move proc dict }
+  1945   1   41:5   227 		  n := pdleng;
+  1946   1   41:5   230 		  while n > 2 do
+  1947   1   41:6   235 		    begin
+  1948   1   41:7   235 		      storeword(pddelta+fetchword(segbase, orgleng-n),
+  1949   1   41:7   249 			  segbase, orgleng-n);
+  1950   1   41:7   259 		      n := n-2
+  1951   1   41:6   260 		    end;
+  1952   1   41:5   266 		  moveright(cp0^, cp1^, pdleng);
+  1953   1   41:5   273 		  fillchar(cp0^, pddelta, 0)
+  1954   1   41:4   279 	        end
+  1955   1   41:2   279 	    end
+  1956   1   41:0   279 	end { readnsplit } ;
+  1957   1   41:0   298 
+  1958   1   40:0     0     begin { readsrcseg }
+  1959   1   40:1     0       if sephost then
+  1960   1   40:2     5 	orgleng := 2
+  1961   1   40:1     5       else
+  1962   1   40:2    10 	with seginfo[s]^, srcfile^.segtbl.diskinfo[srcseg] do
+  1963   1   40:3    36 	  begin
+  1964   1   40:4    36 	    orgleng := codeleng;
+  1965   1   40:4    40 	    addr := codeaddr
+  1966   1   40:3    40 	  end;
+  1967   1   40:1    44       addleng := 0;
+  1968   1   40:1    47       addprocs := 0;
+  1969   1   40:1    50       wp := procs;
+  1970   1   40:1    55       while wp <> NIL do
+  1971   1   40:2    60 	begin { add up final seg size }
+  1972   1   40:3    60 	  addleng := addleng+wp^.defsym^.entry.place^.length;
+  1973   1   40:3    69 	  if wp^.newproc = 0 then
+  1974   1   40:4    75 	    addprocs := addprocs+1;
+  1975   1   40:3    80 	  wp := wp^.next
+  1976   1   40:2    81 	end;
+  1977   1   40:1    86       mark(lheap);
+  1978   1   40:1    90       segbase := getcodep(ord(lheap));
+  1979   1   40:1    98       segleng := orgleng+addleng+2*addprocs;
+  1980   1   40:1   108       if segleng <= 0 then
+  1981   1   40:2   115 	begin
+  1982   1   40:3   115 	  error('size oflow');
+  1983   1   40:3   130 	  exit(linker)
+  1984   1   40:2   134 	end;
+  1985   1   40:1   134       readnsplit;
+  1986   1   40:1   136       last := fetchbyte(segbase, segleng-1);
+  1987   1   40:1   155       wp := procs;
+  1988   1   40:1   160       while wp <> NIL do
+  1989   1   40:2   165 	begin { assign places in code seg }
+  1990   1   40:3   165 	  with wp^.defsym^.entry.place^ do
+  1991   1   40:4   171 	    begin
+  1992   1   40:5   171 	      destbase := nextspot;
+  1993   1   40:5   174 	      nextspot := nextspot+length
+  1994   1   40:4   175 	    end;
+  1995   1   40:3   180 	  if wp^.newproc = 0 then
+  1996   1   40:4   186 	    begin { assign new proc # }
+  1997   1   40:5   186 	      last := last+1;
+  1998   1   40:5   196 	      if last > MAXPROC then
+  1999   1   40:6   203 		begin
+  2000   1   40:7   203 		  error('proc num oflow');
+  2001   1   40:7   222 		  last := 1
+  2002   1   40:6   222 		end;
+  2003   1   40:5   230 	      wp^.newproc := last
+  2004   1   40:4   233 	    end;
+  2005   1   40:3   240 	  wp := wp^.next
+  2006   1   40:2   241 	end;
+  2007   1   40:1   246       storebyte(last, segbase, segleng-1);
+  2008   1   40:1   257       storebyte(s, segbase, segleng-2)
+  2009   1   40:0   268     end { readsrcseg } ;
+  2010   1   40:0   286 
+  2011   1   40:0   286     {
+  2012   1   40:0   286     *  Copyinprocs goes through procs list and copies procedure
+  2013   1   40:0   286     *  bodies from the sep segs into the dest code segment into
+  2014   1   40:0   286     *  locations set up in readsrcseg. If all goes right, we should
+  2015   1   40:0   286     *  fill dest seg to the exact byte.  The proc dict is
+  2016   1   40:0   286     *  updated to show procedures' position.
+  2017   1   40:0   286     }
+  2018   1   40:0   286 
+  2019   1   42:D     1     procedure copyinprocs;
+  2020   1   42:D     1       var cp0, cp1, pdp,
+  2021   1   42:D     1 	  jtab, sepbase: codep;
+  2022   1   42:D     6 	  wp: workp;
+  2023   1   42:D     7 	  cursp: segp;
+  2024   1   42:D     8 	  lheap: ^integer;
+  2025   1   42:D     9 	  smallmem: boolean; { set in readsepseg }
+  2026   1   42:D    10 	  {S: STRING[1];
+  2027   1   42:D    10 	  DONE: BOOLEAN;
+  2028   1   42:D    10 	  BLOCK: CODEP;}
+  2029   1   42:D    10 
+  2030   1   42:D    10 	{
+  2031   1   42:D    10 	*  Readsepseg reads the sep seg in sp onto the heap as
+  2032   1   42:D    10 	*  done in Phase 2.  We set up sepbase and cursp for
+  2033   1   42:D    10 	*  copyinprocs.  If not enough mem space for sep seg
+  2034   1   42:D    10 	*  then smallmem flag is set and read of sep seg is deferred.
+  2035   1   42:D    10 	}
+  2036   1   42:D    10 
+  2037   1   43:D     1 	procedure readsepseg(sp: segp);
+  2038   1   43:D     2 	  var n, nblocks: integer;
+  2039   1   43:0     0 	begin
+  2040   1   43:1     0 	  release(lheap);
+  2041   1   43:1     5 	  smallmem := FALSE;
+  2042   1   43:1     9 	  n := sp^.srcfile^.segtbl.diskinfo[sp^.srcseg].codeleng;
+  2043   1   43:1    23 	  nblocks := (n+511) div 512;
+  2044   1   43:1    34 	  if memavail-400 < nblocks*256 then
+  2045   1   43:2    48 	    if memavail-400 < 256 then
+  2046   1   43:3    60 	    begin
+  2047   1   43:4    60 	      error('out of mem');
+  2048   1   43:4    75 	      exit(linker)
+  2049   1   43:3    79 	    end
+  2050   1   43:2    79 	    else
+  2051   1   43:3    81 	      smallmem := TRUE;
+  2052   1   43:1    85 	  if not smallmem then
+  2053   1   43:2    91 	  begin
+  2054   1   43:3    91 	    n := nblocks;
+  2055   1   43:3    94 	    repeat
+  2056   1   43:4    94 	      new(sepbase);
+  2057   1   43:4   102 	      n := n-1
+  2058   1   43:3   103 	    until n <= 0;
+  2059   1   43:3   112 	    sepbase := getcodep(ord(lheap));
+  2060   1   43:3   122 	    if blockread(sp^.srcfile^.code^, sepbase^, nblocks,
+  2061   1   43:3   130 		sp^.srcfile^.segtbl.diskinfo[sp^.srcseg].codeaddr) <> nblocks then
+  2062   1   43:4   152 	      begin
+  2063   1   43:5   152 		error('sep seg read err');
+  2064   1   43:5   173 		exit(linker)
+  2065   1   43:4   177 	      end;
+  2066   1   43:2   177 	  end;
+  2067   1   43:1   177 	  cursp := sp
+  2068   1   43:0   177 	end { readsepseg } ;
+  2069   1   43:0   196 
+  2070   1   43:0   196         {
+  2071   1   43:0   196 	*  Readncopyproc is called if not enough mem to read in
+  2072   1   43:0   196 	*  complete sep seg.  It will read an entire proc if pos-
+  2073   1   43:0   196 	*  sible and copy to output seg, otherwise it reads and
+  2074   1   43:0   196 	*  copies the procedure block by block.
+  2075   1   43:0   196 	}
+  2076   1   43:0   196 
+  2077   1   44:D     1 	procedure copyproc( sp: segp; srcoffset: integer;
+  2078   1   44:D     3 			    cp: codep; size: icrange );
+  2079   1   44:D     5 	  var startblk, lastblk, nblks, blk, copybytes: integer;
+  2080   1   44:0     0 	begin
+  2081   1   44:1     0 	  release(lheap);
+  2082   1   44:1     5 	  startblk:= srcoffset div 512;
+  2083   1   44:1    12 	  nblks:= (size + (srcoffset mod 512) + 511) div 512;
+  2084   1   44:1    29 	  if memavail -400 >= nblks*256 then { will read entire proc }
+  2085   1   44:2    43 	  begin
+  2086   1   44:2    43 	    {WRITELN('COPYING WHOLE PROC');}
+  2087   1   44:3    43 	    lastblk := startblk;
+  2088   1   44:3    46 	    copybytes := size;
+  2089   1   44:2    49 	  end
+  2090   1   44:1    49 	  else { will copy block by block }
+  2091   1   44:2    51 	  begin
+  2092   1   44:2    51 	    {WRITELN('COPYING BY BLOX');}
+  2093   1   44:3    51 	    lastblk := startblk + nblks - 1;
+  2094   1   44:3    58 	    copybytes := 512 - (srcoffset mod 512);
+  2095   1   44:3    69 	    nblks := 1;
+  2096   1   44:2    72 	  end;
+  2097   1   44:1    72 	  new(sepbase);
+  2098   1   44:1    80 	  with sp^, srcfile^ do
+  2099   1   44:2    87 	    for blk:= startblk to lastblk do
+  2100   1   44:3    98 	      if blockread( code^, sepbase^, nblks,
+  2101   1   44:3   105 		  segtbl.diskinfo[srcseg].codeaddr + blk ) <> nblks then
+  2102   1   44:4   128 	      begin
+  2103   1   44:5   128 		error('proc read err'); exit(linker)
+  2104   1   44:4   150 	      end
+  2105   1   44:3   150 	      else
+  2106   1   44:4   152 		if blk = startblk then
+  2107   1   44:5   157 		begin
+  2108   1   44:6   157 		  moveleft( sepbase^[srcoffset mod 512], cp^, copybytes );
+  2109   1   44:6   175 		  cp:= getcodep( ord(cp) + copybytes );
+  2110   1   44:5   184 		end
+  2111   1   44:4   184 		else
+  2112   1   44:5   186 		  if blk = lastblk then { finish up }
+  2113   1   44:6   191 		    moveleft( sepbase^, cp^, (srcoffset + size) mod 512 )
+  2114   1   44:5   206 		  else
+  2115   1   44:6   208 		  begin
+  2116   1   44:7   208 		    moveleft( sepbase^, cp^, 512 );
+  2117   1   44:7   219 		    cp:= getcodep( ord(cp) + 512 );
+  2118   1   44:6   230 		  end;
+  2119   1   44:0   237 	end { copyproc } ;
+  2120   1   44:0   254 
+  2121   1   42:0     0     begin { copyinprocs }
+  2122   1   42:0     0 	  {DONE:= FALSE;
+  2123   1   42:0     0 	  REPEAT
+  2124   1   42:0     0 	    WRITE('MEMAVAIL=',MEMAVAIL,', USE MORE MEM?');
+  2125   1   42:0     0 	    READLN(S);
+  2126   1   42:0     0 	    IF LENGTH(S)=0 THEN
+  2127   1   42:0     0 	      DONE:= TRUE
+  2128   1   42:0     0 	    ELSE
+  2129   1   42:0     0 	      NEW(BLOCK);
+  2130   1   42:0     0 	  UNTIL DONE;}
+  2131   1   42:1     0       sepbase := NIL;
+  2132   1   42:1     3       cursp := NIL;
+  2133   1   42:1     6       mark(lheap);
+  2134   1   42:1    10       wp := procs;
+  2135   1   42:1    15       while wp <> NIL do
+  2136   1   42:2    20 	with wp^, defsym^.entry do
+  2137   1   42:3    29 	  begin { copy in each proc }
+  2138   1   42:4    29 	    if cursp <> defseg then
+  2139   1   42:5    35 	      readsepseg(defseg);
+  2140   1   42:4    39 	    if talkative then
+  2141   1   42:5    42 	      begin
+  2142   1   42:6    42 		write('   Copying ');
+  2143   1   42:6    63 		if litype = SEPPROC then
+  2144   1   42:7    69 		  write('proc ')
+  2145   1   42:6    84 		else
+  2146   1   42:7    86 		  write('func ');
+  2147   1   42:6   101 		writeln(name)
+  2148   1   42:5   116 	      end;
+  2149   1   42:4   116 	    cp1 := getcodep(ord(segbase)+place^.destbase);
+  2150   1   42:4   129 	    if smallmem then
+  2151   1   42:5   132 	      copyproc( defseg, place^.srcbase, cp1, place^.length )
+  2152   1   42:4   146 	    else
+  2153   1   42:5   150 	    begin
+  2154   1   42:6   150 	      cp0 := getcodep(ord(sepbase)+place^.srcbase);
+  2155   1   42:6   161 	      moveleft(cp0^, cp1^, place^.length);
+  2156   1   42:5   170 	    end;
+  2157   1   42:4   170 	    jtab := getcodep(ord(segbase)+place^.destbase+place^.length-2);
+  2158   1   42:4   189 	    if fetchbyte(jtab, 0) <> 0 then
+  2159   1   42:5   199 	      storebyte(newproc, jtab, 0);
+  2160   1   42:4   205             pdp := getcodep(ord(segbase)+segleng-2*newproc-2);
+  2161   1   42:4   225 	    storeword(ord(pdp)-ord(jtab), pdp, 0);
+  2162   1   42:4   232 	    wp := next
+  2163   1   42:3   232 	  end;
+  2164   1   42:1   238       release(lheap)
+  2165   1   42:0   240     end { copyinprocs } ;
+  2166   1   42:0   258 
+  2167   1   42:0   258     {
+  2168   1   42:0   258     *  Fixuprefs is called to search through reflists and fix
+  2169   1   42:0   258     *  operand fields of P-code and native code to refer to the
+  2170   1   42:0   258     *  resolved values.  If fixallrefs is true, then all pointers
+  2171   1   42:0   258     *  in the ref lists are used, otherwise the reference pointers
+  2172   1   42:0   258     *  are checked to see if they occur in the procs to-be-linked.
+  2173   1   42:0   258     }
+  2174   1   42:0   258 
+  2175   1   45:D     1     procedure fixuprefs(work: workp; fixallrefs: boolean);
+  2176   1   45:D     3       var n, i, ref, val: integer;
+  2177   1   45:D     7 	  wp, wp1: workp;
+  2178   1   45:D     9 	  rp: refp;
+  2179   1   45:D    10 	  skipit: boolean;
+  2180   1   45:0     0     begin
+  2181   1   45:1     0       while work <> NIL do
+  2182   1   45:2     5 	with work^, refsym^.entry do
+  2183   1   45:3    14 	  begin { for each work item }
+  2184   1   45:3    14 	        { figure resolve val }
+  2185   1   45:4    14 	    case litype of
+  2186   1   45:4    18 	      SEPPREF,
+  2187   1   45:4    18 	      SEPFREF:  val := defproc^.newproc;
+  2188   1   45:4    25 	      UNITREF:  val := defsegnum;
+  2189   1   45:4    31 	      CONSTREF: val := defsym^.entry.constval;
+  2190   1   45:4    39 	      GLOBREF:  val := defsym^.entry.icoffset+
+  2191   1   45:5    43 			       defproc^.defsym^.entry.place^.destbase;
+  2192   1   45:4    54 	      PUBLREF,
+  2193   1   45:4    54 	      PRIVREF:  begin
+  2194   1   45:6    54 			  if litype = PRIVREF then
+  2195   1   45:7    60 			    val := newoffset
+  2196   1   45:6    60 			  else
+  2197   1   45:7    66 			    val := defsym^.entry.baseoffset;
+  2198   1   45:6    72 			  if format = WORD then
+  2199   1   45:7    78 			    val := (val-1)*2+MSDELTA
+  2200   1   45:6    83 			  else { assume BIG }
+  2201   1   45:7    89 			    if val < 0 then
+  2202   1   45:8    94 			      error('addr oflow')
+  2203   1   45:5   107 			end
+  2204   1   45:4   109 	    end;
+  2205   1   45:4   146             n := nrefs;
+  2206   1   45:4   150 	    rp := reflist;
+  2207   1   45:4   155 	    while rp <> NIL do
+  2208   1   45:5   160 	      begin
+  2209   1   45:6   160 		if n > 8 then
+  2210   1   45:7   165 		  begin
+  2211   1   45:8   165 		    i := 7;
+  2212   1   45:8   168 		    n := n-8
+  2213   1   45:7   169 		  end
+  2214   1   45:6   173 		else
+  2215   1   45:7   175 		  i := n-1;
+  2216   1   45:6   180 		repeat
+  2217   1   45:7   180 		  ref := rp^.refs[i];
+  2218   1   45:7   192 		  skipit := not fixallrefs;
+  2219   1   45:7   196 		  if skipit then
+  2220   1   45:8   199 		    begin { see if pertinent }
+  2221   1   45:9   199 		      wp := NIL;
+  2222   1   45:9   202 		      wp1 := procs;
+  2223   1   45:9   207 		      while wp1 <> NIL do
+  2224   1   45:0   212 			if wp1^.defseg = refseg then
+  2225   1   45:1   219 			  begin { find matching seg }
+  2226   1   45:2   219 			    wp := wp1;
+  2227   1   45:2   222 			    wp1 := NIL
+  2228   1   45:1   222 			  end
+  2229   1   45:0   225 			else
+  2230   1   45:1   227 			  wp1 := wp1^.next;
+  2231   1   45:9   233 		      while (wp <> NIL) and skipit do
+  2232   1   45:0   240 			if wp^.defseg = refseg then
+  2233   1   45:1   247 			  with wp^.defsym^.entry.place^ do
+  2234   1   45:2   253 			    if ref >= srcbase then
+  2235   1   45:3   259 			      if ref < srcbase+length then
+  2236   1   45:4   268 				begin
+  2237   1   45:5   268 				  ref := ref-srcbase+destbase;
+  2238   1   45:5   277 				  skipit := FALSE
+  2239   1   45:4   277 				end
+  2240   1   45:3   280 			      else
+  2241   1   45:4   282 				wp := wp^.next
+  2242   1   45:2   283 			    else
+  2243   1   45:3   288 			      wp := NIL
+  2244   1   45:0   288 		        else
+  2245   1   45:1   293 			  wp := NIL
+  2246   1   45:8   293 		    end;
+  2247   1   45:7   298 		  if not skipit then
+  2248   1   45:8   302 		    case format of { fix up this ref }
+  2249   1   45:8   306 		      WORD:  storeword(val+fetchword(segbase, ref), 
+  2250   1   45:9   316 						segbase, ref);
+  2251   1   45:8   324 		      BYTE:  storebyte(val, segbase, ref);
+  2252   1   45:8   333 		      BIG:   storebig(val, segbase, ref)
+  2253   1   45:8   338 		    end;
+  2254   1   45:7   356 		  i := i-1
+  2255   1   45:6   357 		until i < 0;
+  2256   1   45:6   366 		rp := rp^.next
+  2257   1   45:5   367 	      end;
+  2258   1   45:4   372 	    work := next
+  2259   1   45:3   372 	  end
+  2260   1   45:0   376     end { fixuprefs } ;
+  2261   1   45:0   404 
+  2262   1   45:0   404     {
+  2263   1   45:0   404     *  writetocode takes the finalized destseg and puts it in
+  2264   1   45:0   404     *  the output code file.  This also involves setting up values
+  2265   1   45:0   404     *  in the final segtable for writeout just before locking it.
+  2266   1   45:0   404     }
+  2267   1   45:0   404 
+  2268   1   46:D     1     procedure writetocode;
+  2269   1   46:D     1       var nblocks: integer;
+  2270   1   46:D     2           jtab: codep;
+  2271   1   46:0     0     begin
+  2272   1   46:1     0       if hostsp = seginfo[s] then
+  2273   1   46:2    15 	begin { fix up baselc }
+  2274   1   46:3    15 	  jtab := getcodep(ord(segbase)+segleng-4);
+  2275   1   46:3    30 	  jtab := getcodep(ord(jtab)-fetchword(jtab, 0));
+  2276   1   46:3    44 	  storeword(nextbaselc*2-6, jtab, -8)
+  2277   1   46:2    52 	end;
+  2278   1   46:1    54       with seginfo[s]^, segtbl do
+  2279   1   46:2    67 	begin
+  2280   1   46:3    67 	  nblocks := (segleng+511) div 512;
+  2281   1   46:3    80 	  if blockwrite(code, segbase^, nblocks, nextblk) <> nblocks then
+  2282   1   46:4   100 	    begin
+  2283   1   46:5   100 	      error('code write err');
+  2284   1   46:5   119 	      exit(linker)
+  2285   1   46:4   123 	    end;
+  2286   1   46:3   123 	  diskinfo[s].codeaddr := nextblk;
+  2287   1   46:3   138 	  diskinfo[s].codeleng := segleng;
+  2288   1   46:3   155 	  segname[s] := srcfile^.segtbl.segname[srcseg];
+  2289   1   46:3   179 	  segkind[s] := LINKED;
+  2290   1   46:3   193 	  nextblk := nextblk+nblocks
+  2291   1   46:2   196 	end
+  2292   1   46:0   201     end { writetocode } ;
+  2293   1   46:0   214 
+  2294   1   46:0   214     {
+  2295   1   46:0   214     *  Linksegment is called for each segment to be placed into
+  2296   1   46:0   214     *  the final code file.  The global var s has the seginfo index
+  2297   1   46:0   214     *  pertaining to the segment, and all the other procedures of
+  2298   1   46:0   214     *  Phase 3 are called from here.  This proc facilitates linking
+  2299   1   46:0   214     *  the master seg separatly from the other segs to ensure that
+  2300   1   46:0   214     *  the DATASZ of the outer block correctly reflects the number
+  2301   1   46:0   214     *  of PRIVREF words allocated by resolve.
+  2302   1   46:0   214     }
+  2303   1   46:0   214 
+  2304   1   47:D     1     procedure linksegment;
+  2305   1   47:D     1 
+  2306   1   47:D     1 	{
+  2307   1   47:D     1 	*  Writemap is called for each seg to write some
+  2308   1   47:D     1 	*  info into map file.
+  2309   1   47:D     1 	}
+  2310   1   47:D     1 
+  2311   1   48:D     1 	procedure writemap;
+  2312   1   48:D     1 	  var wp: workp;
+  2313   1   48:D     2 	      b: boolean;
+  2314   1   48:0     0 	begin
+  2315   1   48:1     0 	  with seginfo[s]^ do
+  2316   1   48:2    13 	    writeln(map, 'Seg # ',s,', ', srcfile^.segtbl.segname[srcseg]);
+  2317   1   48:1    81 	  wp := procs;
+  2318   1   48:1    86 	  if wp <> NIL then
+  2319   1   48:2    91 	    writeln(map, '   Sep procs');
+  2320   1   48:1   121 	  while wp <> NIL do
+  2321   1   48:2   126 	    with wp^.defsym^.entry do
+  2322   1   48:3   132 	      begin
+  2323   1   48:4   132 		write(map, '      ', name);
+  2324   1   48:4   159 		if litype = SEPPROC then
+  2325   1   48:5   165 		  write(map, ' proc')
+  2326   1   48:4   181 		else
+  2327   1   48:5   183 		  write(map, ' func');
+  2328   1   48:4   199 		write(map, ' # ', wp^.newproc: 3);
+  2329   1   48:4   223 		write(map, '    base =', place^.destbase: 6);
+  2330   1   48:4   255 		write(map, '    leng =', place^.length: 5);
+  2331   1   48:4   287 		writeln(map);
+  2332   1   48:4   294 		wp := wp^.next
+  2333   1   48:3   295 	      end;
+  2334   1   48:1   300 	  for b := FALSE to TRUE do
+  2335   1   48:2   311 	    begin
+  2336   1   48:3   311 	      if b then
+  2337   1   48:4   314 		begin
+  2338   1   48:5   314 		  wp := other;
+  2339   1   48:5   319 		  if wp <> NIL then
+  2340   1   48:6   324 		    writeln(map, '   Sep proc refs')
+  2341   1   48:4   358 		end
+  2342   1   48:3   358 	      else
+  2343   1   48:4   360 		begin
+  2344   1   48:5   360 		  wp := local;
+  2345   1   48:5   365 		  if wp <> NIL then
+  2346   1   48:6   370 		    writeln(map, '   Local seg refs')
+  2347   1   48:4   405 		end;
+  2348   1   48:3   405 	      while wp <> NIL do
+  2349   1   48:4   410 		with wp^.defsym^.entry do
+  2350   1   48:5   416 		  begin
+  2351   1   48:6   416 		    write(map, '      ', name);
+  2352   1   48:6   443 		    case litype of
+  2353   1   48:6   447 		      SEPPROC,
+  2354   1   48:6   447 		      SEPFUNC:   ;
+  2355   1   48:6   449 		      PUBLDEF:   write(map, ' public LC =', baseoffset: 5);
+  2356   1   48:6   484 		      CONSTDEF:  write(map, ' const val =', constval: 6);
+  2357   1   48:6   519 		      PRIVREF:   write(map, ' privat LC =', wp^.newoffset: 5);
+  2358   1   48:6   554 		      UNITREF:   write(map, ' unit seg# =', wp^.defsegnum: 3);
+  2359   1   48:6   589 		      GLOBDEF:   write(map, ' glob def in ',
+  2360   1   48:7   613 				    wp^.defproc^.defsym^.entry.name,
+  2361   1   48:7   627 				    ' @', icoffset: 5)
+  2362   1   48:6   650 		    end;
+  2363   1   48:6   684 		    writeln(map);
+  2364   1   48:6   691 		    wp := wp^.next
+  2365   1   48:5   692 		  end
+  2366   1   48:2   695 	    end;
+  2367   1   48:1   704 	  writeln(map)
+  2368   1   48:0   711 	end { writemap } ;
+  2369   1   48:0   740 
+  2370   1   47:0     0     begin { linksegment }
+  2371   1   47:1     0       sephost := FALSE;
+  2372   1   47:1     4       segbase := NIL;
+  2373   1   47:1     8       segleng := 0;
+  2374   1   47:1    12       if talkative then
+  2375   1   47:2    15 	with seginfo[s]^ do
+  2376   1   47:3    28 	  writeln('Linking ',
+  2377   1   47:3    46 	           srcfile^.segtbl.segname[srcseg], ' # ', s);
+  2378   1   47:1    94       buildworklists;
+  2379   1   47:1    96       if errcount = 0 then
+  2380   1   47:2   101 	begin
+  2381   1   47:3   101 	  readsrcseg;
+  2382   1   47:3   103 	  if mapname <> '' then
+  2383   1   47:4   112 	    writemap;
+  2384   1   47:3   114 	  copyinprocs;
+  2385   1   47:3   116 	  fixuprefs(local, TRUE);
+  2386   1   47:3   122 	  fixuprefs(other, FALSE);
+  2387   1   47:3   128 	  writetocode
+  2388   1   47:2   128 	end;
+  2389   1   47:1   130       if sephost then
+  2390   1   47:2   135 	seplist := seginfo[s]^.next;
+  2391   1   47:1   149       release(heapbase)
+  2392   1   47:0   151     end { linksegment } ;
+  2393   1   47:0   166 
+  2394   1   27:0     0 begin { phase3 }
+  2395   1   27:1     0   if not useworkfile then
+  2396   1   27:2    17     begin
+  2397   1   27:3    17       write('Output file? ');
+  2398   1   27:3    40       readln(fname);
+  2399   1   27:3    55       useworkfile := fname = ''
+  2400   1   27:2    57     end;
+  2401   1   27:1    64   if useworkfile then
+  2402   1   27:2    67     rewrite(code, '*SYSTEM.WRK.CODE[*]')
+  2403   1   27:1    96   else
+  2404   1   27:2    98     rewrite(code, fname);
+  2405   1   27:1   107   if IORESULT <> 0 then
+  2406   1   27:2   113     begin
+  2407   1   27:3   113       error('Code open err');
+  2408   1   27:3   131       exit(linker)
+  2409   1   27:2   135     end;
+  2410   1   27:1   135   nextblk := 1;
+  2411   1   27:1   138  { clear output seg table }
+  2412   1   27:1   138   fillchar(segtbl, sizeof(segtbl), 0);
+  2413   1   27:1   147   fillchar(filler, sizeof(filler), 0);
+  2414   1   27:1   157   with segtbl do
+  2415   1   27:2   157     for s := 0 to MAXSEG do
+  2416   1   27:3   177       begin
+  2417   1   27:4   177 	segname[s] := '        ';
+  2418   1   27:4   198 	segkind[s] := LINKED
+  2419   1   27:3   207       end;
+  2420   1   27:1   216   if mapname <> '' then
+  2421   1   27:2   225     begin
+  2422   1   27:3   225       rewrite(map, mapname);
+  2423   1   27:3   235       if IORESULT <> 0 then
+  2424   1   27:4   241 	begin
+  2425   1   27:5   241 	  writeln('Can''t open ', mapname);
+  2426   1   27:5   277 	  mapname := ''
+  2427   1   27:4   279 	end
+  2428   1   27:3   284       else
+  2429   1   27:4   286         begin
+  2430   1   27:5   286 	  write(map, 'Link map for ');
+  2431   1   27:5   309 	  if hostsp <> NIL then
+  2432   1   27:6   314 	    writeln(map, hostsp^.srcfile^.segtbl.segname[hostsp^.srcseg])
+  2433   1   27:5   339 	  else
+  2434   1   27:6   341 	    writeln(map, 'assem host');
+  2435   1   27:5   367 	  writeln(map)
+  2436   1   27:4   373         end
+  2437   1   27:2   373     end;
+  2438   1   27:1   373   mark(heapbase);
+  2439   1   27:1   377   unitwrite(3, heapbase^, 35);
+  2440   1   27:1   385   { link all but host }
+  2441   1   27:1   385   for s := 0 to MAXSEG do
+  2442   1   27:2   405     if (seginfo[s] <> NIL)
+  2443   1   27:2   416     and (seginfo[s] <> hostsp) then
+  2444   1   27:3   430       linksegment;
+  2445   1   27:3   439   { link host last! }
+  2446   1   27:1   439   if hostsp <> NIL then
+  2447   1   27:2   444     begin
+  2448   1   27:3   444       s := MASTERSEG;
+  2449   1   27:3   450       linksegment
+  2450   1   27:2   450     end;
+  2451   1   27:1   452   if flipped then fliptable(segtbl); { restore byte-flipped state }
+  2452   1   27:1   460   if blockwrite(code, segtbl, 1, 0) <> 1 then
+  2453   1   27:2   477     error('Code write err');
+  2454   1   27:1   496   if errcount = 0 then
+  2455   1   27:2   501     begin { final cleanup }
+  2456   1   27:3   501       close(code, LOCK);
+  2457   1   27:3   507       if useworkfile then
+  2458   1   27:4   510 	with userinfo do
+  2459   1   27:5   510 	  begin
+  2460   1   27:6   510 	    gotcode := TRUE;
+  2461   1   27:6   514 	    codevid := syvid;
+  2462   1   27:6   522 	    codetid := 'SYSTEM.WRK.CODE'
+  2463   1   27:5   525 	  end;
+  2464   1   27:3   545       if mapname <> '' then
+  2465   1   27:4   554 	begin
+  2466   1   27:5   554 	  if hostsp <> NIL then
+  2467   1   27:6   559 	    writeln(map, 'next base LC = ', nextbaselc);
+  2468   1   27:5   598 	  close(map, LOCK)
+  2469   1   27:4   605         end
+  2470   1   27:2   605     end
+  2471   1   27:2   605 
+  2472   1   27:0   605 end { phase3 } ;
+  2473   1   27:0   630 
+  2474   1    1:0     0 begin { linker }
+  2475   1    1:1     0   phase1;
+  2476   1    1:1    14   phase2;
+  2477   1    1:1    16   phase3;
+  2478   1    1:1    18   unitclear(3)
+  2479   1    1:0    19 end { linker } ;
+  2480   1    1:0    40 
+  2481   0    1:0     0 begin end.

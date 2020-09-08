@@ -1,0 +1,13 @@
+        .PROC   MODEMINIT,0 
+        .PRIVATE RETADDR
+
+MCNTRL  .EQU    0C3H            ;STATUS PORT
+IDLE    .EQU    03FH            ;DEFINES IDLE STATE FOR PMMI MODEM
+        POP     HL
+        LD      (RETADDR),HL
+        LD      A,IDLE
+        OUT     (MCNTRL),A     ;SET MODEM TO IDLE STATE
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

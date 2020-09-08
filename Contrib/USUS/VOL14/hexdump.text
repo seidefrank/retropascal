@@ -1,0 +1,158 @@
+PROGRAM dump;                                                                                                                                                                   
+ LABEL 0,1,2,3;
+ VAR disk: FILE OF  
+            RECORD
+             buffer : PACKED ARRAY[1..512] OF CHAR;
+            END;
+     disk2: FILE OF 
+             RECORD
+              buffer2 : PACKED ARRAY[1..2] OF CHAR;
+             END;   
+     sblock,linumber,nblocks,chrnumber,recnumber,temp,rec: INTEGER;   
+     chrs : PACKED ARRAY[1..65] OF CHAR;
+     ch : CHAR;
+     infilename,outfilename : STRING[20];  
+     tinput,scrfilname : STRING[20]; 
+     tchrs,fchrs : STRING; 
+         
+(*$G+*) 
+
+FUNCTION val (instr : STRING) : INTEGER;    
+ VAR temp,chrat,fin : INTEGER;                                                                           
+     nchrs : PACKED ARRAY[1..10] OF CHAR;                          
+ BEGIN  
+  val := 0;fin := 0;chrat := 0;nchrs := '0123456789'; 
+  REPEAT   
+   chrat := chrat + 1;temp := SCAN(10,=instr[chrat],nchrs);                 
+   IF temp < 10 THEN
+    BEGIN                  
+     fin := fin * 10;fin := fin + temp;                                  
+    END; 
+  UNTIL (chrat = LENGTH(instr)) OR (chrat=6);   
+  val := fin;            
+ END;
+ 
+ 
+
+PROCEDURE blank; 
+ BEGIN
+  WITH disk2^ DO 
+   BEGIN
+    buffer2 := '  '; PUT(disk2);     
+   END;
+ END;
+ 
+PROCEDURE return;  
+ BEGIN
+  WITH disk2^ DO
+   BEGIN
+    buffer2[1] := CHR(00); buffer2[2] := CHR(13); PUT(disk2);
+   END;
+ END;
+ 
+PROCEDURE header; 
+ BEGIN
+  chrs := '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ. abcdefghijklmnopqrstuvwxyz:'; 
+  fchrs := '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ. abcdefghijklmnopqrstuvwxyz:';   
+  scrfilname := '#2:                 ';                    
+  WITH disk2^ DO 
+  BEGIN {WITH}
+   FOR temp := 1 to 12 DO blank; 
+   FOR temp := 1 to 10 DO                              
+    BEGIN
+     buffer2 := '  '; tchrs := ' ';   
+     tchrs := COPY(infilename,(temp*2-1),1);  
+     IF POS(tchrs,fchrs)<>0 THEN buffer2[1] := chrs[POS(tchrs,fchrs)];
+     tchrs := COPY(infilename,(temp*2),1);   
+     IF POS(tchrs,fchrs)<>0 THEN buffer2[2] := chrs[POS(tchrs,fchrs)];   
+     PUT(disk2);  
+    END;
+    return;
+   FOR temp := 1 to 13 DO blank;  
+   temp := recnumber + 1;buffer2 := 'Bl';PUT(disk2);     
+   buffer2 := 'oc';PUT(disk2);buffer2 := 'k:';PUT(disk2); blank; 
+   buffer2[1] := chrs[((recnumber+1) DIV 10)+1]; 
+   buffer2[2] := chrs[((recnumber+1) MOD 10)+1];     
+   PUT(disk2);return;return;blank;blank;chrnumber := 0;
+   REPEAT
+    BEGIN
+     chrnumber := chrnumber + 1;buffer2[1] := chrs[chrnumber];   
+     buffer2[2] := ':';PUT(disk2);blank; 
+    END;
+   UNTIL chrnumber=16;
+   return;chrnumber := 0;buffer2 := '--';            
+   REPEAT 
+    BEGIN
+     chrnumber := chrnumber + 1;PUT(disk2); 
+    END;
+   UNTIL chrnumber=34;  
+   return;buffer2 := '0:';PUT(disk2);blank; 
+  END {WITH};   
+ END {header}; 
+ 
+BEGIN {dump} 
+ 3:WRITE('Output filename -----> ');
+ READLN (outfilename);
+ IF LENGTH(outfilename)=0 THEN outfilename := '#2:';  
+ REWRITE(disk2,outfilename);
+ SEEK(disk2,0);
+ 1:WRITE ('Input filename -----> ');        
+ READLN (infilename);   
+ IF LENGTH(infilename)=0 THEN infilename := 'SYSTEM.WRK.CODE';
+ RESET(disk,infilename);
+ 2:WRITE ('Starting Block -----> ');
+ READLN (tinput);   
+ IF LENGTH(tinput)=0 THEN sblock:=0 ELSE sblock:=Val(tinput);
+ WRITE ('Ending Block -----> ');   
+ READLN (tinput);   
+ IF LENGTH(tinput)=0 THEN nblocks:=0 ELSE nblocks:=Val(tinput);  
+ recnumber := sblock - 1;   
+ REPEAT {block} 
+  BEGIN {block}
+   header; linumber := 0; recnumber := recnumber + 1;  
+   SEEK(disk,recnumber); GET(disk); chrnumber := 0; 
+    WITH disk^ DO
+    REPEAT {chr}
+     BEGIN {chr}
+      chrnumber := chrnumber + 1;
+      WITH disk2^ DO 
+       BEGIN {WITH}
+        buffer2 := '  '; temp := ORD(buffer[chrnumber]);   
+        IF (temp > 255)  THEN GOTO 0;   
+        buffer2[1] := chrs[(temp DIV 16)+1]; 
+        buffer2[2] := chrs[(temp MOD 16)+1];          
+        PUT(disk2);blank;    
+       0:IF (chrnumber MOD 16 = 0) THEN   
+           BEGIN {THEN}
+            linumber := linumber + 1;return; 
+            buffer2[1] := chrs[(linumber MOD 16)+1];        
+            buffer2[2] := ':';     
+            IF chrnumber <> 512 THEN
+             BEGIN
+              IF outfilename = scrfilname THEN READ(KEYBOARD,ch);
+              PUT(disk2);
+             END;   
+            blank;
+           END {THEN};
+       END {WITH};    
+     END {chr};
+    UNTIL chrnumber = 512; 
+    WITH disk2^ DO
+     BEGIN {WITH} 
+      chrnumber := 0; 
+      REPEAT 
+       IF outfilename <> '#2:' THEN return;   
+       chrnumber := chrnumber + 1;    
+      UNTIL chrnumber = 29;
+     END {WITH};
+  END {block};
+ UNTIL recnumber = (nblocks);
+ WRITE ('Anymore Blocks ? ');     
+ READ (ch);WRITELN; IF ch IN ['y','Y'] THEN GOTO 2;  
+ CLOSE(disk);
+ WRITE ('Anymore Input ? ');
+ READ (ch);WRITELN;IF ch IN ['y','Y'] THEN GOTO 1;
+ CLOSE(disk2,LOCK);  
+ WRITE('Anymore Output? ');READ(ch);
+ WRITELN;IF ch IN ['y','Y'] THEN GOTO 3;
+END {dump}.

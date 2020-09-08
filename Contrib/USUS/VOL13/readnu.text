@@ -1,0 +1,591 @@
+ 
+{**********************************************************************
+ 
+  READNUM reads a number from the input buffer. If there isn't
+  a valid number, or no number exists, the error routine is called.
+  The number must be delimited by a space, a dot, or the end of line.
+ 
+**********************************************************************}
+ 
+ 
+Procedure readnum(var number : posint);
+ 
+var
+   firstchar,
+   lastchar,
+   pos, i    : posint;
+   ablank,
+   anumber   : boolean;
+ 
+ 
+      Function power_of_ten(x : posint) : posint;
+ 
+      var
+         i, j : posint;
+ 
+      begin
+         j := 1;
+         for i := 1 to x do
+            j := j * 10;
+         power_of_ten := j;
+      end; { power_of_ten }
+ 
+ 
+begin  { readnum }
+ 
+   number := 0;
+   ablank := true;
+   anumber := true;
+   pos := input_buf.st;
+ 
+   while ablank and (pos <= input_buf.en) do
+      if input_buf.str[pos] = blank_char
+         then pos := pos + 1
+         else ablank := false;
+ 
+   if pos > input_buf.en then
+      error(argmsng, input_buf.st, input_buf.str)
+   else
+      begin
+         if not(input_buf.str[pos] in numbers) then
+            error(nonnum, pos, input_buf.str);
+ 
+         firstchar := pos;
+ 
+         while anumber and (pos <= input_buf.en) do
+            if input_buf.str[pos] in numbers
+               then pos := pos + 1
+               else anumber := false;
+ 
+         lastchar := pos - 1;
+      end;  { else }
+ 
+   for i := 0 to (lastchar - firstchar) do
+      number := number +
+         (ord(input_buf.str[lastchar - i]) - ord(zero)) * power_of_ten(i);
+ 
+   input_buf.st := pos;
+ 
+end;  { readnum }
+
+{**********************************************************************
+ 
+  FIND_TEXT finds a string in the buffer TXT starting from the .STth
+  position. The string is delimited by the first non-blank character
+  found. The permissible delimiters are all printing, non-alphanumeric
+  characters.
+ 
+  The routine first searches for the two delimiters. The two pointers,
+  ST_TXT and EN_TXT, are then set to the first and last non-blank
+  characters within the delimiters. The .ST pointer of TXT is set
+  to the second delimiter position plus one.
+ 
+**********************************************************************}
+ 
+ 
+Procedure find_text(var st_txt, en_txt : posint;
+                    var txt            : strng);
+ 
+var
+   searching : boolean;
+   txt_pos,
+   err_pos   : posint;
+   delim     : char;
+ 
+begin
+   txt_pos := txt.st;
+   searching := true;
+ 
+   while searching and (txt_pos <= txt.en) do
+      if txt.str[txt_pos] = blank_char
+         then txt_pos := txt_pos + 1
+         else searching := false;
+   
+   if searching then error(argmsng, txt.st, txt.str); 
+ 
+   delim := txt.str[txt_pos];
+   err_pos := txt_pos;
+ 
+   if not(delim in text_delims) then error(baddelm, txt_pos, txt.str);
+ 
+   txt_pos := txt_pos + 1;
+   st_txt := txt_pos;
+   searching := true;
+ 
+   while searching and (txt_pos <= txt.en) do
+      if txt.str[txt_pos] <> delim
+         then txt_pos := txt_pos + 1
+         else searching := false;
+ 
+   if searching then error(dlmmsng, err_pos, txt.str);
+ 
+   en_txt := txt_pos - 1;
+   txt.st := txt_pos + 1;
+   searching := true;
+ 
+   while searching and (st_txt <= en_txt) do
+      if txt.str[st_txt] = blank_char
+         then st_txt := st_txt + 1
+         else searching := false;
+ 
+   searching := true;
+ 
+   while searching and (en_txt > st_txt) do
+      if txt.str[en_txt] = blank_char
+         then en_txt := en_txt - 1
+         else searching := false;
+ 
+  end;  { find_text }
+
+{**********************************************************************
+ 
+  GET_COMMAND reads a command from INPUT_BUF, beginning with the
+  .ST pointer. The command must be delimited by a space, a dot, or
+  the end of line.
+ 
+  If the command is not identifiable, or it matches more than one
+  command string, the error routine is called. Otherwise, CMD is set
+  to an enumerated type corresponding to the command, and
+  INPUT_BUF.ST is set to point at the delimiter.
+ 
+**********************************************************************}
+ 
+ 
+ Function get_command : commandtype;
+ 
+var
+   command      : cmd_name;
+   cmd          : commandtype;
+   match_count,
+   cmd_length,
+   buf_pos,
+   fill         : posint;
+   done,
+   searching    : boolean;
+ 
+ 
+      Function sub_string(part, whole : cmd_name;
+                          cmd_len     : posint  ) : boolean;
+ 
+      var
+         same_char : boolean;
+         i         : posint;
+ 
+      begin
+         same_char := true;
+         i := 1;
+ 
+         while (i <= cmd_len) and same_char do
+            if part[i] = whole[i]
+               then i := i + 1
+               else same_char := false;
+ 
+         sub_string := same_char;
+      end; { sub_string }
+ 
+ 
+begin  { get_command }
+ 
+   buf_pos := input_buf.st;
+   cmd_length := 1;
+   searching := true;
+ 
+   cmd := brk;
+   done := false;
+   match_count := 0;
+ 
+ 
+   { read string from input buffer }
+ 
+ 
+   while (buf_pos <= input_buf.en) and
+      (cmd_length <= maxcmdlength) and
+         searching do
+ 
+      if input_buf.str[buf_pos] in [blank_char, dot] then
+         searching := false
+      else
+         begin
+            if input_buf.str[buf_pos] in lc_letters then
+               command[cmd_length] :=
+                  chr(ord(input_buf.str[buf_pos]) - lcoffset)
+            else
+               command[cmd_length] := input_buf.str[buf_pos];
+ 
+            buf_pos := buf_pos + 1;
+            cmd_length := cmd_length + 1;
+         end;
+ 
+   if input_buf.st = buf_pos
+      then error(cmderr, input_buf.st, input_buf.str)
+      else input_buf.st := buf_pos;
+ 
+ 
+   { match string to command }
+ 
+ 
+   while not done do
+      begin
+         if sub_string(command, cmd_strings[cmd], cmd_length - 1) then
+            begin
+               match_count := match_count + 1;
+               get_command := cmd;
+            end;
+ 
+         if (match_count > 1) or (cmd = cmnt)
+            then done := true
+            else cmd := succ(cmd);
+      end; { while }
+ 
+      if match_count = 0 then
+         error(badcmd, buf_pos - 1, input_buf.str)
+      else
+         if match_count > 1 then
+            error(dblnam, buf_pos - 1, input_buf.str);
+ 
+end; { get_command }
+ 
+{**********************************************************************
+ 
+  ACTION_CMNDS reads and checks parameters for action commands
+  that require them.  It then calls the output processor.
+ 
+**********************************************************************}
+ 
+ 
+Procedure action_cmnds(cmd : commandtype);
+ 
+begin
+ 
+   case cmd of
+      fig    : begin
+                  if pageinfo.figure_set or pageinfo.figure_pending then
+                     error(figbad, input_buf.st - 1, input_buf.str);
+                  readnum(n);
+                  if n < 2 then
+                     error(toolow, input_buf.st - 1, input_buf.str)
+                  else
+                     if n > sysvars[new].printable_lines then
+                        error(toohgh, input_buf.st - 1, input_buf.str);
+               end;
+      indt   : begin
+                  readnum(n);
+                  if n < 1 then
+                     error(toolow, input_buf.st - 1, input_buf.str)
+                  else
+                     if (sysvars[sysvars[new].version].lm + n) >
+                         sysvars[sysvars[new].version].rm then
+                           error(toohgh, input_buf.st - 1, input_buf.str);
+               end;
+      skp    : begin
+                  readnum(n);
+                  if n < 1 then
+                     error(toolow, input_buf.st - 1, input_buf.str)
+                  else
+                     if n > sysvars[new].printable_lines then
+                        error(toohgh, input_buf.st - 1, input_buf.str);
+               end;
+      nofil  : begin
+                  sysvars[new].fill_mode := nofilling;
+                  cmd := brk;
+               end;
+      tstpag : begin
+                  readnum(n);
+                  if n > sysvars[new].printable_lines then
+                     error(toohgh, input_buf.st - 1, input_buf.str)
+                  else
+                     if n < 1 then
+                        error(toolow, input_buf.st - 1, input_buf.str);
+               end;
+      pag, brk : { do nothing } 
+ 
+   end; { case }
+ 
+   out_proc(cmd);
+ 
+end;  { action_commands }
+ 
+{*********************************************************************
+ 
+  TEXT_CMNDS reads text parameters from the INPUT_BUF for those
+  commands that require them. The two pointers START_POS and
+  END_POS point to the text in the buffer.
+ 
+  Please note that the .CENTER command resets the INTERNAL_BUF to
+  empty so that multiple center commands will find it that way,
+  and that the global variable LOCK_STATUS is suspended before
+  the text is scanned so that the normal text attributes will
+  not be used.
+ 
+  READ_STRING reads a filename from INPUT_BUF for INCLUDE_FILE.
+  Notice that this uses a UCSD Pascal string.
+ 
+**********************************************************************}
+ 
+ 
+Procedure text_cmnds(cmd : commandtype);
+ 
+var
+   start_pos,
+   end_pos     : posint;
+   f_name      : string;
+   save_status : attrib_set;
+ 
+ 
+ 
+      Procedure read_string(var str : string);
+ 
+      var
+         char_buf : string[1];
+         char_pos : posint;
+ 
+      begin
+         str := nul;
+         
+         for char_pos := start_pos to end_pos do  
+            begin
+               char_buf := blank_char;
+               char_buf[1] := input_buf.str[char_pos];
+               str := concat(str, char_buf);
+            end;
+      end; { read_string }
+ 
+ 
+ 
+begin  { text_cmnds }
+ 
+   find_text(start_pos, end_pos, input_buf);
+ 
+   case cmd of
+      cntr  : begin
+                 if end_pos < start_pos then
+                    error(badcnt, start_pos, input_buf.str);
+                 out_proc(brk);
+                 internal_buf := blank_buf;
+ 
+                 save_status := lock_status;
+                 lock_status := [];
+ 
+                 scanner(start_pos,
+                         end_pos,
+                         input_buf.str,
+                         internal_buf);
+ 
+                 lock_status := save_status;
+ 
+                 center_buffer(internal_buf,
+                               sysvars[new].lm,
+                               sysvars[new].rm,
+                               end_pos,
+                               cntwide);
+ 
+                 output_buf := internal_buf;
+                 out_proc(brk);
+              end;
+      inclu : begin
+                 read_string(f_name);
+                 include_file(f_name);
+              end;
+      til   : begin
+                 pageinfo.title.str := input_buf.str;
+                 pageinfo.title.st := start_pos;
+                 pageinfo.title.en := end_pos;
+              end;
+ 
+   end; { case }
+ 
+end; { text_cmnds }
+ 
+{**********************************************************************
+ 
+  GLOBAL_CMNDS is the counterpart of ACTION_CMNDS for commands that
+  do not require immediate output and effect system variables.
+ 
+  N.B. For an explanation of FLIP_VERSION and why it is important,
+  please see the documentation on the Time-warp effect.
+ 
+**********************************************************************}
+ 
+ 
+Procedure global_cmnds(cmd : commandtype);
+ 
+var
+   i : posint;
+ 
+ 
+ 
+      procedure flip_version;
+      begin
+         if (output_buf.en <> 0) and (sysvars[new].version = new) then
+            begin
+               sysvars[old] := sysvars[new];
+               sysvars[new].version := old;
+            end;
+      end;  { flip_version }
+ 
+ 
+ 
+begin  { global_cmnds }
+ 
+   case cmd of
+      fil    : sysvars[new].fill_mode := filling;
+      justfy : sysvars[new].fill_mode := justification;
+      lmar   : begin
+                  readnum(n);
+                  if n > sysvars[new].rm then
+                     error(toohgh, input_buf.st - 1, input_buf.str)  
+                  else
+                     if n < 1 then
+                        error(toolow, input_buf.st - 1, input_buf.str);
+                  flip_version;
+                  sysvars[new].lm := n;
+                  sysvars[new].chars_in_line :=
+                     sysvars[new].rm - sysvars[new].lm + 1;
+               end;
+      rmar   : begin
+                  readnum(n);
+                  if n > sysvars[new].paper_width then
+                     error(toohgh, input_buf.st - 1, input_buf.str)
+                  else
+                     if n < sysvars[new].lm then
+                        error(toolow, input_buf.st - 1, input_buf.str);
+                  flip_version;
+                  sysvars[new].rm := n;
+                  sysvars[new].chars_in_line :=
+                     sysvars[new].rm - sysvars[new].lm + 1;
+               end;
+      onnum  : sysvars[new].numbering := true;
+      offnum : sysvars[new].numbering := false;
+      num    : begin
+                  readnum(n); 
+                  if n < 1 then
+                     error(toolow, input_buf.st - 1, input_buf.str);
+                  pageinfo.currpage := n;
+               end;
+      onpag  : begin
+                  sysvars[new].paging := true;
+                  pageinfo.currline := 1
+               end;
+      offpag : sysvars[new].paging := false;
+      papsiz : begin
+                  readnum(m);
+                  if m < minpaplen then
+                     error(tooshrt, input_buf.st - 1, input_buf.str);
+                  readnum(n);
+                  if n > maxlinewidth then
+                     error(toowide, input_buf.st - 1, input_buf.str)
+                  else
+                     if n < minlinewidth then
+                        error(toonrrw, input_buf.st - 1, input_buf.str);
+                  flip_version;
+                  sysvars[new].printable_lines := m - bordersize;
+                  sysvars[new].paper_length := m;
+                  sysvars[new].paper_width := n;
+                  sysvars[new].lm := 10;
+                  sysvars[new].rm := n - 10;
+               end;
+      spc    : begin
+                  readnum(n);
+                  if n < minspacing then
+                     error(toolow, input_buf.st - 1, input_buf.str)
+                  else
+                     if n > maxspacing then
+                        error(toohgh, input_buf.st - 1, input_buf.str);
+                  sysvars[new].spacing := n;
+               end;
+      std    : begin
+                  flip_version;
+                  sysvars[new] := std_vals;
+               end;
+      autop  : sysvars[new].ap_mode := true;
+      noauto : sysvars[new].ap_mode := false;
+      autset : begin
+                  readnum(m);
+                  if m > maxspacing then
+                     error(toohgh, input_buf.st - 1, input_buf.str);
+                  readnum(n);
+                  if n < 1 then
+                     error(aplow, input_buf.st - 1, input_buf.str);
+                  sysvars[new].ap_skip := m;
+                  sysvars[new].ap_indent := n;
+               end;
+      upper  : global_case := [u_case];
+      lower  : global_case := [l_case];
+      same   : global_case := [];
+ 
+   end;  { case }
+ 
+end; { global commands }
+ 
+{**********************************************************************
+ 
+  The dot command processor reads commands from the input buffer,
+  until the line is empty or a .COMMENT command is encountered,
+  and dispatches them to either the action-, text-, or global-command
+  processor. The header is declared before READNUM.
+ 
+**********************************************************************}
+ 
+ 
+{**************************************}
+{                                      }
+{   header is located in SYSGEN file   }
+{--------------------------------------}
+{                                      }
+{   Procedure d_c_p;                   }
+{                                      }
+{   var                                }
+{     searching,                       }
+{     eo_line   : boolean;             }
+{     cmd       : commandtype;         }
+{     pos       : posint;              }
+{                                      }
+{**************************************}
+ 
+ 
+ 
+
+begin  { dot command processor } 
+ 
+   eo_line := false;
+ 
+   repeat
+      searching := true;
+      pos := input_buf.st;
+ 
+      while searching and (pos <= input_buf.en) do
+         if input_buf.str[pos] = blank_char
+            then pos := pos + 1
+            else searching := false;
+ 
+      if searching then
+         eo_line := true
+      else
+         begin
+            if input_buf.str[pos] <> dot then
+               error(cmderr, pos, input_buf.str);
+ 
+            input_buf.st := pos + 1;
+ 
+            cmd := get_command;
+ 
+            if cmd = cmnt then
+               eo_line := true
+            else
+               begin
+                  if cmd in act_cmds then
+                     action_cmnds(cmd)
+                  else
+                     if cmd in text_cmds then
+                        text_cmnds(cmd)
+                     else
+                        global_cmnds(cmd);
+               end;
+         end;
+   until eo_line;
+ 
+end;  { dot command processor }
+ 
+ 
+ 
+

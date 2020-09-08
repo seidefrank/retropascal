@@ -1,0 +1,424 @@
+
+INIT:
+; This service initializes the entire system on cold start.
+
+; On Entry:
+;    (BC) => PASCAL support service jump vector.
+
+          
+; Set up jump vectors to callable Pascal services.
+          LD    (PASPOL), BC
+          INC   BC
+          INC   BC
+          INC   BC
+          
+; This storage is the address of a JP instruction in the disk BIOS.
+          LD    (PASDCH), BC
+          INC   BC
+          INC   BC
+          INC   BC
+          LD    (PASEVENT), BC
+
+; Clear the screen.
+          LD    C, 27
+          CALL  DR_CRO
+          LD    C, "*"
+          CALL  DR_CRO
+          
+; Restore all disks.
+          CALL  CLR_DISK
+          RET
+
+
+DR_CRB:
+; This service is a dummy to report successful initialization of the
+; terminal.
+          XOR   A
+          RET
+
+DR_CRS:
+; This service tests for the presence of an input character from the
+; terminal.
+          
+; On Exit:
+;    (A) = 0 to indicate console is on-line.
+;    (C) = 0 if no character, else 0FFH.
+
+          LD    C, 0
+          IN    A, (CRT_STAT)
+          AND   02H
+          RET   Z
+          DEC   C
+          XOR   A
+          RET
+
+DR_CRI:
+; This service reads the next available character from the keyboard.
+; It is extremely simple since the terminal and CPU are so closely
+; interconnected in the Escort that failure in this link is highly
+; improbable, and it would not be useful to do anything about it anyway.
+
+; On Exit:
+;    (A) = 0 to indicate console is on-line.
+;    (C) = Character.
+
+          
+; Wait for the next character to be ready.
+          IN    A, (CRT_STAT)
+          AND   02H
+          JR    Z, DR_CRI
+          
+; Pick up the character.
+          IN    A, (CRT_DATA)
+          LD    C, A
+          XOR   A
+          RET
+
+
+DR_CRO:
+; This service sends a character to the terminal.
+
+; On Entry:
+;    (C) = Character to send.
+
+; On Exit:
+;    (A) = 0 to indicate successful transmission.
+
+; Attempt to send the character.
+          IN    A, (CRT_STAT)
+          AND   01H
+          JR    Z, DR_CRO
+          LD    A, C
+          OUT   (CRT_DATA), A
+          
+          XOR   A
+          RET
+          
+
+DR_DIB:
+; This service reports the status of the printer.  It does not do any
+; initialization of the printer because of the variation in printer
+; characteristics which may be encountered with a portable computer system.
+
+; On Exit:
+;    (A) = IO Result--
+;         0:    Printer initialized successfully.
+;         1:    Error in operation.
+;         9:    Printer off line.
+
+; Test status for off-line.
+          LD    A, PRTDIA
+          CALL  PRT_WS
+          CP    9
+          RET   Z
+
+          XOR   A
+          RET
+
+
+DR_DIS:
+; This service is a dummy status routine for the Diablo printer to conform
+; to PASCAL  requirements.
+
+; On Entry:
+;    (C) = I/O Direction Flag--
+;         =0:   Output status desired.
+;         >0:   Input status desired.
+
+; On Exit:
+;    (A) = Status--
+;         0:    Printer is on-line.
+;         9:    Diablo is off line.
+;    (C) = Channel status (0--no character).
+;         0:    Input direction or printer not busy.
+;         0FFH: Output direction and printer busy.
+
+          
+;  Move direction flag out of the way and collect write status (read status
+;  is not relevant, since flow control is via hardware).
+          LD    E, C
+          LD    A, PRTDIA
+          CALL  PRT_WS
+          
+          
+;  Set up input direction return of no character waiting.
+          LD    C, 0
+          CP    9
+          RET   Z
+          
+;  Printer is not off-line.  Investigate direction flag to interpret
+;  status IO Result.
+          PUSH  AF
+          LD    A, E
+          AND   A
+          JR    Z, $1
+          
+;  Input direction--report only good IO Result with no character
+;  waiting flag.
+          POP   AF
+          XOR   A
+          RET
+
+$1:
+;  Output direction--interpret busy status.
+          POP   AF
+          CP    16
+          
+;  Return if not busy.
+          RET   NZ
+          DEC   C
+          RET
+          
+
+DR_DII:
+; This service is a dummy to provide illegal operation from the Diablo
+; to conform to PASCAL requirements.
+
+; On Exit:
+;    (A) = Status--
+;               3:   Illegal operation.
+;    (C) = Character (ANUL)
+
+          LD    A, 3
+          LD    C, 0
+          RET
+
+DR_DIO:
+; Output driver for Diablo printer, operation at 9600 Baud.  Uses RTS 
+; protocol to avoid buffer overrun.  Assumes that pins 9 and 20 of inter-
+; face cable to Diablo 630 printer have been exchanged.
+
+; On Entry:
+;    (C) = character to send
+
+; On Exit:
+;    (A) = Status--
+;         0:    Successful transmission.
+;         1:    Transmission error.
+;         9:    Printer off-line.
+; All other registers spoiled.
+
+; Mask out high order bit to avoid parity errors.
+          LD    A, C
+          AND   7FH
+          LD    E, A
+
+$1:
+; Attempt transmission of character until buffer is available, or until 
+; error occurs.
+          LD    A, PRTDIA
+          CALL  PRT_WT
+          CP    16
+          RET   NZ
+          JR    $1
+
+
+PRT_IN:
+; This service initializes the designated serial port to the characteris-
+; tics indicated in its parameters.
+
+; On Entry:
+;    (A) = Base Port for device.
+;    (E) = Line Control Register for device.
+
+; On Exit:
+;    (A - C) spoiled.
+
+; Note:  This service does not return any status as required by UCSD Pascal
+; or CP/M.  It prepares the serial port so that subsequent status and output
+; calls will function as intended.
+
+; Be certain that UART is in command mode, with RTS and DTR off.
+          LD    C, A
+          INC   C                  ;  Device status port.
+          LD    A, 90H
+          OUT   (C), A
+
+; Force Mode Instruction mode in UART.
+          LD    A, 40H
+          OUT   (C), A
+          
+; Establish line characteristics.
+          OUT   (C), E
+
+; Turn on port.
+          LD    A, 37H
+          OUT   (C), A
+          RET
+
+
+PRT_RD:
+; This service reads waits for a character to appear at the designated 
+; serial port and reads it when it shows up.  It tests for transmission 
+; and timing errors and diagnoses their occurrence.
+
+; On Input:
+;    (A) = Serial Port address.
+
+; On Output:
+;    (A) = IO Result--
+;         0:    Character is good.
+;         1:    Character is in error.  Value is replaced with ANUL.
+;         9:    Device is off-line.
+;    (C) = Character code.
+; All other registers spoiled.
+
+; Save port address.
+          LD    D, A
+
+$1:
+; Wait for character to be available or error to occur.
+          LD    A, D
+          CALL  PRT_RS
+
+; If character is present, read it.
+          INC   C
+          JR    NZ, $2
+          LD    C, D
+          IN    C, (C)
+          RET
+
+$2:
+; Character not available.  If no error, continue waiting; otherwise, return
+; dummy character.
+          AND   A
+          RET   NZ
+          JR    $1
+
+
+PRT_RS:
+; This service determines the status of the designated serial port for a
+; read operation.
+
+; On Entry:
+;    (A) = Serial Port address.
+
+; On Exit:
+;    (A) = IO Result--
+;         0:    No error detected by port.
+;         1:    Overrun, framing or parity error.
+;         9:    Device off-line.
+;    (C) = Ready Result--
+;         0:    No character waiting.
+;        FF:    Character waiting.
+
+; Determine on-line status from modem status.
+          LD    C, A
+          INC   C                  ;  Device status port.
+          IN    B, (C)
+          BIT   PRT_DSR, B
+          LD    A, 9
+          JR    Z, $1
+
+; Read line status.  Begin by checking error status.
+          LD    A, 38H
+          AND   B
+          LD    A, 1
+          JR    NZ, $0
+
+; Terminal is on-line status and there are no errors.
+          XOR   A
+
+$0:
+; Determine if there is a character waiting.                          
+          LD    C, 0FFH
+          BIT   PRT_RRDY, B
+          RET   NZ
+
+$1:
+; Off-line or no character present.
+          LD    C, 0
+          RET
+
+
+PRT_WT:
+; This service writes a character to the designated serial port.
+          
+; On Entry:
+;    (A) = Serial Port address.
+;    (E) = Character.
+
+; On Exit:
+;    (A) = IO Result--
+;         0:    Transmission of character completed successfully.
+;         9:    Device is off-line.
+;        16:    Device is not ready to receive data.
+
+; Save the port address for later use.
+          LD    D, A
+
+$1:
+; Test the write status to determine if transmit buffer is ready.
+          LD    A, D
+          CALL  PRT_WS
+          CP    1
+          JR    Z, $1
+
+; Return immediately if device is off-line or unready to receive data.
+          RET   NC
+
+; Send character to device.
+          LD    C, D
+          OUT   (C), E
+          RET
+
+
+
+PRT_WS:
+; This service tests the status of the serial port for writing.
+
+; On Entry:
+;    (A) = Serial Port address.
+
+; On Exit:
+;    (A) = IO Result--
+;         0:    Transmit buffer empty, write possible.
+;         1:    Transmit buffer busy, no errors.
+;         9:    Device is off-line.
+;        16:    Device is not ready to receive data.
+;    (BC) spoiled.
+
+; First determine if modem is on-line.
+          LD    C, A
+          INC   C                  ; Device status register.
+          IN    B, (C)
+          BIT   PRT_DSR, B
+          LD    A, 9
+          RET   Z
+
+; On-line. Test for ready to send.
+          BIT   PRT_RTSB, B
+          LD    A, 16
+          RET   Z
+
+; Read line status for transmit buffer condition.
+          XOR   A
+          BIT   PRT_THBE, B
+          RET   NZ
+
+; Buffer is busy.
+          INC   A
+          RET
+
+
+CONINI:
+; Since Pascal could not be bootstrapped without the console being opera-
+; tional, this service is null.
+
+; On Exit:
+;    (A) = 0 to imply successful initialization.
+
+          XOR   A
+          RET
+
+
+OFFLIN:
+; This service provides off-line status indications for all drivers which
+; are not implemented.
+          LD    A, 9
+
+NULL:
+; This service provides immediate return for null drivers.
+
+          RET
+

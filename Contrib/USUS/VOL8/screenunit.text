@@ -1,0 +1,163 @@
+UNIT SCREENUNIT;
+
+INTERFACE
+                   {these declarations must be global}
+TYPE XFILE = FILE;
+     CRTCOMMAND = (ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT,LEADIN);
+
+VAR CRTINFO:   PACKED ARRAY[CRTCOMMAND] OF CHAR;
+    PREFIXED:  ARRAY[CRTCOMMAND] OF BOOLEAN;
+
+PROCEDURE GETCRTINFO;
+PROCEDURE CRT ( C : CRTCOMMAND );
+PROCEDURE VER_SCREENUNIT;
+PROCEDURE IO_ERROR( IORESLT         : INTEGER;
+                    FILENAME        : STRING);
+PROCEDURE BAD_IO(VAR  FILEID           :XFILE;
+                       FILENAME         :STRING;
+                       IORESLT          :INTEGER;
+                       RSET             :BOOLEAN;
+                  VAR  IO_OK            :BOOLEAN);
+
+IMPLEMENTATION
+(*$I-*)
+(*$R-*)
+
+{**************}
+
+PROCEDURE VER_SCREENUNIT;
+
+BEGIN
+   WRITELN('uses screenunit version 5      18-Jul-81');
+END;
+
+PROCEDURE GETCRTINFO; {adapted from Roger Soles version in the USUS library}
+
+TYPE BYTE = PACKED ARRAY[0..7] OF BOOLEAN;
+     SWITCH = (CH,BOOL);
+     
+     DUMMY = RECORD
+        CASE SWITCH OF
+           CH : (CH_VAL : CHAR);
+           BOOL : (BOOL_VAL : BYTE);
+        END;
+VAR 
+    BITS : BYTE;
+    BLOCK: PACKED ARRAY[0..511] OF CHAR;
+    K: INTEGER;
+    DISK : XFILE;
+    DUM : DUMMY;
+
+BEGIN
+  RESET(DISK,'*SYSTEM.MISCINFO');
+  IF IORESULT = 0 THEN K := BLOCKREAD(DISK,BLOCK,1)
+     ELSE WRITE('can''t find *SYSTEM.MISCINFO');
+  CLOSE(DISK);
+  IF K=1 THEN 
+     BEGIN
+       DUM.CH_VAL:=BLOCK[72];
+       BITS:=DUM.BOOL_VAL;
+       CRTINFO[LEADIN] := BLOCK[62];
+       PREFIXED[LEADIN] := FALSE;
+       CRTINFO[ERASEOS] := BLOCK[64];
+       PREFIXED[ERASEOS] := BITS[3];
+       CRTINFO[ERASEOL] := BLOCK[65];
+       PREFIXED[ERASEOL] := BITS[2];
+       CRTINFO[RIGHT] := BLOCK[66];
+       PREFIXED[RIGHT] := BITS[1];
+       CRTINFO[UP] := BLOCK[67];
+       PREFIXED[UP] := BITS[0];
+       CRTINFO[LEFT] := BLOCK[68];
+       PREFIXED[LEFT] := BITS[5];
+       CRTINFO[DOWN] := CHR(10);
+       PREFIXED[DOWN] := FALSE;
+    END;
+END;
+
+
+PROCEDURE CRT{C: CRTCOMMAND }; {adapted from Roger Soles version in the
+                                  USUS library.  Call GETCRTINFO before
+                                  using this procedure.}
+BEGIN
+  IF PREFIXED[C] THEN UNITWRITE(1,CRTINFO[LEADIN],1,0,12);
+  UNITWRITE(1,CRTINFO[C],1,0,12);
+END;
+
+
+
+PROCEDURE IO_ERROR{( IORESLT         : INTEGER;
+                    FILENAME        : STRING)};
+
+type entry = record
+   number : integer;
+   message : packed array[0..21] of char;
+end;
+
+var buff : array[0..21] of entry;
+    disk : xfile;
+    k    : integer;
+    
+    
+BEGIN
+   IF IORESLT<>0 THEN
+      BEGIN
+         GOTOXY(0,22);
+         WRITE(CHR(7));  
+         WRITELN('I/O Error on ',FILENAME);
+         reset(disk,'*errordata');
+         k:=blockread(disk,buff,1);
+         close(disk);
+         write('ioresult = ',ioreslt);
+         gotoxy(0,23);
+         if k = 1 then
+           for k:=1 to 20 do
+              if ioreslt = buff[k].number then
+                 unitwrite(1,buff[k].message,22,,1);
+   END;  
+END;  {io_error}
+         
+{*****************}
+
+PROCEDURE BAD_IO{(VAR  FILEID           :XFILE;
+                       FILENAME         :STRING;
+                       IORESLT          :INTEGER;
+                       RSET             :BOOLEAN;
+                  VAR  IO_OK            :BOOLEAN)};
+
+VAR CH      : CHAR;
+    GOTFILE : BOOLEAN;
+
+BEGIN
+   IF IORESLT = 0 THEN IO_OK:=TRUE ELSE
+      BEGIN
+         GOTOXY(0,22);
+         CRT(ERASEOS);
+         IO_OK:=FALSE;
+         IO_ERROR(IORESLT,FILENAME);
+         GOTOXY(48,22);
+         WRITE('type L)ock to close and exit or');
+         GOTOXY(48,23);
+         WRITE('<space> to ');
+         IF RSET THEN WRITE('reset and ');
+         WRITE('continue');
+         READ(KEYBOARD,CH);
+         IF (CH='L') OR (CH='l') THEN
+            BEGIN
+               CLOSE(FILEID,LOCK);
+               EXIT(PROGRAM);
+            END
+         ELSE
+            IF RSET THEN
+               BEGIN
+                  CLOSE(FILEID);
+                  RESET(FILEID,FILENAME);
+               END;
+         GOTOXY(0,22);
+         CRT(ERASEOS);
+      END;
+END;  {bad_i/o}
+      
+
+END.  {screenunit}
+
+

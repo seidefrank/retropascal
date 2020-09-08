@@ -1,0 +1,214 @@
+{ L W.LISTING.TEXT}
+{ R-}
+UNIT WindowManager;  {Austin Tate (ERCC) and Chris Lee (INMOS)}
+
+INTERFACE
+
+  {Window Manager for the UCSD p-System}
+  {Windows are displayed as rectangular areas on the screen, bordered by
+   a frame and optionally headed by a heading.  Each window has its own
+   size, screen location, text area, cursor and status information.
+   Each window may be written into and will scroll independently, and
+   may be cleared, moved, changed in size, etc. by a user's program.
+
+   During any input operation the user may escape into 'Window Manager
+   Mode' (and subsequently return to 'Input Mode', to complete the input).
+   In Window Manager Mode the Window Manager uses a special cursor which
+   is independent of any window. This cursor is used to indicate screen
+   position parameters to the Hide, Show, Alter, Move and Kill commands.
+   Whether or not a particular command may be applied to a particular
+   window is controlled by the user's program.
+  }
+
+  CONST WVersion='22-Feb-82';
+        NoWindow=0;
+        MaxWindow=10;
+
+  TYPE  Window=NoWindow..MaxWindow;
+        WindowOptions=(CanHide,CanMove,CanAlter,CanKill,
+                       HasHeading,CanScroll,CanPan);
+        WindowAttributes=SET OF WindowOptions;
+
+{Initialisation Routines}
+  
+  PROCEDURE WStartup;
+  {Called by *SYSTEM.STARTUP to REALLY initialise}
+  {If window manager is placed in *SYSTEM.PASCAL then you MUST supply
+   a *SYSTEM.STARTUP that calls WStartup. Thereafter any program which
+   uses the window manager should initialise via WInit, the effect of which
+   is to repaint the screen as it was when the last using program terminated.
+   If Window Manager is not in *SYSTEM.PASCAL then use WStartup always}
+
+  PROCEDURE WInit;
+  {Initialise Window Manager System}
+  {just redisplays all windows}
+  {if Manager is a system unit, all windows survive program changes}
+
+{Routines to create, alter, show, clear, hide and dispose of windows}
+
+  FUNCTION  WNew(WatX,WatY,WSizeX,WSizeY:INTEGER;
+                 WControls:WindowAttributes;
+                 WHeading:STRING):Window;
+  {Get new window}
+
+  PROCEDURE WAlter(W:Window;
+                   WatX,WatY,WSizeX,WSizeY:INTEGER;
+                   WControls:WindowAttributes;
+                   WHeading:STRING);
+  {Alter existing window}
+  {WatX,WatY,SizeX,SizeY -ve means do not alter}
+  {WControls replaces existing window attributes}
+  {Window must not be in show when WAlter called}
+
+  PROCEDURE WShow(W:Window);
+  {Display window and set it as "current" one}
+
+  PROCEDURE WClearAndShow(W:Window);
+  {Clear window, then "Show" it}
+
+  PROCEDURE WHide(W:Window);
+  {Remove window from screen - it is not disposed of}
+
+  PROCEDURE WDispose(W:Window);
+  {Dispose of old window}
+  {Window must not be in show when WDispose called}
+
+{The following procedures all apply to the "current" last shown window}
+
+  PROCEDURE WClear;
+  {Clear Window}
+  
+  PROCEDURE WClrEOL;
+  {Clear remainder of current line}
+  
+  PROCEDURE WClrEOS;
+  {Clear remainder of window}
+
+  PROCEDURE WGotoXY(X,Y:INTEGER);
+  {Set Window cursor to X,Y}
+  {X,Y are relative to top left of window - base of 0, excluding heading}
+
+  PROCEDURE WWriteCh(Ch:CHAR);
+  {Write Ch at cursor position in window}
+  {Non printable chs map to bell}
+
+  PROCEDURE WWriteStr(Str:STRING);
+  {Write Str at cursor position in window}
+  {MUST NOT CONTAIN NON PRINTABLE CHARS}
+
+  PROCEDURE WWriteInt(Int,Width:INTEGER);
+  {Write Int at cursor posn in window}
+  {Equivalent to WRITE(Int:Width) in Pascal}
+  {Width may be 0 (or -ve) to mean as narrow as possible}
+
+  PROCEDURE WWriteLn;
+  {Write newline at cursor position in window}
+  {If cursor goes below base of window, window is cleared}
+
+  PROCEDURE WReadCh(VAR Ch:CHAR;Echo:BOOLEAN);
+  {Get character from keyboard}
+  {Window functions can only take place within WReadCh}
+  {Any non window function ch is returned to user     }
+  {Echo is controlled by user - non printable chs echo as bell}
+  {Other Window Reading Procedures - below - use WReadCh}
+
+  PROCEDURE WReadLnStr(VAR Str:STRING);
+  {Get a string from keyboard - echoed}
+  {String is ended by newline. Only edit ch allowed is backspace}
+  {Non printable chs are not returned - but echo as bell}
+
+  PROCEDURE WReadLnInt(VAR Int:INTEGER);
+  {Get an integer from keyboard - echoed}
+  {Integer is ended by newline. Only edit ch allowed is backspace}
+  {Non printable chs are not returned - but echo as bell}
+
+  PROCEDURE WReadLn(Echo:BOOLEAN);
+  {Read up to next newline from keyboard}
+  {Non printable chs echo as bell}
+
+{the following functions and procedures are utilities on windows}
+
+  FUNCTION  WInWindow(X,Y:INTEGER):Window;
+  {Returns window in which position X,Y occurs - NoWindow if none}
+  {X,Y in screen coordinates}
+
+  FUNCTION  WChAtXY(X,Y:INTEGER; W:Window):CHAR;
+  {Return Ch under screen position X,Y in W}
+  {Space returned if X,Y not in Window, or NoWindow}
+  {Ch need not be in view at time of call}
+
+  PROCEDURE WXY(VAR X,Y:INTEGER);
+  {Get Coordinates of window manager cursor - in window coordinates}
+
+  PROCEDURE WCursorXY(X,Y:INTEGER);
+  {Set coordinates of window manager cursor - in window coordinates}
+
+  FUNCTION WCurrentWindow:Window;
+  {Return Current Window - one last shown - may be NoWindow}
+  
+  {HISTORY
+  
+   Copyright: Austin Tate, ERCC.  All rights reserved.
+              This program may be used for non-commercial purposes
+              by users of the UCSD p-System provided that this
+              copyright notice appears in the source.  Enquiries for
+              other uses should be directed to the copyright owner.
+  
+   The Window Manager was originally written in March 1981 by
+   Austin Tate, ERCC as a demonstration for a course on Office
+   Systems and Advanced Personal Computers.
+   -------------------------
+   It was subsequently modified by Chris Lee while at INMOS up
+   to 10-Feb-82. The major changes he made were:
+   
+   I/O optimisation - all I/O is delayed as long as possible, and
+   is done in as large units as possible, via UNITWRITE (asynch!!!),
+   and isn't done at all if what we want is on the screen already.
+   See routines flushoutput and repaint. Repaint certainly pays
+   its way (try moving and altering windows with the original and
+   this version), flushoutput almost certainly doesn't - it makes
+   lines zap out in one swell foop, but stops the dreaded dots.
+   
+   Window Functions - on the operator interface are all handled
+   inside the window manager. During input use ESC to toggle between
+   window manager and input modes (and notice the cursor change when 
+   you do). See WindowFunction. Notice that screen position parameters
+   are signalled by moving the cursor and typing ESC or <space> (known
+   as a 'mark' in Window Manager Mode).  Eg,  to move a window type
+          ESC                              -- to enter window mode
+          <move cursor into window to be moved>
+          M or m                           -- to request a move
+   ---->  <move cursor to new top left corner position>
+          <space> or ESC                   -- the window moves at this point
+          <space> or ESC                   -- to return to input mode
+                 
+   NB at point ----> WindowFunction calls itself recursively. You
+      can nest window functions (and get into a real mess) if you want).
+      The interface to WNew has changed to allow the programmer to 
+      control what WindowFunctions the user may apply to a window.
+   
+   Frames - are drawn by characters. There are CONSTs for the four
+   corners and four sides so if you have forms drawing chars you
+   should be able to make things look pretty
+   
+   Scrolling and Panning - misc minor changes. Scroll by one third
+   of window depth rather than one line. Only re-pan at input time.
+   Both these mods are designed to eliminate unnecessary I/O and
+   repainting.
+   
+   To improve efficiency WWriteStr assumes that only printable
+   chars are in the string. 
+   
+   This version was produced during experimentation into window
+   management. Hence the code hasn't been beautified and bugs
+   may be present.
+   -------------------------
+   The Window Manager as modified by Chris Lee was then altered in
+   some minor respects by Austin Tate prior to release to the
+   UCSD p-System Users' Society (USUS) Software Library in February 1982.
+ }
+
+
+IMPLEMENTATION
+{$I w.impln}
+END.

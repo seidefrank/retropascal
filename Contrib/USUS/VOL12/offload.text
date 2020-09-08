@@ -1,0 +1,439 @@
+program offload;
+USES {$U *screenops.code} SCREENOPS,
+     {$U *commandio.code} COMMANDIO;
+
+{Off-Load Office Workstation command interpreter}
+{Copyright  Austin Tate  20-Aug-81}
+
+{user may provide a file *Help.Hint.Text containing any items}
+{desired as H(elp H(ints text                                }
+
+const bel=7;
+      paramrevision=1; {revision number of parameter file *OFF.INFO.TEXT}
+type paramrec=record
+        headrevision:integer;
+        formatstr:string;
+        bootstr:string;
+        quitstr:string;
+        SDiskBlocks:string[7]; {string version of diskblocks}
+        diskblocks:integer;
+        usercopyto:integer; {volume to copy user disk to}
+                            {4 on a 2 disk dsystem}
+        sstoggle:string[15];
+        endrevision:integer; {-ve of headrevision as a check}
+      end;
+var param:paramrec;
+    ch,esc:char;
+    xstr:string;
+    terminal:boolean;
+
+procedure loadparams;
+var ok:boolean;
+    f:file of paramrec;
+    g:text;
+    ires1,ires2:integer;
+begin
+  {$I-}
+  ok:=false;
+  reset(f,'*OFF.INFO.DATA');
+  if ioresult=0 then
+    begin
+      {get done by reset}
+      param:=f^;
+      with param do begin
+        ok:=((headrevision=paramrevision) and
+             (endrevision=-paramrevision));
+      end;
+    end;
+  if not ok then close(f,purge) else close(f);
+  if not ok then
+    begin
+      SC_Clr_Screen;
+      Write('Reading *OFF.INFO.....');
+      reset(g,'*OFF.INFO.TEXT');
+      if ioresult=0 then
+        begin
+          with param do begin
+            readln(g,xstr);  {initial comment line}
+            readln(g,headrevision);
+            readln(g,formatstr);
+            readln(g,bootstr);
+            readln(g,quitstr);
+            readln(g,Sdiskblocks);
+            readln(g,diskblocks);
+            ires1:=ioresult;
+            readln(g,usercopyto);
+            ires2:=ioresult;
+            readln(g,sstoggle);
+            readln(g,endrevision);
+            close(g);
+          end;
+          if ((param.headrevision=paramrevision) and
+              (param.endrevision=-paramrevision) and
+              (ires1=0) and (ires2=0)) then
+            begin
+              rewrite(f,'*OFF.INFO.DATA');
+              f^:=param;
+              put(f);
+              close(f,lock);
+              ok:=true;
+            end;
+        end;
+      if not ok then
+        begin
+          Writeln('  but it was was unavailable or out of date.');
+          repeat
+          until not space_wait(TRUE);
+        end;
+    end;
+  {$I+}
+end;
+
+procedure line(Y:integer);
+var i:integer;
+begin
+  if Y>=0 then GOTOXY(0,Y); {else put line on end of present text}
+  for i:=1 to 4 do write('--------------------');
+end;
+
+function exists(fname,suffix:string):boolean;
+var g:file;
+begin
+  if (length(fname)=0) then exists:=false
+  else
+    begin
+      {$I-}
+      reset(g,concat(fname,suffix));
+      exists:=(IORESULT=0);
+      {$I+}
+    end;
+end;
+
+procedure help(fname:string);
+var f:text;
+    st:string[255];
+begin
+  line(2);
+  if (length(fname)=0) then
+    writeln(fname,' is an illegal help text file name.')
+  else
+    begin
+      {$I-}
+      reset(f,concat(fname,'.TEXT'));
+      if (IORESULT<>0) then writeln(fname,' text is not on disk.')
+      else
+        begin
+          while not eof(f) do begin
+            readln(f,st);
+            if IORESULT=0 then writeln(st);
+          end;
+        end;
+      {$I+}
+    end;
+  line(-1); {line on end of text}
+  line(2);  {repeated in case of scroll}
+end;
+             
+PROCEDURE CopyDisk;
+CONST
+   FromVol=5;
+   ToVol=4;
+   INC1=10;
+   {TRANSFER THIS MANY BLOCK AT A TIME - MAKE AS LARGE AS SPACE ALLOWS}
+VAR
+   I,ERRORS,SECTOR,BLOCK,INCR,LGTH,MAX1:INTEGER;
+   ARR:PACKED ARRAY[0..INC1,1..512] OF CHAR;
+   CH:CHAR;
+   MaxBlocks:integer;
+BEGIN
+  {DiskBlocks is global} {TRANSFER BLOCKS 0..(DiskBlocks-1)}
+  MaxBlocks:=param.DiskBlocks;
+  WRITELN;
+  WRITELN('Copy will copy the entire contents of the User Disk in drive #',
+          FromVol);
+  WRITELN('     to a disk which has previously been N(ew-#5 ed in drive #',
+          ToVol);
+  WRITELN;
+  IF ToVol=4 THEN 
+     WRITELN('You should remove the OFFLOAD System Disk from drive #4.');
+  WRITELN;
+  WRITELN('Put a disk which has already been N(ew-#5 ed in drive #',ToVol);
+  WRITELN('Note that the entire contents of this disk will be overwritten');
+  REPEAT
+    GotoXY(0,8);
+    WRITE('Type <space> to continue, <esc> to abort');
+    READ(KEYBOARD,CH);
+  UNTIL Ch in [ESC,' '];
+  IF Ch=ESC then EXIT(CopyDisk);
+  GOTOXY(0,10);
+  WRITELN('Copy starting..');
+  
+  {$I-}
+  BLOCK:=0;
+  INCR:=INC1;
+  LGTH:=512*INCR;
+  MAX1:=MaxBlocks-INCR;
+  REPEAT
+     UNITREAD(FromVol,ARR,LGTH,BLOCK,0);
+     IF IORESULT<>0 THEN
+        {try again - block at a time}
+        FOR I:=1 TO INCR DO BEGIN
+        UNITREAD(FromVol,ARR[I],512,BLOCK+I-1,0); {BLOCK BY BLOCK}
+        IF IORESULT<>0 THEN BEGIN
+           WRITELN('Failed to read from disk in drive ',FromVol,
+                   ' Block=',BLOCK+I-1,' IOResult=',IORESULT);
+           ERRORS:=ERRORS+1;
+        END;
+     END;
+     UNITWRITE(ToVol,ARR,LGTH,BLOCK,0);
+     IF IORESULT<>0 THEN
+        {try again - block at a time}
+        FOR I:=1 TO INCR DO BEGIN
+        UNITWRITE(ToVol,ARR[I],512,BLOCK+I-1,0);
+        IF IORESULT<>0 THEN BEGIN
+           WRITELN('Failed to write to disk in drive ',ToVol,
+                   ' Block=',BLOCK+I-1,' IOResult=',IORESULT);
+           ERRORS:=ERRORS+1;
+        END;
+     END;
+     BLOCK:=BLOCK+INCR;
+     IF BLOCK>MAX1 THEN BEGIN
+        INCR:=MaxBlocks-BLOCK; {PART TRANSFER AT END}
+        LGTH:=512*INCR;
+     END;
+  UNTIL BLOCK=MaxBlocks;
+  {$I+}
+  
+  WRITELN;
+  WRITE('Copy Complete');
+  IF ERRORS>0 then WRITE('..number of errors detected=',ERRORS);
+  WRITELN;
+  IF ToVol=4 THEN
+    begin
+      Line(21);
+      SC_Eras_EOS(0,22);
+      WRITE('Return the OFFLOAD System Disk to drive #4.');
+      REPEAT
+        GotoXY(0,23);
+      UNTIL NOT Space_Wait(TRUE);
+    end;
+END;
+
+procedure Disker;
+var ch:char;
+    terminal:boolean;
+    i:integer;
+begin
+  Terminal:=false;
+  xstr:='';
+  SC_Clr_Screen;
+  Repeat
+    SC_Clr_Line(1);
+    SC_Clr_Line(0);
+    ch:=SC_Prompt('Disk aids: B(ackup-#4 C(opy-#5 N(ew-#5 T(idy H(elp Q(uit:',
+                  -1,0,0,0,
+                  ['B','C','N','T','H','Q'],
+                  FALSE,' ');
+    SC_Clr_Screen;
+    case ch of
+      'B':begin
+            writeln;
+            writeln('Backup will copy the Off-Load system disk in drive #4');
+            writeln('                         to a disk placed in drive #5.');
+            writeln;
+            write('The operation will take several minutes.   ');
+            writeln('Insert a blank disk in drive #5.');
+            write('Type <space> to continue, <esc> to abort');
+            SC_GetC_Ch(ch,[' ',esc]);
+            if ch=' ' then
+              begin
+                with param do begin
+                  if formatstr<>'' then chain(formatstr);
+                      {eg, *FORMATDISK PI="FD,Q"}
+                  if bootstr<>'' then chain(bootstr);
+                      {eg, *BOOTER PI="4,5,,"}
+                end;
+                xstr:='*FILER PI="T#4,#5,YQ"';
+              end;
+          end;
+      'C':CopyDisk;
+      'N':begin
+            writeln;
+            writeln('New will initialise a blank user disk in drive #5.');
+            writeln;
+            repeat
+              gotoxy(0,3);
+              write('Give new volume name (7 characters max.):');
+              readln(xstr);
+              while pos(' ',xstr)<>0 do delete(xstr,pos(' ',xstr),1);
+              i:=pos(':',xstr);
+              if i<>0 then delete(xstr,i,(length(xstr)-i)+1);
+              if xstr[1]=esc then xstr:='';
+            until (length(xstr)=0) or (length(xstr)<=8);
+            if length(xstr)>0 then
+              begin
+                writeln;
+                write('The operation will take about one minute.     ');
+                writeln('Insert a blank disk in drive #5.');
+                write('Type <space> to continue, <esc> to abort');
+                SC_GetC_Ch(ch,[' ',esc]);
+                if ch=' ' then
+                  begin
+                    with param do begin
+                      if formatstr<>'' then chain(formatstr);
+                      xstr:=concat('*FILER PI="Z#5,N',SDiskBlocks,
+                                   ',',xstr,':,YQ"');
+                    end;
+                  end
+                else xstr:='';
+              end;
+          end;
+      'T':begin
+            writeln;
+            write('Tidy will compact unused space on the disks in');
+            writeln(' drives #4 and #5.');
+            writeln;
+            write('Type <space> to continue, <esc> to abort');
+            SC_GetC_Ch(ch,[' ',esc]);
+            if ch=' ' then xstr:='*FILER PI="K#4,YK#5,YQ"';
+          end;
+      'H':help('*help.disk');
+      'Q':terminal:=true;
+    end;
+    if (ch<>'H') and (length(xstr)=0) then SC_Clr_Screen;
+  until (length(xstr)>0) or (terminal);
+end;
+
+
+procedure Scanner;
+var i:integer;
+    tempstr:string;
+begin
+  {To S(can document use T(ransfer from file to CONSOLE: in F(iler }
+  SC_Clr_Screen;
+  WRITELN;
+  WRITELN('Scan will display the document to the screen - it goes quite fast.');
+  WRITELN('     You may stop and start the display by using the stop/start');
+  WRITELN('     toggle key - ',param.sstoggle);
+  WRITELN;
+  GotoXY(0,5);
+  WRITE('Give name of document to be scanned:');
+  READLN(tempstr);
+  IF length(tempstr)>0 then
+    begin
+      if tempstr[1]=ESC then tempstr:='';
+    end;
+  if length(tempstr)>0 then
+    begin
+      {check file exists}
+      for i:= 1 to length(tempstr) do begin
+        if (tempstr[i]>='a') and (tempstr[i]<='z') then
+           tempstr[i]:=CHR((ORD(tempstr[i])-ORD('a'))+ORD('A'));
+      end;
+      if not exists(tempstr,'') then
+        begin
+          if exists(tempstr,'.TEXT') then tempstr:=concat(tempstr,'.TEXT')
+          else
+            begin
+              tempstr:='';
+              WRITELN('File specified cannot be found on disk.');
+            end;
+        end
+      else
+        begin
+          if (length(tempstr)<6) or
+             (pos('.TEXT',tempstr)<>length(tempstr)-4) then
+             begin
+               tempstr:='';
+               WRITELN('File specified is not a Text Document.');
+             end;
+        end;
+      {if tempstr<>'' we have a text file which exists}
+      if tempstr<>'' then xstr:=concat('*FILER PI="T',tempstr,',CONSOLE:,Q"');
+    end;
+end;
+
+procedure Helper;
+var ch:char;
+    terminal:boolean;
+begin
+  Terminal:=false;
+  SC_Clr_Screen;
+  Repeat
+    SC_Clr_Line(1);
+    ch:=SC_Prompt('Help: C(ommands H(ints K(eystrokes U(tilities Q(uit:',
+                  -1,0,0,0,
+                  ['C','H','K','U','Q'],
+                  FALSE,' ');
+    if ch<>'Q' then SC_Clr_Screen;
+    case ch of
+      'C': help('*Help.Off');
+      'H': help('*Help.Hint'); {for any user provided text}
+      'K': help('*Help.Keys');
+      'U': help('*Help.Util');
+      'Q': terminal:=true;
+    end;
+  until terminal;
+end;
+
+begin
+  exception(TRUE); {turn off all redirection and chaining to clear buffers}
+                   {also prevents a build up of *OFFLOAD calls by user    }
+  esc:=chr(27);
+  Loadparams;
+  sc_clr_screen;
+  terminal:=false;
+  repeat
+     xstr:='';
+     sc_clr_line(1); {in case of abortive X(ecute}
+     ch:=sc_prompt(concat('Off-Load: E(dit F(ile L(ist P(rose S(can ',
+                          'T(ty X(ecute D(iskaids H(elp Q(uit [1.0]'),
+                   -1,0, {place cursor at end of prompt}
+                    0,0, {place prompt at top of textport}
+                    ['E','F','L','P','S','T','D','H','Q','X'],
+                    FALSE, {character is being prompted}
+                    ' ');  {break ch in prompt is space}
+     write(ch);
+     case ch of
+       'E':xstr:='*EDITOR';
+       'F':xstr:='*FILER';
+       'L':xstr:='*LIST';
+       'P':xstr:='*PROSE';
+       'S':Scanner;
+       'T':xstr:='*TTY';
+       'D':Disker;
+       'H':Helper;
+       'X':begin
+             writeln;
+             write('Execute what file:');
+             readln(xstr);
+             if xstr<>'' then
+               begin
+                 {now check that the .CODE file exists}
+                 {to save return to UCSD outer level}
+                 if not exists(xstr,'.CODE') then
+                   begin
+                     SC_Clr_Line(0);
+                     Write(Xstr,' is not an executable file.');
+                     repeat
+                       SC_Clr_Line(1);
+                     until NOT Space_Wait(TRUE);
+                     Xstr:='';
+                   end;
+               end;
+           end;
+       'Q':terminal:=true;
+     end;
+  until (terminal) or (xstr<>'');
+  if not terminal then
+    begin
+      chain(xstr);
+      Chain('*OFFLOAD');
+      sc_clr_screen;
+    end
+  else chain(param.Quitstr);
+end.
+
+
+
+

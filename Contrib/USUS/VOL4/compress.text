@@ -1,0 +1,136 @@
+program compress;
+
+{ This program will compress a text file by removing all trailing blanks and
+  recomputing the indent codes  - T. S. Beck - 8/Jun/80 }
+
+const
+  CR = 13;
+  DLE = 16;
+  forever = false;
+  NUL = 0;
+  pagemax = 1023;
+
+type
+  name = string[24];
+
+var
+  i,
+  count,
+  dummy,
+  first,
+  index,
+  last     : integer;
+  inname,
+  outname  : name;
+  line     : string[255];
+  page     : packed array[0..pagemax] of char;
+  infile,
+  outfile  : file;
+  intext   : text;
+
+
+  procedure writepage;
+  VAR i: integer;
+      ch: char;
+  begin
+    ch := CHR (NUL);
+    for i := index to pagemax do page [i] := ch;
+    dummy := blockwrite (outfile,page,2);
+    write('.');
+    index := 0
+  end; { writepage }
+
+
+  procedure forceuppercase(var filename : name);
+
+  var
+    i : integer;
+
+  begin
+    for i := 1 to count do
+      if filename[i] in ['a'..'z'] then
+        filename[i] := chr(ord(filename[i]) - 32)
+  end; { forceuppercase }
+
+
+begin { compress }
+  writeln('Type <RETURN> to quit.');
+  repeat
+    repeat
+      write('Input file? ');
+      readln(inname);
+      count := length(inname);
+      if count = 0 then exit(compress);
+      forceuppercase(inname);
+      if (pos('.TEXT',inname) = 0) and (inname[count] <> '.') and
+        (count < 19) then inname := concat(inname,'.TEXT');
+      {$i-}
+      reset(infile,inname)
+      {$i+}
+    until ioresult = 0;
+    repeat
+      write('Output file? ');
+      readln(outname);
+      count := length(outname);
+      if count = 0 then exit(compress);
+      if (count = 1) and (outname[1] = '$') then outname := inname;
+      forceuppercase(outname);
+      if (pos('.TEXT',outname) = 0) and (outname[count] <> '.') and
+        (count < 19) then outname := concat(outname,'.TEXT');
+      {$i-}
+      rewrite(outfile,outname)
+      {$i+}
+    until ioresult = 0;
+    dummy := blockread(infile,page,2);
+    dummy := blockwrite(outfile,page,2);
+    close(infile);
+    reset(intext,inname);
+    index := 0;
+    repeat
+      readln(intext,line);
+      count := length(line);
+      if count > 0 then
+        begin
+          first := scan(count,<> ' ',line[1]) + 1;
+          if first > 223 then first := 223;
+          last := count + scan(-count,<> ' ',line[count]);
+          if first > last then
+            count := 0
+          else
+            if first <= 2 then
+              count := last
+            else
+              count := last - first + 3
+        end;
+      if (index + count) >= pagemax then writepage;
+      {
+      if count > 0 then
+        if first <= 2 then moveleft(line[1],page[index],count)
+        else
+          begin
+            page[index] := chr(DLE);
+            page[index + 1] := chr(first + 31);
+            moveleft(line[first],page[index + 2],count - 2)
+          end;
+      }
+      if count > 0 then
+        if first <= 2 
+          then for i := 1 to count do page [index + i-1] := line[i]
+          else begin
+            page[index] := chr(DLE);
+            page[index + 1] := chr(first + 31);
+            for i := 0 to count - 3 do 
+              page [index + i + 2] := line [i + first];
+          end;
+      index := index + count;
+      page[index] := chr(CR);
+      index := index + 1
+    until eof(intext);
+    writepage;
+    close(intext);
+    close(outfile,lock);
+    writeln
+  until forever
+end.
+
+      

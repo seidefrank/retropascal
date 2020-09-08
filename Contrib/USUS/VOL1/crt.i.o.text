@@ -1,0 +1,218 @@
+UNIT CRTINPUT;
+  INTERFACE
+  
+    VAR
+        Infilename : string [30];
+        Typed: string;
+        Infile: text;
+    
+    PROCEDURE ClearScreen;
+    PROCEDURE GetString (x,y, maxlength: integer);
+    PROCEDURE GetFile;
+    PROCEDURE GetNo (x,y, LowerLimit, UpperLimit: integer;
+                 VAR DesiredNo: integer);
+    PROCEDURE GetBoolean (x, y: integer;
+                      VAR DesiredValue: boolean);
+    
+    
+IMPLEMENTATION
+
+PROCEDURE ClearScreen (*allpurpose, hardware independent*);
+VAR Fillcr: ARRAY [1..24] OF char;
+    i: integer;
+BEGIN
+  Gotoxy (0,23);
+  FOR i := 1 TO 24 DO Fillcr [i] := CHR (13);
+  UNITWRITE (1, Fillcr, 24);
+  Gotoxy (0,0)
+END;
+
+
+PROCEDURE GetString;
+VAR j, k: integer;
+    Gotstring: boolean;
+    bell: char;
+BEGIN
+  bell := CHR (7);
+  Gotstring := false;
+  REPEAT
+    Gotoxy (x,y);
+    FOR j := 1 TO maxlength DO write ('.');
+    Gotoxy (x,y);
+    Readln (typed);
+    k := length (typed);
+    IF k > maxlength
+      THEN BEGIN
+        Gotoxy (x,y);
+        Write (' ':k);
+        Gotoxy (0,23);
+        Write (bell, 'You have entered too many characters in this line.  ',
+               'Please try again.')
+      END
+      ELSE Gotstring := true
+  UNTIL Gotstring;
+  Gotoxy ((x+k),y);
+  Write (' ':(maxlength - k));
+  Gotoxy (2,22);
+  Write (' ':70);
+  Gotoxy (0,73);
+  Write (' ':70)
+END (*GetString*);
+
+
+PROCEDURE GetFile;
+
+VAR gotfn: boolean;
+    bell, response: char;
+  
+BEGIN
+  Bell := CHR (7);
+  REPEAT
+    Gotoxy (11,20);
+    Write ('Please type the name of the file you wish to print.');
+    Gotoxy (15,21);
+    Write ('-->      ');
+    Gotoxy (11,22);
+    Write ('  (Or just press the <return> key if you wish to quit.)');
+    Typed := '';
+    GetString (20,21, 23);
+    IF LENGTH (typed) = 0
+      THEN BEGIN
+        Gotoxy (11,23);
+        Write ('Would you prefer to quit this program (Y/N)?     ');
+        Read (Keyboard, response);
+        Gotoxy (11,23);
+        Write (' ':47);
+        IF (Response = 'Y') OR (Response = 'y')
+          THEN EXIT (Program)
+      END
+      ELSE BEGIN
+        Infilename := Typed;
+        (*$I-*)
+        Reset (Infile, Infilename);
+        IF IORESULT > 0 THEN Reset (Infile, CONCAT (Infilename, '.TEXT'));
+        (*$I+*)
+        Gotfn := IORESULT = 0;
+        IF NOT Gotfn
+          THEN BEGIN
+            Gotoxy (0,23);
+            Write (bell, '<<**** ERROR ****>>   ',
+                   'Wrong volume or file name.  Type <space> to continue.');
+            REPEAT Read (Keyboard, Response) UNTIL Response = ' ';
+            Gotoxy (0,23);
+            Write (' ':78)
+          END
+      END(*else*)
+  UNTIL Gotfn;
+END (*GetFile*);
+  
+  
+PROCEDURE GetInteger (x,y, LowerLimit, UpperLimit: Integer
+                      VAR DesiredNo: Integer);
+VAR ch, cr, bell, escape, Backspace: char;
+    TypedEscape, Gotit: boolean;
+    NumberEntered: integer;
+BEGIN
+  Backspace := CHR (8);
+  Bell := CHR (7);
+  cr := CHR (13);
+  escape := CHR (27);
+  TypedEscape := false;
+  Gotit := false;
+  WHILE NOT Gotit OR TypedEscape DO
+    BEGIN
+      NumberEntered := 0;
+      REPEAT 
+        READ (KEYBOARD, ch);
+        IF ch = cr THEN ch := ' ';
+        IF (ch IN ['0'..'9']) AND (NumberEntered*10 <= Maxint)
+          THEN NumberEntered := NumberEntered*10 + ORD (ch) - ORD ('0');
+        IF ch = BackSpace
+          THEN BEGIN  (* dump a digit and keep going *)
+            ch := '0'     (* stay in this loop *);
+            NumberEntered := NumberEntered DIV 10
+          END;
+        Gotoxy (x,y);
+        Write (NumberEntered:3)
+      UNTIL (NumberEntered >= UpperLimit) OR NOT (ch IN ['0'..'9']);
+      IF ch = escape 
+        THEN BEGIN
+          Gotoxy (0,23);
+          Write (' ':40);
+          EXIT (Getinteger)
+        END;
+      IF (NumberEntered = 0) AND NOT (ch IN [' ', '0'..'9'])
+        THEN BEGIN
+          Gotoxy (0,23);
+          Write (' ':78);
+          Gotoxy (0,23);
+          Write (bell, 'Please enter a NUMBER between ', LowerLimit, ' and ',
+                 UpperLimit);
+          Gotoxy (x,y);
+          Write ('   ');
+          Gotoxy (x,y)
+        END
+        ELSE IF NumberEntered < LowerLimit
+            THEN BEGIN
+              Gotoxy (0,23);
+              WRITE (' ':40);
+              Gotoxy (0,23);
+              WRITE (bell, 'Please type a number greater than ', 
+                     LowerLimit-1, ': ');
+              Gotoxy (x,y)
+            END 
+            ELSE IF NumberEntered > UpperLimit
+              THEN BEGIN
+                Gotoxy (0,23);
+                WRITE (' ':40);
+                Gotoxy (0,23);
+                WRITE (bell, 'Please type a number less than ',
+                       UpperLimit+1, ': ');
+                Gotoxy (x,y)
+              END ELSE Gotit := true
+      END; (*while*)
+  Gotoxy (0,23);
+  Write (' ':40);
+  DesiredNo := NumberEntered
+END; (*GetInteger*)
+
+
+PROCEDURE GetNo;
+BEGIN
+  Gotoxy (2,22);
+  Write ('Type the desired number, then a space.  To leave unchanged,');
+  Write (' type <escape>.');
+  Gotoxy (x+3,y);
+  GetInteger (x,y, lowerlimit, upperlimit, DesiredNo);
+  Gotoxy (2,22);
+  Write (' ':76);
+  Gotoxy (x,y);
+  Write (DesiredNo:3)
+END;
+
+PROCEDURE GetBoolean;
+VAR ch, escape: char;
+BEGIN
+  escape := CHR (27);
+  Gotoxy (2,22);
+  ch := '0';
+  Write ('Type "Y" for yes, or "N" for no.', ' ':40);
+  Gotoxy (x,y);
+  WHILE NOT (ch IN ['Y', 'y', 'N', 'n', escape]) DO Read (keyboard, ch);
+  CASE ch OF
+    'Y', 'y': BEGIN
+                Write ('YES');
+                DesiredValue := true
+              END;
+    'N', 'n': BEGIN
+                Write (' no');
+                DesiredValue := false
+              END
+  END;
+  Gotoxy (2,22);
+  Write (' ':32)
+END;
+
+
+END.
+

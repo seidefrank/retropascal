@@ -1,0 +1,324 @@
+{**********************************************}
+{					       }
+{    UCSD PASCAL FILEHANDLER		       }
+{					       }
+{    RELEASE LEVEL:  F.5   SEPTEMBER, 1978     }
+{					       }
+{					       }
+{    WRITTEN BY ROGER T. SUMNER		       }
+{	    WINTER, 1977		       }
+{    MODIFIED AND UPDATED BY STEVEN S THOMSON  }
+{	    SEPTEMBER, 1978		       }
+{					       }
+{    INSTITUTE FOR INFORMATION SYSTEMS	       }
+{    UC SAN DIEGO, LA JOLLA, CA		       }
+{					       }
+{    KENNETH L. BOWLES, DIRECTOR	       }
+{					       }
+{					       }
+{**********************************************}
+
+
+{     Copyright (C) 1978 Regents of the University of California.     }
+{     Permission to copy or distribute this software or documen-      }
+{     tation in hard or soft copy granted only by written license     }
+{     obtained from the Institute for Information Systems.	      }
+
+
+SEGMENT PROCEDURE FILEHANDLER(ZZZZZ,ZZZZZZ : INTEGER  
+CONST SHSTRLENG = 25; MAXTITLE = 40;
+
+TYPE
+  ERRANGE = 0..100;	    { Range of error messages }
+  ERRORS = SET OF ERRANGE;  { Set of error message numbers. Used in scaninput }
+  CHECKS = (BADTITLE, NOVOL, BADDIR, BADFILE, UNBLKDVOL, OKDIR, OKFILE);
+			    { Possible states of a file or volume name }
+  
+  CHCKS = SET OF CHECKS;    { Set of states that a file can be in. }
+			    { Used in scaninput }
+  
+  LONGSTRING = STRING[255]; { Longest string available }
+  SHORTSTRING = STRING[SHSTRLENG]; { For handling volume & file names }
+  STRNG = STRING[MAXTITLE]; { For handling concatted volume & filenames }
+
+VAR
+  GS : STRING;	    { General purpose string. Used primarily for prompt lines }
+  CH : CHAR;	    { General purpose character }
+  GDIR : DIRP;	    { Global pointer to the directory }
+  GINX : DIRRANGE;  { 0..77 }
+  GKIND : FILEKIND; { UNTYPEDFILE, XDSKFILE, CODEFILE, TEXTFILE }
+		    { INFOFILE,DATAFILE, GRAFFILE, FOTOFILE }
+  
+  SAVEUNIT, GUNIT : UNITNUM;  { 0..12 }
+  GBUF: WINDOWP;    { Pointer to buffer window }
+  FOUND, QUESTION, WILDCARD, { For wildcard information only! }
+  OK, DONE,	    { General purpose booleans }
+  BADCOMMAND,	    { Check for incorrect input to general prompt line }
+  SYMSAVED, CODESAVED : BOOLEAN; { Workfile information }
+  VOLNAME1, VOLNAME2, { Volume names for source and dest. respectively } 
+  SAVEGVID, SAVEVID,  { Used in searchdir and savework to save VID's }
+  GVID,		      { General purpose VID }
+  GVID2 : VID;	      { Unmodified VID. Used in savework }
+  GBUFBLKS,	    { Keeps track of number of blocks available in buffer }
+  X, I : INTEGER;   { General purpose integers }
+  STRING1, STRING2, { Wildcard scan strings source file }
+  STRING3, STRING4, { Wildcard replacement strings destination }
+  NEWSTRING,	    { String left after removing scan strings from filename }
+  SAVEGTID,	    { Used in savework to save GTID }
+  GTID : TID;	    { General purpose TID }
+  FROMWHERE, TOWHERE : STRNG; { Source $ destination strings respectively }
+  FILENAM1, FILENAM2 : SHORTSTRING; { Source & dest. filenames respectively. }
+				    { None wildcard only }
+  INSTRING : LONGSTRING; { For input off of main prompt line }
+  GFIB : FIB;	    { General purpose FIB }
+  MONTHS : ARRAY [0..15] OF STRING[3]; { Holds abbreviations for valid months }
+
+
+  PROCEDURE FILERINIT;
+  
+  TYPE 
+    ABLOCK = PACKED ARRAY [1..FBLKSIZE] OF CHAR;
+  
+  VAR
+    ONEBLOCK: ^ABLOCK;
+  
+  BEGIN { FILERINIT }
+	   { Initializes the months }
+    
+    MONTHS[ 0] := '???'; MONTHS[ 1] := 'Jan';
+    MONTHS[ 2] := 'Feb'; MONTHS[ 3] := 'Mar';
+    MONTHS[ 4] := 'Apr'; MONTHS[ 5] := 'May';
+    MONTHS[ 6] := 'Jun'; MONTHS[ 7] := 'Jul';
+    MONTHS[ 8] := 'Aug'; MONTHS[ 9] := 'Sep';
+    MONTHS[10] := 'Oct'; MONTHS[11] := 'Nov';
+    MONTHS[12] := 'Dec'; MONTHS[13] := '???';
+    MONTHS[14] := '???'; MONTHS[15] := '???';
+    
+    { If an updated file exists in the workfile and it hasn't been saved     }
+    { yet, then set symsaved and codesaved to false if their respective files }
+    { have not been saved. Otherwise, set symsaved and codesaved to false    }
+    
+    WITH USERINFO DO
+      BEGIN
+	IF GOTSYM THEN
+	  SYMSAVED := SYMTID <> 'SYSTEM.WRK.TEXT'
+	ELSE
+	  SYMSAVED := TRUE;
+	IF GOTCODE THEN
+	  CODESAVED := CODETID <> 'SYSTEM.WRK.CODE'
+	ELSE
+	  CODESAVED := TRUE
+      END;
+    
+    FINIT(GFIB,NIL,-1);
+    MARK(GBUF);
+    
+    { Set GBUFBLKS equal to the number of blocks available in the buffer }
+    
+    GBUFBLKS := 0;
+    I := SIZEOF(DIRECTORY)+SIZEOF(FIB)+2048; { QUITSIZE }
+    REPEAT
+      NEW(ONEBLOCK);
+      GBUFBLKS := GBUFBLKS+1;
+      X := ORD(SYSCOM^.LASTMP)-ORD(ONEBLOCK)-FBLKSIZE { GAPSIZE }
+    UNTIL ((X > 0) AND (X < I)) OR (GBUFBLKS = 63) {PREVENT INTEGER OFLOW}
+  END {FILERINIT} ;
+   
+   
+  PROCEDURE CLEAR;
+
+  BEGIN { CLEAR }
+    GVID := '';
+    GVID2 := '';
+    GTID := '';
+    STRING1 := '';
+    STRING2 := '';
+    STRING3 := '';
+    STRING4 := '';	  { Used to clear selected global strings & booleans }
+    VOLNAME1 := '';	  { between commands in the outer block of the filer }
+    VOLNAME2 := '';	  { and under error conditions }
+    FILENAM1 := '';
+    FILENAM2 := '';
+    TOWHERE := '';
+    FROMWHERE := '';
+    WILDCARD := FALSE;
+    QUESTION := FALSE;
+  END { CLEAR };
+   
+ 
+  PROCEDURE CLWRITELN(STR : STRING);
+  
+  { Commonly used format for output }
+  
+  BEGIN { CLWRITELNO }
+    WRITE(OUTPUT,STR);
+    CLEARLINE;
+    WRITELN(OUTPUT)
+  END { CLWRITELNO };
+ 
+ 
+  PROCEDURE MESSAGES(NUMBER : ERRANGE);
+  
+    PROCEDURE FILERERRORS;
+    
+    BEGIN { FILERERRORS }
+      CASE NUMBER OF
+	1:  GS := 'Parity (CRC) error';	 { IBADBLOCK  }
+	2:  GS := 'Bad unit number';	 { IBADUNIT   }	
+        3:  GS := 'Bad IO operation';	 { IBADMODE   }
+	4:  GS := 'Timeout error';	 { ITIMEOUT   }
+	5:  GS := 'Vol went off-line';	 { ILOSTUNIT  }
+	6:  GS := 'File lost in dir';	 { ILOSTFILE  }	  { I/O error messages }
+	7:  GS := 'Bad file name';	 { IBADTITLE  }
+	8:  GS := 'No room on vol';	 { INOROOM    }
+	9:  GS := 'No such vol on-line'; { INOUNIT    }
+       10:  GS := 'File not found';	 { INOFILE    }
+       11:  GS := 'Dup dir entry';	 { IDUPFILE   }
+       12:  GS := 'Filer error!!'	 { INOTCLOSED }
+      END
+    END; { FILERERRORS }
+   
+       
+    PROCEDURE EXPECTED;
+    
+    BEGIN { EXPECTED }
+      { Messages giving information as to the type }
+      { of file that was expected on input  }
+      
+      CASE NUMBER OF
+	79,80 : GS := 'Blkd volume';
+	78,81 : GS := 'Unblkd volume';
+	82,83,84 :
+	     BEGIN
+	       IF NUMBER <> 82 THEN
+		 BEGIN
+		   GS := ' or ';
+		   IF NUMBER = 83 THEN
+		     GS := CONCAT(GS,'un');
+		   GS := CONCAT(GS,'blkd vol')
+		 END;
+	       GS := CONCAT('File name',GS)
+	     END;
+	85 : GS := 'File or vol name';
+	86 : GS := 'Volume name'
+      END;
+      IF NOT (NUMBER IN [78,79]) THEN
+	GS := CONCAT(GS,' expected')
+    END; { EXPECTED }
+   
+  BEGIN { MESSAGES }   { General messages & error messages }
+    GS := '';
+    IF NUMBER <> 0 THEN
+      CASE NUMBER OF
+	1,2,3,4,5,6,7,8,9,10,11,12 : FILERERRORS;
+	40    :	   GS := 'Wildcard not allowed';
+	41,42 :	   BEGIN
+		     IF NUMBER = 42 THEN
+		       GS := 'not ';
+		     GS := CONCAT('First vol/file name was ',GS,'a wildcard')
+		   END;
+	50,51 :
+		   BEGIN
+		     GS := 'file loaded';
+		     IF NUMBER = 51 THEN
+		       GS := CONCAT('No ',GS)
+		    END;
+	52,53,54 :
+		   BEGIN
+		     CASE NUMBER OF
+		       52	: GS := 'file';
+		       53,54	: GS := 'volume'
+		     END;
+		     GS := CONCAT('Illegal ',GS,' name');
+		     IF NUMBER <> 54 THEN
+		       GS := CONCAT(GS,' <too long>')
+		   END;
+	60,61 :	   BEGIN
+		     CASE NUMBER OF
+		       60 :	 GS := 'Vol to file name';
+		       61 :	 GS := 'File to vol name'
+		     END;
+		     GS := CONCAT('Illegal change <',GS,'>')
+		   END;
+	64 :	   GS := ' file name ';
+	65 :	   GS := ' scan string ';
+	66 :	   GS := ' volume name ';
+	67 :	   GS := '- Illegal format';
+	68 :	   GS := ' - char. max >';
+	69 :	   GS := 'No directory on volume';
+	70 :	   GS := 'File found';
+	72 :	   GS := 'Volume already on line';
+	73 :	   GS := 'Output file full';
+	75 :	   GS := 'Workfile already saved';
+	76 :	   GS := 'No workfile to save';
+	78,79,80,81,82,83,84,85,86 :  EXPECTED;
+	90,91 :	   BEGIN
+		     IF NUMBER = 90 THEN
+		       GS := 'Text'
+		     ELSE
+		       GS := 'Code';
+		     GS := CONCAT(GS,' file lost ')
+		   END;
+	100 :	   CLWRITELN(
+		     'Dangerous! Suggest using ? on wildcards to same vol')
+      END;
+    WRITE(OUTPUT,GS);
+    CLEARLINE
+  END; { MESSAGES }
+      
+      
+  FUNCTION CHECKRSLT(RSLT : ERRANGE) : BOOLEAN;
+  
+  { Returns as true if the result of the I/O operation passed to it was }
+  { equal to zero. Otherwise, prints error message and returns as false }
+  
+  BEGIN
+    CHECKRSLT := RSLT = 0;
+    IF RSLT <> 0 THEN
+      MESSAGES(RSLT)
+  END;
+  
+  
+  PROCEDURE TOUPPER(VAR STRG : LONGSTRING; START,STOP : INTEGER);
+  
+  VAR
+    I : INTEGER;
+    
+  { Changes STRG [START] through STRG [STOP] into uppercase letters }
+  
+  BEGIN { TOUPPER }
+    FOR I := START TO STOP DO
+      IF ( STRG[I] >= 'a' ) AND ( STRG[I] <= 'z' ) THEN
+	STRG[I] := CHR( ORD( STRG[I] ) - ORD( 'a' ) + ORD ('A' ))
+  END { TOUPPER };
+  
+      
+  PROCEDURE EATSPACES(VAR STRG : LONGSTRING);
+  
+  VAR
+    I : INTEGER;
+    
+  { Removes unprintable characters & blanks from STRG }
+  
+  BEGIN {EATSPACES}
+    I := 1;
+    WHILE I <= LENGTH(STRG) DO
+      IF STRG[I] > ' ' THEN
+	I := I + 1
+      ELSE
+	DELETE(STRG,I,1)
+  END {EATSPACES} ;
+ 
+ 
+  FUNCTION NGETCHAR(TEMP : BOOLEAN) : CHAR;
+  
+  { Very frequent structure for calling getchar }
+  
+  BEGIN
+    CLEARLINE;
+    NGETCHAR := GETCHAR(TEMP);
+    IF NOT EOLN(INPUT) THEN
+      WRITELN(OUTPUT);
+  END;
+
+                                                                                                                                                                                                                                                                                                                                                                                

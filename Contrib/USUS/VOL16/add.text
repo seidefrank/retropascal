@@ -1,0 +1,110 @@
+{       
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+}
+
+{ADD.TEXT}                                   
+SEGMENT PROCEDURE Add;
+ VAR ininv: BOOLEAN; 
+     irecnum : INTEGER;
+     ch : CHAR;
+ 
+ PROCEDURE Addinvrec; 
+  BEGIN
+   WRITELN;
+   WRITELN('part #',arcfile^.partnum,' was not found.'); 
+   WRITE('do you wish to add an inventory record? ');
+   READ(ch);
+   IF NOT(ch IN ['Y','y']) THEN EXIT(Add);
+   
+   Clear; 
+   GOTOXY(0,10); WRITELN('part number ',arcfile^.partnum);
+   GOTOXY(0,0);
+   WRITE('enter the description --->'); 
+   Rdata(26,0,24,invfile^.descrip);
+   GOTOXY(0,1);
+   WRITE('enter the vendor part number --->');
+   Rdata(33,1,16,invfile^.vpart);
+   GOTOXY(0,2);  
+   WRITE('what are the units of distribution --->');
+   Rdata(39,2,5,invfile^.units); 
+   invfile^.qty := 0;
+   invfile^.partnum := arcfile^.partnum;
+   nirecs := nirecs + 1;
+   SEEK(invfile,nirecs);  
+   PUT(invfile);
+   irecnum := nirecs;
+   Wnirecs;
+  END; 
+  
+  PROCEDURE Getqtydateandcode;  
+   BEGIN
+    Clear;
+    Clrline(0,7);  
+    WRITELN(invfile^.descrip);
+    WRITELN;
+    WRITELN('part # : ',arcfile^.partnum); 
+    WRITELN('present qty: ',invfile^.qty:8:2,' ',invfile^.units);    
+    WRITELN;
+    WRITE('enter qty in transaction ---->');           
+    Getreal(0,0,arcfile^.qty);  
+    Clrline(0,16);
+    WRITE('enter the transaction code --->'); 
+    Rdata(31,16,10,arcfile^.code);
+    REPEAT
+     Clrline(0,17);WRITE('enter the transaction date MMDDYY --->');  
+     Rdata(38,17,6,arcfile^.date);
+    UNTIL Chkdate(arcfile^.date);
+   END; 
+   
+  PROCEDURE Putrecs;
+   BEGIN
+    narecs := narecs + 1;
+    ntrans := ntrans + 1;
+    Str(ntrans,arcfile^.trans);
+    SEEK(arcfile,narecs);
+    PUT(arcfile);
+    SEEK(invfile,irecnum);
+    PUT(invfile);
+    Wnarecs; 
+   END;
+ 
+ BEGIN  
+  Clear;
+  WRITE('enter part # of items to be added to inventory --->');  
+  Rdata(51,0,16,arcfile^.partnum);  
+  ininv := FALSE; 
+  FOR temp := 1 TO nirecs DO
+   BEGIN
+    SEEK(invfile,temp);
+    GET(invfile);
+    IF invfile^.partnum = arcfile^.partnum THEN  
+     BEGIN
+      irecnum := temp;
+      ininv := TRUE;
+      temp := nirecs; 
+     END;
+   END;
+  IF NOT ininv THEN Addinvrec;
+  Getqtydateandcode;  
+  invfile^.ldate := arcfile^.date;  
+  WRITELN;
+  WRITELN('old qty =',invfile^.qty:8:2,' ',invfile^.units,'    ',   
+          'new qty =',(invfile^.qty+arcfile^.qty):8:2,' ',invfile^.units);    
+  invfile^.qty := invfile^.qty + arcfile^.qty;
+  WRITELN;
+  WRITE('O.K.? '); 
+  READ(ch); 
+  IF NOT (ch IN ['Y','y']) THEN EXIT(Add); 
+  Putrecs;
+ END;
+

@@ -1,0 +1,84 @@
+PROGRAM GETCPM;
+(* COPYRIGHT 1979 BY BARRY A. COLE *)
+(*  GET SOURCE FILE FROM CPM DISK(#5)
+      AND PUT ON PASCAL DISK(#4) *)
+  CONST SPACES='            ';
+  VAR I,J,K,INDEX,NEXTEX,BIGP,BLANKS,BLOKNUM,ROOM,COL: INTEGER;
+      DISKBUF,BIGBUF: PACKED ARRAY[0..1023] OF CHAR;
+      NEWLINE: BOOLEAN; F:FILE; CPMTITLE,PASCTITLE: STRING[13];
+      EXTENTS: ARRAY[1..255] OF INTEGER;
+
+PROCEDURE RWCPM(XTENT,RWFLAG: INTEGER); EXTERNAL;
+procedure tack(value:integer);
+  var retcd: integer;
+  begin
+  bigbuf[bigp]:=chr(value); bigp:=bigp+1; col:=col+1;
+  if bigp=1024 then begin
+    write('P'); retcd:=blockwrite(f,bigbuf,2,bloknum);
+    bloknum:=bloknum+2; bigp:=0; end;
+  end;
+procedure putit(ind: integer);
+  begin
+  if ord(diskbuf[ind])<>0 then begin
+    extents[nextex]:=ord(diskbuf[ind]); nextex:=nextex+1; end;
+  end;
+PROCEDURE SEARCH;
+  VAR FOUND: BOOLEAN; K,BLOCK,I: INTEGER;
+  BEGIN
+  FOR BLOCK:=0 TO 1 DO BEGIN
+    RWCPM(BLOCK,0);
+    FOR I:=0 TO 31 DO BEGIN FOUND:=TRUE;
+      FOR J:=1 TO 11 DO 
+        IF DISKBUF[32*I+J]<>CPMTITLE[J] THEN FOUND:=FALSE;
+      IF FOUND THEN FOR K:=32*I+16 TO 32*I+31 DO PUTIT(K);
+      END;
+    END;
+  END; {eop search}
+procedure process;
+  var i,tabcol: integer;
+  begin
+  for i:=1 to nextex-1 do
+    begin
+    WRITE('C'); RWCPM(extents[i],0);
+    FOR J:=0 TO 1023 DO BEGIN
+      K:=ORD(DISKBUF[J]);
+      IF K=26 THEN EXIT(PROCESS); {EOF FOUND}
+      IF (K<>32) AND NEWLINE THEN BEGIN 
+        TACK(16); TACK(BLANKS); COL:=BLANKS-32;
+        BLANKS:=32; NEWLINE:=FALSE; END;
+      IF (K=32) AND NEWLINE THEN BLANKS:=BLANKS+1
+        ELSE IF K>=32 THEN TACK(K);
+      IF K=9 THEN FOR TABCOL:=COL MOD 8 TO 7 DO TACK(32); {TAB}
+      IF K=13 THEN BEGIN {CR}
+        TACK(13); NEWLINE:=TRUE; BLANKS:=32;
+        ROOM:=1024-(BIGP MOD 1024);
+        IF ROOM<82 THEN REPEAT BEGIN
+          TACK(0); ROOM:=ROOM-1; END UNTIL ROOM=0;
+        END;
+      END;
+    end;
+  end; {end of process }
+
+  BEGIN
+  REPEAT BEGIN
+   WRITELN('PLACE CP/M DISK IN DRIVE B');
+   WRITE('FILE NAME? '); READLN(CPMTITLE); I:=POS('.',CPMTITLE);
+   END UNTIL (I>0) AND (I<10);
+  PASCTITLE:=CONCAT(COPY(CPMTITLE,1,I),'TEXT');
+  CPMTITLE:=CONCAT(COPY(CPMTITLE,1,I-1),
+  COPY(SPACES,1,9-I),COPY(CPMTITLE,I+1,3));
+  WRITELN('SEARCHING FOR "',CPMTITLE,'"');
+  BLANKS:=32; NEWLINE:=TRUE; BIGP:=0; NEXTEX:=1; SEARCH;
+  IF NEXTEX=1 THEN WRITELN('FILE NOT FOUND')
+  ELSE BEGIN
+    WRITELN('FILE IS ',NEXTEX-1,' EXTENT(S) LONG');
+    REWRITE(F,PASCTITLE); BLOKNUM:=0;
+    FOR I:=0 TO 1023 DO IF I=122 THEN TACK(63)
+      ELSE IF I=124 THEN TACK(5) ELSE TACK(0);
+    PROCESS;
+    FOR I:=BIGP TO 1024 DO TACK(0); {PUT OUT LAST SECTION}
+    CLOSE(F,LOCK); WRITELN;
+    WRITELN(BLOKNUM,' BLOCKS HAVE BEEN WRITTEN TO ',PASCTITLE);
+    END;
+  END.
+

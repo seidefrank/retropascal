@@ -1,0 +1,140 @@
+PROGRAM Format;
+
+CONST  AlfaLeng = 10;
+       MinChar = 0;
+       MaxChar = 127;   (* minimum/max char values *)
+       LastPascSymbol = 31;
+       (* if needed, change the values on the following line TOGETHER *)
+       BufferSize = 160; BuffSzP1 = 161; BuffSzM1 = 159; BuffSzDiv10 = 16;
+       
+       MaxReadRightCol = 999;
+       MaxWriteRightCon = 72;
+       
+TYPE  Alfa = PACKED ARRAY [1..AlfaLeng] OF char;
+      CharSet = SET OF char;
+      StatmntTypes = (ForWithWhileStatement, RepeatStatement,
+                      IfStatement, CaseStatement, CompoundStatement,
+                      OtherStatement);
+      Symbols = (ProgSymbol, UnitSymbol, Comment, BeginSymbol, (* 2 new JLG*)
+                 EndSymbol, SemiColon, ConstSymbol, TypeSymbol,
+                 RecordSymbol, ColonSymbol, EqualSymbol,
+                 PeriodSymbol, Range, CaseSymbol, OtherSymbol,
+                 IfSymbol, ThenSymbol, ElseSymbol, DoSymbol,
+                 OfSymbol, ForSymbol, WithSymbol, WhileSymbol,
+                 RepeatSymbol, UntilSymbol, Identifier,
+                 VarSymbol, ProcSymbol, FuncSymbol, SegmntSymbol, 
+                 LeftBracket, RightBracket, CommaSymbol,
+                 LabelSymbol, LeftParenth, RightParenth, AlphaOperator);
+      Width = 0..BufferSize;
+      Margins = -100..BufferSize;
+      SymbolSet = SET OF Symbols;
+      OptionSize = -99..99;
+      CommentText = ARRAY [1..BuffSzDiv10] OF Alfa;
+      SymbolString = ARRAY [Width] OF char; (*the only UNPACKED char array*)
+      
+VAR  ChIsEOL, NextChIsEOL: Boolean;
+     I, J: Integer (*loop counters *);
+     Character: char;
+     ReadColumn, ReadRightCol: 0..1000;
+     Length, Oldest: Width;
+     
+     OutputCol, WriteColumn, LeftMargin,
+     ActualLeftMargin, ReadLeftCol, WriteLeftCol, WriteRightCol : Margins;
+     
+     DisplayIsOn, ProcNamesWanted, EndCommentsWanted,
+     PackerIsOff, SavedBunch, BunchWanted, NoFormatting: boolean;
+     
+     LineNumber, Increment: integer;
+     
+     IndentIndex, LongLineIndent, SymbolGap,
+     DeclarAlignment, StatmtSeparation, ProcSeparation: OptionSize;
+     
+     ThisIsAUnit, SymbolIsNumber, LastProgPartWasBody, LastSymWasRange,  (*JLG*)
+       InIncludeFile, ReadIncludeFiles: Boolean;
+     LastSymbol, SymbolName: Symbols;
+     CharCount: integer;
+     AlphaSymbols, EndLabel, EndConst, EndType, EndVar: SymbolSet;
+     Symbol: SymbolString;
+     Digits, Letters, LettersAndDigits: CharSet;
+     Main: CommentText;
+     MainNmLength: Width;
+     CommentDelimiter: (Brace, ParenAsterisk);                      (*JLG*)
+     Blanks, Zeroes: Alfa;
+     UnWritten: ARRAY [Width] OF RECORD
+                                   Ch: char;
+                                   ChIsEndLine: boolean;
+                                   IndentAfterEOL: margins
+                                 END;
+     PascalSymbol: ARRAY [1..LastPascSymbol] OF Alfa;
+     PascSymbolName: ARRAY [1..LastPascSymbol] OF Symbols;
+     NameOf: ARRAY [Char] OF Symbols;
+     StatementTypeOf: ARRAY [Symbols] OF StatmntTypes;
+     Infile, IncludeFile, Outfile: text;
+     
+     
+PROCEDURE Const1Init;
+
+BEGIN
+  Main [1] := 'MAIN      ';  MainNmLength := 4;
+  Blanks := '          ';  Zeroes := '0000000000';
+  FOR I := 0 TO BuffSzM1 DO
+    WITH UnWritten [I] DO
+      BEGIN ch := 'A'; ChIsEndLine := false; IndentAfterEOL := 0
+      END;
+  FOR Character := Chr (MinChar) TO chr (MaxChar) DO
+    NameOf [Character] := OtherSymbol;
+  Character := ' '; NameOf ['('] := LeftParenth;
+  NameOf [')'] := RightParenth;  NameOf ['='] := EqualSymbol;
+  NameOf [','] := CommaSymbol;   NameOf ['.'] := PeriodSymbol;
+  NameOf ['['] := LeftBracket;   NameOf [']'] := RightBracket;
+  NameOf [':'] := ColonSymbol;   NameOf ['<'] := EqualSymbol;
+  NameOf ['>'] := EqualSymbol;   NameOf [';'] := Semicolon;
+  PascalSymbol [ 1] := 'PROGRAM   ';  PascalSymbol [ 2] := 'BEGIN     ';
+  PascalSymbol [ 3] := 'END       ';  PascalSymbol [ 4] := 'CONST     ';
+  PascalSymbol [ 5] := 'TYPE      ';  PascalSymbol [ 6] := 'VAR       ';
+  PascalSymbol [ 7] := 'RECORD    ';  PascalSymbol [ 8] := 'CASE      ';
+  PascalSymbol [ 9] := 'IF        ';  PascalSymbol [10] := 'THEN      ';
+  PascalSymbol [11] := 'ELSE      ';  PascalSymbol [12] := 'DO        ';
+  PascalSymbol [13] := 'OF        ';  PascalSymbol [14] := 'FOR       ';
+  PascalSymbol [15] := 'WHILE     ';  PascalSymbol [16] := 'WITH      ';
+  PascalSymbol [17] := 'REPEAT    ';  PascalSymbol [18] := 'UNTIL     ';
+  PascalSymbol [19] := 'PROCEDURE ';  PascalSymbol [20] := 'FUNCTION  ';
+  PascalSymbol [21] := 'LABEL     ';  PascalSymbol [22] := 'IN        ';
+  PascalSymbol [23] := 'MOD       ';  PascalSymbol [24] := 'DIV       ';
+  PascalSymbol [25] := 'AND       ';  PascalSymbol [26] := 'OR        ';
+  PascalSymbol [27] := 'NOT       ';  PascalSymbol [28] := 'ARRAY     ';
+  PascalSymbol [29] := 'UNIT      ';  PascalSymbol [30] := 'SEGMENT   ';  
+  PascalSymbol [31] := 'NOSYMBOL  '; (*JLG*)
+END;
+
+
+PROCEDURE ConstantsInitialization;
+BEGIN
+  Const1Init;
+  PascSymbolName [ 1] :=  ProgSymbol;
+  PascSymbolName [ 2] := BeginSymbol;  PascSymbolName [ 3] :=    EndSymbol;
+  PascSymbolName [ 4] := ConstSymbol;  PascSymbolName [ 5] :=   TypeSymbol;
+  PascSymbolName [ 6] :=   VarSymbol;  PascSymbolName [ 7] := RecordSymbol;
+  PascSymbolName [ 8] :=  CaseSymbol;  PascSymbolName [ 9] :=     IfSymbol;
+  PascSymbolName [10] :=  ThenSymbol;  PascSymbolName [11] :=   ElseSymbol;
+  PascSymbolName [12] :=    DoSymbol;  PascSymbolName [13] :=     OfSymbol;
+  PascSymbolName [14] :=   ForSymbol;  PascSymbolName [15] :=  WhileSymbol;
+  PascSymbolName [16] :=  WithSymbol;  PascSymbolName [17] := RepeatSymbol;
+  PascSymbolName [18] := UntilSymbol;  PascSymbolName [19] :=   ProcSymbol;
+  PascSymbolName [20] :=  FuncSymbol;  PascSymbolName [21] :=  LabelSymbol;
+  PascSymbolName [29] :=  UnitSymbol;  PascSymbolName [30] := SegmntSymbol;  
+  PascSymbolName [31] :=  Identifier;
+  FOR I := 22 TO 28 DO PascSymbolName [I] := AlphaOperator;     (*^JLG*)
+  FOR SymbolName := ProgSymbol TO AlphaOperator DO
+    StatementTypeOf [SymbolName] := OtherStatement;
+  StatementTypeOf [ BeginSymbol] :=     CompoundStatement;
+  StatementTypeOf [  CaseSymbol] :=         CaseStatement;
+  StatementTypeOf [    IfSymbol] :=           IfStatement;
+  StatementTypeOf [   ForSymbol] := ForWithWhileStatement;
+  StatementTypeOf [ WhileSymbol] := ForWithWhileStatement;
+  StatementTypeOf [  WithSymbol] := ForWithWhileStatement;
+  StatementTypeOf [RepeatSymbol] :=       RepeatStatement;
+END (*ConstantsInitialization*);
+
+
+

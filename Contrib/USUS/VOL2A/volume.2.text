@@ -1,0 +1,150 @@
+
+DOCUMENTATION OF THE FILES IN VOL 2: MACHINE-SPECIFIC PROGRAMS AND MISCELLANY
+
+     This disk contains the documentation of Volume 2B (normally CP/M format)
+in the files:
+
+VOL.2B.DOC.TEXT 
+DFOCO.DOC.TEXT.
+
+     A.  Terminal and printer drivers and documentation.  I have not tried any 
+of them.  The following files may help you if you have one of the listed
+devices:
+
+H19.GOTOXY      (Change the name to something.TEXT so you can edit & compile.)
+PE1100.GOTOXY   (ditto; terminal is Perkin Elmer Model 1100 [Fox]) 
+TVI912.GOTOXY   (ditto) 
+HAZEL.MISCINFO  (Don't forget to change the name to SYSTEM.MISCINFO.) 
+H19.MISCINFO    (ditto) 
+H19.DOC.TEXT 
+H14.DRIVER.TEXT (Lists files on the Heath printer at full speed.) 
+PUNCH.TAPE.TEXT (UCSD files to Heath tape.)
+READ.TAPE.TEXT  (Heath tape to UCSD.).
+
+
+     B.  512-byte disk sectoring routines for Z-80's running with a Western 
+Digital-based floppy controller.  This system is the one I use, and is the 
+reason for the separate CP/M volume.  See the Volume 2B documentation noted 
+above, and also:
+
+512.DOC.TEXT
+TIMING.DOC.TEXT
+CPMIO.DOC.TEXT.
+
+
+     C.  Interfacing CP/M with UCSD disks:
+     
+BOOTASM.TEXT
+MOVRAM.TEXT     (BOOTASM is written in Pascal and uses MOVRAM as an assembly-
+                 language EXTERNAL file.  You can use the UCSD assembler to 
+                 create CP/M-compatible software, then move it to 100H and 
+                 save it on a CP/M disk.)
+
+BOOTCPM.TEXT    (Before, you could boot up Pascal from CP/M.  Now, you can get
+                 at CP/M from Pascal, if you'd ever want to.)
+
+UCSD2CPM.MAC
+UCSD2CPM.COM    (These files are on the CP/M disk and allow you to transfer
+                 files from UCSD format to CP/M.  See VOL.2B.DOC.)
+                 
+     
+     D.  Two more modem drivers:
+
+PTP.TEXT
+PTP.DOC.TEXT
+DCHAYES.IO.TEXT
+ACOUSTIC.TEXT
+KBSTAT.TEXT     (These files form the Pascal Transfer Program, which will drive
+                 either a DC Hayes or an acoustic modem.  It looks well written,
+                 and I haven't tried it.  If you don't have an 8080, you should
+                 still have no problem getting this to run, in contrast to the
+                 work required with the modem drivers in Volume 1.  KBSTAT is
+                 yet another keyboard status routine; we MUST standardize these
+                 before I go nutz.  Let me know how you like this.)
+SMARTREMOT.TEXT (This claims to turn your machine into a smart terminal.  Again,
+                 I haven't tried it; let me know.)
+
+
+     E.  Miscellany:
+
+NEW.GOTOXY.TEXT (A good idea for an expanded GOTOXY that uses codes, e.g.,
+                 GOTOXY (-1, -1) to drive CRT functions like CLEARSCREEN.
+                 The point is that if we all agree on the codes, we can put
+                 the drivers in SYSTEM.PASCAL and forget about having to include
+                 them in our applications programs.)
+
+PRIME1.TEXT     (Two prime number generators written in Pascal.)
+PRIME2.TEXT
+
+HEXOUT.TEXT     (A Pascal program to write integers in hexadecimal format.)
+
+PERUSE.PG.TEXT  (This little thing allows you to peruse a textfile one page at
+                 a time on your CRT.  It needs work:  reading and writing 
+                 strings in UCSD Pascal is hopelessly slow, unless you utilize
+                 a blockread approach and hunt for ASCII carriage returns in
+                 the resulting character array on your own.  Also, the file 
+                 opening routine is crummy and could use something like GETFILE
+                 in my CRT.I.O.TEXT in the last volume.  Finally, I always seem
+                 to skip past the page I want when checking out files; it would
+                 be nice to be able to back up one page.  Anyone?)
+                 
+DELETE.LF.TEXT  (This quickie deletes extraneous linefeed characters in text-
+                 files transferred from other computers.  I was going to com-
+                 plain about this one, too, but rewrote it instead.  It's about
+                 5 to 10 times faster with blockread/write.)
+
+LINECOUNTR.TEXT (Ever wanted to count the lines of a text or source file?  I
+                 rewrote this one, too.)
+
+RANDOMBYTE.TEXT (A quick assembly-language routine to load the contents of the
+                 R register of a Z-80 into a Pascal program; good to initialize
+                 a random-number generator.  This would be nice to include in
+                 our products so we don't always have to start games, "Type a
+                 number."  A good alternative if you have a clock is to load
+                 the lowest byte of the TIME function.  We'll have to make this
+                 universal; see UNIVERSAL.TEXT, coming up in Volume 3.) 
+
+SHELLMSORT.TEXT (This little routine sorts a text file list alphabetically,
+                 using the Shell-Metzner sorting algorithm.  Each entry is 
+                 assumed to start on a new line.  Not well documented, but it 
+                 is so short and cute.  Only problem is that damn string READLN
+                 and WRITELN again; the program runs slowly.  I decided to leave
+                 in Barry's BLIP procedure so you can see one man's way of fol-
+                 lowing the progress of his program; it flips a spot on the 
+                 screen from one character to another.)
+
+WRITER.TEXT 
+WRITER.DOC.TEXT (WRITER is a very nice little text printer that is well menu 
+                 driven.  It needs little documentation, as a HELP command is
+                 actually built in!!  I am impressed.)
+                 
+
+     F.  More about the UCSD Pascal Users' Group Library.
+
+UPDATE.DOC.TEXT (Tells you what's been going on with the UCSD Pascal Users'
+                 Group.)
+POLICY.DOC.TEXT (Most recent formulation of how the Library works, how to order
+                 disks, how to become an editor, etc.)
+
+     
+                              ACKNOWLEDGEMENTS   
+
+     The following folks wrote or gathered most of the software on this disk:
+
+     Sam Singer, 17226 Bonita, Perris, CA 92370.  As far as I'm concerned, Sam 
+is one of the best assembly-language programmers I know.  His contributions to 
+the CP/M Users Group (contained on Volume 2B) are the best in that group to 
+date.  He's worked on the 512-byte sector system (first authored and gotten 
+running by George Bolthoff) to extend its scope to double-density/sided and
+utilize more controllers than the single-density Tarbell.
+
+     Barry Cole, Sawtelle Blvd., West Los Angeles, California
+
+     Jim McCord, 330 Vereda Leyenda, Goleta, California 93017.  (VERY 
+interested in UCSD Pascal on PDP-11 hardware; started an LSI-11 UCSD Pascal 
+Users' Group.)
+
+     The Pascal Advancement Society Library, c/o Joe Sharp, Palo Alto, 
+California.
+
+

@@ -1,0 +1,112 @@
+Function EVAL  (* NUMBER: String): Real  *) ;
+ var SUM: Real;
+     RIGHT,I,J,X: Integer;
+     CH: Char;
+ 
+ begin {EVAL}
+   SUM:=0;  X:=1;  EATSPR(NUMBER);  EATSPL(NUMBER);
+   for I:=1 to length(NUMBER) do
+    begin
+     CH:=NUMBER[I];    
+     if CH in['0'..'9'] then SUM:=10*SUM+(ord(CH)-48)
+      else 
+       begin
+        if (CH='-') and (I=1) then X:=-1
+         else if (CH='+') and (I=1) then X:=1
+          else if (CH='.') then   {Decimal part}
+           begin
+            RIGHT:=10;
+            for J:=I+1 to length(NUMBER) do
+             begin
+              CH:=NUMBER[J];
+              if CH in['0'..'9'] then
+               begin
+                SUM:=SUM + ((ord(CH)-48) / RIGHT);
+                RIGHT:=RIGHT*10;
+               end {then}
+              else write(ALARM_BELL);
+             end; {for J}
+            EVAL:=SUM*X;  exit(EVAL);
+           end {Decimal part}
+        else write(ALARM_BELL);
+       end; {else}
+     end; {for I}
+    EVAL:=SUM*X;  exit(EVAL);
+ end; {EVAL}
+
+Procedure CALC(var CALC_SCREEN: SCREEN_ARR; 
+               FLD,R_OFF,C_OFF: Integer;
+               var EFLAG: Boolean);
+  var DPART,INDEX,J: Integer; {Integer pointers and temporary storage}
+      OP: Char;               {Algebraic operator}
+      DPSTR,TEMP: String;     {Temporary string storage}
+      OPERAND,ANS: Real;      {Answer returned and temporary operand}
+ 
+ Procedure ERR(OP: Integer);
+  { Inform the user he has entered an illegal expression }
+  
+  begin {ERROR}
+   with CALC_SCREEN[FLD] do
+    begin
+     if OP=1 then S_FLD:='Division by zero.'
+      else if OP=2 then S_FLD:='Illegal numeric constant.'
+      else if OP=3 then S_FLD:='Result overflow.'
+      else S_FLD:='Illegal expression.';
+     end; {with}
+   EFLAG:=True;
+   exit(CALC);    { Return directly to main program }
+  end; {ERROR}
+  
+ begin {CALC}
+  with CALC_SCREEN[FLD] do
+   begin
+    if S_FLD[length(S_FLD)]<>'=' then S_FLD:=concat(S_FLD,'=');
+    INDEX:=1;  OP:=' ';  OPERAND:=0;  EFLAG:=False;
+    while INDEX<=length(S_FLD) do
+     begin
+      if S_FLD[INDEX] in['0'..'9','.','-'] then
+       begin {Evaluate number string}
+        J:=1; TEMP:='                    ';
+        while S_FLD[INDEX] in['0'..'9','.'] do
+         begin
+          TEMP[J]:=S_FLD[INDEX]; INDEX:=INDEX+1;  J:=J+1;
+         end; {while}
+        OPERAND:=EVAL(TEMP);
+       end
+      else
+       begin
+        J:=1;  TEMP:='        ';
+        while not(S_FLD[INDEX] in['+','-','*','/','=']) and (J<=8) do
+         begin
+          TEMP[J]:=S_FLD[INDEX]; INDEX:=INDEX+1;  J:=J+1;
+         end; {while}
+        EATSPR(TEMP);
+        J:=FIND(TEMP,CALC_SCREEN);
+        if J=0 then OPERAND:=0 else OPERAND:=EVAL(CALC_SCREEN[J].S_FLD);
+       end;
+      case OP of
+        ' ': ANS:=OPERAND;
+        '+': ANS:=ANS + OPERAND;
+        '-': ANS:=ANS - OPERAND;
+        '*': ANS:=ANS * OPERAND;
+        '/': if OPERAND=0 then ERR(4) else ANS:=ANS / OPERAND;
+       end; {case}
+      if INDEX<=length(S_FLD) then if S_FLD[INDEX] in['+','-','*','/','='] 
+       then 
+        begin   { Check for operator }
+         OP:=S_FLD[INDEX];  
+         if OP='=' then INDEX:=length(S_FLD)+1 else INDEX:=INDEX+1;
+        end;
+     end; {while}
+    DPART:=trunc( ABS(ANS-trunc(ANS)) *10000);
+    str(trunc(ANS),TEMP);   str(DPART,DPSTR);
+    DPSTR:=copy(concat(DPSTR,'00000'),1,S_MIN);
+    if length(TEMP)+length(DPSTR)>=40 then ERR(3)
+     else S_FLD:=concat(TEMP,'.',DPSTR);
+    gotoxy(S_COL+C_OFF,S_ROW+R_OFF);
+    if S_JUS='R' then while length(S_FLD)<S_LEN do insert(' ',S_FLD,1);
+    write(copy(concat(S_FLD,'          '),1,S_LEN));
+   end; {with}
+ end; {CALC}
+ 
+

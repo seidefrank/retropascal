@@ -1,0 +1,45 @@
+;       COMPUTE CRC16 {INTERMEDIATE CALC FOR ONE BYTE}
+;       ARGUMENTS ARE THE OLD CRC {TWO BYTES PASSED AS CHAR}
+;       AND NEWCHR {THE NEXT BYTE TO BE INCLUDED IN CRC}
+;       FUNCTION RETURNS UPDATED CRC AS AN INTEGER
+;
+;       NEWCRC:=CRC16(CRC0,CRC1,NEWCHR:CHAR):INTEGER
+;
+
+        .FUNC    CRC16,3
+        .PRIVATE RETADDR
+        POP     HL              ;RET ADDR
+        LD      (RETADDR),HL     ;SAVE IT
+        POP     HL
+        POP     HL              ;TWO ZEROS
+        POP     DE              ;NEW CHARACTER
+        POP     BC              ;FIRST BYTE TO C
+        POP     HL
+        LD      B,L             ;SECOND BYTE TO B
+        LD      HL,0A001H       ;GENERATING POLYNOMIAL
+        LD      A,E             ;NEW CHARACTER TO A
+        LD      E,8H            ;COUNT OF BITS IN CHAR
+CRCY:   RRA                     ;ROTATE RIGHT THRU CARRY
+        LD      D,A             ;SAVE IN D
+        LD      A,C
+        RRA
+        LD      C,A             ;SHIFT RIGHTMOST BIT INTO BYTE IN C
+        LD      A,B             ;NOW DO 2ND BYTE OF CRC
+        RRA
+        LD      B,A
+        JP      NC,CRCZ         ;NO DIVISION IF NO CARRY
+        XOR     L               ;EXCLUSIVE OR WITH L
+        LD      B,A
+        LD      A,C
+        XOR     H               ;EXCLUSIVE OR WITH H
+        LD      C,A
+CRCZ:   LD      A,D             ;NEW BYTE BACK TO A
+        DEC     E               ;DECR BIT COUNT
+        JP      NZ,CRCY         ;ITERATE FOR 8 BITS
+        LD      HL,(RETADDR)    ;GET BACK RETURN ADDR
+        LD      D,C
+        LD      E,B             ;SWITCH BYTES
+        PUSH    DE              ;FUNCTION RETURN BACK ON STACK
+        JP      (HL)            ;BYE
+        .END
+

@@ -1,0 +1,172 @@
+     The PTP system is made up of a large Pascal program and 6 small assembly
+language routines. The large Pascal program should work with most systems and
+because it requires 56K to compile a precomplied version PTP.CODE has been
+provided. If you can recompile this program you should do so after changing
+the constant called SYSTEMNAME which is intended to contain the latitude/
+longitude, phone number, and a short system for your system.
+
+     With the exception of the routine KBSTAT most of the assembly language
+will have to modified to work with your system. The routine KBSTAT should work
+with most systems that use CP/M BIOS.  Two versions of serveral routines have
+been provided, one for use with an acoustic coupler system, the other for use
+with a D C Hayes modem board. After modifing these routines for your system
+they can be entered a library which is then linked with PTP.CODE (be sure to
+use another name for the output file so as to not destroy this file).
+ 
+     If you do not understand the library procedures you can link the program
+by entering each of the routine names when the linker asks for lib file.
+PTP.CODE is always used as the host file. The library "system.library" is not
+used by this program and automatic linking which may occur if you say run
+after compiling will not work correctly.
+ 
+
+The following files make up the Pascal Transfer Program:
+
+PTP.TEXT - This the main program written entirely Pascal.
+
+PTP.CODE - A compiled but not linked version of the main program PTP.TEXT.
+       PTP.TEXT requires a 56K system to compile therefore this precompiled
+       version can be used as the main program during linking by those with
+       less memory. Be sure not to call the outfile of the linker PTP.CODE or
+       this file will be destroyed.
+
+KBSTAT - An assembly language function which return a TRUE if there is a
+       character ready at the keyboard port. Since this routine calls the CP/M
+       keyboard status routine, it should work with most system that use the
+       standard CP/M BIOS jump table with a vector at address 1.
+           
+THE FOLLOWING FUNCTIONS ARE CONTAINED IN "DCHAYES.IO.TEXT", AND MAY REQUIRE
+ALTERATION TO RUN PROPERLY ON YOUR SYSTEM.
+
+   DCHREAD - Performs the same function as SERREAD except for use with the D C
+          Hayes modem.
+    
+   DCHWRITE - Performs the same function as SERWRITE except for use with the D
+          C Hayes modem.
+                   
+   DCHMODINIT - An extremely primitive assemble language procedure which
+          initializes a D C Hayes modem for use with PTP. The program performs
+          a brute force auto answer but has no dialing capability. This
+          routine was written only to perform initial testing and should not
+          be used as guide for more reasonable modem interfaces.
+               
+   DCHHANGUP - A primitive assemble language procedure which causes the D C
+          Hayes modem to hangup. Comments made about DCHMODINIT apply here.
+                      
+
+THE FOLLOWING ROUTINES ARE CONTAINED IN "ACOUSTIC.TEXT", AND MAY REQUIRE ALTER-
+ATION AS NOTED ABOVE.
+    
+   ACSMODINIT - A dummy routine for use with acoustic coupler systems.
+                      
+   ACSHANGUP - A dummy routine used with acoustic coupler systems.
+    
+
+ 
+          An Introduction to Using the Pacsal Transfer Program
+
+     This brief introduction will hopefully provide you with enough informa-
+tion to run PTP. The first question you will be asked after starting PTP is if
+you want to run answer or orginate mode. This question applies to the PTP prog-
+ram itself since it has an answer and orginate mode just as the modem does.
+The PTPs must be in different modes to communicate. In the case of the D C
+Hayes modem, the modem board will be set to the same mode as the program. This
+would seem a resonable standard for other modems also. This is the only ques-
+tion, after which the program will start. In the case of answer mode for the D
+C Hayes modem the program will go into a loop waiting for the phone to ring. 
+
+     If you have made contact with another PTP, both programs should now be in
+a loop sending empty packets back and forth. The first thing you will see
+after a connection is established is the ID of the other program. At this
+point you may try to send a terminal-to-terminal message. To do this type the
+first character of the message and wait for a ">" follwed by the character you
+typed. Type the rest of the message and hit return (if the message is to long
+echoing will stop and the first part will be sent). The message will then be
+sent to the other PTP. It should be realised that whenever a PTP program is
+waiting for a character from the keyboard, it will not be listening or sending
+on the modem line. This will cause the PTP on the other end to timeout while
+waiting for a transmission and display a receiver timeout message. If this
+were to continue for a long time, the PTP on the other end would finally give
+up and abort. Also, even after you finish typing your message it may take
+several transmissions for the programs to get their half duplex transmissions
+resynced (both programs may be sending at the same time and miss part of the
+other's transmission). This condition should correct itself shortly, since the
+timeout for answer and orginate modes are different.
+ 
+     To send files or perform other functions it is first necessary to get the
+attention of the PTP; to do this type a control-E and wait. A menu should be
+displayed shortly, similar to the type displayed by the UCSD Pascal system. It
+should be remembered that when the program is in this mode, the other PTP will
+be experiencing receiver timeouts. To exit the menu function and return
+control to PTP just hit a carriage return while in the menu display. The
+following is a description of the current menu functions:
+
+   Get - Get a file from the other system. It should be noted that you must
+          already know the name ow the file you wish transfered and there is
+          no remote list directory function. For this reason it would be a
+          good idea if each system contained a file with the well know name
+          "dir.text" which contains the name of the files which that person
+          is willing to have transfered. 
+
+   Send - Send a file from your system to the other system. The PTP program
+          will not create a file on a system if it already exists. This is to
+          prevent overwriting files on the other system which you did not know
+          existed.
+
+   Raw - This puts you in a raw terminal mode in which makes the system look
+          like a half duplex terminal and is intented mainly to allow logging
+          into timesharing systems. Type a control-E to exit this mode.
+
+   Init - This function will reinitialize most of the counters in the program.
+          If you are in contact with another PTP this will result in a loss of
+          sequencing from which there is no recovery. This function was
+          included to allow the program to be reinitialized without having to
+          exit the program which will generally cause the modem to hangup.
+    
+   Exit - Will cause PTP to terminate and hangup the phone (if you have modem
+          control). If the program is currently busy transfering a file you
+          will be warned and asked if you still wish to exit.
+
+Monitor - This allows you to control various trace and other options as
+described below:
+          
+   Trace LTB - Trace the link transmission blocks. This trace dumps the
+          variously encoded forms of all transmissions sent and received. It
+          is helpful in gaining an understanding of how the program works but
+          does a lot of data and must be used with CRT type terminal.
+
+   Trace PPS - Trace the process to process stream functions. In general this
+          trace is not very helpful unless you already know what you are
+          looking for.
+
+   Trace FTP - Trace the file transfer functions and data. 
+
+   Local loopback test - This puts the program in a mode where it talks to
+          itself and can be very useful in testing the program especially
+          when combined with the LTB trace. You should try this mode before
+          attempting to use this program with another PTP to see if the
+          program will run on your system.
+
+   Enter data size - Allows use to specify the max amount of unencoded data
+          that will be sent in one transmission block. The normal answer is
+          64. If you have a noisy line you may notice a message from PTP that
+          it is reducing this size.
+
+     
+     Because of the low baud rates that our modems use and the encoding done
+in the PCNET format, the transmission of files will be very slow. However, the
+transferred file should contain no transmission errors, and any type of file
+including binary can be transferred. In addition, files can be transfered in
+both directions at the same time, and the terminal to terminal mode can still
+be used. In order to give you some assurance that the file is being 
+transferred, a dot or comma will be printed after each block has been
+transferred. Best of luck, and please contact me with errors, questions, or
+suggestions you may have.
+
+Mark Gang
+408-267-4913
+
+     
+
+ 
+

@@ -1,0 +1,108 @@
+
+(*-------------------------------------------------------------------*)
+   segment procedure lu_init;
+(*------------------------------------------------------------------*)
+(*                                                                 -*)
+(*   DESCRIPTION: CODING OF THE STRINGS IN SYMBOL TABLE            -*)
+(*   ------------                                                  -*)
+(*                                                                 -*)
+(*   SPECIALITIES: MUST BE CALLED BEFORE FIRST CALL OF LA_NEXT_SYM -*)
+(*   -------------                                                 -*)
+(*------------------------------------------------------------------*)
+   var i : integer;
+      procedure lu_init_part2;
+      begin
+         lu_reserved_word [st_get_code ('PRIVATE  ', 7)] := lu_private_sym;
+         lu_reserved_word [st_get_code ('PROCEDURE', 9)] := lu_procedure_sym;
+         lu_reserved_word [st_get_code ('RAISE    ', 5)] := lu_raise_sym;
+         lu_reserved_word [st_get_code ('RANGE    ', 5)] := lu_range_sym;
+         lu_reserved_word [st_get_code ('RECORD   ', 6)] := lu_record_sym;
+         lu_reserved_word [st_get_code ('REM      ', 3)] := lu_rem_sym;
+         lu_reserved_word [st_get_code ('RENAMES  ', 7)] := lu_renames_sym;
+         lu_reserved_word [st_get_code ('RETURN   ', 6)] := lu_return_sym;
+         lu_reserved_word [st_get_code ('REVERSE  ', 7)] := lu_reverse_sym;
+         lu_reserved_word [st_get_code ('SELECT   ', 6)] := lu_salect_sym;
+         lu_reserved_word [st_get_code ('SEPARATE ', 8)] := lu_seperate_sym;
+         lu_reserved_word [st_get_code ('SUBTYPE  ', 7)] := lu_subtype_sym;
+         lu_reserved_word [st_get_code ('TASK     ', 4)] := lu_task_sym;
+         lu_reserved_word [st_get_code ('TERMINATE', 9)] := lu_terminate_sym;
+         lu_reserved_word [st_get_code ('THEN     ', 4)] := lu_then_sym;
+         lu_reserved_word [st_get_code ('TYPE     ', 4)] := lu_type_sym;
+         lu_reserved_word [st_get_code ('USE      ', 3)] := lu_use_sym;
+         lu_reserved_word [st_get_code ('WHEN     ', 4)] := lu_when_sym;
+         lu_reserved_word [st_get_code ('WHILE    ', 5)] := lu_while_sym;
+         lu_reserved_word [st_get_code ('WITH     ', 4)] := lu_with_sym;
+         lu_reserved_word [st_get_code ('XOR      ', 3)] := lu_xor_sym;
+(* SYMBOL TABLE CODES FOR OPERATORS*)
+      lu_code_minus          := st_get_char_code ('-');
+      lu_code_less           := st_get_char_code ('<');
+      lu_cde_less_equal     := st_get_code ( '<=       ', 2);
+      lu_code_plus           := st_get_char_code ('+');
+      lu_code_catenation     := st_get_char_code ('&');
+      lu_code_multiply       := st_get_char_code ('*');
+      lu_code_exponentiation := st_get_code ( '**       ', 2);
+      lu_code_divide         := st_get_char_code ('/');
+      lu_code_not_equal      := st_get_code ( '/=       ', 2);
+      lu_code_greater        := st_get_char_code ('>');
+      lu_cde_greater_equal  := st_get_code ( '>=       ', 2);
+      lu_code_equal          := st_get_char_code ('=');
+(* ERROR ITEMS INITIALIZATION*)
+      lub_cde_identifier := st_nil;    (* IS "<IDENT>"*)
+      lub_code_integer    := st_get_code ( '<INTEGER>',  9);
+      lub_code_real       := st_get_code ( '<REAL>   ', 6);
+      lub_code_string     := lub_cde_identifier;
+        (* IF STRING IS INSERTED THEN ALSO IDENTIFIER MAY BE INSERTED*)
+      lub_code_character  := st_get_code ( '<CHAR>   ', 6);
+      end; (* LU_INIT_PART2 *)
+
+   begin  (* LU_INIT *)
+      lu_no_symbol.discrim := lu_id;
+      lu_no_symbol.sym     := lu_identifier_sym;
+      lu_no_symbol.idcode  :=   st_nil;
+      for i := 0 to st_sym_ubound do lu_reserved_word [i] := lu_identifier_sym;
+    (*END LOOP;*)
+         lu_reserved_word [st_get_code ('ABORT    ', 5)] := lu_abort_sym;
+         lu_reserved_word [st_get_code ('ACCEPT   ', 6)] := lu_accept_sym;
+         lu_reserved_word [st_get_code ('ACCESS   ', 6)] := lu_access_sym;
+         lu_reserved_word [st_get_code ('ALL      ', 3)] := lu_all_sym;
+         lu_reserved_word [st_get_code ('AND      ', 3)] := lu_and_sym;
+         lu_reserved_word [st_get_code ('ARRAY    ', 5)] := lu_array_sym;
+         lu_reserved_word [st_get_code ('AT       ', 2)] := lu_at_sym;
+         lu_reserved_word [st_get_code ('BEGIN    ', 5)] := lu_begin_sym;
+         lu_reserved_word [st_get_code ('BODY     ', 4)] := lu_body_sym;
+         lu_reserved_word [st_get_code ('CASE     ', 4)] := lu_case_sym;
+         lu_reserved_word [st_get_code ('CONSTANT ', 8)] := lu_constant_sym;
+         lu_reserved_word [st_get_code ('DECLARE  ', 7)]:= lu_declare_sym;
+         lu_reserved_word [st_get_code ('DELAY    ', 5)] := lu_delay_sym;
+         lu_reserved_word [st_get_code ('DELTA    ', 5)] := lu_delta_sym;
+         lu_reserved_word [st_get_code ('DIGITS   ', 6)] := lu_digits_sym;
+         lu_reserved_word [st_get_code ('DO       ', 2)] := lu_do_sym;
+         lu_reserved_word [st_get_code ('ELSE     ', 4)] := lu_else_sym;
+         lu_reserved_word [st_get_code ('ELSIF    ', 5)] := lu_elsif_sym;
+         lu_reserved_word [st_get_code ('END      ', 3)] := lu_end_sym;
+         lu_reserved_word [st_get_code ('ENTRY    ', 5)] := lu_entry_sym;
+         lu_reserved_word [st_get_code ('EXCEPTION', 9)] := lu_exception_sym;
+         lu_reserved_word [st_get_code ('EXIT     ', 4)] := lu_exit_sym;
+         lu_reserved_word [st_get_code ('FOR      ', 3)] := lu_for_sym;
+         lu_reserved_word [st_get_code ('FUNCTION ', 8)] := lu_function_sym;
+         lu_reserved_word [st_get_code ('GENERIC  ', 7)] := lu_generic_sym;
+         lu_reserved_word [st_get_code ('GOTO     ', 4)] := lu_goto_sym;
+         lu_reserved_word [st_get_code ('IF       ', 2)] := lu_if_sym;
+         lu_reserved_word [st_get_code ('IN       ', 2)] := lu_in_sym;
+         lu_reserved_word [st_get_code ('IS       ', 2)] := lu_is_sym;
+         lu_reserved_word [st_get_code ('LIMITED  ', 7)] := lu_limited_sym;
+         lu_reserved_word [st_get_code ('LOOP     ', 4)] := lu_loop_sym;
+         lu_reserved_word [st_get_code ('MOD      ', 3)] := lu_mod_sym;
+         lu_reserved_word [st_get_code ('NEW      ', 3)] := lu_new_sym;
+         lu_reserved_word [st_get_code ('NOT      ', 3)] := lu_not_sym;
+         lu_reserved_word [st_get_code ('NULL     ', 4)] := lu_null_sym;
+         lu_reserved_word [st_get_code ('OF       ', 2)] := lu_of_sym;
+         lu_reserved_word [st_get_code ('OR       ', 2)] := lu_or_sym;
+         lu_reserved_word [st_get_code ('OTHERS   ', 6)] := lu_others_sym;
+         lu_reserved_word [st_get_code ('OUT      ', 3)] := lu_out_sym;
+         lu_reserved_word [st_get_code ('PACKAGE  ', 7)] := lu_package_sym;
+         lu_reserved_word [st_get_code ('PRAGMA   ', 6)] := lu_pragma_sym;
+            lu_init_part2;
+   end; (*  LU_INIT;*)
+(*-------------------------------------------------------------------*)
+

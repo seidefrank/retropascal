@@ -1,0 +1,310 @@
+
+{************************************************************************
+*                                                                       *
+*  filed as BTRE.FILE.TEXT                                              *
+*                                                                       *
+************************************************************************}
+
+{$S+}
+{$G+}
+program BTREE_ADDRESS_FILES;
+
+{
+
+        program title:          B-TREE ADDRESS
+        written by:             R. M. Wilson
+                                HI-COUNTRY DATA SYSTEMS
+                                P.O. Box 4095
+                                Woodland Park, CO. 80863
+
+        date written:           12 August 1981
+        latest revision:        26-May-82
+
+        program function:
+        ----------------
+
+            This program is designed to:
+
+                Test a pascal implementation of B-trees using files.  The
+                program is based on a standard B-TREE algorithm implemented
+                with pointers found in ALGORITHMS + DATA STRUCTURES = PROGRAMS
+                by Niklaus Wirth on pages 253-257.
+
+program development notes:
+-------------------------
+
+26-May-82 Several very important bugs concerning the value of PERSON_AVAIL
+          after the deletion of the last data element in the root node were
+          corrected.
+
+
+
+
+        remarks:
+        -------
+
+           This program was written while developing a program for a small
+           business where retrival of customer information was an operation
+           which had to be fast.  Further, ease of updating and modifing the
+           various records was also a prime consideration.  This particular
+           program was designed to serve as the test bed for the final program
+           and as a ready reference of a file structure implementation of a B-
+           tree.  It can easily be modified for many different business
+           applications requiring fast data retrival.
+
+           This program uses strings as the key rather than integers as does
+           Wirth's program.  It should be of note that significant changes have
+           been made in the main program to increase the program's usefulness,
+           to reduce the number of "data entry" crashes, and to increase the
+           "bells & whistles" that the user sees.
+
+           Since the program is primarily designed as a demonstration of the B-
+           tree implemented with files, the program output is directed towards
+           that end.  The program prints out the unique keys in the B-tree and
+           then, upon request, will print a list of all the keys (unique or
+           duplicate) in either alphabetical or reverse alphabetical order.
+           (Duplicate keys will be printed out in the order in which they were
+           entered.) In order to convert the program into a real utility, some
+           rather minor changes would have to be made. (Hints on how to do this
+           are contained in the documen-tation.)
+
+           The biggest problem in converting the original program from pointers
+           to files was keeping track of which node/record number should be in
+           the window after the completion of a call to a procedure in which the
+           window was shifted by a "seek" command.
+
+           The second biggest problem (26-May-82) was trying to find where the
+           persistant little bug was that kept cropping up from time to time
+           where data previously entered was lost.  The cause, hopefully, was
+           rather sloppy control of the value of PERSON_AVAIL when the root node
+           only contained one record, and that record was deleted either through
+           an intentional deletion or by default when the record was modified in
+           such a way that the key was changed.  
+           
+           The program has been extensively documented to help the user
+           understand how the program functions.  Although quite a bit of time
+           was spent documenting the program, a recursively implemented b-tree
+           using a file structure can be a mess to trace. With that in mind,
+           there is every possibility that the documen-tation may be incorrect
+           in one or two spots in regards to exactly what each step is designed
+           to accomplish.
+
+           Although the documentation may be a bit tedious for those who are
+           already familiar with using files in UCSD PASCAL, the repetative
+           steps are documented in order to help the user who is not as
+           proficient.
+
+           Further, even though there is so much documentation as to make the
+           page appear rather grey and hard to read instead of the crispness
+           often associated with a PASCAL program, it was felt that it was
+           better to over document rather than under document with the confusion
+           that might result.
+
+           In addition to the B-tree implementation, I have attempted to
+           incorporate some features to enhance the usability of the program
+           such as hopefully "bomb proof" data entry, all keys coverted to
+           uppercase, facilities to change the location of a record if the key
+           is changed due to a correction made to the person's first or last
+           name, etc.  Most importantly, provisions for duplicate keys have been
+           made, and "garbage collection" is performed to reuse emptied nodes.
+           Procedures for inorder and post order traversal of the b-tree have
+           been included as well.
+
+           The method of handling collisions of duplicate keys is by the use of
+           a linked list structure.  When an initial collision occurs, an empty
+           node is fetched and the duplicate key stored in this node.  The
+           duplicate node is linked to the original key via an integer pointer.
+           If the duplicate node reaches capacity an additional empty node is
+           fetched and linked into the chain, etc.  The use of a full node to
+           store one duplicate key is very uneconomical in terms of disk space,
+           but is far faster and easier to implement than a separate file of
+           collision nodes with the same key, and avoids the problem of file
+           management when a file grows to the point that it "collides" with
+           another file on the disk.
+
+           A more efficient use of the disk space could be obtained if through
+           analysis or previous experience you can estimate how many collisions
+           are likely to occur for a given data base and a file of PERSON
+           (inaddition to the file of PERSON_NODE) is put on the disk when the
+           program is initialized.  Using this techique would require extensive
+           rewriting of the present program and, depending on the number of
+           estimated collisions per unique key, could significantly and adversly
+           affect the retrival time for a given duplicate key.
+
+           The nodes of the B-tree are limited to a maximum size of four records
+           per node.  This was done to make tracing and learning the B=tree
+           easier.  The constant MAX_NODE_SIZE can be increased as you desire.
+           (For example if MAX_NODE_SIZE=8 then there are a maximum of five disk
+           accesses to find any one of 2000 records.) Obiviously the greater
+           MAX_NODE_SIZE is the fewer disk accesses required for a given number
+           of data.  
+           
+           It should be of note that the program as presented is not optimized
+           for either memory usage or efficient operation.  The program
+           developed for the business application implemented six separate B-
+           trees.  In order to reduce the memory requirments case statements
+           were used extensively along with a type declaration which kept track
+           of the particular record structure.  The various procedures nested
+           within SEARCH and DELETE were broken out and the parameter list for
+           each was increased as required to ensure proper functioning.  Each of
+           the major program functions was also set up as a segment procedure to
+           optimize memory usage.
+
+           The initialization routine puts 20 empty nodes on the disk. This
+           number is controlled by MAX_PERS_NODES, and can be set to any size
+           your disk drives will handle.  (Using a fixed size data file has the
+           advantage that the file will not be blocked by other files on the
+           disk as the amount of data in the file grows.)
+
+           You should be note that the program is rather limited in its
+           capacity.  A maximum of only 80 people can be stored when
+           MAX_NODE_SIZE=4 and MAX_PERS_NODES=20.  Due to the nature of the B-
+           tree structure, even though 20 nodes can in theory store 80 records
+           this maximum is obtained only where there are not a lot of operations
+           where the new record entered is put into an already full node.  When
+           ever this happens, two new nodes are required.  By simple reasoning,
+           you can see if every node in the tree is full and you try to insert a
+           new node then one new node is required for each level of the tree up
+           to the root node where two new nodes are required if it is full.
+
+           In this tree of order 4 if the root node is full then it must have
+           five children.  If each of those children are full and do not have
+           any successor nodes then if you insert a new record, the tree is
+           adjusted with a new root node and the old root node is broken into
+           two sub nodes with two records each whose children have records as
+           follows:
+
+                        sub node "1" children 4,4,4
+
+                        sub node "2" children 4,2,2
+
+           As you can see (especially if you run the program!) the tree is now a
+           3 level tree with only one more record but two more nodes.  If we
+           continued to add new records into the nodes which are already full,
+           we will quickly reach our maximum of 20 nodes and would not be any
+           where close to 80 total records.  So it should be apparent that the
+           maximum empty nodes required to safely start an insertion operation
+           is equal to the depth of the tree plus one.
+
+           It should be further be ovibious that the maximum depth of the tree
+           is equal to N where N is the largest integer possible where
+           exp(N*ln(MAX_NODE_SIZE))<=MAX_PERS_NODES, and then the minimum number
+           of empty or unused nodes required to ensure a successful insertion is
+           N+1.
+
+           In order to enable the user to appreciate all of the disk accesses
+           that must take place during insertions and deletions, a period is
+           printed out for each "seek" that is executed.
+
+
+
+IMPLEMENTATION NOTES
+--------------------
+
+        This program was written on a Western Digital MICROENGINE with a
+        TeleVideo 920C terminal.  As such some minor changes may have to
+        be made to convert to other computers.  Specifically, page(output)
+        doesn't clear the CRT for me, so I am forced to use the CLEARSCREEN
+        routine.  Further, my printer is hooked to the serial port which
+        is addressed as "#8" or "REMOTE:", and you will have to change all
+        of the REMOTE:'s to whatever suits your installation.
+
+Changed by gws to be compatable with H-19.  REMOTE: also changed to printer:
+
+
+
+COPYRIGHT
+---------
+
+        This program is furnished to the USUS group for unrestricted
+        personal or non-profit use.  Use of this program for commercial
+        purposes is authorized with the following restrictions:
+
+          1--> Prior notification to and acknowledgement by the author
+
+          2--> A message similar to the one below appears on the screen
+               upon execution and remains there until a key is hit.
+
+
+*************************************************************************
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                  Program derived from BTREE.ADDRESS                   *
+*                              written by                               *
+*                             R.M. Wilson                               *
+*                        Hi-Country Data Systems                        *
+*                            P.O. Box 4258                              *
+*                        Woodland Park, CO 80863                        *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*************************************************************************
+
+
+
+
+}
+
+
+
+
+{l #5:btree.list.text}
+
+{$I BTREE.DCLR.TEXT}
+
+{$I BTREE.STD.TEXT}
+
+{$I BTREE.INIT.TEXT}
+
+{$I BTREE.GET.TEXT}
+
+{$I BTRE.FIND1.TEXT}
+
+{$I BTRE.FIND2.TEXT}
+
+{$I BTREE.DEL1.TEXT}
+
+{$I BTREE.DEL2.TEXT}
+
+{$I BTREE.PRNT.TEXT}
+
+{$I BTREE.DOIT.TEXT}
+
+
+begin  {MAIN PROGRAM} 
+  CLEARSCREEN;
+  TITLE; 
+  INIT;
+  CLEARSCREEN;
+  reset(CONTROLFILE,CONTROL);
+    {open control file and leave it open for ready access}
+  get(CONTROLFILE);             {get the control file data}
+  FILE_LEN:=CONTROLFILE^;       {get the control file data}
+  write('Output to printer?  (y/n)  ');     {chose output device}
+  if YES then reset(OUTFILE,'printer:')  {output device is printer}
+  else reset(OUTFILE,'CONSOLE:');                   {output device is CRT}
+  repeat
+    writeln;
+    write('Enter or Delete a node?  (E/D)  {Hit <ESC> to quit}  ');
+    read(keyboard,CH);
+    writeln;
+    if CH in ['e','E'] then
+      if FILE_LEN.PERSON_UNUSED<FILE_LEN.PERSON_MIN then DATA_FULL
+      else KEY_INSERT
+    else if CH in ['d','D'] then KEY_DELETE;
+    writeln;
+  until ord(CH)=27;  {chr(27) = esacpe}
+  close(CONTROLFILE,lock);
+  CLEARSCREEN                   {clear screen}
+end.
+
+

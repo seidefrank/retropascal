@@ -1,0 +1,170 @@
+PROGRAM LISTFILE;
+
+CONST linesperpage = 60;
+      pagewidth = 80;      (* columns per line *)
+      quarterwidth = 20;
+
+VAR  printhead, printfname: boolean;
+     i, pageno, startpage, endpage, LFname, Lmsg: integer;
+     ioerror: 0..12;
+     lineno: 0..70;
+     spacing: 1..4;
+     spaceL, spaceR: -15..pagewidth;
+     formfeed: char; 
+(* if your system needs nulls or other char to move your printer to the top of
+   the next page, make formfeed an array and fill it with whatever you need. *)
+     s: string [135];
+     filename: string [25];
+     msg: string;
+     f, list: text;     
+     
+PROCEDURE INITIALIZE;
+VAR  ch: char;
+     successful: boolean;
+
+BEGIN
+  Formfeed := CHR (12); (* this is what my printer wants to start new page *)
+  Successful := false;
+  REPEAT
+    Write ('Please type name of file to be listed -->  ');
+    READLN (filename);
+    LFname := LENGTH (filename);
+    IF LFname = 0 THEN EXIT (Program);
+    (*$I-*)
+    RESET (f, filename);
+    (*$I+*)
+    ioerror := IORESULT;
+    IF ioerror = 0 
+      THEN successful := true
+      ELSE BEGIN
+        Writeln ('Oops, there''s a problem.  IORESULT = ', ioerror, '.');
+        Writeln ('Try again.  To quit just type <return>');
+        Writeln
+      END
+  UNTIL Successful;
+  REWRITE (list, 'PRINTER:');
+  Write ('Single-space each line?  ');
+  Read (ch);  Writeln;
+  IF (ch IN ['Y', 'y'])
+    THEN Spacing := 1
+    ELSE BEGIN
+      REPEAT
+        Write ('How many spaces per line (1 - 4)?  ');
+        Read (ch); 
+        Writeln
+      UNTIL (ch IN ['1'..'4']);
+      Spacing := ORD (ch) - ORD ('0')
+    END;
+  WRITE ('Do you wish a page heading?  ');
+  READ (ch); WRITELN;
+  Msg := '';    (* empty string *);
+  IF (ch in ['Y', 'y'])
+    THEN BEGIN
+      printhead := TRUE;
+      WRITELN ('If you wish a date or other heading or title,',
+              ' type it here:  ');
+      READLN (msg);
+      Lmsg := LENGTH (msg);
+      WRITE ('Do you want to include the filename in the heading?  ');
+      READ (ch); WRITELN;
+      IF (ch IN ['Y', 'y'])
+        THEN  (* yes, print it and expand heading as well. *)
+          BEGIN
+            Printfname := TRUE;
+(* Don't forget to change SpaceL and SpaceR here if you're not going to expand
+ your page heading to double width. *)
+            SpaceL := (pagewidth DIV 4) - (LFname + (Lmsg DIV 2));
+            IF spaceL < 1 THEN spaceL := 1;
+            SpaceR := (pagewidth DIV 2) - (LFname + SpaceL + Lmsg + 7)
+          END
+        ELSE  (* no, skip filename and don't expand heading. *)
+          BEGIN
+            Printfname := FALSE;
+            SpaceL := 0;
+            SpaceR := pagewidth - (Lmsg + 7)
+          END;
+      IF spaceR < 1 THEN spaceR := 1
+    END
+    ELSE printhead := FALSE;
+  Pageno := 1;
+  WRITE ('Do you want to print the whole file?  ');
+  READ (ch); WRITELN;
+  IF (ch in ['Y', 'y']) 
+    THEN
+      BEGIN
+        Startpage := 0;
+        Endpage := MAXINT
+      END
+    ELSE
+      BEGIN
+        WRITE ('Start with page no. -->  ');
+        READ (startpage);
+        WRITE ('End after page no. -->  ');
+        READ (endpage); WRIToLN
+      END
+END (*initialize*);
+
+PROCEDURE HEADING;
+(* This procedure prints the following:
+        1.  If printfilename flag is on, then the filename is flush left, the
+        message centered, and the page number flush right, all double width.
+        2.  Otherwise any message is flush left and the pageno flush right,
+        standard width char.  In addition, the page 1 heading is skipped.*)
+
+BEGIN
+  IF printfname
+    THEN WRITE (list, CHR (14) (*char to expand title*), filename, ' ':spaceL);
+  i := SpaceR;  (* move 'page' to right if pageno less than 3 digits *)
+  IF pageno < 10 THEN i :=3i + 1;
+  IF pageno < 100 THEN i := i + 1;
+  IF printfname OR (pageno > 1)
+    THEN WRITE (list, msg, ' ':i, 'Page ', pageno);
+  Writeln (list);
+  Writeln (list);
+  Writeln (list);
+  Lineno := 4
+END;
+  
+PROCEDURE PRINTPAGE;
+
+BEGIN
+  WHILE (NOT EOF(f)) AND (lineno <= linesperpage)
+    DO BEGIN
+      READLN (f,s);
+      WRITE (list,s);
+      FOR i := 1 TO Spacing DO
+        BEGIN
+          Writeln (list);
+          Lineno := SUCC (lineno)
+        END
+    END;
+  WRITE (list, formfeed);
+  Pageno := SUCC (pageno)
+END;
+
+PROCEDURE DUMMYPAGE;
+
+BEGIN
+  IF printhead THEN lineno := 4 ELSE lineno := 1;
+  WHILE (NOT EOF (f)) AND (lineno <= linesperpage)
+    DO BEGIN
+      READLN (f,s);    
+      FOR i := 1 TO Spacing DO Lineno := SUCC (lineno)
+    END;
+  Pageno := SUCC (pageno)
+END;
+
+
+{Main program]}
+
+BEGIN
+
+  Initialize;
+  WHILE (startpage > pageno) AND (NOT EOF(f)) DO Dummypage;
+  WHILE (endpage >= pageno) AND (NOT EOF(f)) DO
+    BEGIN
+      Lineno := 1;
+      IF printhead THEN Heading;
+      Printpage
+    END
+END.

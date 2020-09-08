@@ -1,0 +1,515 @@
+(*$S+*)
+UNIT STARTER;
+INTERFACE
+USES DBUNIT,SCUNIT;
+CONST
+  WA0=0;
+  WA1=1;
+  WA2=2;
+  FNUM=0;
+  PAGEZERO=0;
+  EOL=13;
+  ESC=27;
+  ETX=3;
+  LASTSELCH='Z';
+  PAGELASTBYTE=4095;
+  MINRECSPACE=250;
+  PEOPLEGROUP=0;
+  PERSONREC=0;
+  INDEXGROUP=1;
+  INDEXREC=1;
+  KEYFIELD=4;
+  
+TYPE
+  STRINGPTR = ^STRING;
+  
+  TRIXPTR =
+    RECORD CASE DBLEVELTYPE OF
+      FIELDT: (F:FLDDESPTR);
+      RECORDT:( (*R:RECDESPTR*) );
+      GROUPT: ( (*G:GRPDESPTR*) );
+      NONET:  (S:STRINGPTR)
+    END;
+    
+  SELECTITEM =
+    RECORD
+      SFP: FLDDESPTR;
+      SITEMNUM: INTEGER;
+      SDESCRIPTORNUM: INTEGER;
+    END;
+    
+VAR
+  PAGENUM,GROUPNUM, RECNUM:INTEGER;
+  INDEXPAGE, (*temporarily - fixed index page; later - coarse index*)
+    FIRSTAVAILPAGE, (*page into which next person record should be placed*)
+    DUMMY:INTEGER;
+  DONE:BOOLEAN;
+  CHOK:SCCHSET;
+  MAXSELCH:CHAR;
+  SELECT: ARRAY['A'..LASTSELCH] OF SELECTITEM;
+  INDEXITEMS: STRING[20];
+  PAGEINWA: ARRAY[DBWRKINDEX] OF INTEGER;
+  
+PROCEDURE BLANKTOPLINE;
+FUNCTION GETCOMMAND(S:STRING; OKSET:SCCHSET):CHAR;
+PROCEDURE CHECKPAGE(WI:DBWRKINDEX; PAGENUM:INTEGER);
+PROCEDURE STINITIALIZE;
+PROCEDURE SHOWREC(WI:DBWRKINDEX);
+FUNCTION CHANGEREC(WI:DBWRKINDEX):BOOLEAN;
+PROCEDURE SAVEINDEXITEM(SELCH:CHAR);
+PROCEDURE SAVEREC;
+PROCEDURE FETCHREC;
+PROCEDURE FINDREC;
+PROCEDURE NEWREC;
+PROCEDURE GETREC;
+
+  
+IMPLEMENTATION
+
+PROCEDURE BLANKTOPLINE;
+BEGIN
+  GOTOXY(0,0);
+  WRITE(
+'                                                                           ');
+  GOTOXY(0,0);
+END (*BLANKTOPLINE*);
+  
+FUNCTION GETCOMMAND(*S:STRING; OKSET:SCCHSET):CHAR*);
+VAR CH:CHAR;
+BEGIN
+  REPEAT
+    BLANKTOPLINE;
+    WRITE(S);
+    READ(KEYBOARD,CH);
+    IF EOLN(KEYBOARD) THEN CH:=CHR(EOL);
+    IF CH IN ['a'..'z'] THEN
+      CH:=CHR(ORD(CH)-32);
+  UNTIL CH IN OKSET;
+  GETCOMMAND:=CH;
+END (*GETCOMMAND*);
+
+PROCEDURE CHECKPAGE(*WI:DBWRKINDEX; PAGENUM:INTEGER*);
+VAR DUMMY:INTEGER;
+BEGIN
+  IF PAGEINWA[WI] <> PAGENUM THEN
+    BEGIN
+      DUMMY:=DBGETPAGE(FNUM, WI, PAGENUM);
+      PAGEINWA[WI]:=PAGENUM;
+    END;
+  DUMMY:=DBHOME(WI);
+END (*CHECKPAGE*);
+
+PROCEDURE MOVETOFIRSTAVAILPAGE;
+VAR DUMMY:INTEGER;
+BEGIN
+  CHECKPAGE(WA0, PAGEZERO);
+  DUMMY:=DBHOME(WA0);
+  DUMMY:=DBDESCEND(WA0); (*to record level*)
+  DUMMY:=DBDESCEND(WA0); (*to field level*)
+  DUMMY:=DBGET(WA0);
+END (*MOVETOFIRSTAVAILPAGE*);
+
+PROCEDURE GETFIRSTAVAIL;
+VAR DUMMY:INTEGER;
+BEGIN
+  MOVETOFIRSTAVAILPAGE;
+  FIRSTAVAILPAGE:=ORD(DBMAIL.STRG[2]); (*temporary kludge*)
+  INDEXPAGE:=ORD(DBMAIL.STRG[1]);
+END (*GETFIRSTAVAIL*);
+
+PROCEDURE SAVEFIRSTAVAIL;
+VAR DUMMY:INTEGER;
+BEGIN
+  MOVETOFIRSTAVAILPAGE;
+  DBMAIL.STRG[2]:=CHR(FIRSTAVAILPAGE); (*temporary kludge*)
+  DBMAIL.DBMAILTYPE:=STRINGF;
+  DUMMY:=DBPUT(WA0);
+  DUMMY:=DBPUTPAGE(FNUM,WA0,PAGEZERO);
+END (*SAVEFIRSTAVAIL*);
+  
+PROCEDURE STINITIALIZE;
+VAR NWA,RSLT:INTEGER;
+  TITLE:STRING;
+BEGIN
+  DBINITIALIZE;
+  SCINITIALIZE;
+  REPEAT
+    WRITE('Data Base File Title:');
+    READLN(TITLE);
+    RSLT:=DBFOPEN(FNUM,TITLE);
+    IF RSLT <> 0 THEN
+      WRITELN('Can''t open the file');
+  UNTIL RSLT = 0;
+  DBSHOWERR('Init-Getpage', DBGETPAGE(FNUM, WA0, PAGEZERO));
+  PAGEINWA[WA0]:=PAGEZERO;
+  DBTYPECHECK:=FALSE;
+  DBSHOWERR('Init-descriptors', DBGROUPINIT(FNUM,RSLT,'ALL'));
+  DBTYPECHECK:=TRUE;
+  DONE:=FALSE;
+  DBSHOWERR('Init-open(WA1)', DBWRKOPEN(WA1,(PAGELASTBYTE+1)));
+  DBSHOWERR('Init-open(WA2)', DBWRKOPEN(WA2, MINRECSPACE));
+  FOR NWA:=1 TO LASTWRKINDEX DO
+    PAGEINWA[NWA]:=-1;
+  GETFIRSTAVAIL;
+  WRITELN;
+  WRITELN('First available page is # ', FIRSTAVAILPAGE);
+  WRITELN('Index page is # ', INDEXPAGE);
+  INDEXITEMS:='DE'; (*Name, Company fields - could be chosen from keyboard
+                        if we wanted slightly fancier program*)
+END (*STINITIALIZE*);
+
+PROCEDURE LOCATOR(WI:DBWRKINDEX; GROUPNUM,RECNUM:INTEGER);
+VAR I:INTEGER;
+BEGIN
+  DBSHOWERR('LOC#1', DBHOME(WI));
+  DBSHOWERR('LOC#2', DBSEEK(WI, GROUPNUM));
+  DBSHOWERR('LOC#3', DBDESCEND(WI)); (*to record level*)
+  DBSHOWERR('LOC#4', DBSEEK(WI, RECNUM));
+END (*LOCATOR*);
+
+PROCEDURE SHOWREC(*WI:DBWRKINDEX*);
+(*show the content of a data record within its labelled form*)
+VAR FP:FLDDESPTR;
+  TP:TRIXPTR;
+  OFFSET,ITEMNUM,DESCRIPTORNUM,RSLT:INTEGER;
+  LEVEL:DBLEVELTYPE;
+  SELCH:CHAR;
+  NS:STRING;
+BEGIN
+  PAGE(OUTPUT);
+  DBITEMINFO(WI,LEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NS);
+  IF LEVEL = RECORDT THEN
+    BEGIN
+      RSLT:=DBDESCEND(WI); (*to field level*)
+      DBITEMINFO(WI,LEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NS);
+      DBGETDESCRIPTOR(FIELDT,DESCRIPTORNUM,FP);
+      SELCH:='A';
+      MAXSELCH:=SELCH;
+      CHOK:= [];
+      WHILE (RSLT = 0) AND (FP <> NIL) DO
+        WITH FP^ DO
+          BEGIN
+            IF FLDTYPE IN [STRINGF,INTEGERF] THEN
+              BEGIN
+                GOTOXY(LABELCOL, ROW);
+                (*note link value is one more than correct string length*)
+                WRITE(SELCH,'>');
+                WRITE(NAME:(LENGTH(NAME)-1));
+                GOTOXY(DATACOL, ROW);
+                DBSHOWERR('Showrec-Data', DBWRITEFIELD(OUTPUT, WI));
+                CHOK:=CHOK+[SELCH];
+                WITH SELECT[SELCH] DO
+                  BEGIN
+                    SFP:=FP;
+                    SITEMNUM:=ITEMNUM;
+                    SDESCRIPTORNUM:=DESCRIPTORNUM;
+                  END;
+                MAXSELCH:=SELCH;
+                SELCH:=CHR(ORD(SELCH)+1);
+              END (*FLDTYPE <> GROUPF*);
+            RSLT:=DBNEXT(WI);
+            IF RSLT = 0 THEN
+              BEGIN (*get the descriptor number, then with that FP*)
+                DBITEMINFO(WI,LEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NS);
+                DBGETDESCRIPTOR(FIELDT,DESCRIPTORNUM,FP);
+              END;
+          END (*WITH FP^*);
+    END
+  ELSE
+    BEGIN
+      WRITELN;
+      WRITELN('ERROR - Call SHOWREC when pointing at a record');
+    END;
+  GOTOXY(0,0);
+END (*SHOWREC*);
+
+FUNCTION CHANGEREC(*WI:DBWRKINDEX):BOOLEAN*);
+(*after record is shown on screen in its form by SHOWREC, this routine
+  allows editing any or all fields in the form*)
+VAR SELCH,CH:CHAR;
+  SELCHSET:SCCHSET;
+  DUMMY:INTEGER;
+  MSG:STRING;
+BEGIN
+  BLANKTOPLINE;
+  SELCHSET:=CHOK+[CHR(EOL), CHR(ETX), CHR(ESC)];
+  MSG:=
+    'Pick item by lead char; <RET> next item; <ETX> accept rec; <ESC> abort';
+  WRITE(MSG);
+  REPEAT
+    SCGETCCH(CH,SELCHSET);
+    IF CH=CHR(EOL) THEN
+      BEGIN
+        IF SELCH < MAXSELCH THEN
+          SELCH:=CHR(ORD(SELCH)+1);
+        CH:=SELCH;
+      END;
+    IF CH IN CHOK THEN
+      WITH SELECT[CH] DO
+        BEGIN
+          DUMMY:=DBSEEK(WI,SITEMNUM);
+          DBSHOWERR('CHANGEREC-DBGET', DBGET(WI));
+          WITH SFP^ DO
+            IF FLDTYPE IN [STRINGF,INTEGERF] THEN
+              BEGIN
+                SELCH:=CH;
+                CASE FLDTYPE OF
+                  STRINGF: SCREADSTRG(DBMAIL.STRG, MAXWIDTH,
+                                      [' '..'~'], ROW, DATACOL);
+                  INTEGERF:SCREADINT(DBMAIL.INT, 6, ROW, DATACOL)
+                END (*CASE*);
+                DBMAIL.DBMAILTYPE:=FLDTYPE;
+                DBSHOWERR('CHANGEREC-DBPUT', DBPUT(WI));
+              END (*IF FLDTYPE*);
+          BLANKTOPLINE;
+          WRITE(MSG); (*flash top line, leave cursor at end*)
+        END (*WITH SELECT*)
+      ELSE
+        BEGIN (*do nothing*) END;
+  UNTIL CH IN [CHR(ETX),CHR(ESC)];
+  CHANGEREC:= (CH = CHR(ETX));
+  DUMMY:=DBASCEND(WI); (*leave pointing at parent record*)
+END (*CHANGEREC*);
+
+PROCEDURE SAVEINDEXITEM(*SELCH:CHAR*);
+(*called once for each item to be indexed. data record is in WA1 with
+  pointer at field level*)
+VAR ITEMNUM, TAGVALUE, RSLT, NREC, DUMMY:INTEGER;
+  FOUND:BOOLEAN;
+
+  PROCEDURE PUTNEXT(I:INTEGER);
+  BEGIN
+    DBMAIL.INT:=I;
+    DUMMY:=DBPUT(WA2);
+    DUMMY:=DBNEXT(WA2);
+  END (*PUTNEXT*);
+
+BEGIN (*SAVEINDEXITEM*)
+  WITH SELECT[SELCH] DO
+    BEGIN
+      ITEMNUM:=SITEMNUM;
+      TAGVALUE:=SDESCRIPTORNUM;
+    END;
+  
+  (*build index record in WA2*)
+  ZEROWORKAREA(WA2);
+  DUMMY:=DBEMPTYITEM(WA2, GROUPT, INDEXGROUP);
+  DUMMY:=DBEMPTYITEM(WA2, RECORDT, INDEXREC);
+  DUMMY:=DBHOME(WA2);
+  DUMMY:=DBDESCEND(WA2); (*to record level*)
+  DUMMY:=DBDESCEND(WA2); (*to field level*)
+  DBMAIL.DBMAILTYPE:=INTEGERF;
+  PUTNEXT(PAGEINWA[WA1]); (*page#*)
+  PUTNEXT(GROUPNUM);
+  PUTNEXT(RECNUM);
+  PUTNEXT(TAGVALUE);
+  (*WA1 assumed in field level on entry to this routine*)
+  DUMMY:=DBSEEK(WA1,ITEMNUM); (*point to field to be indexed*)
+  (*pick up the key value from data record in WA1, insert in WA2*)
+  DUMMY:=DBGET(WA1); (*KEY to mailbox*)
+  DUMMY:=DBPUT(WA2);
+  
+  (*prepare to insert in index in WA0*)
+  CHECKPAGE(WA0, INDEXPAGE);
+  RSLT:=DBDESCEND(WA0); (*to index rec*)
+  IF RSLT = 19 (*reached end of list error, WA0 is empty*) THEN
+    BEGIN (*use WA2 to start new WA0*)
+      DUMMY:=DBHOME(WA2);
+      DBSHOWERR('SAVEINDEXITEM - copy WA2 to WA0', DBCOPY(WA2,WA0));
+    END
+  ELSE
+    IF RSLT <> 0 THEN
+      DBSHOWERR('SAVEINDEXITEM - cant''t descend in WA0', 100)
+  ELSE
+    BEGIN
+      (*point to location where the new item is to be placed in index*)
+      DBSHOWERR('SAVEINDEXITEM - findrec',
+                DBFINDREC(WA0, ASCENDING, KEYFIELD,
+                DBMAIL.STRG, (*KEY*)
+                NREC, FOUND)); 
+      IF FOUND THEN (*KEY matches exactly*)
+        BEGIN
+          (*code to eliminate only those duplicates with same page, group,
+            and record numbers might go here*)
+        END
+      ELSE
+        BEGIN (*insert the new index record into index in WA0*)
+          DBSHOWERR('SAVEINDEXITEM - emptyitem', 
+                     DBEMPTYITEM(WA0, RECORDT, INDEXREC));
+          DUMMY:=DBASCEND(WA2); (*to record level*)
+          DBSHOWERR('SAVEINDEXITEM - replace WA0', DBREPLACE(WA2,WA0));
+        END;
+    END (*RSLT OK*);
+END (*SAVEINDEXITEM*);
+
+PROCEDURE SAVEREC;
+(*save both the new or changed record, and updated index, in file*)
+VAR I,DUMMY:INTEGER;
+BEGIN
+  DBSHOWERR('SAVEREC - People Group', DBPUTPAGE(FNUM,WA1,PAGEINWA[WA1]));
+  (*enter with WA1 in Record level*)
+  DUMMY:=DBDESCEND(WA1); (*to field level*)
+  FOR I:=1 TO LENGTH(INDEXITEMS) DO
+    SAVEINDEXITEM(INDEXITEMS[I]);
+  DBSHOWERR('SAVEREC - INDEX', DBPUTPAGE(FNUM, WA0, INDEXPAGE));
+END (*SAVEREC*);
+
+PROCEDURE FETCHREC;
+(*get the required page into WA1, if not already there. then display
+  the record in GROUPNUM, RECNUM*)
+BEGIN
+  IF PAGEINWA[WA1] <> PAGENUM THEN
+    BEGIN
+      DBSHOWERR('GETREC', DBGETPAGE(FNUM, WA1, PAGENUM));
+      PAGEINWA[WA1]:=PAGENUM;
+    END;
+  LOCATOR(WA1,GROUPNUM,RECNUM);
+  SHOWREC(WA1);
+END (*FETCHREC*);
+
+PROCEDURE FINDREC;
+CONST FIRSTLINE = 5;
+VAR
+  RN,RSLT,DUMMY:INTEGER;
+  CH,SELCH:CHAR;
+  FOUND:BOOLEAN;
+  KEY:STRING;
+  OFFSET,ITEMNUM,DESCRIPTORNUM:INTEGER;
+  LEVEL:DBLEVELTYPE;
+  NS:STRING;
+
+  PROCEDURE PICKNEXT(VAR I:INTEGER);
+  VAR DUMMY:INTEGER;
+  BEGIN
+    DUMMY:=DBGET(WA0);
+    I:=DBMAIL.INT;
+    DUMMY:=DBNEXT(WA0);
+  END (*PICKNEXT*);
+
+BEGIN
+  CHECKPAGE(WA0, INDEXPAGE);
+  PAGE(OUTPUT);
+  WRITE('Search Key:');
+  READLN(KEY);
+  DUMMY:=DBDESCEND(WA0); (*to record level*)
+  DBSHOWERR('FINDREC #1', DBFINDREC(WA0, ASCENDING, KEYFIELD, KEY,
+                                    RECNUM, FOUND));
+  (*establish beginning of range of keys to be displayed*)
+  IF RECNUM > 5 THEN
+    RN:=RECNUM-5
+  ELSE
+    RN:=0;
+  DUMMY:=DBSEEK(WA0,RN);
+  SELCH:='A';
+  RSLT:=0;
+  
+  (*display up to 10 keys, identified by letters for user selection*)
+  WHILE (SELCH < 'J') AND (RSLT = 0) DO
+    BEGIN
+      RSLT:=DBDESCEND(WA0); (*to field level*)
+      (* descend should fail on nul record at tail of list *)
+      IF RSLT = 0 THEN (*descend ok*)
+        BEGIN
+          RSLT:=DBSEEK(WA0, KEYFIELD); (*should also fail at tail*)
+          IF RSLT = 0 THEN
+            BEGIN
+              GOTOXY(0,(FIRSTLINE+ORD(SELCH)-ORD('A')));
+              WRITE(SELCH, '>');
+              DUMMY:=DBWRITEFIELD(OUTPUT, WA0);
+              SELCH:=CHR(ORD(SELCH)+1);
+              DUMMY:=DBASCEND(WA0); (*back to record level*)
+              RSLT:=DBNEXT(WA0);
+            END (* SEEK RSLT OK*);
+        END (*DESCEND RSLT OK*);
+    END (*WHILE*);
+  
+  (*now check to make sure we are still at the record level - debugging*)
+  DBITEMINFO(WA0,LEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NS);
+  IF LEVEL <> RECORDT THEN
+    DBSHOWERR('FINDREC - not at record level!', 100)
+  ELSE
+    BEGIN
+                
+      (*ask user which entry to pick*)
+      GOTOXY(0,1);
+      WRITE('Pick item by initial char; <ESC> to escape');
+      SCGETCCH(CH, ['A'..CHR(ORD(SELCH)-1), CHR(ESC)]);
+      IF CH <> CHR(ESC) THEN
+        BEGIN
+          RN:=RN+ORD(CH)-ORD('A');
+          DUMMY:=DBSEEK(WA0,RN);
+          DUMMY:=DBDESCEND(WA0); (*to field level*)
+          
+          (*Pick up page, group, record numbers from index record*)
+          PICKNEXT(PAGENUM);
+          PICKNEXT(GROUPNUM);
+          PICKNEXT(RECNUM);
+          
+          (*get the data record and display it*)
+          FETCHREC;
+        END (*CH <> ESC*);
+    END (*RECORD level ok*);
+END (*FINDREC*);
+
+PROCEDURE NEWREC;
+(*display a blank form, create a blank record, and collect data content
+  for it from keyboard. save the new record if requested*)
+VAR DUMMY,RSLT:INTEGER;
+  OFFSET,ITEMNUM,DESCRIPTORNUM:INTEGER;
+  LEVEL:DBLEVELTYPE;
+  NS:STRING;
+BEGIN
+  (*Assume page PAGENUM has one group only, of People_group*)
+  ZEROWORKAREA(WA2);
+  DUMMY:=DBEMPTYITEM(WA2, GROUPT, PEOPLEGROUP);
+  DUMMY:=DBEMPTYITEM(WA2, RECORDT, PERSONREC);
+  SHOWREC(WA2); (*display the empty form with labels*)
+  DUMMY:=DBHEAD(WA2);
+  IF CHANGEREC(WA2) THEN (*should save it*)
+    BEGIN
+      DUMMY:=DBHOME(WA1);
+      DUMMY:=DBDESCEND(WA1);
+      DUMMY:=DBTAIL(WA1);
+      RSLT:=DBREPLACE(WA2,WA1);
+      IF RSLT <> 0 THEN (*insufficient room in WA1*)
+        BEGIN
+          (*blank out WA1, put in new record, prepare to save in a
+            new page*)
+          ZEROWORKAREA(WA1);
+          DUMMY:=DBEMPTYITEM(WA1, GROUPT, PEOPLEGROUP);
+          DUMMY:=DBEMPTYITEM(WA1, RECORDT, PERSONREC);
+          DUMMY:=DBHOME(WA1);
+          DUMMY:=DBDESCEND(WA1);
+          RSLT:=DBREPLACE(WA2,WA1);
+          FIRSTAVAILPAGE:=FIRSTAVAILPAGE+1;
+          PAGEINWA[WA1]:=FIRSTAVAILPAGE;
+        END (*REPLACE failed*);
+      IF RSLT = 0 THEN
+        BEGIN (*save the newly assigned record # in RECNUM, then
+          save the record*)
+          DBITEMINFO(WA1,LEVEL,ITEMNUM,OFFSET,DESCRIPTORNUM,NS);
+          RECNUM:=ITEMNUM;
+          SAVEREC;
+        END (*RSLT OK*);
+    END (*changerec succeeded*);
+END (*NEWREC*);
+
+PROCEDURE GETREC;
+(*display the content of a specific record in selected page and group*)
+BEGIN
+  PAGE(OUTPUT);
+  WRITELN;
+  (*put index search calls here in place of following explicit setting
+    of PAGENUM, RECNUM. Assume GROUPNUM is 0 by default*)
+  WRITE('PAGE#:');
+  READLN(PAGENUM);
+  WRITE('GROUP#:');
+  READLN(GROUPNUM);
+  WRITE('RECORD#:');
+  READLN(RECNUM);
+  FETCHREC;
+END (*GETREC*);
+
+
+END.
+

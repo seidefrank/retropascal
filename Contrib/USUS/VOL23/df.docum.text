@@ -1,0 +1,313 @@
+                DF   Directory-File utility
+
+          The Directory-File utility displays a volume
+directory on a crt screen.  The operator can select a file
+with the cursor and perform functions from a menu with the
+selected file name.  Menu selected options include
+modification or removal of a file name, moving a file to
+another volume, entering the SYSTEM.EDITOR, and execution
+of a code file or initiation of a script file. 
+
+Operation of the Directory-File utility
+
+          DF is called into operation by executing the file /DF. 
+The utility will clear the screen and request
+identification of the volume whose directory is to be
+displayed.
+
+Example:
+          
+   Enter volume id of disk(<ESC>,<RETURN> to end) [prefix]=>
+
+Possible entries in responce to this prompt are:
+
+1)        Press the keys labeled <ESC> and <RETURN>.  The utility
+          will relenquish control to the operating system.
+          
+2)        Press the key labeled <RETURN>.  The utility will use
+          the volume identification displayed inside the square
+          brackets.
+          
+3)        Input a number followed by the <RETURN> key.  The number
+          must identify a device which contains a blocked volume.  
+          (note: this volume identification will become the default
+          volume in square brackets.)
+          
+4)        Input a volume identification as defined by the PASCAL
+          operating system.  The volume identification may be a
+          volume name, a device name or a device number (prefixed
+          with a # character).  (note: this volume identification
+          will become the default volume in square brackets.)
+          
+With the entry of a volume identification, the utility will
+display the file names from the directory in order of
+occurrence.  The screen will contain a menu line, the
+volume name, up to twenty rows in four columns of file
+names, the number of files defined, and the number of
+blocks available in the largest contiguous area.  Sharing
+the line with the volume name is the extended directory
+information for the file pointed to by the cursor.  This
+includes the file name, block length, last modification
+date, starting block address, number of bytes in the last
+block of the file, and the file type.
+
+          The first line of the screen display is a menu list of
+the functions available.  Additional functions are
+displayed on entry of a ?.  The cursor will be on the
+first character of the first file.  Selection of the file
+to be affected by a function is made with the cursor.
+
+
+
+
+          Every option is selectable by entering the first
+character of the option name or the special key indicated
+in angular brackets. ( i.e. <ENTER> means the key with
+the word ENTER engraved on it.)
+
+1 <arrows>
+
+          The arrow keys move the cursor one file name in the
+          direction indicated by the arrow on the key pressed.  The
+          cursor will be positioned on the first character of the
+          file name except when a Change operation is in progress.
+          
+          The left arrow key will move the cursor one column of
+          file names to the left. When in the leftmost column, the
+          cursor will be moved to the rightmost column.
+          
+          The right arrow key or the tab key will move the cursor
+          one column of file names to the right.  When in the
+          rightmost column, the cursor will be moved to the leftmost
+          column.
+          
+          The up arrow key will move the cursor up one row in the
+          same column.  When on the top row, the cursor will be moved
+          to the bottom row in the same column.
+          
+          The down arrow key will move the cursor down one row in
+          the same column.  When on the bottom row, the cursor will
+          be moved to the top row in the same column.
+          
+          The home key will position the cursor on the upper left
+          file name. (i.e. column one, row one)
+          
+          The <RETURN> key will move the cursor down one row in
+          the same column.  When on the bottom row, the cursor will
+          be moved to the top row in the next column to the right. 
+          When on the last row of the rightmost column, the cursor
+          will be moved to the first row of the leftmost column.
+          
+2  Remove
+
+          Entering the R key marks the file name at the cursor
+          position for removal from the directory.  The file will not
+          be removed until the user exits using the <ENTER>,
+          <ESC> or Quit commands.  Directory statistics for the
+          number of files and blocks available are updated as if the
+          file had been removed.  This allows the user to perform
+          trial removes without disturbing the volume directory until
+          satisfied with the results of the removal.
+          
+3  Change
+
+          Entering a C key initiates a file name change.  Change
+          allows the user to modify the file name at the cursor
+          position.  Left and right arrow keys move the cursor across
+          the file name field without disturbing the file name,
+          character keys will replace the character at the cursor
+          position, <ENTER> or <RETURN> accepts the modified
+          name, and the <ESC> key aborts the change and restores
+          the original file name.  Spaces internal to the file name
+          are ignored and may be used to remove unwanted characters.
+          
+4  Undo
+
+          Entering a U key restores the file name at the cursor
+          position to the original name from the volume directory if
+          changed, removed, or moved.  If the file has been moved,
+          then only the displayed name is changed and the file on the
+          destination volume is not disturbed.
+          
+5  Move
+
+          Entering the M key moves the file at the cursor
+          position to the destination volume.  If the destination
+          volume has not been specified, then a request for the
+          destination volume identification will be made.  The
+          destination volume directory is searched for the file name
+          and the user notified if the file name exists on the
+          directory.
+          
+    THE.FILE is on destination volume, remove the old version?(Y/N)
+
+
+          If the user enters a <Y>, the existing file on the
+          destination will be removed and the file from the source
+          will be copied to the destination.  If the entry is an
+          <N>, the destination volume directory is not disturbed
+          and no move takes place.  Unlike other functions, the move
+          command is an immediate operation and the file will be
+          moved before continuing.
+          
+6  Get
+
+          Entering the G key initiates the entry of a new
+          destination volume identification.  On entry of the volume
+          identification, the new name becomes the destination
+          volume.
+          
+7  Edit
+
+          Entering the E key will call the system editor with
+          the file name pointed to by the cursor.  
+          
+          If any file is marked for removal or a file name has
+          been changed, then the utility will request verification of
+          the changes with the prompt:
+          
+               Update the directory? (Yes/No/Return)
+          
+          The response to this prompt must be a <Y>, <N> or <R>
+          - all other keys are ignored.  A <Y> response will cause
+          the updated directory to be written to the blocked volume
+          replacing the original directory.  An <N> response
+          prevents the replacement of the orginal directory, and all
+          modifications are ineffective.  An <R> response will
+          return to the present directory display. After <Y> or
+          <N> is entered, DF will call for the system editor with
+          the file name at the cursor.
+          
+8  eXecute
+
+          Entering the X key will execute a code file or
+          redirect input from a script file.  When the cursor points
+          to a file of type code and the X key is entered, the
+          program in the code file will be executed.  When the cursor
+          points to a file which is not of type code and the X key
+          is entered, the file will be considered to be a script file
+          and input will be redirected from the file.
+          
+          If any file is marked for removal or a file name has
+          been changed, then the utility will request verification of
+          the changes with the prompt:
+          
+               Update the directory? (Yes/No/Return)
+               
+          The response to this prompt must be a <Y>, <N> or <R>
+          - all other keys are ignored.  A <Y> response will cause
+          the updated directory to be written to the blocked volume
+          replacing the original directory.  An <N> response
+          prevents the replacement of the orginal directory, and all
+          modifications are ineffective.  An <R> response will
+          return to the present directory display. After <Y> or
+          <N> is entered, DF will continue with the execute
+          option.
+          
+ 9  <ENTER>
+10  <ESC>
+
+          The <ENTER> and <ESC> keys exit the directory display,
+          prompt for update of the disk directory, and prompt for a
+          new volume identification.
+          
+          If any file is marked for removal or a file name has
+          been changed, then the utility will request verification of
+          the changes with the prompt:
+          
+               Update the directory? (Yes/No/Return)
+               
+          The response to this prompt must be a <Y>, <N> or <R>
+          - all other keys are ignored.  A <Y> response will cause
+          the updated directory to be written to the blocked volume
+          replacing the original directory.  An <N> response
+          prevents the replacement of the orginal directory, and all
+          modifications are ineffective.  An <R> response will
+          return to the present directory display. After <Y> or
+          <N> is entered, the prompt for a volume identification
+          will be presented.
+          
+          
+11  Quit
+
+          Entering the Q key will prompt for update of the
+          directory and return to the PASCAL system.
+          
+          If any file is marked for removal or a file name has
+          been changed, then the utility will request verification of
+          the changes with the prompt:
+          
+               Update the directory? (Yes/No/Return)
+          
+          The response to this prompt must be a <Y>, <N> or <R>
+          - all other keys are ignored.  A <Y> response will cause
+          the updated directory to be written to the blocked volume
+          replacing the original directory.  An <N> response
+          prevents the replacement of the orginal directory, and all
+          modifications are ineffective.  An <R> response returns
+          to the present directory display. After <Y> or <N> is
+          entered, DF will exit to the PASCAL system.
+          
+12  Help
+
+          Entering the H key initiates a sequence of single line
+          descriptions for the options available to the user.  The
+          user is prompted to press the <RETURN> key to continue for
+          each line displayed.
+          
+13  Output
+
+          Entering the O key moves the volume directory display
+          to a file or device specified by the user in response to
+          the prompt:
+          
+               Enter the output file name :
+               
+14  Natural order
+
+          Entering the N key for natural order will cause the
+          directory file display to be presented in the order of
+          occurrence on the disk.
+          
+15  Sorted order
+
+          Entering the S key for sorted order will cause the
+          directory file display to be presented in alphanumeric
+          order by file name.
+          
+16  Logical order
+
+          Entering the L key for logical order will cause the
+          directory file display to be presented in alphanumeric
+          order by the four character file suffix first and then by
+          the file name.
+          
+17  Verify
+
+          Entering the V key for verify will cause the directory
+          file display to be rewritten.
+          
+18  Advance
+
+          The A key invokes a directory display function which,
+          if the cursor is pointing to a subsidirary volume, will
+          advance to the subsidirary whether the volume is mounted or
+          not.  This allows an unmounted subsidirary volume to be
+          displayed and files to be extracted or deleted without
+          requiring the user to mount the volume.
+          
+19  Formfeed
+
+          Entering an F, when the destination is the printer,
+          will emit a formfeed character to the printer.  Useful when
+          outputing multiple text files to the printer from DF.
+          
+          
+          
+          
+          
+          
+          
+          
+          
+            

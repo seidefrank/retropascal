@@ -1,0 +1,407 @@
+
+(*$S+*) (* USE SWAPPING OPTION FOR LARGE PROGRAMS *)
+
+PROGRAM GRAFDEMO;
+(***************************************************************)
+(*                                                             *)
+(*  THIS IS A HURRIDLY-WRITTEN EXAMPLE SHOWING THE USE OF      *)
+(*  ROUTINES IN TURTLEGRAPHICS AND APPLESTUFF UNITS.           *)
+(*                                                             *)
+(*  IT DOES HAVE A DESCRIPTION OF DRAWBLOCK TOWARD THE END.    *)
+(*  I HOPE IT HELPS TO ANSWER SOME OF YOUR QUESTIONS.          *)
+(*                                                             *)
+(*  MANY THANKS TO THE FINE TEAM AT UCSD.                      *)
+(*  ENJOY YOUR NEW PASCAL SYSTEM.  BILL ATKINSON, MAY 5 1979   *)
+(*                                                             *)
+(***************************************************************)
+
+USES TURTLEGRAPHICS,APPLESTUFF;
+
+CONST XMAX=279;
+      YMAX=191;
+      XMID=140;
+      YMID=96;
+      
+TYPE PICTURE=PACKED ARRAY[0..53,0..120] OF BOOLEAN;
+
+VAR I,J,K,SKIP,ROW: INTEGER;
+    CH: CHAR;
+    COLORS: ARRAY[0..5] OF SCREENCOLOR;
+    BUTTER: PICTURE;
+    BIT: BOOLEAN;
+
+
+PROCEDURE WAIT(TIME:INTEGER);
+VAR DELAY: INTEGER;
+BEGIN
+  FOR DELAY:=1 TO TIME DO;
+END;
+
+
+PROCEDURE FRAME(COLOR: SCREENCOLOR);
+BEGIN
+  PENCOLOR(NONE); MOVETO(0,0); 
+  PENCOLOR(COLOR);
+  MOVETO(0,YMAX); MOVETO(XMAX,YMAX);
+  MOVETO(XMAX,0); MOVETO(0,0);
+  PENCOLOR(NONE);
+END;
+
+
+PROCEDURE GOODBYE;
+BEGIN
+  TEXTMODE;
+  READ(KEYBOARD,CH);
+  WRITELN;
+  WRITELN('THAT''S ALL FOLKS...');
+  EXIT(PROGRAM);
+END;
+
+  
+PROCEDURE ERASE;
+BEGIN
+  IF KEYPRESS THEN GOODBYE;
+  VIEWPORT(0,XMAX,0,YMAX);
+  FRAME(WHITE);
+  VIEWPORT(1,XMAX-1,1,YMAX-1);
+  FILLSCREEN(BLACK);
+END;
+
+
+FUNCTION RANDCOLOR: SCREENCOLOR;
+BEGIN
+  RANDCOLOR:=COLORS[RANDOM MOD 6];
+END;
+  
+  
+PROCEDURE FAN;
+BEGIN
+  FOR J:=1 TO 3 DO
+    FOR I:=17 DOWNTO 1 DO
+      BEGIN
+        PENCOLOR(NONE); MOVETO(0,0);
+        PENCOLOR(REVERSE); 
+        TURNTO(5*I); MOVE(400);
+      END;
+  WAIT(2000);
+  IF KEYPRESS THEN GOODBYE;
+  FILLSCREEN(REVERSE);
+  FILLSCREEN(REVERSE);
+  
+  FOR I:=0 TO 4 DO
+    BEGIN
+      SKIP:=I*15;
+      (* USE VIEWPORT TO SPECIFY PORTION OF SCREEN *)
+      VIEWPORT(SKIP,XMAX-SKIP,SKIP,YMAX-SKIP);
+      IF I=2 THEN 
+               BEGIN
+                 PENCOLOR(NONE);
+                 MOVETO(SKIP,SKIP);
+                 PENCOLOR(WHITE);
+                 MOVETO(SKIP,YMAX-SKIP);
+                 MOVETO(XMAX-SKIP,YMAX-SKIP);
+                 MOVETO(XMAX-SKIP,SKIP);
+                 MOVETO(SKIP,SKIP);
+                 VIEWPORT(SKIP+1,XMAX-SKIP-1,SKIP+1,YMAX-SKIP-1);
+                 FILLSCREEN(BLACK);
+               END
+             ELSE FILLSCREEN(REVERSE);
+    END;
+  WAIT(3000); ERASE;
+END;
+
+  
+PROCEDURE GRID;
+BEGIN
+  (* DRAW VERTICAL LINES *)
+  FOR I:=1 TO 27 DO
+    BEGIN
+      PENCOLOR(NONE);
+      MOVETO(I*10,YMAX);
+      PENCOLOR(WHITE);
+      MOVETO(I*10,0);
+    END;
+  (* DRAW HORIZONTAL LINES *)
+  FOR I:=18 DOWNTO 1 DO
+    BEGIN
+      PENCOLOR(NONE);
+      MOVETO(0,I*10);
+      PENCOLOR(WHITE);
+      MOVETO(XMAX,I*10);
+    END;
+  WAIT(2000);
+  FILLSCREEN(REVERSE);
+  FILLSCREEN(REVERSE);
+  WAIT(2000); ERASE;
+END;
+
+  
+PROCEDURE DIAGONALS;
+BEGIN
+  TURNTO(45);
+    FOR I:=-19 TO 27 DO
+      BEGIN
+        PENCOLOR(NONE);
+        MOVETO(I*10,0);
+        PENCOLOR(WHITE);
+        MOVE(500);
+      END;
+    WAIT(2000); ERASE;
+END;
+
+    
+PROCEDURE SPIRAL;
+BEGIN
+  PENCOLOR(NONE); MOVETO(XMID,YMID);
+  TURNTO(0); PENCOLOR(RANDCOLOR);
+  FOR I:=1 TO 300 DO
+    BEGIN
+      MOVE(I);
+      TURN(-45);
+    END;
+  WAIT(2000); ERASE;
+END;
+
+    
+PROCEDURE SQUIGGLE;
+BEGIN
+  PENCOLOR(NONE); MOVETO(XMID,YMID);
+  PENCOLOR(WHITE);
+  REPEAT
+    TURN((RANDOM MOD 90)-60);
+    MOVE(3);
+  UNTIL (TURTLEX>XMAX) OR (TURTLEX<0) OR (TURTLEY<0) OR (TURTLEY>YMAX);
+  ERASE;
+END;
+
+    
+PROCEDURE WALLBUMP;
+BEGIN
+  PENCOLOR(NONE); MOVETO(XMID,YMID);
+  PENCOLOR(WHITE);
+  I:=0;
+  WHILE I<40 DO
+    BEGIN
+      IF (TURTLEX>XMAX)
+         OR (TURTLEX<0)
+         OR (TURTLEY>YMAX)
+         OR (TURTLEY<0)
+         THEN BEGIN
+                TURN(180);
+                PENCOLOR(RANDCOLOR);
+                I:=I+1;
+              END
+      ELSE TURN((RANDOM MOD 45)-22);
+      MOVE(10);
+    END;
+  ERASE;
+END;
+
+  
+PROCEDURE POLYGON(SIDES,EDGE: INTEGER);
+VAR I,ANG: INTEGER;
+BEGIN
+  ANG:=360 DIV SIDES;
+  (* SKIP POLYGONS WHICH DON'T CLOSE ALL THE WAY *)
+  IF (ANG*SIDES)<>360 THEN EXIT(POLYGON);
+  PENCOLOR(WHITE);
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      MOVE(EDGE);
+      TURN(-ANG);
+    END;
+  PENCOLOR(NONE);
+END;
+  
+
+PROCEDURE POLYGONS;
+BEGIN
+  PENCOLOR(NONE); 
+  FOR I:=1 TO 40 DO
+    BEGIN
+      MOVETO((RANDOM MOD 400)-50,(RANDOM MOD 300)-50);
+      TURNTO(0);
+      POLYGON((RANDOM MOD 9)+3,(RANDOM MOD 40)+5);
+    END;
+  WAIT(4000); ERASE;
+END;
+
+
+PROCEDURE STUFF(VAR BITMAP: PICTURE; S:STRING);
+(* MAKE BUTTERFLY BITMAP FORM STRINGS *)
+VAR J: INTEGER;
+BEGIN
+  FOR J:=1 TO LENGTH(S) DO 
+    BEGIN
+      BIT:=(S[J]<>' ');
+      BITMAP[ROW,J+59]:=BIT;
+      BITMAP[ROW,60-J]:=BIT; (* SYMMETRIC *)
+    END;
+  ROW:=ROW-1;
+END;
+
+  
+PROCEDURE BUTTER1;
+BEGIN
+  ROW:=53;
+STUFF(BUTTER,'                       XX                 XXXXXXXXXXX       ');
+STUFF(BUTTER,'                      XXX          XXXXXXXXXXXXXXXXXXXXX    ');
+STUFF(BUTTER,'        XXXXXXXXXXXXXXXX        XXXXXXXXX              XX   ');
+STUFF(BUTTER,'      XX                     XXXXXXX                     X  ');
+STUFF(BUTTER,'    XX                    XXXXXXX                         X ');
+STUFF(BUTTER,'   X                    XXXXXXX                           X ');
+STUFF(BUTTER,'  X                   XXXXXX                              X ');
+STUFF(BUTTER,'XX                 XXXXXXX                               *X ');
+STUFF(BUTTER,' XX              XXXXXX                           ----- * X ');
+STUFF(BUTTER,' X X           XXXXX                           ----      XX ');
+STUFF(BUTTER,' XXX         XXXXX                           ---       * X  ');
+STUFF(BUTTER,' XX        XXXXX                           ---       ** XX  ');
+STUFF(BUTTER,' X       XXXX                             ---       * * X   ');
+STUFF(BUTTER,'  X    XXXX                         ----------     *** XX   ');
+STUFF(BUTTER,'   X   XXX               --      ---------   --   *** XX    ');
+STUFF(BUTTER,'    X  XX            -----     -----           - * * XX     ');
+STUFF(BUTTER,'X  XXX          ------      ----                 ** XX      ');
+END;
+
+PROCEDURE BUTTER2;
+BEGIN
+STUFF(BUTTER,' X  X         ---        ------------          ****XX       ');
+STUFF(BUTTER,' X  X     -----       ---           ---      **** X         ');
+STUFF(BUTTER,' X  X ----------------                -       ***XX         ');
+STUFF(BUTTER,' X  X-----    ---    ---                -   **  * X         ');
+STUFF(BUTTER,' X  X---                -                  ****  XX         ');
+STUFF(BUTTER,'    X*  ---               -                ***** X          ');
+STUFF(BUTTER,'   X  **                                 ****** XX          ');
+STUFF(BUTTER,'XXX  XX** *                             ******  X           ');
+STUFF(BUTTER,'   X   XX***                             ***** XX           ');
+STUFF(BUTTER,'   XXI  XX ***                       ***  ***  X            ');
+STUFF(BUTTER,'XXX X I   XX** ****                  ***** *  XX            ');
+STUFF(BUTTER,'   X X II   XX **** ** **  *  *  ***  *****   X             ');
+STUFF(BUTTER,'   X X  II    XX ******** *** ** ***** ****  XX             ');
+STUFF(BUTTER,'   X X  I I    IXX*  ************ ***** **   X              ');
+STUFF(BUTTER,'XXXX  X  II     I XX ***** ******  *****    XX              ');
+STUFF(BUTTER,'    X X  I I     I  XX      ****** ****    XX               ');
+END;
+
+
+PROCEDURE BUTTER3;
+BEGIN
+STUFF(BUTTER,'    X X  III      IIIIXXX      ***        XX                ');
+STUFF(BUTTER,'    X  X  I I      I  II XXX             XX                 ');
+STUFF(BUTTER,'XXXX   X   III     I    II  XXXX       XX                   ');
+STUFF(BUTTER,'    XX X   I I      I  0  I    XXXXXXXXX                    ');
+STUFF(BUTTER,'    XX  X    II     I  00  I   X  XXXX                      ');
+STUFF(BUTTER,'    XX  X  I  I     II  000 I   X                           ');
+STUFF(BUTTER,'XXXXXX  X  I   III  I II 0   I  X                           ');
+STUFF(BUTTER,'    X X X  II  I III   II  0  I X                           ');
+STUFF(BUTTER,'   X  X  X II  I   I 00 II 0 I X                            ');
+STUFF(BUTTER,'XXXX   X X  I  I    I 00 I   IX                             ');
+STUFF(BUTTER,'   X    XX  I  I  0 I 00  I  I X                            ');
+END;
+
+PROCEDURE BUTTER4;
+BEGIN
+STUFF(BUTTER,'XXX      X  I  I 000 I     II  X                            ');
+STUFF(BUTTER,'  X      X  I 0 I 00 I  00 I   X                            ');
+STUFF(BUTTER,' X        X I 0 I     I    I X                              ');
+STUFF(BUTTER,'X         X  I  I  0  I   I  X                              ');
+STUFF(BUTTER,'           X I  I  00  III  X                               ');
+STUFF(BUTTER,'            X IIII    I     X                               ');
+STUFF(BUTTER,'             X    I   I XXXX                                ');
+STUFF(BUTTER,'              XXXXXIII X                                    ');
+STUFF(BUTTER,'                   X  X                                     ');
+STUFF(BUTTER,'                    XX                                      ');
+END;
+
+
+PROCEDURE INITBUTTERFLY;
+BEGIN
+  BUTTER1;
+  BUTTER2;
+  BUTTER3;
+  BUTTER4;
+END;
+
+(************************************************************************)
+(*                                                                      *)
+(*  PARAMETERS TO DRAWBLOCK ARE:                                        *)
+(*    1. SOURCE ARRAY NAME                                              *)
+(*    2. ROWSIZE IN BYTES  2*(( DOTSWIDE+15 ) DIV 16 )                  *)
+(*    3. XSKIP HOW MANY DOTS TO SKIP BEFORE TRANSFERING                 *)
+(*    4. YSKIP HOW MANY ROWS TO SKIP                                    *)
+(*    5. WIDTH IN DOTS                                                  *)
+(*    6. HEIGHT IN DOTS                                                 *)
+(*    7. XSCREEN  WHERE TO PUT IT ON THE HIRES SCREEN (0..279)          *)
+(*    8. YSCREEN    "                             "   (0..191)          *)
+(*    9. MODE                                                           *)
+(*                                                                      *)
+(*  MODE RANGES 0..15 TO FILL IN THE FOLLOWING TRUTH TABLE:             *)
+(*                                                                      *)
+(*               CURRENT SCREEN      SOURCE      RESULTANT SCREEN       *)
+(*              I---------------I---------------I---------------I       *)
+(*              I    FALSE      I    FALSE      I   LSB MODE    I       *)
+(*              I---------------I---------------I---------------I       *)
+(*              I    FALSE      I    TRUE       I               I       *)
+(*              I---------------I---------------I---------------I       *)
+(*              I    TRUE       I    FALSE      I               I       *)
+(*              I---------------I---------------I---------------I       *)
+(*              I    TRUE       I    TRUE       I   MSB MODE    I       *)
+(*              I---------------I---------------I---------------I       *)
+(*                                                                      *)
+(* FOR EXAMPLE, MODE 0=FILL BLACK, 10=COPY SOURCE, 14=OR, 6=XOR, ETC.   *)
+(*                                                                      *)
+(************************************************************************)
+
+
+PROCEDURE FLUTTER;
+BEGIN
+  (* DRAW SIX BUTTERFLIES *)
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10,  0,14);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150, 64,14);
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10,128,14);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150,128,14);
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10, 64,14);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150,  0,14);
+  WAIT(8000); FILLSCREEN(REVERSE); WAIT(3000); 
+  FILLSCREEN(REVERSE); 
+  (* USE XOR MODE TO REMOVE ONE AT A TIME *)
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10,  0, 6);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150, 64, 6);
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10,128, 6);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150,128, 6);
+  DRAWBLOCK(BUTTER,16,0,0,120,54, 10, 64, 6);
+  DRAWBLOCK(BUTTER,16,0,0,120,54,150,  0, 6);
+END;
+
+
+BEGIN
+  WRITELN('PRESS ANY KEY TO QUIT.');
+  WRITELN('PLEASE WAIT WHILE CREATING BUTTERFLY');
+  INITBUTTERFLY;
+  INITTURTLE;
+  FRAME(WHITE);
+  RANDOMIZE;
+  COLORS[0]:=WHITE;
+  COLORS[1]:=REVERSE;
+  COLORS[2]:=GREEN;
+  COLORS[3]:=VIOLET;
+  COLORS[4]:=ORANGE;
+  COLORS[5]:=BLUE;
+  
+  REPEAT
+    FAN;
+    GRID;
+    SPIRAL;
+    SQUIGGLE;
+    DIAGONALS;
+    WALLBUMP;
+    POLYGONS;
+    FLUTTER;
+  UNTIL KEYPRESS;
+  GOODBYE;
+END.
+
+  
+  
+  
+

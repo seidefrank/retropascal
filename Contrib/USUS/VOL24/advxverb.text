@@ -1,0 +1,988 @@
+PROCEDURE LEAVE; 
+
+BEGIN { LEAVE }
+  SKIPDWARF := TRUE;
+  SKIPDESCRIBE := TRUE;
+  IF SPK <> 0 THEN SPEAK(ARY^.RTEXT[SPK]);
+  EXIT(DOWHATHESAYS)
+END;  { LEAVE }
+
+
+PROCEDURE MISCXIT;
+
+BEGIN
+  IF (VBL^.OBJ= COINS) AND HERE(VEND_MACHINE) THEN
+    BEGIN
+      DESTROY(COINS);
+      DROP(BATTERY, VBL^.LOC);
+      PSPEAK(BATTERY, 0);
+      SPK := 0;
+      LEAVE
+    END
+  ELSE
+    IF (VBL^.OBJ = BIRD) AND AT(DRAGON) AND (VARY^.PROP[DRAGON] = 0) THEN
+      BEGIN
+        SPK := 154;
+        DESTROY(BIRD);
+        VARY^.PROP[BIRD] := 0;
+        IF VARY^.PLACE[SNAKE] = ARY^.PLAC[SNAKE] THEN
+          VBL^.TALLY2 := VBL^.TALLY2 + 1;
+        LEAVE
+      END
+    ELSE
+      IF (VBL^.OBJ = BEAR) AND AT(TROLL) THEN
+        BEGIN
+          SPK := 163;
+          MOVE(TROLL, 0);
+          MOVE(TROLL + 100, 0);
+          MOVE(TROLL2, ARY^.PLAC[TROLL]);
+          MOVE(TROLL2 + 100, ARY^.FIXD[TROLL]);
+          JUGGLE(CHASM);
+          VARY^.PROP[TROLL] := 2
+        END
+      ELSE
+        IF (VBL^.OBJ = VASE) AND (VBL^.LOC <> ARY^.PLAC[PILLOW]) THEN
+          BEGIN
+            SPK := 0;
+            IF AT(PILLOW) THEN
+              VARY^.PROP[VASE] := 0
+            ELSE
+              BEGIN
+                VARY^.PROP[VASE] := 2;
+                VARY^.FIXED[VASE] := -1
+              END;
+            PSPEAK(VASE, VARY^.PROP[VASE] + 1) 
+          END
+        ELSE
+          SPK := 54
+END;  { MISCXIT }
+
+
+PROCEDURE ASKWHATTODOITTO;
+
+BEGIN
+  WRITELN(WD1, WD1X, ' what?');
+  VBL^.OBJ := 0;
+  RESTART := 1;
+  EXIT(DOWHATHESAYS)
+END;  { ASKWHATTODOITTO }
+
+
+PROCEDURE FILL_IT;
+
+BEGIN
+  IF VBL^.OBJ = VASE THEN
+    BEGIN
+      SPK := 29;
+      IF LIQLOC(VBL^.LOC) = 0 THEN SPK := 144;
+      IF (LIQLOC(VBL^.LOC) = 0) OR TOTING(VASE) THEN LEAVE;
+      SPEAK(ARY^.RTEXT[145]);
+      VARY^.PROP[VASE] := 2;
+      VARY^.FIXED[VASE] := -1;
+      MISCXIT;
+      LEAVE
+    END;
+  IF (VBL^.OBJ <> 0) AND (VBL^.OBJ <> BOTTLE) THEN LEAVE;
+  IF (VBL^.OBJ = 0) AND NOT HERE(BOTTLE) THEN ASKWHATTODOITTO;
+  SPK := 107;
+  IF LIQLOC(VBL^.LOC) = 0 THEN SPK := 106;
+  IF LIQ <> 0 THEN SPK := 105;
+  IF SPK <> 107 THEN LEAVE;
+  VARY^.PROP[BOTTLE] := ((VARY^.COND[VBL^.LOC] MOD 4) DIV 2) * 2;
+  K := LIQ;
+  IF TOTING(BOTTLE) THEN VARY^.PLACE[K] := -1;
+  IF K = OIL THEN SPK := 108;
+  LEAVE
+END;  { FILL_IT }
+
+
+PROCEDURE CARRY_IT;
+
+BEGIN
+  IF TOTING(VBL^.OBJ) THEN LEAVE;
+  SPK := 25;
+  IF (VBL^.OBJ = PLANT) AND (VARY^.PROP[PLANT] <= 0) THEN SPK := 115; 
+  IF (VBL^.OBJ = BEAR) AND (VARY^.PROP[BEAR] = 1) THEN SPK := 169;
+  IF (VBL^.OBJ = CHAIN) AND (VARY^.PROP[BEAR] <> 0) THEN SPK := 170;
+  IF VARY^.FIXED[VBL^.OBJ] <> 0 THEN LEAVE;
+  IF (VBL^.OBJ = WATER) OR (VBL^.OBJ = OIL) THEN
+    BEGIN
+      IF HERE(BOTTLE) AND (LIQ = VBL^.OBJ) THEN
+        VBL^.OBJ := BOTTLE
+      ELSE
+        BEGIN
+          VBL^.OBJ := BOTTLE;
+          IF VARY^.PROP[BOTTLE] <> 1 THEN
+            SPK := 105
+          ELSE
+            IF TOTING(BOTTLE) THEN
+              FILL_IT
+            ELSE
+              SPK := 104;
+          LEAVE
+        END
+    END;
+  IF VBL^.HLDING > MAXHLD THEN
+    BEGIN
+      SPK := 92;
+      LEAVE
+    END;
+  IF (VBL^.OBJ = BIRD) AND (VARY^.PROP[BIRD] = 0) THEN
+    BEGIN
+      IF TOTING(ROD) THEN
+        BEGIN
+          SPK := 26;
+          LEAVE
+        END;
+      IF NOT TOTING(CAGE) THEN
+        BEGIN
+          SPK := 27;
+          LEAVE
+        END;
+      VARY^.PROP[BIRD] := 1
+    END;
+  IF ((VBL^.OBJ = BIRD) OR (VBL^.OBJ = CAGE)) AND (VARY^.PROP[BIRD] <> 0) THEN
+    CARRY(BIRD + CAGE - VBL^.OBJ, VBL^.LOC);
+  CARRY(VBL^.OBJ, VBL^.LOC);
+  K := LIQ;
+  IF (VBL^.OBJ = BOTTLE) AND (K <> 0) THEN VARY^.PLACE[K] := -1;
+  SPK := 54;
+  LEAVE
+END;  { CARRY_IT }
+
+
+PROCEDURE DISTURBDWARVES;
+
+BEGIN { DISTURBDWARVES }
+  SPEAK(ARY^.RTEXT[136]);
+  ALLDONE := TRUE;
+  EXIT(DOWHATHESAYS)
+END;  { DISTURBDWARVES }
+
+
+PROCEDURE DROP_IT;
+
+BEGIN
+  IF TOTING(ROD2) AND (VBL^.OBJ = ROD) AND NOT TOTING(ROD) THEN
+    VBL^.OBJ := ROD2;
+  IF NOT TOTING(VBL^.OBJ) THEN LEAVE;
+  IF (VBL^.OBJ = BIRD) AND HERE(SNAKE) THEN
+    BEGIN
+      SPK := 30;
+      IF VBL^.CLOSED THEN DISTURBDWARVES;
+      DESTROY(SNAKE);
+      VARY^.PROP[SNAKE] := 1
+    END
+  ELSE
+    MISCXIT;
+  K := LIQ;
+  IF K = VBL^.OBJ THEN VBL^.OBJ := BOTTLE;
+  IF (VBL^.OBJ = BOTTLE) AND (K <> 0) THEN VARY^.PLACE[K] := 0;
+  IF (VBL^.OBJ = CAGE) AND (VARY^.PROP[BIRD] <> 0) THEN DROP(BIRD, VBL^.LOC);
+  IF VBL^.OBJ = BIRD THEN VARY^.PROP[BIRD] := 0;
+  DROP(VBL^.OBJ, VBL^.LOC);
+  LEAVE
+END;  { DROP IT }
+
+
+PROCEDURE SAY_IT;
+
+VAR
+  I : INTEGER;
+
+BEGIN { SAY_IT }
+  IF WD2 = '' THEN
+    BEGIN
+      WD2 := WD1;
+      WD2X := WD1X
+    END;
+  I := VOCAB(WD2, -1);
+  IF (I = 62) OR (I = 65) OR (I = 71) OR (I = 2025) THEN
+    RESTART := 1
+  ELSE
+    WRITELN('Okay, "', WD2, WD2X, '"')
+END;  { SAY_IT }
+
+
+PROCEDURE L_U_IT;
+
+BEGIN
+  IF (VBL^.OBJ = CLAM) OR (VBL^.OBJ = OYSTER) THEN
+    BEGIN
+      IF VBL^.OBJ = OYSTER THEN
+        K := 1
+      ELSE
+        K := 0;
+      SPK := 124 + K;
+      IF TOTING(VBL^.OBJ) THEN SPK := 120 + K;
+      IF NOT TOTING(TRIDENT) THEN SPK := 122 + K;
+      IF VBL^.VERB = LOCK THEN SPK := 61;
+      IF SPK = 124 THEN
+        BEGIN
+          DESTROY(CLAM);
+          DROP(OYSTER, VBL^.LOC);
+          DROP(PEARL, 105)
+        END;
+      LEAVE
+    END;
+  if (vbl^.obj = door) and at(door2) then vbl^.obj := door2;
+  IF VBL^.OBJ = DOOR THEN SPK := 111;
+  IF (VBL^.OBJ = DOOR) AND (VARY^.PROP[DOOR] = 1) THEN SPK := 54;
+  IF VBL^.OBJ = CAGE THEN SPK := 32;
+  IF VBL^.OBJ = KEYS THEN SPK := 55;
+  IF (VBL^.OBJ = GRATE) OR (VBL^.OBJ = CHAIN) or (vbl^.obj = door2) THEN
+    SPK := 31;
+  IF (SPK = 31) AND HERE(KEYS) THEN
+    BEGIN { KEYS HERE }
+      IF VBL^.OBJ = CHAIN THEN
+        BEGIN
+          IF VBL^.VERB = LOCK THEN
+            BEGIN
+              IF VARY^.PROP[CHAIN] <> 0 THEN
+                SPK := 34 
+              ELSE
+                IF VBL^.LOC <> ARY^.PLAC[CHAIN] THEN
+                  SPK := 173
+                ELSE
+                  BEGIN
+                    SPK := 172;
+                    VARY^.PROP[CHAIN] := 2;
+                    IF TOTING(CHAIN) THEN DROP(CHAIN, VBL^.LOC);
+                    VARY^.FIXED[CHAIN] := -1
+                  END
+            END
+          ELSE
+            BEGIN
+              IF VARY^.PROP[BEAR] = 0 THEN
+                SPK := 41
+              ELSE
+                IF VARY^.PROP[CHAIN] = 0 THEN
+                  SPK := 37
+                ELSE
+                  BEGIN
+                    SPK := 171;
+                    VARY^.PROP[CHAIN] := 0;
+                    VARY^.FIXED[CHAIN] := 0;
+                    IF VARY^.PROP[BEAR] <> 3 THEN VARY^.PROP[BEAR] := 2;
+                    VARY^.FIXED[BEAR] := 2 - VARY^.PROP[BEAR]
+                  END
+            END
+        END
+      ELSE
+        if vbl^.obj = door2 then
+          begin
+            spk := 202 + vary^.prop[door2];
+            if vbl^.verb = lock then
+              vary^.prop[door2] := 0
+            else
+              vary^.prop[door2] := 1;
+            spk := spk + 2 * vary^.prop[door2]
+          end
+        else
+          IF VBL^.CLOSING THEN
+            BEGIN
+              SPK := 130;
+              IF NOT VBL^.PANIC THEN VBL^.CLOCK2 := 15;
+              VBL^.PANIC := TRUE
+            END
+          ELSE
+            BEGIN
+              SPK := 34 + VARY^.PROP[GRATE];
+              IF VBL^.VERB = LOCK THEN
+                VARY^.PROP[GRATE] := 0
+              ELSE
+                BEGIN
+                  SPK := SPK + 2;
+                  VARY^.PROP[GRATE] := 1
+                END
+            END
+    END;
+  LEAVE
+END;  { L_U_IT }
+
+
+PROCEDURE SAY_OK;
+
+BEGIN
+  SPK := 54;
+  LEAVE
+END;  { SAY_OK }
+
+
+PROCEDURE LAMP_ON;
+
+BEGIN
+  IF HERE(LAMP) THEN
+    IF VBL^.LIMIT < 0 THEN
+      SPK := 184
+    ELSE
+      BEGIN
+        VARY^.PROP[LAMP] := 1;
+        SPK := 0;
+        SPEAK(ARY^.RTEXT[39]);
+        SKIPDWARF := TRUE;
+        IF VBL^.WZDARK THEN EXIT(DOWHATHESAYS)
+      END;
+  LEAVE
+END;  { LAMP_ON }
+
+
+PROCEDURE LAMP_OFF;
+
+BEGIN
+  IF HERE(LAMP) THEN
+    BEGIN
+      VARY^.PROP[LAMP] := 0;
+      SPEAK(ARY^.RTEXT[40]);
+      IF DARK THEN
+        SPK := 16
+      ELSE
+        SPK := 0
+    END;
+  LEAVE
+END;  { LAMP_OFF }
+
+
+PROCEDURE WAVE_IT;
+
+BEGIN { WAVE_IT }
+  IF (NOT TOTING(VBL^.OBJ)) AND ((VBL^.OBJ <> ROD) OR NOT TOTING(ROD2)) THEN
+    SPK := 29;
+  IF (VBL^.OBJ = ROD) AND AT(FISSURE) AND TOTING(VBL^.OBJ) AND
+    NOT VBL^.CLOSING THEN
+    BEGIN
+      SPK := 0;
+      VARY^.PROP[FISSURE] := 1 - VARY^.PROP[FISSURE];
+      PSPEAK(FISSURE, 2 - VARY^.PROP[FISSURE])
+    END;
+  LEAVE
+END;  { WAVE_IT }
+
+
+PROCEDURE KILL_IT;
+
+VAR
+  I, J : INTEGER;
+
+BEGIN { KILL_IT }
+  I := 0;
+  FOR J := 1 TO 5 DO
+    IF (VARY^.DLOC[J] = VBL^.LOC) AND (VBL^.DFLAG >= 2) THEN
+      BEGIN
+        I := J;
+        J := 5
+      END;
+  IF VBL^.OBJ = 0 THEN
+    BEGIN
+      IF I <> 0 THEN VBL^.OBJ := DWARF;
+      IF HERE(SNAKE) THEN VBL^.OBJ := VBL^.OBJ * 100 + SNAKE;
+      if vbl^.loc = 149 then
+        if vary^.prop[wizard] = 0 then vbl^.obj := 100 * vbl^.obj + wizard;
+      IF AT(DRAGON) AND (VARY^.PROP[DRAGON] = 0) THEN
+        VBL^.OBJ := VBL^.OBJ * 100 + DRAGON;
+      IF AT(TROLL) THEN VBL^.OBJ := VBL^.OBJ * 100 + TROLL;
+      IF HERE(BEAR) AND (VARY^.PROP[BEAR] = 0) THEN
+        VBL^.OBJ := VBL^.OBJ * 100 + BEAR;
+      IF VBL^.OBJ > 100 THEN ASKWHATTODOITTO;
+      IF VBL^.OBJ = 0 THEN
+        BEGIN
+          IF HERE(BIRD) AND (VBL^.VERB <> THROW) THEN VBL^.OBJ := BIRD;
+          IF HERE(CLAM) OR HERE(OYSTER) THEN VBL^.OBJ := VBL^.OBJ * 100 + CLAM;
+          IF VBL^.OBJ > 100 THEN ASKWHATTODOITTO
+        END
+    END;
+  IF VBL^.OBJ = BIRD THEN
+    BEGIN
+      SPK := 137;
+      IF VBL^.CLOSED THEN LEAVE;
+      DESTROY(BIRD);
+      VARY^.PROP[BIRD] := 0;
+      IF VARY^.PLACE[SNAKE] = ARY^.PLAC[SNAKE] THEN
+        VBL^.TALLY2 := VBL^.TALLY2 + 1;
+      SPK := 45
+    END; 
+  IF VBL^.OBJ = 0 THEN SPK := 44;
+  IF (VBL^.OBJ = CLAM) OR (VBL^.OBJ = OYSTER) THEN SPK := 150;
+  IF VBL^.OBJ = SNAKE THEN SPK := 46;
+  IF VBL^.OBJ = DWARF THEN SPK := 49;
+  IF (VBL^.OBJ = DWARF) AND VBL^.CLOSED THEN DISTURBDWARVES;
+  IF VBL^.OBJ = DRAGON THEN SPK := 167;
+  if (vbl^.obj = wizard) and (vary^.prop[wizard] = 0) then spk := 209;
+  IF VBL^.OBJ = TROLL THEN SPK := 157;
+  IF VBL^.OBJ = BEAR THEN SPK := 165 + (VARY^.PROP[BEAR] + 1) DIV 2;
+  IF (VBL^.OBJ <> DRAGON) OR (VARY^.PROP[DRAGON] <> 0) THEN LEAVE;
+  VBL^.VERB := 0;
+  VBL^.OBJ := 0;
+  IF NOT YES(49, 0, 0) THEN
+    BEGIN
+      RESTART := 2;
+      SPK := 0;
+      LEAVE
+    END;
+  PSPEAK(DRAGON, 1);
+  VARY^.PROP[DRAGON] := 2;
+  VARY^.PROP[RUG] := 0;
+  K := (ARY^.PLAC[DRAGON] + VARY^.FIXED[DRAGON]) DIV 2;
+  MOVE(DRAGON + 100, -1);
+  MOVE(RUG + 100, 0);
+  MOVE(DRAGON, K);
+  MOVE(RUG, K);
+  FOR I := 1 TO 100 DO
+    IF (VARY^.PLACE[I] = ARY^.PLAC[DRAGON]) OR
+      (VARY^.PLACE[I] = ARY^.FIXD[DRAGON]) THEN MOVE(I, K);
+  VBL^.LOC := K;
+  K := NULL;
+  SET_NEW_LOC;
+  EXIT(DOWHATHESAYS)
+END;  { KILL_IT }
+
+
+PROCEDURE POUR_IT;
+
+BEGIN
+  IF (VBL^.OBJ = BOTTLE) OR (VBL^.OBJ = 0) THEN VBL^.OBJ := LIQ;
+  IF VBL^.OBJ = 0 THEN ASKWHATTODOITTO;
+  IF NOT TOTING(VBL^.OBJ) THEN LEAVE;
+  SPK := 78;
+  IF (VBL^.OBJ <> WATER) AND (VBL^.OBJ <> OIL) THEN LEAVE;
+  VARY^.PROP[BOTTLE] := 1;
+  VARY^.PLACE[VBL^.OBJ] := 0;
+  SPK := 77;
+  IF NOT (AT(PLANT) OR AT(DOOR)) THEN LEAVE;
+  IF AT(DOOR) THEN
+    BEGIN
+      IF VBL^.OBJ = OIL THEN
+        BEGIN
+          SPK := 114;
+          VARY^.PROP[DOOR] := 1
+        END
+      ELSE
+        BEGIN
+          SPK := 113;
+          VARY^.PROP[DOOR] := 0
+        END;
+      LEAVE
+    END;
+  SPK := 112;
+  IF VBL^.OBJ <> WATER THEN LEAVE;
+  PSPEAK(PLANT, VARY^.PROP[PLANT] + 1);
+  VARY^.PROP[PLANT] := (VARY^.PROP[PLANT] + 2) MOD 6;
+  VARY^.PROP[PLANT2] := VARY^.PROP[PLANT] DIV 2;
+  K := NULL;
+  SET_NEW_LOC;
+  EXIT(DOWHATHESAYS)
+END;  { POUR_IT }
+
+
+PROCEDURE EAT_IT;
+
+BEGIN
+  IF VBL^.OBJ = FOOD THEN
+    BEGIN
+      DESTROY(FOOD);
+      SPK := 72;
+      LEAVE
+    END;
+  IF (VBL^.OBJ = BIRD) OR (VBL^.OBJ = SNAKE) OR (VBL^.OBJ = CLAM) OR
+    (VBL^.OBJ = OYSTER) OR (VBL^.OBJ = DWARF) OR (VBL^.OBJ = DRAGON) OR
+    ((vbl^.obj = wizard) and (vary^.prop[wizard] = 0)) or
+    (VBL^.OBJ = TROLL) OR (VBL^.OBJ = BEAR) THEN SPK := 71;
+  LEAVE
+END;  { EAT_IT }
+
+
+PROCEDURE DRINK_IT;
+
+VAR
+  I : INTEGER;
+
+BEGIN { DRINK_IT }
+  IF (VBL^.OBJ = 0) AND (LIQLOC(VBL^.LOC) <> WATER) AND ((LIQ <> WATER) OR
+    NOT HERE(BOTTLE)) THEN ASKWHATTODOITTO;
+  IF (VBL^.OBJ <> 0) AND (VBL^.OBJ <> WATER) THEN SPK := 110;
+  IF (SPK = 110) OR (LIQ <> WATER) OR NOT HERE(BOTTLE) THEN LEAVE;
+  VARY^.PROP[BOTTLE] := 1;
+  VARY^.PLACE[WATER] := 0;
+  SPK := 74;
+  LEAVE
+END;  { DRINK_IT }
+
+
+PROCEDURE RUB_IT;
+
+BEGIN
+  IF VBL^.OBJ <> LAMP THEN SPK := 76;
+  if (vbl^.obj = wizard) and (vary^.prop[wizard] = 0) then spk := 212;
+  LEAVE
+END;  { RUB_IT }
+
+
+PROCEDURE FEED_IT;
+
+BEGIN
+  IF VBL^.OBJ = BIRD THEN
+    BEGIN
+      SPK := 100;
+      LEAVE
+    END;
+  IF (VBL^.OBJ = SNAKE) OR (VBL^.OBJ = DRAGON) OR (VBL^.OBJ = TROLL) THEN
+    BEGIN
+      spk := 102;
+      IF (VBL^.OBJ = DRAGON) AND (VARY^.PROP[DRAGON] <> 0) THEN SPK := 110; 
+      IF VBL^.OBJ = TROLL THEN SPK := 182;
+      IF (VBL^.OBJ <> SNAKE) OR VBL^.CLOSED OR NOT HERE(BIRD) THEN LEAVE;
+      SPK := 101;
+      DESTROY(BIRD);
+      VARY^.PROP[BIRD] := 0;
+      VBL^.TALLY2 := VBL^.TALLY2 + 1;
+      LEAVE
+    END;
+  IF VBL^.OBJ = DWARF THEN
+    BEGIN
+      IF NOT HERE(FOOD) THEN LEAVE;
+      SPK := 103;
+      VBL^.DFLAG := VBL^.DFLAG + 1;
+      LEAVE
+    END;
+  IF VBL^.OBJ = BEAR THEN
+    BEGIN
+      IF VARY^.PROP[BEAR] = 0 THEN SPK := 102;
+      IF VARY^.PROP[BEAR] = 3 THEN SPK := 110;
+      IF NOT HERE(FOOD) THEN LEAVE;
+      DESTROY(FOOD);
+      VARY^.PROP[BEAR] := 1;
+      VARY^.FIXED[AXE] := 0;
+      VARY^.PROP[AXE] := 0;
+      SPK := 168;
+      LEAVE
+    END;
+  if (vbl^.loc = 149) and (vary^.prop[wizard] <> 1) then
+    begin
+      spk := 208;
+      leave
+    end;
+  SPK := 14;
+  LEAVE
+END;  { FEED_IT }
+
+
+PROCEDURE TOSS_IT;
+
+VAR
+  I : INTEGER;
+
+
+  PROCEDURE TOSS_IT_AWAY;
+
+  BEGIN
+    SPEAK(ARY^.RTEXT[SPK]);
+    DROP(AXE, VBL^.LOC);
+    K := NULL;
+    SET_NEW_LOC;
+    EXIT(DOWHATHESAYS)
+  END;  { TOSS_IT_AWAY }
+
+
+BEGIN { TOSS_IT } 
+  IF TOTING(ROD2) AND (VBL^.OBJ = ROD) AND NOT TOTING(ROD) THEN
+    VBL^.OBJ := ROD2;
+  IF NOT TOTING(VBL^.OBJ) THEN LEAVE;
+  IF (VBL^.OBJ >= 50) AND (VBL^.OBJ <= MAXTRS) AND AT(TROLL) THEN
+    BEGIN
+      SPK := 159;
+      DROP(VBL^.OBJ, 0);
+      MOVE(TROLL, 0);
+      MOVE(TROLL + 100, 0);
+      DROP(TROLL2, ARY^.PLAC[TROLL]);
+      DROP(TROLL2 + 100, ARY^.FIXD[TROLL]);
+      JUGGLE(CHASM);
+      LEAVE
+    END;
+  IF (VBL^.OBJ = FOOD) AND HERE(BEAR) THEN
+    BEGIN
+      VBL^.OBJ := BEAR;
+      FEED_IT
+    END;
+  if (vbl^.obj = ball) and (vbl^.loc = 149) and (vary^.prop[wizard] = 0) and
+    toting(ball) then
+    begin
+      speak(ary^.rtext[207]);
+      vary^.prop[wizard] := 1;
+      destroy(ball);
+      drop(jade,vbl^.loc);
+      k := null;
+      set_new_loc;
+      exit(dowhathesays)
+    end;
+  IF VBL^.OBJ <> AXE THEN DROP_IT;
+  FOR I := 1 TO 5 DO
+    BEGIN
+      IF VARY^.DLOC[I] = VBL^.LOC THEN
+        BEGIN
+          SPK := 48;
+          IF RAN(3) <> 0 THEN
+            BEGIN
+              VARY^.DSEEN[I] := FALSE;
+              VARY^.DLOC[I] := 0;
+              SPK := 47;
+              VBL^.DKILL := VBL^.DKILL + 1;
+              IF VBL^.DKILL = 1 THEN SPK := 149
+            END;
+          TOSS_IT_AWAY
+        END
+    END;
+  if (vbl^.loc = 149) and (vary^.prop[wizard] <> 1) then
+    begin
+      speak(ary^.rtext[213]);
+      drop(axe,vbl^.loc);
+      k := null;
+      set_new_loc;
+      exit(dowhathesays)
+    end;
+  SPK := 152;
+  IF AT(DRAGON) AND (VARY^.PROP[DRAGON] = 0) THEN TOSS_IT_AWAY;
+  SPK := 158;
+  IF AT(TROLL) THEN TOSS_IT_AWAY;
+  IF HERE(BEAR) AND (VARY^.PROP[BEAR] = 0) THEN
+    BEGIN
+      SPK := 164;
+      DROP(AXE, VBL^.LOC);
+      VARY^.FIXED[AXE] := -1;
+      VARY^.PROP[AXE] := 1;
+      JUGGLE(BEAR);
+      LEAVE
+    END;
+  VBL^.OBJ := 0;
+  KILL_IT
+END;  { TOSS_IT }
+
+
+PROCEDURE FIND_IT;
+
+VAR
+  I : INTEGER;
+
+BEGIN { FIND_IT }
+  IF AT(VBL^.OBJ) OR ((LIQ = VBL^.OBJ) AND AT(BOTTLE)) OR
+    (K = LIQLOC(VBL^.LOC)) THEN SPK := 94;
+  IF VBL^.OBJ = DWARF THEN
+    FOR I := 1 TO 6 DO
+      IF (VARY^.DLOC[I] = VBL^.LOC) AND (VBL^.DFLAG >= 2) THEN SPK := 94;
+  IF VBL^.CLOSED THEN SPK := 138;
+  IF TOTING(VBL^.OBJ) THEN SPK := 24;
+  LEAVE
+END;  { FIND_IT }
+
+
+PROCEDURE BLAST_IT;
+
+BEGIN
+  IF (VARY^.PROP[ROD2] < 0) OR NOT VBL^.CLOSED THEN LEAVE;
+  BONUS := 133;
+  IF VBL^.LOC = 115 THEN BONUS := 134;
+  IF HERE(ROD2) THEN BONUS := 135;
+  SPEAK(ARY^.RTEXT[BONUS]);
+  ALLDONE := TRUE;
+  EXIT(DOWHATHESAYS)
+END;  { BLAST_IT }
+
+
+PROCEDURE READ_IT;
+
+BEGIN
+  IF DARK THEN
+    BEGIN
+      WRITELN('I see no ', WD1, WD1X, ' here.');
+      SPK := 0;
+      LEAVE
+    END;
+  IF VBL^.OBJ = MAGAZINE THEN SPK := 190;
+  IF VBL^.OBJ = TABLET THEN SPK := 196;
+  IF VBL^.OBJ = MESSAGE THEN SPK := 191;
+  if vbl^.obj = scroll then spk := 214;
+  IF (VBL^.OBJ = OYSTER) AND VARY^.HINTED[2] AND TOTING(OYSTER) THEN
+    SPK := 194;
+  IF (VBL^.OBJ <> OYSTER) OR VARY^.HINTED[2] OR NOT TOTING(OYSTER) OR
+    NOT VBL^.CLOSED THEN LEAVE;
+  VARY^.HINTED[2] := YES(192, 193, 54);
+  SPK := 0;
+  LEAVE
+END;  { READ_IT }
+
+
+PROCEDURE BREAK_IT;
+
+BEGIN
+  IF VBL^.OBJ = MIRROR THEN SPK := 148;
+  IF (VBL^.OBJ = VASE) AND (VARY^.PROP[VASE] = 0) THEN
+    BEGIN
+      SPK := 198;
+      IF TOTING(VASE) THEN DROP(VASE, VBL^.LOC);
+      VARY^.PROP[VASE] := 2;
+      VARY^.FIXED[VASE] := -1;
+      LEAVE
+    END
+  ELSE
+    BEGIN
+      IF (VBL^.OBJ <> MIRROR) OR NOT VBL^.CLOSED THEN LEAVE;
+      SPEAK(ARY^.RTEXT[197]);
+      DISTURBDWARVES
+    END
+END;  { BREAK_IT }
+
+
+PROCEDURE WAKE_IT;
+
+BEGIN
+  IF (VBL^.OBJ <> DWARF) OR NOT VBL^.CLOSED THEN LEAVE;
+  SPEAK(ARY^.RTEXT[199]);
+  DISTURBDWARVES
+END;  { WAKE_IT }
+
+
+PROCEDURE CARRY_SOMETHING;
+
+VAR
+  I : INTEGER;
+
+BEGIN { CARRY_SOMETHING }
+  IF (VARY^.ATLOC[VBL^.LOC] = 0) THEN ASKWHATTODOITTO;
+  IF VARY^.LINK[VARY^.ATLOC[VBL^.LOC]] <> 0 THEN ASKWHATTODOITTO;
+  FOR I := 1 TO 5 DO
+    IF (VARY^.DLOC[I] = VBL^.LOC) AND (VBL^.DFLAG >= 2) THEN ASKWHATTODOITTO;
+  VBL^.OBJ := VARY^.ATLOC[VBL^.LOC];
+  CARRY_IT
+END;  { CARRY_SOMETHING }
+
+
+PROCEDURE L_U_SOMETHING;
+
+BEGIN
+  SPK := 28;
+  IF HERE(CLAM) THEN VBL^.OBJ := CLAM;
+  IF HERE(OYSTER) THEN VBL^.OBJ := OYSTER;
+  IF AT(DOOR) THEN VBL^.OBJ := DOOR;
+  if at(door2) then vbl^.obj := door2;
+  IF AT(GRATE) THEN VBL^.OBJ := GRATE;
+  IF (VBL^.OBJ <> 0) AND HERE(CHAIN) THEN ASKWHATTODOITTO;
+  IF HERE(CHAIN) THEN VBL^.OBJ := CHAIN;
+  IF VBL^.OBJ = 0 THEN LEAVE;
+  L_U_IT
+END;  { L_U_SOMETHING } 
+
+
+PROCEDURE EAT_SOMETHING;
+
+BEGIN
+  IF NOT HERE(FOOD) THEN ASKWHATTODOITTO;
+  VBL^.OBJ := FOOD;
+  EAT_IT
+END;  { EAT_SOMETHING }
+
+
+PROCEDURE QUIT2;
+
+BEGIN
+  ALLDONE := GAVEUP;
+  IF GAVEUP THEN EXIT(DOWHATHESAYS);
+  SPK := 0;
+  LEAVE
+END;  { QUIT2 }
+
+
+PROCEDURE QUIT;
+
+BEGIN
+  GAVEUP := YES(22, 54, 54);
+  QUIT2
+END;  { QUIT }
+
+
+PROCEDURE REPORT;
+
+VAR
+  I : INTEGER;
+
+BEGIN { REPORT - INVENTORY }
+  SPK := 98;
+  FOR I := 1 TO 100 DO
+    IF (I <> BEAR) AND TOTING(I) THEN
+      BEGIN
+        IF SPK = 98 THEN SPEAK(ARY^.RTEXT[99]);
+        PSPEAK(I, -1);
+        SPK := 0
+      END;
+  IF TOTING(BEAR) THEN SPK := 141;
+  LEAVE
+END;  { REPORT }
+
+
+PROCEDURE REPORT_SCORE;
+
+BEGIN { REPORT_SCORE }
+  SCORE := GETSCORE(TRUE);
+  WRITE('If you were to quit now, you would score ');
+  if termwidth < 64 then writeln;
+  WRITELN(SCORE, ' out of a possible ', MAXSCORE, '.');
+  GAVEUP := YES(143, 54, 54);
+  QUIT2
+END;  { REPORT_SCORE }
+
+
+PROCEDURE WORD_FOO;
+
+BEGIN
+  K := VOCAB(WD1, 3);
+  SPK := 42;
+  IF VBL^.FOOBAR = 1 - K THEN
+    BEGIN
+      VBL^.FOOBAR := K;
+      IF K <> 4 THEN
+        BEGIN
+          SPK := 54;
+          LEAVE
+        END;
+      IF (VARY^.PLACE[EGGS] = ARY^.PLAC[EGGS]) OR (TOTING(EGGS) AND
+        (VBL^.LOC = ARY^.PLAC[EGGS])) THEN LEAVE;
+      IF (VARY^.PLACE[EGGS] = 0) AND (VARY^.PLACE[TROLL] = 0) AND
+        (VARY^.PROP[TROLL] = 0) THEN VARY^.PROP[TROLL] := 1;
+      K := 2;
+      IF HERE(EGGS) THEN K := 1;
+      IF VBL^.LOC = ARY^.PLAC[EGGS] THEN K := 0;
+      MOVE(EGGS, ARY^.PLAC[EGGS]);
+      PSPEAK(EGGS, K);
+      SPK := 0;
+      LEAVE
+    END;
+  IF VBL^.FOOBAR <> 0 THEN SPK := 151;
+  LEAVE
+END;  { WORD_FOO }
+
+
+PROCEDURE SET_BRIEF;
+
+BEGIN
+  SPK := 156;
+  VBL^.ABBNUM := 10000;
+  VBL^.DETAIL := 3;
+  LEAVE
+END;  { SET_BRIEF }
+
+
+PROCEDURE READ_SOMETHING;
+
+BEGIN
+  IF HERE(MAGAZINE) THEN VBL^.OBJ := MAGAZINE;
+  IF HERE(TABLET) THEN VBL^.OBJ := VBL^.OBJ * 100 + TABLET;
+  IF HERE(MESSAGE) THEN VBL^.OBJ := VBL^.OBJ * 100 + MESSAGE;
+  IF VBL^.CLOSED AND TOTING(OYSTER) THEN VBL^.OBJ := OYSTER;
+  IF (VBL^.OBJ > 100) OR (VBL^.OBJ = 0) OR DARK THEN ASKWHATTODOITTO;
+  READ_IT
+END;  { READ_SOMETHING }
+
+
+PROCEDURE SUSPEND; 
+
+
+  PROCEDURE SUSPEXIT;
+
+  BEGIN
+    WRITELN('Error suspending game.');
+    CLOSE(INFILE);
+    EXIT(SUSPEND)
+  END;  { SUSPEXIT }
+
+
+BEGIN { SUSPEND }
+  NAMEANDPW;
+  VBL^.PASSWORD := TESTPW;
+  VBL^.VERSION := VERSION;
+  REWRITE(INFILE, NAMEOFUSER);
+  I := (SIZEOF(VARYS) + 511) DIV 512;
+  IF I <> BLOCKWRITE(INFILE, VARY^.DBLK, I) THEN SUSPEXIT;
+  I := (SIZEOF(VBLS) + 511) DIV 512;
+  IF I <> BLOCKWRITE(INFILE, VBL^.DBLK, I) THEN SUSPEXIT;
+  CLOSE(INFILE, LOCK);
+  WRITELN;
+  WRITE('Adventure game saved as ', NAMEOFUSER);
+  EXIT(ADVENTURE)
+END;  { SUSPEND }
+
+
+PROCEDURE ANALANITVERB;
+
+BEGIN
+  CASE VBL^.VERB OF
+    1 : CARRY_SOMETHING; { TAKE }
+    2 : ASKWHATTODOITTO; { DROP }
+    3 : ASKWHATTODOITTO; { SAY }
+    4 : L_U_SOMETHING;   { OPEN }
+    5 : SAY_OK;          { NOTHING }
+    6 : L_U_SOMETHING;   { LOCK }
+    7 : LAMP_ON;         { ON }
+    8 : LAMP_OFF;        { OFF }
+    9 : ASKWHATTODOITTO; { WAVE }
+   10 : ASKWHATTODOITTO; { CALM }
+   11 : LEAVE;           { WALK }
+   12 : KILL_IT;         { KILL }
+   13 : POUR_IT;         { POUR }
+   14 : EAT_SOMETHING;   { EAT }
+   15 : DRINK_IT;        { DRINK }
+   16 : ASKWHATTODOITTO; { RUB }
+   17 : ASKWHATTODOITTO; { TOSS }
+   18 : QUIT;            { QUIT }
+   19 : ASKWHATTODOITTO; { FIND }
+   20 : REPORT;          { INVENTORY }
+   21 : ASKWHATTODOITTO; { FEED }
+   22 : FILL_IT;         { FILL }
+   23 : BLAST_IT;        { BLAST }
+   24 : REPORT_SCORE;    { SCORE }
+   25 : WORD_FOO;        { FOO }
+   26 : SET_BRIEF;       { BRIEF }
+   27 : READ_SOMETHING;  { READ }
+   28 : ASKWHATTODOITTO; { BREAK }
+   29 : ASKWHATTODOITTO; { WAKE }
+   30 : SUSPEND;         { SUSPEND }
+  END;  { CASE }
+  IF VBL^.VERB > 29 THEN ERRORHALT(23)
+END;  { ANALANITVERB }
+
+
+PROCEDURE ANALATVERB;
+
+BEGIN
+  CASE VBL^.VERB OF
+    1 : CARRY_IT;  { TAKE }
+    2 : DROP_IT;   { DROP }
+    3 : SAY_IT;    { SAY }
+    4 : L_U_IT;    { OPEN }
+    5 : SAY_OK;    { NOTHING }
+    6 : L_U_IT;    { LOCK }
+    7 : LAMP_ON;   { ON }
+    8 : LAMP_OFF;  { OFF }
+    9 : WAVE_IT;   { WAVE }
+   10 : LEAVE;     { CALM }
+   11 : LEAVE;     { WALK }
+   12 : KILL_IT;   { KILL }
+   13 : POUR_IT;   { POUR }
+   14 : EAT_IT;    { EAT }
+   15 : DRINK_IT;  { DRINK }
+   16 : RUB_IT;    { RUB }
+   17 : TOSS_IT;   { TOSS }
+   18 : LEAVE;     { QUIT }
+   19 : FIND_IT;   { FIND }
+   20 : FIND_IT;   { INVENTORY }
+   21 : FEED_IT;   { FEED }
+   22 : FILL_IT;   { FILL }
+   23 : BLAST_IT;  { BLAST }
+   24 : LEAVE;     { SCORE }
+   25 : LEAVE;     { FOO }
+   26 : LEAVE;     { BRIEF }
+   27 : READ_IT;   { READ }
+   28 : BREAK_IT;  { BREAK }
+   29 : WAKE_IT;   { WAKE }
+   30 : SUSPEND;   { SUSPEND }
+  END;  { CASE }
+  IF VBL^.VERB > 29 THEN ERRORHALT(24)
+END;  { ANALATVERB }
+

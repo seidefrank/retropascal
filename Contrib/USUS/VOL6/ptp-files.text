@@ -1,0 +1,67 @@
+
+The following files make up the Pascal Transfer Program:
+
+PTP.TEXT - This the main program written entirely Pascal.
+
+PTP.CODE - A compiled but not linked version of the main program PTP.TEXT.
+           PTP.TEXT requires a 56K system to compile therefore 
+           this precompiled version can be used as the main program
+           during linking by those with less memory. Be sure not
+           to call the outfile of the linker PTP.CODE or this
+           file will be destroyed.
+
+
+PTPMMI.CODE - A linked version ready to run with a PMMI modem.
+
+SYSNAME  - A text file that contains the nodes id string (see example).
+
+KBSTAT   - An assemble language function which return a TRUE if
+           there is a character ready at the keyboard port.
+           Since this routine calls the CP/M keyboard status
+           routine it should work with most system that use
+           the CP/M BIOS.
+           
+MRECSTAT - An assemble language function which returns TRUE if 
+           there is a character ready at the modem receiver port.
+
+MREAD    - An assemble language function which returns a character 
+           from the modem receive port. If no character is ready this 
+           routine will wait for one. This routine could be replaced
+           by a read from unit #7 (remote in) if implemeted in your
+           system.
+           
+MWRITE   - An assemble language procedure which writes a character
+           to the modem xmit port. If the line is busy this routine will
+           wait for the line to become ready. This routine could
+           be replaced by a write to unit #7 (remote out) if 
+           implemented in your system.
+
+MODEMINI - An assemble language routine to initialize the modem at
+           startup.
+
+HANGUP   - An assemble language routine to hangup the phone (on hook)
+
+CTS      - Returns TRUE if clear-to-send is set on the modem (may use
+           carrier detect on other modems). Indicates that a connection
+           is established.
+           
+DTRON    - Turns data-terminal-ready on to allow the modem to operate.
+
+RINGING  - Returns TRUE if the phone is ringing.
+
+RI       - Set the ring-indicator in the PMMI modem causing the modem
+           to go off-hook in answer mode.
+           
+SH       - Causes the modem to go off-hook in orginate mode.
+
+DTONEDET - Returns TRUE if a dial tone is detected.
+
+DIALER   - Dials one digit of a phone number, digit maybe in either
+           ASCII or binary.
+           
+BAUD     - Set the specified baud rate. The value passed to this assemble
+           language routine must be the value to output to the modem not
+           necessarly the actual baud rate. Baud rate calculations are
+           done in the PASCAL program.
+
+

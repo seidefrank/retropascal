@@ -1,0 +1,1130 @@
+--------------------------------------------------------------------------
+                          MAIL                     19th February, 1982
+--------------------------------------------------------------------------
+
+
+Preface:
+
+Some users are going to wish to use only the word processing capabilities
+of this program.  Others are going to want to use all the facilities that
+are offered. A word to the wise is in order. Take your time and understand
+what the manual has to say BEFORE you run the program.  It is always a good
+idea when using software to do so, but in this case it is essential. Thank
+you and good luck.
+
+The program and manual were begun by Patrick Horton at Associated Computer
+Industries.  They were subsequently updated and modified by Austin Tate at
+the Edinburgh Regional Computing Centre.
+
+The program and manual are copyright (c) 1982 by Austin Tate, ERCC.
+
+
+
+
+TABLE OF CONTENTS
+------------------------------------------------
+Welcome
+Files in the System
+Flags (part 1)
+getting started
+prompt line
+preliminary functions:
+   O)ptions
+   D)escriptions
+basic functions
+   A)dd
+   C)hange
+   D)elete
+   R)estore
+   F)ind
+   1)st
+   ' ')step
+   Z)ero
+   S)ort
+   O)ptions
+      Input and Output files
+      Flags (part 2)
+      Mailing Labels Format
+      Letter Format
+        Page Layout
+      Quit option
+   M)labels
+   L)etter
+final commands
+   Q)uit
+   K)runch
+   I)nit
+word processing
+   special characters
+      ^        page throws
+      =        carriage return suppressed
+      ~        literal line direction (~ is default)
+      [:   :]  margin and spacing specification
+      {%   %}  flagged paragraphs
+      (*   *)  tokens for fields of selected records
+      \\       include mailing label in letter
+   flagged paragraphs
+   field designators
+   greeting
+   tokens
+   spacing and margins
+   general rules
+summary
+Notes
+   Implementation notes
+      mailing labels file format
+      overview of operation of MAIL
+   Restriction on file sizes
+ERCC Notes
+   Initialisation of MAIL data files
+   Conversion of MAILER names and addresses into MAIL
+   Increasing the size of a MAIL data file
+   Data Manipulation on records of your own description
+   Producing files for SORT/MERGE operations
+
+
+
+
+Welcome to the Mail program users manual.
+
+The main purpose of a manual like this, and perhaps the hardest to achieve,
+is to provide the user with an intuitive understanding of the program. It
+is the task of the writer to convey the feeling of being in complete
+control of the program to the user.
+          
+This feeling of confidence probably defines the difference between a useful
+program and one which is never used.  Hopefully this manual will convey to
+you the fact that the program is actually quite simple to use although it
+has some relativly complicated features.
+          
+The program is designed to maintain a mailing list and allow for the
+production of two types of output: mailing labels and form letters. The
+form letter producer is essentially a text processor designed to work best
+towards a certain goal - that of producing form letters.
+          
+The program is also designed to be very compatible with the UCSD p-System,
+utilizing the same single stroke commands and descriptive prompt lines. In
+other words it was made to look like part of the system.
+          
+                    
+          
+Files in the system                     
+-------------------                     
+          
+There are several files associated with the program that you as a user will
+be involved with. The first is the code file for the program itself:
+MAIL.CODE.  This is the file that you will instruct the system to execute.
+          
+The second file is called MAIL.INFO.DATA and contains the working
+parameters of the system. These parameters are variables that determine how
+the functions of the program will act. They are kept in a file so that you
+don't have to set up the operating environment everytime you run the
+program. Some examples of the parameters kept in this file are: left and
+right margins for letters, number of labels wide to a page, and output file
+(printer port or filename). A complete description of everything in this
+file will be given later.
+          
+The third file you will run into is the mailing system data file. The
+default name for this is MAIL.DATA, although, as you will see, you can
+specify any name you wish for this file.  The data in the file is stored as
+records.  Records contain data stored in two different formats. The first
+is fields, which are essentially strings of character data such as first
+name, or address.
+          
+The second format or type of data stored in a record is called a flag.
+There are 48 flags stored with each record.  Each flag is essentially an
+on-off switch, or a yes-no bit of information, that you set when you add
+the record to the file. The description or meaning of each flag is
+arbitrarily set by you and is stored in the file MAIL.INFO.DATA.  Also
+stored in MAIL.INFO.DATA are 48 flags which are used as a mask by which
+records can be selected for output for labels or letters.  For now, all you
+need to know is that there are 48 flags stored with each record in
+MAIL.DATA, and 48 flags and 48 descriptions stored in the file
+MAIL.INFO.DATA.
+          
+The fourth file associated with the system is the input file for the
+L)etters command of the program.  This file may have any name ending in
+'.TEXT', and contains text along with special word-processing symbols and
+tokens. The exact format of the file will be described later. The file name
+for this file is stored in the file MAIL.INFO.DATA as the I)nput file.
+          
+Several sample input files are available:
+
+MAIL.E.G.TEXT  gives a brief explanation of the MAIL system
+               itself.  It is suitable for use with MAIL as it is
+               normally distributed (i.e., before changes are
+               made to the O)ptions set by default).  The MAIL
+               system will assume that it should use this example
+               text file for processing by the L)etters command
+               if the MAIL O)ptions are not altered.
+
+MAIL.LETT.TEXT is a short form letter and may be used as a guide
+               for constructing your own letters for use with
+               MAIL.
+
+MAIL.FORM.TEXT is a text which when processed by the L)etter
+               command in MAIL will produce a form containing all
+               the data stored about an individual in the MAIL
+               data file.
+
+The fifth and last file associated with the program has been previously
+mentioned.  It is the file to which output will be directed. It may not
+even be a file, but may be a port-device such as 'REMOTE:', or 'PRINTER:'.
+When wishing to output things to the screen, '#2:'  should be used rather
+than 'CONSOLE:'  as the program recognizes it and will compensate for the
+fact that the prompt lines and the output are both going to the same place.
+The name for this file is also stored in the file MAIL.INFO.DATA.
+
+          
+          
+First Things First                          
+------------------                      
+          
+It is important that you have a good overview of the internal workings of
+the program before you actually start to use it.  Otherwise, you might not
+realize that there was actually a more efficient way to do something than
+the one you had chosen.
+          
+          
+          
+Back to the Flags                      
+-----------------                      
+          
+Summing up what you have already learned about flags, you know that there
+are 48 flags and descriptions stored in the format file, and 48 flags
+stored with each record in the data file. It was also previously mentioned
+that you will arbitrarily set up the meanings associated with each flag.
+This should be done before you add records so that you may set the flags on
+the records as you add them, rather than going back over them later when
+you decide what the flags mean.
+          
+The flags will be used for three purposes.  They will be used for the
+selection of records for output, for the inclusion of paragraphs or
+sentences into letters and for the construction of a 'greeting' in form
+letters.
+          
+You can determine which records will be output to labels or letters by
+setting the flags in MAIL.INFO.DATA (henceforth called system flags). These
+flags are used as a mask against which the individual record flags are
+compared.  There are two options for selecting a record: either all flags
+must match or any single flag must match. This and other options are set up
+in the O)ptions part of the program.
+          
+You can mark out part of the text in a letter file into what is called a
+flagged paragraph using special characters which will be described later.
+Then the paragraph (or sentence, or word) will only be included in a
+certain letter if the corresponding flag is set.  You can also determine
+the form of greeting used in form letters where no overriding specification
+is given for a particular record.  This is done by setting some of a
+special set of five flags associated with the greeting (flags 44-48) - see
+later.
+          
+It should be pointed out that it is not nessecary to use the flags, only
+sometimes beneficial.  Most people will never use all 48 flags.  Usually
+about 10 will be sufficient to categorize the different records in the
+file.
+          
+          
+          
+Getting Started                             
+---------------                       
+          
+Although you should wait until you have a good understanding of the program
+to add data to it, now is a good time to set up the files associated with
+the program.
+          
+When the UCSD p-System is running and at the main command level, you
+should execute (by typing 'X') the MAIL program from whichever disk it
+resides on.  After a few seconds the program will say:
+          
+'Give volume for file MAIL.INFO.DATA (...):'
+          
+You should respond with something like '#4:', or '4', or 'MAIL1:', or the
+name of a presently active diskette.  The default would be '#5:'.  The
+program will then inform you that it is making the file.
+          
+After this, the program will say that it couldn't find the file MAIL.DATA,
+and ask you to enter another filename.  If you wish to call your file
+MAIL.DATA then enter a blank carriage return, otherwise enter another
+filename.  Later on, after you have already used the program, entering this
+filename would be all you have to do;  however since you are creating it
+you have to specify some other things now. The program will ask you on
+which volume you wish to place the file.  Respond with the number or name
+of a volume which has at least 5 blocks or enough room to handle a file of
+the size you desire (The default for this would be '#5:'). The program will
+then ask you the size in blocks for the file that you wish to create.  Five
+blocks is the minimum, and if you enter a return it will maximize the size
+of the file to the number of remaining blocks on the specified diskette.
+The file may be of any size, but you should know now that the program's
+sort utility can only handle 250 blocks.  If you know you have a large data
+base of information to enter type 250 here.
+
+After all of this is done the program will return with the Mail prompt
+line. If these files already exist (as in the second time through) then
+the program will go directly to the prompt line. Any time you run the
+program it will look for MAIL.DATA.  If not found you will be able to
+create it or specify another file. If the other file you specify does not
+already exist you will be allowed to create it. The files MAIL.DATA and
+MAIL.INFO.DATA will be found, if existent, on either the #4 or #5 disk
+drives.  The program will work with single drive systems as well.
+          
+          
+          
+          
+Prompt line                         
+-----------                         
+          
+So now you have the files and you should see the prompt line:
+          
+>Mail: A)dd, C)hange, D)elete, F)ind, 1)st, ' ')step, O)ptions, Q)uit ?
+
+You can view the extended prompt line:
+
+>Mail: L)etter, M)labels, S)ort, I)nit, K)runch, R)estore, Z)ero ?
+
+by entering a '?'.
+          
+          
+          
+Options                              
+-------                            
+          
+The first command you should explore and work with is the O)ptions command.
+This allows you to set up the parameters in the file MAIL.INFO.DATA.  So
+type 'O'  for O)ptions and in a few seconds you should get a screen full of
+data, along with the prompt line:
+          
+O)ptions: D)scrps, F)lags, M)labels, L)etter, I)nput, O)utput, Q)uit:
+          
+Quickly read over the different fields presented on the screen.  The
+environment should be set up to input a file called *MAIL.E.G.TEXT and
+output it to the screen. Type 'D' for D)escriptions, and we will begin to
+actually set up the descriptions for our flags.
+          
+          
+          
+Descriptions                         
+------------                         
+          
+You should set one descriptor for every type of record you are going to use
+in the file. To do this type the number of the descriptor followed by a
+return, followed by the description you wish to tag to that number and
+another return.  Some descriptors that have already been mentioned as
+potentially useful are:  Employee, Friend, Vendor, and OEM.  The important
+thing is that you set as many or more than you need right now, before you
+add records to the file, so use your imagination. Do you need a breakdown
+on the number of employees?  Would it be useful if you knew if the person
+was married or had kids?  There are many that you can probably think of. Be
+sure that you have set as many as plausible before proceeding.
+          
+You may have noticed that flags 44-48 already have descriptions.  They are
+prefix, fname, minit, lname, and suffix.  There exists a way to combine the
+different fields of the label along with the letter text file.  These flags
+allow you to pre-determine what will fall into a super-field called the
+greeting. Since in the data file the name is broken up into the prefix,
+first name, middle initial, and so on, there must exist a way of putting
+them together.  Although you could include the tokens for each of the
+individual fields (the method for this will be described later)  it would
+be easier if there was one field which would be a common greeting.  These
+five flags represent what parts of the file data will go into the greeting-
+name.  So given the name 'Mr. Bob R. Smith, PhD.', and the setting of the
+flags for Prefix and Lname, the greeting field would come out to 'Mr.
+Smith'.  It is important that this is understood before the data is added
+to the file.
+          
+Once you have set the descriptions you may type a 'Q' for Q)uit.  You
+should now see the Options prompt line again. You may type 'Q' for quit
+again followed by 'U' for update and the information will be written out to
+the file. Now you are ready to begin adding information to the file.
+          
+                    
+          
+Basic Functions                       
+---------------                      
+          
+The basic functions to establishing a mailing list with the program MAIL
+are:
+               
+A)dd, C)hange, D)elete, R)estore, F)ind, 1)st, ' ')step, S)ort, and Z)ero. 
+          
+In addition to these basic functions there are the following output
+functions:  M)labels (print mailing labels), L)etter, and O)ptions (which
+allows you to modify the output parameters, etc).  There is also a class of
+functions termed final functions because of their file closing
+capabilities.  They are Q)uit (which has the sub-options U)pdate and E)xit
+without updating), K)runch, and I)nitialize.  This repertoire of functions
+allows for a diversified approach to the management of the data.
+          
+          
+Adding Records                               
+--------------                        
+          
+Once you have all the necessary files, and have set up the descriptions
+associated with the flags, you may begin adding records. Enter the command
+A)dd and then enter the necessary information. The miscellaneous field may
+be used for any purpose you wish. It may be broken down into as many as ten
+sub-fields by the use of backslashes.  These subfields or the whole field
+may be included in the text of the form letter (as can any other field in
+the file) by including a token which will be described later.  After
+setting the flags that are associated with the particular record the
+program will then display the record and ask 'O.K.? '. Upon answering 'Y'
+or 'y' for yes, you will then be allowed to add more records or to process
+the record using any of the other commands.
+          
+          
+Changing Information                     
+--------------------                                   
+          
+To change the data in the file merely position the window at the record you
+wish to change using the commands S)tep or F)ind, and then enter the
+command C)hange. You may then change any field in the record or you may
+Q)uit.
+          
+Whenever you change a record, a backup copy of the original record is made
+and is available for your use should you want to make a change for some
+temporary purpose or should you find the changes you made unsatisfactory.
+To access the back-up on an individual record basis you may type R)estore
+and the record will be retrieved and put back into its original place.  If
+you wish to restore all the records then you will have to enter either
+I)nit OR Q)uit and E)xit without updating.  However, the commands I)nit and
+Q)uit E)xit without updating have the unpleasant side effect of also
+removing any records you might have added to the work file, so be careful
+with their usage.
+          
+          
+Deleting Records                        
+----------------                      
+          
+To delete a record, position the window at the record and type 'D' for
+D)elete.  A D)elete is not made permanent until a K)runch or U)pdate is
+executed.  This is the same as with C)hange.  Also the same is the fact
+that I)nit and Q)uit E)xit without updating will undo a D)elete.  In other
+words an I)nit or Q)uit E)xit without updating will restore any D)eletes,
+but as with change, you will lose any A)dds you might have done.....  so
+use the commands I)nit and Q)uit E)xit without updating cautiously.
+          
+          
+Restore                              
+-------                          
+          
+The command R)estore allows one to retrieve the information that was in a
+record before it was C)hanged. To use the command merely position the
+window on the record you wish to restore and type 'R' for R)estore and the
+record will be returned to its original form. In this way you can change
+the data in a record for some temporary purpose without losing the original
+information.
+          
+          
+Finding a Record                         
+----------------                      
+          
+The command F)ind allows you to look for a record.
+
+You may search by R)ecnumber, any field in the file, or any previously
+entered searchkey.
+          
+To find a certain record number enter the F)ind command followed by a R)ec#
+command and then the record number you wish to be at. The program will then
+position itself as close as possible to that record number.
+          
+If you wish to find by a certain field after entering the F)ind command,
+enter the proper field designator (ie. 'F' for F)irstname)  then enter the
+identifier you wish to find filled with question marks where you don't
+care. (ie. The wildcard '92???' for zip code would find all zip codes
+starting with 92. The wildcard '92?' would find all three digit zip codes
+starting with 92. )
+
+Find commands using field specifications begin their search at the current
+record and search in the set direction until the start or end of the file
+is reached.
+
+The symbol '$' may be used as the last character of a wildcard to mean "and
+any further characters remaining".  Thus partial matches may be specified.
+          
+If you already have used the command you may continue processing from the
+record you are at searching for the wildcard field you previously entered
+by entering a '^'  instead of a field designator.
+          
+          
+1st - First record
+------------------
+
+Since it is often necessary to return to the first record of the data
+base, '1' for 1)st is provided as a shorthand for F)ind R)ecordnumber 1 at
+the command level of MAIL to perform this function.
+
+
+Step                              
+----                             
+          
+By typing a space (or blank)  you may move the window one record in the
+direction specified by the arrow at the beginning of the prompt line. The
+commands '>', '+' and '.' will set the arrow in a positive direction wheras
+the commands '<', '-' and ',' will set the arrow in the negative direction.
+          
+          
+Sort                            
+----                            
+          
+The command S)ort allows you to sort the file by any field within the file.
+When a S)ort is executed a K)runch is also done. This is to insure the
+integrity of the file. To sort the file enter a S)ort command followed by
+the field designator for the field that you wish the file to be sorted by.
+Approximately one point two seconds maximum per record are required for the
+sort on a Pascal Microengine. The sort takes approximately two point four
+seconds maximum per record for a Z-80 based microcomputer.
+          
+          
+Zero                              
+----                             
+          
+The command Z)ero allows you to zero out the mailing labels file.  However,
+when it asks 'Caution: Type 'YES' if you want to zero out the file:', you
+must type out the word 'YES'. A 'Y' response is not sufficient.  This is a
+safeguard to stop one from accidently destroying the file. This change is
+NOT reversable by the I)nit or Q)uit Exit without updating commands, IT IS
+PERMANENT.
+          
+          
+          
+Options                                   
+-------                         
+          
+The Options command allows you to set the input and output file, output
+formatting parameters, and the record selection criteria. The sub-commands
+under O)ptions are:  D)escriptions, F)lags, M)ailing labels, L)etter,
+I)nput, and O)utput. The next few paragraphs define the action of the
+commands under the O)ptions command.
+          
+          
+Input and Output                      
+----------------                        
+          
+The command O)utput allows one to change the device to which the output
+will be directed.  The terminal is designated as '#2:', the printer port is
+'#6:' or 'PRINTER:', and the remote port is '#8:' or 'REMOUT:'. You may
+also specify a filename such as '#5:MAILING.TEXT' as your purpose
+dictates.
+          
+The I)nput command refers to the input file used in producing L)etters. The
+command will only allow the entry of a legitimate file that is available
+on a disk presently active in the system.  This file contains text along
+with optional formatting information.  The exact format of the formatting
+information will be included in the section 'Word Processing'.
+          
+          
+Flags                             
+-----                           
+          
+S)et and R)emove may be used to alter the flags used for record selection
+in the L)etter and M)labels MAIL commands.
+
+There are two different O)ptions for the use of the flags.  The first -
+A)ll - specifies that for each match flag set, the corresponding record
+flag must also be set. Hence all flags must match before any record will be
+output. The second option - S)ingle - specifies that if any single record
+flag is in the set of selection critera then the record will be included
+for output.
+          
+You may set the D)escriptions associated with each flag arbitrarily.  The
+only descriptions that the program reserves for its own use are: Prefx,
+Suffx, Lname, Fname, and Minit.  If these reserved flags are S)et, they
+will be used as standard flags for creating the greeting token when
+processing letters.  If none of these are set, a default form of greeting
+is used.
+          
+You may dump the current flags set and descriptions by entering a D)ump
+command under the sub-command: F)lags.
+          
+          
+Mailing Labels Format                            
+---------------------                    
+          
+The variable parameters for mailing labels are: 
+
+     type - may be rolodex or envelope 
+            (rolodex includes phone number)     
+     number of mailing labels wide to a page.  
+     vertical tab between rows of labels  
+     left margin after EACH label     
+          
+          
+Letter Format                        
+-------------                        
+          
+For outputting Letters, the parameters that are contained under the
+O)ptions command are as follows:
+              
+     the directive character used in letters (the default is '~')
+     number of characters per line of text 
+     number of lines per page of text 
+     top margin   
+     left margin 
+     right margin 
+     paragraph margin (indentation) 
+     paragraph widow (do not start a new paragraph if 
+                      within this number of lines from the      
+                      bottom of the page) 
+     starting page number 
+     pagination (on-off)
+     justification (on-off)
+     stop between pages (on-off)  
+     form feed between pages (on-off)
+     flagged paragraph matching option (A)ll or S)ingle)       
+           (Recall  that  there was an option as to whether a
+           single  flag was  sufficient  or if all flags were
+           to match  before a record  would be  output. As it
+           was for the  selection of records so it is for the
+           inclusion  of  paragraphs.  There is an  option by
+           which  you can  determine  whether  to  include  a
+           paragraph  if a single  flag  matches  or if it is
+           necessary that all flags must match.)
+         
+The method of changing any of these parameters is straightforward and
+should be self-explanitory upon the running of the program.
+ 
+ 
+Page Layout
+-----------
+
+Each line of text is made up as follows:
+
+<...left margin...><...text...><...right margin...>
+<...............characters per line...............>
+
+At the start of each paragraph, the text is indented the set number of
+characters for the paragraph margin as well as the left margin (ie the
+paragraph margin is the number of characters to be indented from the left
+margin edge).  When paging is NOT selected, a number of blank lines equal
+to the set top margin are output for each letter and then the whole
+document follows on a line by line basis (subject to the formatting options
+embedded in the letter itself).
+
+When paging is selected, the pages are processed as follows:-
+
+     1.  top margin blank lines
+     2.  text lines at the required line spacing
+     3.  a 5 line footer which on letters over one page long will
+         have a page number on the 3rd line
+     4.  an optional form feed (for sheet feeders, etc)
+     5.  an optional pause to allow the user to manually insert
+         or align paper in the printer.
+         
+1, 2 and 3 together comprise the set number of lines per page.
+         
+         
+Quit option                          
+-----------                         
+          
+Once you have entered the O)ptions command you may make changes to any of
+the parameters listed above until such a time as you decide to Q)uit. Upon
+Q)uitting you have three options.  R)eturning allows you to continue
+changing parameters.  U)pdating makes permanent any changes you have made
+during O)ptions.  Lastly, E)xit without updating allows you to return the
+output parameters to the state they were in when you first entered
+O)ptions.  
+          
+          
+          
+M)labels
+--------                           
+          
+When an M)labels command is issued there are four choices for output. The
+first:  S)ingle, allows a record to be added to the mailing label output
+queue, regardless of the flags set. The second:  A)ll will loop through all
+records and use the flag selection criteria for adding labels for records
+to the output queue.  The flag selection criteria must have been previously
+set in the O)ptions MAIL command. The command W)ildcard has a similar
+function to the F)ind function except that labels for EVERY record matching
+the wildcard are output, not just the first one. And lastly there is the
+R)epeat function which allows you to generate as many copies of the current
+record in the window as you please.  Its use is straightforward and need
+not be discussed here.
+          
+You will notice that above it was mentioned that the labels for records
+will be added to the 'output queue'.  What this means is that if you have
+set the parameter for the number of labels wide to a page to three, then NO
+labels will be printed until three records have been added to the queue.
+This only applies to S)ingle print commands, as the commands A)ll,
+W)ildcard, and R)epeat will dump any remaining records in the queue upon
+completion of their loop, regardless of how many there are.
+
+
+Letter                            
+------                           
+          
+The command L)etter has a similar function to M)labels, but there is no
+queue to worry about.  The sub-commands:  A)ll, S)ingle, and W)ildcard are
+available.  The L)etter command, A)ll and W)ildcard options process
+records from the currently selected record onwards.  This allows for a
+simple recovery mechanism in case of print failure on long form letter
+runs.  Note that the ribbon and paper out detection lights on the printer
+are not monitored by the program.  Therefore, the user should ensure that
+enough paper is available and that the ribbon will not run out before
+starting any long letter runs.
+          
+          
+                    
+Final Commands                       
+--------------                        
+          
+The commands that are included under final commands are: Q)uit, I)nit, and
+K)runch.
+          
+
+Quit                                
+----                             
+          
+The command Q)uit has three sub-commands.  R)eturn allows you to continue
+the session.  U)pdate performs a K)runch, (see below) then leaves the
+program.  E)xit without updating resets the records to their original
+status and leaves the program.
+          
+          
+Init                              
+----                               
+          
+I)nit resets the program (apart from Z)ero or any changes in O)ptions) to
+its beginning state.
+          
+          
+Krunch                            
+------                            
+          
+K)runch makes any A)dds, D)eletes, and C)hanges permanent.
+          
+                            
+          
+Word Processing                           
+---------------                      
+          
+The command L)etter invokes the word processor to act upon the input file
+listed in the O)ptions section.  The command L)etter allows for either
+S)ingle, A)ll (with flag criteria), or W)ildcard selection of records for
+combination with text.  The input file is processed sequentially from start
+to finish for each record selected to be output.
+          
+          
+Special Characters                      
+------------------                     
+          
+There are special characters, that when encountered in the input file by
+the program, have special functional meanings.  Some of the characters are
+actually two character combinations that are treated as single characters. 
+          
+The special characters are:
+          
+    ^      -  when the option 'pagination' is set to 'yes'
+              throws a page when encountered as the first character of
+              the line 
+              (ASCII 94, carat, andsymbol ...)  
+          
+    =      -  when the first character in the line causes the following
+              carriage return to be suppressed if the line evaluates to
+              a blank line 
+              (ASCII 61, equals ...) 
+               
+    ~      -  causes the line which contains it to be output literally
+              (not formatted into paragraphs)  
+              (ASCII 126, tilde, squiggle ...) 
+          
+              The '~' is the default directive character.  It may be
+              altered in the O)ption section of MAIL.  This could be
+              of value on terminals which cannot generate '~'.
+          
+The two character combinations are:   
+          
+[:  ,  :]  -  (left square bracket, colon) (colon,right square bracket)  
+              (ASCII 91, ASCII 58) (ASCII 58, ASCII 93)  
+              - mark special margin and spacing values 
+              
+{%  ,  %}  -  (left curly bracket, percent) (percent, right curly bracket)    
+              (ASCII 123, ASCII 37) (ASCII 37, ASCII 125)
+              - mark what is termed a flagged paragraph      
+          
+(*  ,  *)  -  (left parenthesis, asterisk) (asterisk, right parenthesis) 
+              (ASCII 40, ASCI 42) (ASCII 42, ASCII 41) 
+              - mark what is termed a 'Token'     
+  
+  \\       -  (backslash, backslash)
+              (ASCII 92, ASCII 92)
+              - in the interest of simplifying the usage of the
+                text processor it is possible to insert a
+                formatted mailing label anywhere in the text by
+                merely including a double backslash (\\) at the
+                beginning of a line.
+          
+*** all ascii values given in decimal  
+           
+
+Flagged Paragraphs                         
+------------------                        
+          
+When the character {% is encountered it is assumed to start what is called
+a flagged paragraph.  Everything between {% and %} is considered in the
+paragraph, whether it be part of a line or a page, whether it contains
+tokens, or any other special characters.
+          
+A flagged paragraph is only included if the flags on the record that is
+currently be output are set correctly. There are two options for the
+selection of a paragraph. They are S)ingle and A)ll.  S)ingle means that if
+any single flag in the record matches one of the flags specified in the
+paragraph then the paragraph is output. A)ll means that all flags must
+match.
+          
+The method for setting flagged paragraphs is that the opening '{%' is
+followed by a flag number (1-48)  and a slash (/). As many flags as you
+desire may be included at the beginning of any paragraph.
+          
+      ie.  given the flagged paragraph:  {%1/2/ Hello there %} 
+           the words 'Hello there' would be included in the letter   
+           if:   a) flagged paragraph option is set to A)ll            
+                    and record flags 1 AND 2 are set, 
+           or:   b) flagged paragraph option is set to S)ingle
+                    and record flag 1 OR 2 is set.
+          
+You may also indicate that text is to be include if a flag is NOT set by
+listing that flag as a negative number.
+          
+      ie.  given that the option is set to A)ll and the flagged
+      paragraph: '{%1/-2/ Hello there %}', then the words 'Hello
+      there'  will only be included if flag 1 is set and flag 2
+      is NOT set.
+                
+Flagged paragraphs may be nested to any level.
+          
+          
+Fields in a record                         
+------------------                      
+          
+There exists a method of combining the data from the file with the letter
+text. The information from the file is made up of groups of letters called
+'fields'.  For our purposes some method of designating the fields is
+necessary.
+          
+      The designations for the fields in the record are as follows:     
+      (they may be upper or lower case)   
+      PR  -  prefix to the name
+      FN  -  first name
+      MN  -  middle initial
+      LN  -  last name
+      SU  -  suffix to the name  
+      TI  -  title
+      CN  -  company name
+      AD  -  address 
+      CI  -  city
+      ST  -  state
+      CO  -  country
+      ZI  -  zip or post code
+      PN  -  phone number
+      MI  -  miscellaneous
+      M0 to M9   parts of miscellaneous field
+          
+In addition to these fields there is another field called the 'greeting'
+which is designated 'GR'.
+          
+          
+Greeting                                
+--------                           
+           
+It would be wise to discuss the concept of 'standard flags'  here.  Recall,
+if you will, that there were five flags which were reserved for system use.
+These flags, if set on a particular record, decide which name fields will
+be combined into the 'greeting'.  If a particular record does not have any
+of the five flags set or the setting does not lead to the production of a
+greeting, the setting of the default standard flags are used to try to
+produce a greeting for the record.  If no standard flags are set then the
+greeting field will be the prefix and the last name.  If the prefix is
+blank then the greeting will the first name.  If none of these provide
+reasonable results the greeting will be 'Sir'.
+          
+          
+Tokens                            
+------                           
+          
+Anything on a single line falling between (* and *) is considered a token.
+The main use of tokens is to include some data from the record, in a
+formatted way, with the letter. The token '(*FN*)'  evaluates to the first
+name from the record. So, given the phrase 'Hello there (*FN*)', and a
+record for 'Harry S. Smith', the letter would end up with 'Hello there
+Harry'.  A field size designator may be included, and justification within
+this field is indicated by the presence of blanks within the token.
+          
+       ie. (* FN:60 *)    -    first name centered in 60 spaces. 
+           (* LN:60*)     -    last name right justified in 60 spaces.  
+           (*GR:60 *)     -    greeting left justified in 60 spaces.
+          
+Sometimes it is nice to be able to have the presence or absence of a group
+of characters contingent on a field being blank or not. This is done by
+following that field with the desired characters in between equals signs.
+For instance when putting the personal title on a line with company name
+you will want a comma and a space if the title is not blank, but if the
+title is blank you don't want the extra comma. The way to specify this is:
+            
+           (*TI*)=, =(*CN*)   (everything between the equals signs 
+                               is included only if the title is not   
+                               blank)
+          
+The last aspect of tokens to be discussed is nested tokens.  Tokens may be
+nested ONLY two deep. Any deeper tokens will cause the program to botch at
+that point.
+          
+      ie.  (* (*FN*) (*MN*)= =(*LN*):60 *) will cause the first name       
+            middle initial (and blank if there is a middle initial),   
+            and last name to be combined into one field, and that     
+            larger field to be centered in 60 spaces.     
+           (* This is the name (*FN*):60 *) will cause the words: 
+            'This is the name' to combined with the first name from    
+            the record into one large field and for this larger field 
+            to be centered in sixty spaces.   
+           (* Center This:60 *) will cause the words 'Center This' to 
+            be centered in 60 spaces.
+          
+          
+Spacing and Margins                       
+-------------------                    
+          
+Anything between '[:'  and ':]' is considered for parsing as a spacing
+designator or a margin designator. [:L30:]  says set the left margin to 30,
+[:R30:]  does the same thing for the right margin.  [:S2:]  means switch to
+double spacing, [:S1:]  means switch to single spacing. These parameters
+are reset to their default settings upon the start of a new paragraph.
+          
+          
+General Rules                          
+-------------                        
+          
+The program will take sentences from the file and combine them into
+paragraphs.  Any blank line is assumed to start (or end) a paragraph. Hence
+the necessity of the '~' special character.  If you have a line in a letter
+that consists only of (* FN:60 *)  and another line that consists of only
+(* LN:60 *)  then upon output these two lines will be combined into one
+line of a paragraph and the spacing information in the letter will be
+ignored to allow for right justification.  If the spacing layout is to be
+preserved, a direction character ('~' by default) should be included
+anywhere in a line.  When a direction character is encountered, the line
+will be output without justification or other layout changes (the '~' will
+be removed).
+  
+          
+The only other character that needs further explaining is the '=' at the
+beginning of a line.  This means that if the line evaluates to a blank line
+then DO NOT count the carriage return at the end of the line. One use for
+this is:
+          
+            given two lines:
+                             ~(* (*FN*) (*LN*) *)
+                             =~(* (*TI*)=, =(*CN*) *)
+          
+there would be no blank line if there were no company or title.  This is
+usually used on letterheads containing a mailing label. 
+          
+          
+          
+Summary                           
+-------                           
+          
+This concludes the user manual for the program Mail. There is a file of
+examples called 'MAIL.E.G.TEXT'  which you should dump and then run through
+the letter processor so you can see exactly how it works in practice.
+Please direct any questions or comments to the:
+          
+ERCC Microcomputer Support Unit
+
+in the first instance.
+
+
+          
+Notes
+-----
+          
+I  Implementation Notes
+   --------------------
+  
+Format of MAIL data file
+------------------------
+
+For anyone wishing to access the mailing labels data the file format is
+defined as follows:
+           
+      TYPE labelrec = RECORD        
+                       code   :STRING[6];  
+                       lname  :STRING[15];    
+                       fname  :STRING[10];  
+                       minit  :STRING[2]; 
+                       prefx  :STRING[5];  
+                       suffx  :STRING[6]; 
+                       title  :STRING[15]; 
+                       coname :STRING[30]; 
+                       phone  :STRING[15];    
+                       address:STRING[30];     
+                       city   :STRING[15]; 
+                       state  :STRING[2]; 
+                       country:STRING[15]; 
+                       zip    :STRING[8];  
+                       misc   :STRING[90];
+                       flags  :ARRAY[1..48] OF BOOLEAN; 
+                      END;   
+          
+Overview of the operation of the MAIL program
+---------------------------------------------
+
+Mail System Data File:
+
+The mail system maintains a direct access file of mail records.  Record 0
+is special and holds the current maximum record in the zip field (as a
+string).  The system can claim space for new records so long as there is
+unused space on the disk following the current mail records file.  So, it
+is straightforward to move files to allow for expansion of a mail data file
+up to a complete disk if needed.  There are no limits built into the
+program in this respect. However, if a S)ort is to be done, it is
+recommended that there be a maximum of 350 record entries (as heap space is
+used during the sort).
+
+Code entry on records:
+
+A 'code' entry is kept with each record.  This holds 'Perm' for normal
+entries.  Record 0 also has 'Perm' in its code. During the execution of the
+system, various values are placed in here ('Add', 'Change', etc.).  Deleted
+records have a blank code entry. Such blank entries are used, where
+possible, before new space is allocated for A)dded records.
+
+Backup linked list of records:
+
+As records are changed, the old versions are kept on a linked list of
+backup records.  The new versions are then put in the main data file.
+R)estore operations on a record or a Q)uit from the program and E)xit
+without updating can then use this list to restore the old values.
+
+II Restrictions on file sizes
+   --------------------------
+
+The mailing label file may be of any size, however the S)ort routine is
+only capable of safely handling 350 records or approximately 250 blocks of
+data. This should be taken into consideration when building files and using
+the system.
+
+
+
+ERCC Notes
+----------
+
+I   Initialisation of MAIL data files
+    ---------------------------------
+
+The utility MAIL.INIT may be used to convert a text file containing name,
+addresses and information fields into MAIL data records.  The input format
+expected is:
+
+<blank line>
+name                       and its maximum width is 30
+company name                                        30
+address                                             30
+city, zip or post code           15 for city, 8 for zip or post code
+miscellaneous information                           90                     
+<blank line>
+<blank line>
+<blank line>
+
+This can be repeated for further individuals.  Note that a comma is used to
+separate a city from any zip or post code present.
+
+An example of an input file for the MAIL.INIT utility is available on the
+release disk as file MAILINITEG.TEXT.
+
+
+II  Conversion of MAILER names and addresses into MAIL
+    --------------------------------------------------
+
+The ERCC initially supported a simple mailing label manager named MAILER.
+The MAIL system is intended to replace this package and to increase the
+facilities available to users. In order to protect the investment already
+made in data capture of mailing information by MAILER users, the utility
+MAIL.INIT may be used to read text files produced as output by MAILER (i.e.,
+the format defined for input to MAIL.INIT is that produced as output from
+the earlier MAILER system).
+
+The MAIL.INIT program should be self explanatory.  Besides importing name,
+address and miscellaneous information to MAIL records, it allows a single
+MAIL Flag to be set on each record imported.  This is useful if you wish to
+mark all the imported records as belonging to some grouping (e.g., all
+members of a single committee).  Further uses of the MAIL data file for
+other purposes can then add to the records by using other Flags to
+differentiate the groupings.
+
+MAIL.INIT creates a new MAIL data base and populates it with the names and
+addresses in the given input file.
+
+Note that there may not be an exact correspondence between your original
+address fields (which could have unrestricted use) and those assigned in
+MAIL.  However, it should enable simple interactive changes to the new MAIL
+data file to be made in MAIL itself.
+
+The actual mapping of the information fields is:
+
+         MAILER         --->            MAIL
+         name                           Prefix,Fname,Minit,Lname,
+                                        Suffix or title
+         address 1                      company name
+         address 2                      address
+         address 3                      city, zip or post code
+         information                    miscellaneous
+
+III  Increasing the size of a MAIL data file
+     ---------------------------------------
+
+A MAIL data file will grow to occupy the free (unused) space on a disk
+following the existing data file.  If the data file becomes full and
+deletions cannot be made, you should copy the existing data file to a
+larger unused area to ensure that free (unused) space is available
+following it.  The UCSD Filer can be used to achieve this by K(runching
+disks, C(hanging file names and T(ransferring files.  After the operation,
+the MAIL data file should retain its original name.
+
+
+IV   Data Manipulation on records of your own description
+     ----------------------------------------------------
+
+If you require functions similar to those provided in MAIL but on records
+of your own description, you could investigate the FORMULEX package
+provided on various UCSD systems (including SuperBrain and Apple II).  This
+system lets you define your own screen form with various fields and gives
+facilities to build up a file of such records.  Record searching and file
+manipulation is provided for.  The system is one of a selection of systems
+which provide 'electronic form' interfaces to data.
+
+The form letter production facility of MAIL is not directly available in
+FORMULEX.
+
+
+V    Producing files for SORT/MERGE operations
+     -----------------------------------------
+
+SORT/MERGE is a package which enables files of records to be sorted
+according to some key fields.  One version of the package is available to
+sort text files consisting of fixed single line records according to up to
+6 keys.  The L)etter facility of the MAIL program may be used to output
+files in a form suitable for SORT/MERGE operations.
+
+A L)etter I)nput file is prepared which consists of a single line defining
+the record format.  It should be preceeded by the tilde ('~') character to
+prevent justification.  Fixed width fields can be forced by
+(*<token>:<width>*)  (e.g., (*LN:30*) will put out the Last Name in a field
+of width 30 characters).  An example might be:
+
+~(*FN:30*)(*LN:30*)(*CN:30*)
+
+This should be placed as the I)nput filename in the O)ptions section of
+MAIL or given explicitly as the input file name for L)etter.  The O)utput
+filename should be specified as some disk file.  This will become the input
+to a subsequent SORT/MERGE operation.  It is also necessary to set up the
+L)etter O)ptions such that non-paginated, non-stop-between-pages, output
+with no top, left or right margins is produced.  The characters on a line
+should be set wider than the record width to be written to the O)utput
+file.  All these options may be set in the MAIL O)ptions command.
+
+You may then do a L)etter operation and use a selection criteria which will
+produce an output record for each MAIL record selected. This O)utput file
+will become the input to SORT/MERGE operations. Note that any additional
+blank lines inserted by MAIL between records will be ignored by SORT/MERGE.
+

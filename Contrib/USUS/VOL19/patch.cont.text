@@ -1,0 +1,186 @@
+
+Problem #5: DLE expansion problems.
+
+     This patch was supplied by Charles Rockwell and is also published in
+NewsLetter #7.
+
+     The problem is the console driver software.  For the benefit of those who
+speak assembly language, the section of code that sends characters to the 
+screen looks like:
+        
+        1$:     MOV     R0,-(SP)        ;push R0
+                CLR     R0              ;get the next character
+                BISB    @BUFPTR,R0      ;     cleanly
+                TST     DFLAG           ;was last char a DLE
+                BEQ     3$              ;     branch if no
+                CLR     DFLAG           ;     if yes, R0 has the count
+                SUB     #32.,R0         ;expansion count excess 32
+                BLE     4$              ;branch if too big
+                                        ;DLE expansion
+                MTPS    #0              ;interrupts on
+        2$:     TSTB    @ITPS           ;port busy?
+                BPL     2$              ;branch if yes
+                MOVB    #' ,@ITPS       ;send space to screen
+                SOB     R0,2$           ;decrement R0, branch if not equal
+                                        ;done - R0=0
+                MTPS    #200            ;interrupts off
+        3$:     CMPB    R0,#DLE         ;is this character a DLE?
+                BNE     5$              ;branch if not
+                COM     DFLAG           ;     set flag if yes
+                CLR     R0              ;
+                                        ;send R0 to screen
+        5$:     MOVB    R0,@ITPB        ;with no test for busy
+                CMPB    R0,#CR          ;was it a carriage return?
+
+     The DLE expansion loop beginning a 2$ sends the required number of spaces
+to the screen.  It then falls through the branch to 5$.  R0, (which is null at 
+this point), is sent to the screen immediately, without a test for busy.  This 
+null usually wipes out the final space of the DLE expansion.  However, there 
+is a hardware FIFO buffer in the serial interface to the terminal.  If this 
+buffer is empty, it can grab the final space before the null gets there.  This 
+is why DLE expansions look good if they only require one or two spaces.
+
+     The fix for the bug requires reassembly and relinking the the entire 
+interpreter, and is not practical without DEC's RT-11 operating system.  The 
+fix looks like:
+
+        4$:     CLR     R0              ;check for done
+        5$:     TSTB    @ITPS           ;   and only then
+                MOVB    R0,@ITBP        ;send R0 to the screen
+     
+     The patch for the bug can be made on any LSI/PDP-11 interpreter.  It is 
+installed in the loop that sends the spaces for the DLE expansion to the
+screen.  The patch simply reverses the order of the test for busy and the 
+sending of the space.  This means that the first space of the DLE expansion 
+will be sent without a check for busy.  This shouldn't be a problem, because
+the existing code already sends most characters to the screen without checking 
+for busy.  (The implied assumption is that the serial interface generates an 
+interrupt only if it is not busy).
+
+     The patch changes the code at 2$ to:
+
+                MTPS    #0              ;interrupts on
+        2$:     MOVB    #' ,@ITPS       ;send the first space
+        6$:     TSTB    @ITPS           ;   wait until not busy
+                BPL     6$              ;   before sending next
+                SOB     R0,2$           ;branch in not done
+
+     Implementing the patch requires on operating version of PATCH, DISKREAD,
+or some similar program that can change selected words on a disk file.  (The 
+DEC Console ODT can be used to change the program in memory, but the change 
+has to be made every time the system is booted.)
+
+     STEP 1: Use the FILER to make a copy of yoyr system disk, and put your 
+system disk in a safe place.  Use only the copy to perform the following 
+steps.  After you are certain that all went well, you can call the unmodified 
+copy of the system disk an archive copy if you wish, but leave it in a safe
+place.  If all didn't go well, you can zero the new copy and start over.
+
+     STEP 2: Boot the copy of the system disk, and execute PATCH or DISKREAD.  
+Do whatever is necessary to display block 2 (or block 3 for IV.1) of
+SYSTEM.PDP-11.  The result should be a screen full of hex words.  Find your
+particular computer model and UCSD version in the table below, and make the
+indicated changes.  If the sequence of hex characters is not EXACTLY as shown,
+quit immediatly.  This section of the program is full of code sequences that
+are almost the same, but almost isn't good enough in this case.  Note that
+offsets in the block are decimal, while the code is in hex, per PATCH
+convention. The presence or absence of the LSI EIS chip does not make a
+difference in the offset.
+
+                PDP-11          LSI-11          LSI-11          LSI-11
+                UCSD I.4        UCSD I.4        UCSD IV.0       IV.1 (LS142B)
+                UCSD I.5        UCSD I.5
+                UCSD II.0       UCSD II.0
+                                                                BLOCK 3
+OFFSET          244             200             462             302
+
+DATA            FROM    TO      FROM    TO      FROM    TO      FROM    TO
+                
+                FF8B    FF95    FF8B    FF95    FF8B    FF95    FF8B    FF95
+                36FF    2000    4EFF    2000    F0FB    2000    98FA    2000
+                FD80    36FF    FD80    4EFF    FD80    F0FB    FD80    98FA
+                FF95    FF8B    FF95    FF8B    FF95    FF8B    FF95    FF8B
+                2000    30FF    2000    48FF    2000    EAFB    2000    92FA
+                30FF    FD80    48FF    FD80    EAFB    FD80    92FA    FD80
+
+     STEP 3:  When the changes are satisfactory, write the block back out to 
+the disk.  SYSTEM.PDP-11 is now either hopelessly corrupt, or successfully 
+patched.  Reboot the disk, and execute SCREENTEST to find out which.  If the 
+patch was successful, the screen patterns should be as advertised, although
+there may well be problems remaining in the character set copying routines.
+
+     For those who prefer to try the patch in memory before changing the disk, 
+and for those who wich to check the patch in memory, the octal numbers for the 
+console ODT are:
+
+        PDP,I.4                 LSI,I.4/II.0            LSI,IV.0
+
+ADDR    FROM    TO      ADDR    FROM    TO      ADDR    FROM    TO
+
+2364    105777  112777  2310    105777  112777  2716    105777  112777
+        177466      40          177516      40          175760      40
+        100375  177466          100375  177516          100375  175760
+        112777  105777          112777  105777          112777  105777
+            40  177460              40  177510              40  175752
+        177460  100375          177510  100375          175752  100375
+
+
+     Patch #7, Tab Expansion
+
+     The interp for the pdp-11 hasn't changed much since the days of I.3.  At
+that time is was standard for the system to expand tabs to the printer as the
+printer used at that time wouldn't do it on its own.  In newer implementations
+of the p-system, this convention was dropped, but the -11 was never changed.
+
+     This doesn't cause any problems unless you MUST send CHR ( 11 ), a tab
+character to the printer as a control character.  For example, a Diablo printer
+must be sent a tab character as part of a control sequence to make it do an
+absolute tab.  This means that Diablo printer drivers which work on other p-
+systems don't work on the -11.  However a simple fix is shown below.
+
+     The actual printer detects the tab character and jumps to a subroutine to
+expand the tab, using a current column count to go the the next 8 column tab
+position.  If the character is not a tab, a branch is performed around the
+subroutine call.  The patch is to change this conditional branch to a non-
+conditional branch.
+
+     This original code is:
+     
+                .
+                .
+                CMPB    R0,#HT                 ; is it a tab
+                BNE     4$                     ; if not continue
+                JSR     PC,LPTABR              ; if so, send some spaces
+        4$      INC     LP.COL                 ; increment the column count
+                .
+                .
+ 
+     We change the BNE to a BR and the patch is done.  To do the patch, follow
+these instructions.
+
+     1) Make a backup copy of system.pdp-11.
+
+     2) Invoke PATCH and R(read SYSTEM.PDP-11.  V(erify block 0.
+
+     3) Look at the contents of location 128 decimal (200 octal)  and note it.
+This is the location of the beginning of the printer driver.  If you have done
+the X-ON/X-OFF patch above, you will have to look at the contents of the last
+word of that patch instead.  Convert this value to decimal (the program
+HEXDECOCT.TEXT on volume 5 helps a lot here but remember to flip the bytes as
+HEXDECOCT expects inputs non-flipped).  Divide the value by 512 (decimal). The
+non-fractional part of the result is the block number of the block in which the
+patch will be made and the remainder multiplied by 512 is the offset into the
+block.  Add 124 decimal to the offset to get the offset into the printer driver
+of the offending instruction.
+
+     4) At this location you should see 0202 (hex) or 001002 (octal). This is
+the BNE instruction.  The previous word should be 0900 (byte flipped hex) or
+11 octal.  This is the value of a tab.  Change the 0202 to 0201 (byte flipped
+hex for a BR) or 000402 (octal), a branch of two words.
+
+     5) Save the block and you are done.  Test the patch by sending some tabs
+to your printer.  If your printer does its own tabs, you will not see any
+difference.  If your printer doesn't recognize tabs, it won't tab.
+     
+     
+

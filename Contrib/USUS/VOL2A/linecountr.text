@@ -1,0 +1,126 @@
+(*   Program Author:  Frank Monaco
+                      679 Lowell Drive
+                      Marietta, GA 30060
+                      404-424-1460
+                      
+Rewritten to include improved filename input and blockreads to speed it up:
+                Jim Gagne
+                Datamed Research
+                1433 Roscomare Road
+                Los Angeles, CA 90024
+                                                        *)
+                                                        
+
+program lcnt; (*counts lines in any file*)
+
+var
+  numberoflines, i, j : integer;
+  infilename: string [30];
+  typed: string;
+  infile: file;
+  chararray: PACKED ARRAY [0..1023] OF char;
+
+
+PROCEDURE GetString (x,y, maxlength: integer);
+VAR j, k: integer;
+    Gotstring: boolean;
+    bell: char;
+BEGIN
+  bell := CHR (7);
+  Gotstring := false;
+  REPEAT
+    Gotoxy (x,y);
+    FOR j := 1 TO maxlength DO write ('.');
+    Gotoxy (x,y);
+    Readln (typed);
+    k := length (typed);
+    IF k > maxlength
+      THEN BEGIN
+        Gotoxy (x,y);
+        Write (' ':k);
+        Gotoxy (0,23);
+        Write (bell, 'You have entered too many characters in this line.  ',
+               'Please try again.')
+      END
+      ELSE Gotstring := true
+  UNTIL Gotstring;
+  Gotoxy ((x+k),y);
+  Write (' ':(maxlength - k));
+  Gotoxy (2,22);
+  Write (' ':70);
+  Gotoxy (0,73);
+  Write (' ':70)
+END (*GetString*);
+
+
+PROCEDURE GetFile;
+
+VAR gotfn: boolean;
+    bell, response: char;
+  
+BEGIN
+  Bell := CHR (7);
+  REPEAT
+    Gotoxy (11,20);
+    Write ('Please type the name of the desired input file.');
+    Gotoxy (15,21);
+    Write ('-->      ');
+    Gotoxy (11,22);
+    Write ('  (Or just press the <return> key if you wish to quit.)');
+    Typed := '';
+    GetString (20,21, 23);
+    IF LENGTH (typed) = 0
+      THEN BEGIN
+        Gotoxy (11,23);
+        Write ('Would you prefer to quit this program (Y/N)?     ');
+        Read (Keyboard, response);
+        Gotoxy (11,23);
+        Write (' ':47);
+        IF (Response = 'Y') OR (Response = 'y')
+          THEN EXIT (Program)
+      END
+      ELSE BEGIN
+        Infilename := Typed;
+        (*$I-*)
+        Reset (Infile, Infilename);
+        IF IORESULT > 0 THEN Reset (Infile, CONCAT (Infilename, '.TEXT'));
+        (*$I+*)
+        Gotfn := IORESULT = 0;
+        IF NOT Gotfn
+          THEN BEGIN
+            Gotoxy (0,23);
+            Write (bell, '<<**** ERROR ****>>   ',
+                   'Wrong volume or file name.  Type <space> to continue.');
+            REPEAT Read (Keyboard, Response) UNTIL Response = ' ';
+            Gotoxy (0,23);
+            Write (' ':78)
+          END
+      END(*else*)
+  UNTIL Gotfn;
+END (*GetFile*);
+
+
+begin
+writeln(' *** This program counts number of lines in a text file ***');
+GETFILE;
+numberoflines := 0;
+GOTOXY (3,4);
+write ('...counting');
+while not eof(infile) do 
+   begin
+      i := Blockread (Infile, chararray, 2);
+      IF i > 0 
+        THEN BEGIN 
+          IF i = 2 THEN i := 1023 ELSE i := 511;
+          FOR j := 0 TO i DO IF chararray [j] = CHR (13)
+            THEN BEGIN
+              numberoflines := succ(numberoflines);
+              gotoxy(1,4);
+              write(numberoflines);
+            END;
+        END;
+   end;
+writeln;
+writeln('Your file ', InfileName, ' contains ', numberoflines, ' lines...');
+end.
+

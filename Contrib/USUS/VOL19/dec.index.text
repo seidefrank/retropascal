@@ -1,0 +1,47 @@
+
+
+                        USUS Library DEC specific Index
+
+     The following is an index of the DEC specific programs which are already 
+in the USUS Library.  
+
+Volume #2A
+
+PUNCH.TAPE.TEXT     These programs allow you to use your H-10 paper tape 
+READ.TAPE.TEXT      punch.
+
+SMARTREMOT.TEXT     This is a terminal emulator which is very DEC specific.
+                    It is also H-19 (VT-52) specific.  
+                    An improved version is found on Volume 15.
+
+
+Volume #5
+
+FMT.2.0.CODE        A code file of a fair text formatter.  It works on DEC
+                    iron, but on nothing else.  Source is N/A.
+
+SP.TEXT             This is a utility needed to do underlining and boldface
+                    with FMT.  It has a DEC specific routine to output a 
+                    CR without a LF, but an easier way is just to send 
+                    chr ( 141 ).
+                    
+                    
+Volume #8
+
+MODEMV2.2.TEXT      The worlds simplest terminal emulator.  Requires UNITBUSY
+                    so it is DEC specific.
+
+
+Volume #15
+
+SMARTREMOT.TEXT     The reworked version of the terminal emulator on #2A.  
+                    Requires an H-19 also.
+
+IOUNIT.TEXT         A unit used by SMARTREMOT.  It is a bunch of declarations
+                    which allow one to easily access hardware buffer for I/O dev
+                    devices.
+                    
+REMUNIT.L3.TEXT     A DEC specific USUS Standard remote unit.
+CLR_BREAK.TEXT        an external procedure for REMUNIT.L3
+SET_BREAK.TEXT        ditto
+

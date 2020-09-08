@@ -1,0 +1,318 @@
+UNIT CRTINPUT;
+
+{Special procedures for controlled CRT input of string, textfile,
+ and boolean variables.
+ 
+ COPYRIGHT (c) 1980, James Gagne, President
+                     DATAMED RESEARCH
+                     1433 Roscomare Road
+                     Los Angeles, CA 90024
+                     213/472-8825
+ ALL RIGHTS RESERVED.  These routines may be used for nonprofit, non-
+ commercial purposes only, unless written consent of the author is obtained.}
+ 
+INTERFACE
+    
+    TYPE
+      FileAction = (GetOld, Create) {equivalent to Reset/Rewrite};
+      FNameString = string [30];
+      chset = set OF char;
+
+    
+    PROCEDURE AllCaps (VAR s:string);
+        {convert string to all capital letters}
+    
+    FUNCTION GetLetter (y: integer; s: string; cset: chset): char;
+        {  Writes S at line Y; reads w/o echo, converting alpha to upper case,
+         until char is in CSET, then returns this char after erasing line Y.
+         The cursor is not moved if Y < 0 or > 23.}
+    
+    PROCEDURE GetString (MaxLength: integer; VAR Typed: string);
+        {See description in IMPLEMENTATION section.}
+    
+    FUNCTION OpenTextFile 
+       (Prompt: string       {your request for the filename}; 
+    VAR FileName: FNameString{filename string};
+        Action: FileAction   {"GetOld" or "Create"};
+        Startline: integer   {linenumber on which to start dialogue}; 
+    VAR F: text              {file to be opened})
+     : boolean               {true = file opened; false = user aborted};
+    
+    PROCEDURE GetBoolean (x, y: integer;  VAR DesiredValue: boolean);
+    
+    
+IMPLEMENTATION
+
+  CONST 
+     {ASCII characters}
+        etx = 3;
+        bel = 7;
+        bs = 8;
+        htab = 9;
+        esc = 27;
+        del = 127;
+        
+        RCurs = 18      {Control R ==> move cursor right};
+        ErrorLine = 23  {last line on screen is for error messages};
+        
+  VAR
+       Response, ch, EscapeCh: char;
+    
+        
+PROCEDURE GoAndClearLine (y: integer); EXTERNAL;
+
+FUNCTION Yes (prompt: string) : boolean; EXTERNAL;
+
+PROCEDURE OptionalGotoxy (x,y: integer);
+{Leave the cursor where it is if x or y is < 0}
+BEGIN
+  IF (x >= 0) AND (y >= 0) THEN Gotoxy (x,y);
+END;
+
+
+PROCEDURE AllCaps  {(VAR s:string)};
+VAR i, LittletoBig : integer;
+BEGIN
+  LittletoBig := ORD ('A') - ORD ('a');
+  FOR i := 1 TO Length (s) DO
+    IF s[i] IN ['a'..'z'] THEN s[i] := CHR (Ord (s[i]) + LittletoBig);
+END;
+
+
+FUNCTION GetLetter {(y: integer; s: string; cset: chset): char};
+VAR ch: char;
+
+BEGIN
+  IF (y>=0) AND (y<24) THEN GoAndClearLine(y);
+  Write(s);
+  REPEAT
+    Read(keyboard, ch);
+    IF (ch IN ['a'..'z']) THEN ch := CHR( ORD(ch) + ORD('A') - ORD('a') )
+  UNTIL ch IN cset;
+  IF (y >= 0) AND (y < 24) THEN GoAndClearLine (y) ELSE writeln(ch);
+  GetLetter := ch
+END;
+
+
+{GETSTRING does the following:
+  This routine first types the original string (Typed), followed by dots to the 
+maximum string length.  If any char is typed but ETX or ESCAPE, the original 
+string is replaced by a row of dots to the maximum length of the string as 
+passed by the calling routine.  GetString then reads characters 
+until terminated by a typed return or escape or at the point that the string 
+is filled by the maximum allowed characters.  Typing a control R at any point
+will fill that character with one from the original string; a horizontal tab
+will either fill in text, or add spaces, depending on whether the end of the
+original string has been reached.  If at any time escape is typed, the original 
+string (TYPED) is restored and the procedure terminated.  Otherwise, either a 
+return or a full string are taken as end-of-string.  Backspace and Delete work 
+per the usual UCSD standard.}
+
+PROCEDURE GetString {(MaxLength: integer; VAR Typed: string[255])};
+CONST MaxString = 250;
+      FillChar = '.';
+VAR j, k, MaxL, StringLength: integer;
+    ReadCh: boolean;
+    HTabCh, backsp, DeleteCh: char;
+    Newstring: String[MaxString];
+    Didtype: PACKED ARRAY [1..MaxString] OF char;
+    
+BEGIN
+  IF MaxLength > MaxString THEN MaxL := MaxString ELSE MaxL := MaxLength;
+  IF MaxLength = 0
+    THEN BEGIN
+      Typed := '';
+      Exit (GetString);
+    END;
+  backsp := CHR (bs);
+  HTabCh := CHR (Htab);
+  EscapeCh := CHR (esc);
+  DeleteCh := CHR (del);
+  REPEAT        {loop repeated only if DELETE typed}
+    StringLength := LENGTH (typed);
+    IF StringLength > MaxL
+      THEN BEGIN
+        Delete (Typed, MaxL+1, StringLength-MaxL);
+        StringLength := LENGTH (typed);
+      END;
+    Write (typed);
+    FOR j := StringLength+1 TO maxlength DO Write (FillChar);
+    FOR j := 1 TO Maxlength DO write (backsp);
+    Read (Keyboard, ch);
+    IF ch = EscapeCh
+      THEN BEGIN
+        Write (typed, ' ': MaxL - StringLength);
+        EXIT (GetString)
+      END
+      ELSE BEGIN
+        IF ch = CHR (etx)
+          THEN ReadCh := true
+          ELSE BEGIN   {If the 1st char <> control C,}
+            ReadCh := false; {then erase original string.  }
+            FOR j := 1 TO StringLength DO Write (FillChar);
+            FOR j := 1 TO StringLength DO Write (backsp);
+          END;
+        j := 1;
+        REPEAT
+          IF ReadCh THEN Read (keyboard, ch);
+          ReadCh := true;
+          IF (ch = CHR (RCurs)) AND (j <= StringLength)
+            THEN BEGIN  {The Right-cursor character will keep one     }
+              ch := Typed [j];  {character at a time from the original string.}
+              Write (ch);
+              Didtype[j] := ch;
+              j := j + 1
+            END
+          ELSE IF (ch >= ' ') AND (ch < DeleteCh)
+            THEN BEGIN
+              Write (ch);
+              Didtype[j] := ch;
+              j := j + 1
+            END
+          ELSE IF ch = HTabCh
+            THEN REPEAT
+              IF j <= StringLength THEN ch := Typed [j] ELSE ch := ' ';
+              Write (ch);
+              Didtype [j] := ch;
+              j := j + 1
+            UNTIL (j MOD 8 = 1) OR (j > MaxL)
+          ELSE IF (ch = backsp) AND (j > 1) 
+            THEN BEGIN
+              Write (backsp, FillChar, backsp);
+              j := j - 1;
+            END
+        UNTIL (j > MaxL) OR (ch IN [EscapeCh, DeleteCh]) OR EOLN (keyboard);
+        k := j - 1;
+        IF EOLN (keyboard) AND (k = 1) THEN k := 0;
+        FOR j := 1 TO k DO Write (backsp);
+      END
+  UNTIL ch < DeleteCh;
+  IF ch <> EscapeCh
+    THEN BEGIN
+      NewString := '';
+      FOR j := 1 TO k DO 
+        BEGIN
+          NewString := CONCAT (NewString, ' ');
+          NewString [j] := Didtype [j]
+        END;
+      Typed := NewString
+    END;                {else typed is left alone}
+  Write (typed, ' ':(maxlength - Length (typed)));
+END (*GetString*);
+
+
+PROCEDURE WriteErr (Message: string);
+BEGIN
+  Gotoxy (0, ErrorLine);
+  Write (CHR (bel), '-** ERROR **-  ', Message, 
+         '.  Tap <spacebar> to continue...');
+  REPEAT Read (keyboard, ch) UNTIL ch = ' ';
+  GoAndClearLine (ErrorLine)
+END;
+
+
+{OPENTEXTFILE will open a textfile, prompting at lines STARTLINE to STARTLINE+3
+ --except for the error message, which is always at the bottom of the screen.  
+ It returns the filename and the opened file.  ".TEXT" is added to any filename 
+ that needs it.  It returns false if the user quit.}
+ 
+FUNCTION OpenTextFile {(Prompt: string; 
+                     VAR FileName: FNameString;
+                         Action: FileAction;
+                         Startline: integer; 
+                     VAR F: text) : boolean};
+
+VAR gotfn: boolean;
+    Typed: string [255];
+  
+BEGIN
+  REPEAT
+    GoAndClearLine (StartLine);
+    GoAndClearLine (StartLine+1);
+    GoAndClearLine (StartLine+2);
+    GoAndClearLine (StartLine+3);
+    Gotoxy (5,StartLine);
+    Write (Prompt);
+    Gotoxy (15,StartLine+1);
+    Write ('-->      ');
+    Gotoxy (8,StartLine+2);
+    Write ('  (Or just press the <return> key if you wish to quit.)');
+    Typed := '';
+    Gotoxy (20, StartLine+1);
+    GetString (23, Typed);
+    IF (typed = ' ') OR (typed = '')
+      THEN BEGIN
+        GoAndClearLine (StartLine+3);
+        Gotoxy (11,StartLine+3);
+        IF Yes ('Would you prefer to skip this file')
+          THEN BEGIN
+            OpenTextFile := false;
+            EXIT (OpenTextFile);
+          END;
+        GoAndClearLine (StartLine+3);
+      END
+      ELSE BEGIN
+        FileName := Typed;
+        AllCaps (FileName);
+        (*$I-*)
+        IF Action = getold
+          THEN BEGIN
+            Reset (F, typed);
+            IF IORESULT > 0 THEN Reset (F, CONCAT (typed, '.TEXT'))
+          END
+          ELSE BEGIN
+            IF (POS ('.TEXT', typed) = 0)
+              THEN typed := CONCAT (typed, '.TEXT');
+            Rewrite (F, typed);
+          END;
+        (*$I+*)
+        Gotfn := IORESULT = 0;
+        IF NOT Gotfn
+          THEN CASE IORESULT OF
+            1, 4:  WriteErr ('Please check your disk--hardware problem');
+            2:     WriteErr ('Unit number is incorrect');
+            5, 9:  WriteErr ('Unit or Volume is off line at present');
+            6, 10: WriteErr ('Can''t find this file on this disk');
+            7:     WriteErr ('Illegal file name...probably too long');
+            8:     WriteErr ('No room on this disk for this file');
+          END;
+      END(*else*)
+  UNTIL Gotfn;
+  OpenTextFile := true
+END;
+  
+
+{GETBOOLEAN is a routine to read in a boolean variable; gotoxy
+ is optional as before.  If you don't want GOTOXY, consider also
+ 'YES' from SCREENCONTROL.}
+ 
+PROCEDURE GetBoolean {(x, y: integer; VAR DesiredValue:  boolean)};
+VAR ch: char;
+    DontGotoxy: boolean;
+
+BEGIN
+  DontGotoxy := (x<0) OR (y<0);
+  Escapech := CHR (esc);
+  IF NOT DontGotoxy
+    THEN BEGIN
+      GoAndClearLine (22);
+      Write ('  Type "Y" for yes, or "N" for no.');
+      Gotoxy (x,y);
+    END;
+  REPEAT Read (keyboard, ch) 
+  UNTIL (ch IN ['Y', 'y', 'T', 't', 'N', 'n', 'F', 'f', EscapeCh]);
+  CASE ch OF
+    'Y', 'y', 'T', 't': BEGIN
+                          Write ('YES');
+                          DesiredValue := true
+                        END;
+    'N', 'n', 'F', 'f': BEGIN
+                          Write (' no');
+                          DesiredValue := false
+                        END
+  END;
+  IF NOT DontGotoxy THEN GoAndClearLine (22)
+END;
+
+
+END.

@@ -1,0 +1,792 @@
+
+
+
+
+
+                                PRXref
+           A Pascal Program Print/Cross-reference Processor
+                             Users Manual
+                       version 2.0 -- July 1980
+
+                    program and manual written by
+                            David J. Lewis
+
+                    Digicomp Research Corporation
+                             Terrace Hill
+                       Ithaca, New York  14850
+                             607-273-5900
+
+                                 and
+
+                      Department of Mathematics
+                            Ithaca College
+                       Ithaca, New York  14850
+                             607-274-3108
+
+                          program and manual
+                  Copyright (C) 1980, David J. Lewis
+
+
+Permission is granted to use and copy this program and its
+documentation under the terms of the UCSD Pascal System Users'
+Society.  Use or copying under any other circumstances or terms is
+prohibited without the prior, written consent of the author.  In
+particular, any resale or distribution for profit is prohibited.
+
+
+
+                         GENERAL DESCRIPTION
+
+PRXref is a processor for printing and cross-referencing Pascal
+programs.  It runs under the UCSD Pascal (TM) system, versions I.5,
+II.0 and III.0.
+
+In its program printing function (which can be applied to any file,
+not just a Pascal program) PRXref provides line and page skipping,
+line numbering, standard or user-specified headers, the UCSD Pascal
+include-file mechanism, multiple line spacing, multiple copies and
+direction of output to any volume or file.
+
+For its cross-reference function, PRXref lists all occurrences of
+identifiers defined by the programmer with their line numbers.
+Procedure and function definitions are specially flagged.  As with
+printing, files may be included.  This, plus a very large space for
+cross-reference tables via disk, makes PRXref especially suitable for
+handling large Pascal programs.
+
+
+Note: "UCSD Pascal" is a registered trademark of the Regents of the
+University of California.
+
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- General Usage                   page 2
+
+
+I. GENERAL USAGE INSTRUCTIONS.
+
+   A. INVOCATION.  PRXref is invoked by X(ecution from the UCSD Pascal
+      command level.  This will result in a brief initialization and
+      then display of the user option menu.
+      
+   B. DISPLAY REQUIREMENTS.  Options are shown in a vertical menu on
+      on the system display console.  The display is presently
+      organized for 18 lines of 64 or more characters.  It may be
+      squeezed into 16 lines as described in section IV.F.  The screen
+      must have XY-cursor addressing (embodied in the user's GOTOXY
+      procedure) and erase-to-end-of-line and -screen functions.
+      PRXref will automatically adjust to the user's screen
+      environment by reading the SYSTEM.MISCINFO file and report any
+      deficiencies.
+      
+   C. PRINTER REQUIREMENTS.  PRXref itself uses 80 columns across the
+      printer carriage for headers and cross-reference.  Generally,
+      the user wants each program line to fit on a single printer
+      line, so she/he should maintain the horizontal size of the
+      program within the bounds of their own print device.  Certain
+      constants in PRXref control the size of line that can be
+      handled.  This is more fully described in sections II.F and
+      IV.B.
+      
+   D. OPTION SPECIFICATION.  Default options are shown with the menu.
+      To change any user option type the first letter of the option,
+      upper or lower case.  One may continue altering options until
+      printing begins with <etx> as described in section I.E.  The
+      function of each option is described in section II.D.
+      
+      There are four data types for options:
+      
+      1. Yes/No.  Type "Y" or "N" (upper or lower case).  Other
+         characters are ignored.  PRXref will respond to the single
+         character with no carriage return required, echoing the full
+         "Yes" or "No".
+         
+      2. String.  Type a string followed by a carriage return.  Upper
+         and lower case are irrelevant.  Any typable character but a
+         carriage return or end-of-file sequence may be entered.  As
+         usual, <backspace> and <delete> (or <rub out>) serve to edit
+         strings.
+         
+      3. Integer.  Type an integer, terminating with a space or a
+         carriage return.  Illegal characters are ignored.  Type
+         <backspace> to undo one or more characters.  The maximum is
+         four digits, and any subsequent digits are ignored.
+         Individual options have differing requirements for range.
+         
+      4. Character.  Type the single character.  No carriage return is
+         required.
+         
+   E. INITIATION OF PRINTING.  Type <etx> (usually control-c) to
+      initiate printing and/or cross-referencing.  However, both a
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- General Usage                   page 3
+
+
+      valid input file (F(ilename option) and output file/volume
+      (O(utput file option) must be specified before printing can
+      begin.  If either is not present (missing or showing an error
+      message), the <etx> is ignored.
+      
+      If output is directed to the printer (see II.C below), then the
+      printhead should be positioned at the physical top-of-form
+      before initiating printing.  The volume containing the PRXref
+      code file must remain mounted during execution, as it uses
+      segment procedures.
+      
+   F. ESCAPING FROM EXECUTION.  Anytime during printing or cross-
+      referencing, hitting any key (but <escape>) will suspend
+      execution until another key hit. <escape> will give options to
+      terminate: either the entire program (another <escape>) or just
+      the file being processed (any other key).
+      
+   G. REPETITION.  After printing is complete, all options remain the
+      same, except for the number of copies, which is set to 1.  The
+      user may reselect options and initiate processing of another
+      file.
+      
+   H. QUITTING.  Instead of selecting an option, type "Q" to quit
+      PRXREF at any time.
+      
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PRXREF MANUAL, July 1980 -- Printing Function              page 4
+
+
+II. PRINTING FUNCTION.
+   
+   A. GENERAL FEATURES.  When the P(rint option is "Yes," the input
+      file is printed line-for-line. If V(ertical formatting is "Yes,"
+      then PRXref will perform line and page skipping and header
+      specification under control of directives in the user's file.
+      
+      PRXref performs no filling, concatenation, indentation or other
+      horizontal formatting functions.  (The one exception is that a
+      line is broken when it does not fit into a print line.)  In
+      short, PRXref assumes that the user has arranged the program as
+      it should look when printed.  If that is not true, one may use a
+      program pretty-printer such as those published by the UCSD
+      Pascal System Users Society (software library, volume 1) or the
+      Pascal News (#13, pages 34-58).
+      
+   B. INPUT FILE.  The input file is selected with the "F(ilename"
+      option.  This must be a .TEXT file, though the ".TEXT" may be
+      omitted from the filename.  Lowercase letters in the filename
+      are translated to uppercase.  Specification of an illegal
+      filename or a file not present will result in an error message.
+      Volume prefixes (#5:, #VOL:, etc) may be used, and the default
+      volume prefix set by the UCSD filer is effective.
+      
+      If SYSTEM.WRK.TEXT is present, this will be the default input
+      filename when PRXref is initialized, though the user may alter
+      it.  If SYSTEM.WRK.TEXT is not present, there is no default, and
+      the input file must be specified before printing.
+      
+   C. OUTPUT FILE/VOLUME.  The output destination is selected with the
+      "O(utput file" option.  This may be either a file on a block-
+      structured volume or a non-block-structured volume.  In both
+      cases, lowercase letters are translated to uppercase.
+      
+      Output files on block-structured volumes must be specified in
+      full; ".TEXT" is not assumed.  Volume prefixes may be used, and
+      the default volume prefix is effective.
+      
+   D. OPTIONS.  The basic option "P(rint :Yes" must be set.  If
+      "X(ref :Yes" is also set, cross-referencing will occur in
+      addition to printing.  See section III for a description of
+      cross-referencing.  Other options for printing are:
+      
+      1. I(nclude. (Yes/No, default: Yes).  If "Yes," file-include
+         directives intended for the UCSD Pascal compiler will be
+         respected, resulting in inclusion of the named files (for
+         example, {$I OTHER.STUFF.TEXT}) .  If "No," then include
+         directives will be printed like ordinary lines, causing no
+         file inclusion.
+         
+         An include directive in the file being printed must stand
+         alone on a line, possibly indented but without other
+         directives or text.  Other than this, all variants of include
+         directives are recognized by PRXref, including both kinds of
+         comment delimiters, upper and lower case and omission of
+
+
+
+
+
+
+
+
+PRXREF MANUAL, July 1980 -- Printing Function              page 5
+
+
+         ".TEXT".
+         
+         Included files may themselves contain include directives,
+         nested to any reasonable depth.  However, the UCSD Pascal
+         compiler does not support such nesting.
+         
+         When line numbers are printed (see the "N(umbering" option
+         below) and files are included, line numbers will correspond
+         exactly to those on listing output from the the UCSD Pascal
+         compiler (using the (*$L...*) compiler directive).
+         
+      2. V(ertical formatting. (Yes/No, default: Yes).  Setting this
+         option causes PRXref to recognize special vertical formatting
+         directives in the user's file.  These provide for line
+         skipping, page skipping and header specification.  See
+         section II.E for details.  If the V option is "No," such
+         directives are treated as ordinary text and printed.
+         
+      3. C(ommand char. (character, default: #).  This is the
+         character used in the printed file to identify formatting
+         directives.  See section II.E.
+         
+      4. S(kip page. (Yes/No, default: Yes). If "Yes," then a page
+         skip is performed over the perforations of each page.  The
+         values currently set to describe the page are discussed in
+         section II.F.  If the S option is "No," then page skipping is
+         not performed, and the listing will run over the
+         perforations.  If S is "No" and H is "Yes," then a header
+         will be printed after the usual number of text lines for a
+         page, but there will be no skipping over the perforations.
+         
+         Presently, page skipping is performed by printing the
+         appropriate number of empty lines, but a top-of-form
+         character may be used for a printer that recognizes it; see
+         section IV.B.
+         
+      5. N(umbering. (Yes/No, default: Yes).  If "Yes," then line
+         numbers appear to the left of each printed line, in a field
+         of width five.  Line numbers begin at 1 and go up to 32767.
+         Turning on the X(ref option automatically turns on line
+         numbering, though it may not show on the options list.
+         
+         PRXref numbers lines exactly the same as the UCSD Pascal
+         compiler, even in the face of included files.  Thus, a
+         compiler listing and its line numbers will correspond to a
+         cross-reference produced by PRXref from the same source
+         program.  In view of this, the user may sometimes want to
+         produce a listing with the compiler to obtain code file
+         information.  The cross-reference may then be obtained from
+         PRXref, turning the P option off.  In doing so, be careful to
+         leave the (*$L...*) compiler directive in the file for cross-
+         referencing so line numbers will not change.
+         
+      6. L(ine spacing. (integer, default: 1).  This is the spacing
+         for the printed output: 1 is single spacing, 2 is double
+
+
+
+
+
+
+
+
+PRXREF MANUAL, July 1980 -- Printing Function              page 6
+
+
+         spacing, etc.  The range is 1 to 8.  When the format
+         directive {#S...}  is used in the file to skip lines, the
+         skip value is multiplied by the current line spacing factor.
+         
+      7. E(ject on incl.  (Yes/No, default: Yes).  If "Yes," then the
+         beginning and end of an included file causes a page ejection.
+         Thus, each included file occupies its own unique pages in the
+         listing, and the file titles in standard headers are
+         unambiguous.
+         
+         If E is "No," then the listing will run continuously across
+         included files.  In this case, the title header may not
+         accurately reflect the included source file until the next
+         regular page ejection.  The same general effect as the E
+         option may be achieved with the (*#H...*) and (*#P*) format
+         directives described in II.E.
+         
+      8. #( of copies. (integer, default: 1).  The entire print and
+         cross-reference process will be repeated this many times with
+         the same options before returning to the user for reselection
+         of options.  Upon completing the repetitions, all options
+         will remain the same except this one, which is reset to 1.
+         The range for # is zero to 9999.
+         
+   E. VERTICAL FORMATTING DIRECTIVES. These are directives embedded in
+      the file being printed to control vertical formatting of the
+      listing under PRXref.
+      
+      The general syntax of vertical formatting directives is a Pascal
+      comment beginning with a special character, called the command
+      character and another character, called the directive character,
+      indicating the operation.  This is similar to compiler
+      directives in Pascal, but with a different command character
+      than the "$" (usually "#").  For example, the "P" directive may
+      be written {#P}.  Format directives must stand alone on lines of
+      the file, without other directives or text.
+      
+      The default command character is "#", though the user may alter
+      this with the "C(ommand char" option.  Directive characters are
+      "S", "P" and "H", with lower case acceptable as well.  Some
+      directives require a following operand, and PRXref is tolerant
+      of leading and trailing blanks in such operands except where
+      noted.  Format directives are:
+      
+      1. Line skipping: "S <number>" or "S".  This causes a skip of
+         <number> lines, or one line if <number> is omitted.  <number>
+         may be up to the size of a physical page.  Examples:
+         (*#S 2*), {#S}, {#s10}.
+         
+      2. Page ejection: "P".  Examples: {#p}, (*#P *).  This causes
+         immediate page ejection.
+         
+      3. Header specification: "H+", "H-", "H <header text>. "H+"
+         installs the standard header with file titles.  "H-"
+         suppresses all headers.  For these, the "+" and "-" must
+
+
+
+
+
+
+
+
+PRXREF MANUAL, July 1980 -- Printing Function              page 7
+
+
+         stand next to the "H".
+         
+         The standard header, selected by (*H+*), is the default in
+         case the user's file contains no H directives.  It contains
+         the name of the file being printed, the page number for the
+         entire listing and a separator line including the date from
+         the catalog of the booted volume.  If a file is being
+         included, then the name of that file and the page number
+         within it are also printed in the standard title header.
+         
+         "H <header text>" installs <header text> as the header for
+         subsequent page ejections, whether caused by {#P} or page
+         overflow.  A single space between "H" and <header text> is
+         optional and is deleted if present.  The remainder of
+         <header text> is taken literally, including leading and
+         trailing spaces.  When <header text> is printed at the top of
+         a page, it will be followed immediately by the listing page
+         number.  An example of a header to capitalize on this feature
+         is:
+         
+            (*#H The Perils of Pauline.     Page *)
+         
+         User-supplied headers are also followed by a separator line
+         with the date.
+         
+         The H directive does not in itself cause page ejection, but
+         becomes effective upon the next page ejection ocurring
+         naturally or through the P directive.
+         
+   F. PRINTING DIMENSIONS.  The page and other printing dimensions are
+      fixed at these values: 66 physical lines per page; 2 lines of
+      margin above the header; 1 line of margin below the header; 4
+      lines of margin at the page bottom; 80 columns in the header and
+      header separator lines; 5 columns for line numbers, if selected;
+      130 columns across the page; zero nulls sent to "PRINTER:" upon
+      carriage return; 14 references per line in the cross-reference
+      printout (at 5 columns per reference).
+      
+      For information on changing these, see section IV.B.
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- Cross-reference Function        page 8
+
+
+III. CROSS-REFERENCING.
+   
+   A. GENERAL FEATURES.  When the X(ref option is "Yes," the input is
+      assumed to be a Pascal program, and all identifiers in the
+      program but keywords (Pascal reserved words plus some other
+      identifiers) are listed in the cross-reference with every line
+      number on which they occur.  This listing is sorted
+      lexicographically and is numbered and headed separately.
+      
+   B. IDENTIFIER NORMALIZATION.  Identifiers are normalized in the
+      following ways for processing by X(ref:
+      
+      1. Identifiers are truncated at length eight.
+         
+      2. Lower case letters are mapped to upper case.
+         
+      3. The underscore is ignored and not printed in the cross-
+         reference listing.
+         
+   C. KEYWORDS.  Pascal reserved words and some other standard
+      identifiers are omitted from the cross-reference.  Keywords
+      include:
+      
+      1. All the bold-face (or underlined) reserved words appearing in
+         the Pascal grammar or syntax diagrams (such as BEGIN,
+         PROGRAM, END, DO, etc.);
+         
+      2. The standard simple type identifiers: CHAR, BOOLEAN, INTEGER,
+         REAL; the type identifier TEXT; the type identifiers STRING
+         and INTERACTIVE added to UCSD Pascal;
+         
+      3. The standard boolean constants: TRUE, FALSE.
+         
+      4. The standard file names: INPUT and OUTPUT;
+         
+      5. The intrinsic procedure and function names: WRITE, WRITELN,
+         READ, READLN, PAGE, PUT, GET, RESET, REWRITE, CHR, ORD, SUCC,
+         PRED, NEW, DISPOSE, MARK, TRUNC, ROUND, EOF, EOLN, ODD.
+         
+      Many of these can be redefined by the programmer, but since that
+      practice is questionable, they have been included as keywords.
+      The list of keywords may be altered by a simple change to the
+      source program.  See section IV.E for details.
+      
+D. PROCEDURE AND FUNCTION NAMES.  Every occurrence of a identifier
+   immediately following the reserved words PROCEDURE or FUNCTION is
+   flagged in the cross-reference with a left-pointing arrow.  This
+   facilitates finding the body of a forward-declared procedure or
+   function, as both the original definition and the body will be
+   flagged.
+   
+E. LARGE PROGRAMS AND OVERFLOW TO DISK.  A large input program can
+   create a cross-reference table too large to be held in main memory.
+   In this case, PRXref will automatically utilize disk to store the
+   table.  This allows for programs of tens of thousands of lines to
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- Cross-reference Function        page 9
+
+
+   be handled, even by a single-density, eight-inch floppy disk.
+   
+   The occurence of disk overflow is automatic and need not concern
+   the user, except that sufficient space must be allowed on disk to
+   contain the overflow if it occurs.  The amount of disk required
+   depends on the number of identifiers and references in a program,
+   which bears no exact relationship to its size in lines or blocks.
+   One example of a 3500 line program required 45 disk blocks for
+   cross-reference overflow; another of 3900 lines fit into 64K
+   without need for disk.  Once overflow occurs, disk space required
+   does not vary with main memory size; the entire table is ultimately
+   written to disk.
+   
+   PRXref uses the largest contiguous empty disk region during cross-
+   referencing.  If this becomes exhausted, PRXref will display which
+   line and block of the files it was processing.  From this
+   information, the user may judge roughly how much more space is
+   needed to finish.  Also, if the file is being printed (P(rint: Yes)
+   when disk is exhausted, printing will continue with cross-reference
+   suppressed.
+   
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- Program Internals              page 10
+
+
+IV. Here are some notes on the structure and methods of the program to
+   aid the user in making modifications.  They are not intended to be
+   comprehensive internal documentation.
+   
+   A. I/O PROCESSING.  To improve processing speed, PRXref uses
+      BLOCKREAD for all input and (as indicated by Boolean UNITOUT)
+      UNITWRITE for output directed to the printer and terminal.  READ
+      and WRITE are avoided where possible, and most processing is
+      done directly in the input/output buffer INCBUFF by PFILE and
+      its subprocedures.
+      
+      That is why the routines GETLINE and PUTLINE appear more complex
+      than necessary.  GETLINE ensures that a complete line of the
+      file always appears in the buffer for PUTLINE.  The current
+      input line is communicated by GETLINE with buffer pointer TPTR
+      and length TLENGTH.
+      
+      The size of the buffer INCBUFF is the constant BUFFMAX.  To
+      allow a complete line to be present at all times, BUFFMAX (647)
+      is set to the size of a block (512) plus the maximum size of an
+      input line (132) plus 2 for indent codes plus 1 for the carriage
+      return.  There is little harm in leaving BUFFMAX at this figure,
+      even if input lines are all shorter, but if longer input lines
+      are expected, BUFFMAX as well as LINELENGTH should be increased.
+      
+   B. THE PRINTER.  The printer dimensions discussed in section II.F
+      are set in the first block of constants of the main program,
+      where they are fully commented.  The user may alter them, with
+      the understanding that few such changes have been tested by the
+      author.
+      
+      Many printers require some nulls on carriage return (or a two-
+      way conversation about buffer filling).  If this is not handled
+      in your low-level printer drivers, then change the constant
+      NUMPRNULLS from zero to however many nulls are necessary.
+      
+      Also, if your printer responds to a form-feed character (usually
+      Ascii FF, decimal equivalent 12), then change PRFORMFEED to its
+      decimal equivalent.  Leaving PRFORMFEED at zero induces PRXref
+      to insert blank lines for page skipping on direct output to the
+      printer.
+      
+   C. CROSS-REFERENCE TABLE.  The cross-reference table is maintained
+      as demonstrated by Wirth in "Algorithms + Data Structures =
+      Programs," (Prentice Hall, 1976, pages 164-274).  This is
+      scatter storage (hashing) with quadratic probing for collision
+      resolution.
+      
+      
+      Procedure SEARCH does the work.  It searches for an identifier
+      (IDX), and adds a reference with the global LINENUMBER.  A hash
+      table T of size P contains all identifiers in the table along
+      with pointers to dynamic variables (ITEMs) containing
+      references.  Each ITEM is an array of NUMREFS references plus a
+      COUNT of references in the ITEM or a pointer (PTR) to the next
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- Program Internals              page 11
+
+
+      ITEM for this identifier.  NUMREFS is now set to five, and that
+      seems about right, since there are tend to be around that many
+      references per symbol in large programs.
+      
+      The hash function SEARCH is the sum of the four integers
+      constituting an eight-byte identifier, added modulo the table
+      size P .  Real addition is used to avoid arithmetic overflow,
+      and this may not be very efficient on some processors.  However,
+      PRXref was largely developed on Pascal-100 (TM), the S-100 CPU
+      based on the Pascal Microengine chipset (TM) where real
+      arithmetic is microcoded and pretty fast, so it is not a
+      problem.  Replacing the hash function with your favorite should
+      be easy.
+      
+      (By the way, "Pascal-100" is a trademark of Digicomp Research
+      Corporation, and "Pascal Microengine" is a trademark of Western
+      Digital Corporation.  Don't forget that.)
+      
+      For this method of hashing, P must be a prime.  It is now 863,
+      which seems about right on a 64K system in balancing overflow of
+      the hash array with exhaustion of dynamic memory.  A rough guess
+      (not authoritative) is to reduce P by about 40 for each
+      reduction of 1K of memory, keeping it prime of course.
+      
+      Keywords are placed in the table (by INITXREF) with a special
+      negative linenumber, and no references to them are recorded,
+      though they are tabulated.
+      
+   D. CROSS-REFERENCE TABLE OVERFLOW.  When either dynamic storage
+      falls below MEMTHRESH (now 600) or the hash table T is filled to
+      the fraction LOADFACTOR (0.9), use of disk for cross-reference
+      tables is initiated.  The entire table at the time is written to
+      disk in a hunk containing records (DRCDS) of DREFSPER references
+      each.  The table in main memory is then reinitialized, seeded
+      with the keywords and the program started afresh.  This happens
+      again on successive overflows, up to MAXNHUNKS (10) times.
+      After all is done, the disk hunks are read in and merged.  All
+      this is handled by PRINTTABLE.
+      
+   E. ADDING/DELETING KEYWORDS.  The choice of keywords may not
+      satisfy everybody.  This may be changed in INITXREF simply by
+      deleting or inserting more calls to SEARCH.
+      
+   F. DISPLAY SCREEN.  A layout of the display screen is shown in the
+      comments to the main program along with controlling constants.
+      To reduce the display lines required from 18 to 16, reduce
+      PRROWA to 2 and PRGAP to 0.
+      
+      Erase-to-end-of-line and -screen functions are set up with
+      strings EOLSTRING and EOSSTRING deduced from SYSTEM.MISCINFO by
+      INITSCREEN.  If your screen doesn't have these functions, then
+      some surgery might be required, as PRXref does not keep track of
+      screen coordinates. If your screen doesn't even have XY cursor
+      addressing, then you are not getting your money's worth out of
+      UCSD Pascal.  If you don't even have a screen...
+
+
+
+
+
+
+
+
+PRXEF MANUAL, July 1980 -- Program Internals              page 12
+
+
+      
+      Note that INITSCREEN always uses the Ascii <null> for screen
+      filler, when required, rather than the character that UCSD added
+      later to SYSTEM.MISCINFO as a variable fill character.  If this
+      bothers your terminal, change it.
+      
+   G. ESCAPING EXECUTION.  There is code in PRXref to poll the
+      keyboard during printing or cross-referencing.  This is in
+      functions ESCAPEHIT and KEYHIT.  KEYHIT is the low-level
+      routine, and it is presently disabled, always returning FALSE.
+      There are also two commented-out alternatives: (a) a routine for
+      Pascal-100 with a Cromemco Tuart, using Pascal-100's memory-
+      mapped I/O; (b) an EXTERNAL body to mate with an assembly
+      language routine.
+      
+   H. OPTIONS.  Adding your own options is fairly easy, at least as
+      far as data entry, using the option-entry package.  Code must be
+      added in two places:
+      
+      1. In SHOWOPTIONS place a call to an appropriate POxxxx routine
+         with the prompt string and variable name for the option.  The
+         order of options here is exactly the order they will appear
+         on the screen.  The option-entry package keeps track of that.
+         
+      2. In the body of OPTIONS place a case with the (upper case)
+         constant for the option, a call to the appropriate PIxxxx
+         routine and any other code needed immediately.
+         
+   I. CROSS-REFERENCE STATISTICS.  These are provided after the cross-
+      reference for fun and profit.  "Programmer's symbols" means
+      anything but keywords.  The number of usages does not
+      distinguish declarations from other usages -- it's really just a
+      count on the table printout.  "Keyword usages" obviously does
+      not include keyword declarations.  "Total symbol usages" is the
+      sum of the other two usages and probably provides a reasonable
+      measure of "program size."  It's certainly better than "lines"
+      or "characters," both of which can vary with superficial aspects
+      of programming style.
+      
+      When disk is used for cross-referencing, information is provided
+      on the extent of each hunk of the table written to disk.  This
+      tells both the number of lines and blocks of the file that had
+      been read when the hunk was written.  It might be useful in
+      judging the amount of disk storage needed to cross-reference a
+      large program.
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

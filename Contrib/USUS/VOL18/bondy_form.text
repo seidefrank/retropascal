@@ -1,0 +1,53 @@
+                         Bondy's Benchmark Report Form
+
+Use this form to report on the result of Jon Bondy's benchmark from USUS
+NewsLetter #4.  There is a version of it on this disk, called BENCH.USUS.TEXT.
+It is self timing if you have a clock.  
+
+Tests with real operations should be benchmarked with 2 and 4 word reals
+when they are available.  Test 30 is for version IV.x only.  
+
+Please report on the compilation time of the program.  If you use version II.0
+it is important that you specify if you used S+ or S-.
+
+Please report in milli-seconds per loop with the loop overhead of test 1 
+removed for tests 6 thru 30.
+
+Test                                    time ( ms/loop )
+
+1       for loop ( to )                 __________
+2       for loop ( downto )             __________
+3       integer increment               __________
+4       while loop                      __________
+5       repeat loop                     __________
+
+remember to subtract the result of test 1 from the following results
+
+6       integer add                     __________
+7       integer multiply                __________
+8       integer divide                  __________
+9       real increment        (2 word)  __________      (4 word)  _________
+10      read add              (2 word)  __________      (4 word)  _________
+11      real multiply         (2 word)  __________      (4 word)  _________
+12      real divide           (2 word)  __________      (4 word)  _________
+13      integer transfer                __________
+14      integer array transfer          __________
+15      real transfer         (2 word)  __________      (4 word)  _________
+16      real array transfer   (2 word)  __________      (4 word)  _________
+17      integer record transfer         __________
+18      real record transfer  (2 word)  __________      (4 word)  _________
+19      integer if compare              __________
+20      real if compare       (2 word)  __________      (4 word)  _________
+21      case statement                  __________
+22      procedure call                  __________
+23      procedure w/integer             __________
+24      procedure w/real      (2 word)  __________      (4 word)  _________
+25      procedure w/local var           __________
+26      set union                       __________
+27      set difference                  __________
+28      set "in"                        __________
+29      pointer transfer                __________
+30      call to pmachine ( IV.x only )  __________
+
+Compilation time  _____________   lines per minute _____________
+

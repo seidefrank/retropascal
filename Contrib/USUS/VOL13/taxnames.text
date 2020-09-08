@@ -1,0 +1,201 @@
+(*$S+*)
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+program taxnames;  {creates file of name of tax lines}
+const   maxtline        = 115;
+type    t               = array [ 1.. maxtline ] of string [ 30 ];
+var     titles          : t;
+        tfile           : file of t;
+
+procedure wait;
+var     ch      : char;
+begin
+   gotoxy ( 10, 23 );
+   write ( 'Enter <esc> to continue' );
+   repeat
+      read ( keyboard, ch );
+   until ch = chr ( 27 );
+end;
+
+procedure writefile;
+begin
+   rewrite ( tfile, 'linenams.ftax' );
+   tfile^ := titles;
+   put ( tfile );
+   close ( tfile, lock );
+end;
+
+procedure readfile;
+var     i       : 1..maxtline;
+begin
+   reset ( tfile, 'linenams.ftax' );
+   titles := tfile^;
+   for i := 1 to maxtline do
+      begin
+         writeln ( titles [ i ] );
+         if i mod 16 = 0 then
+            begin
+               wait;
+               gotoxy ( 0,0 );
+               write ( chr ( 27 ), chr ( 69 ) );  {clear screen for H-19}
+            end;
+      end;
+end;
+
+procedure init1;
+begin
+   titles [  1 ] := 'Filing Status                 ';
+   titles [  2 ] := 'Filing Status                 ';
+   titles [  3 ] := 'Filing Status                 ';
+   titles [  4 ] := 'Filing Status                 ';
+   titles [  5 ] := 'Filing Status                 ';
+   titles [  6 ] := 'Exemptions                    ';
+   titles [  7 ] := 'Exemptions                    ';
+   titles [  8 ] := 'Wages, Salaries, etc          ';
+   titles [  9 ] := 'Interest income               ';
+   titles [ 10 ] := 'Dividends                     ';
+   titles [ 11 ] := 'Income Tax Refunds            ';
+   titles [ 12 ] := 'Alimony Received              ';
+   titles [ 13 ] := 'Business Income               ';
+   titles [ 14 ] := 'Capital Gain                  ';
+   titles [ 15 ] := 'Capital Gain Dist             ';
+   titles [ 16 ] := 'Supplemental Gains            ';
+   titles [ 17 ] := 'Taxable Pensions & Annuities  ';
+   titles [ 18 ] := 'Pensions, Rents, Roys, Partner';
+   titles [ 19 ] := 'Farm Income                   ';
+   titles [ 20 ] := 'Unemployment                  ';
+   titles [ 21 ] := 'Other Income                  ';
+   titles [ 22 ] := 'Total Income                  ';
+   titles [ 23 ] := 'Moving Expense                ';
+   titles [ 24 ] := 'Emp Business Expense          ';
+   titles [ 25 ] := 'Payments to IRA               ';
+   titles [ 26 ] := 'Payments to Keogh             ';
+end;
+
+procedure init2;
+begin
+   titles [ 27 ] := 'Interest Penalty              ';
+   titles [ 28 ] := 'Alimony Paid                  ';
+   titles [ 29 ] := 'Disability Income             ';
+   titles [ 30 ] := 'Total Adjustments             ';
+   titles [ 31 ] := 'Adjusted Gross Income         ';
+   titles [ 32 ] := 'Adjusted Gross Income         ';
+   titles [ 33 ] := 'Deductions                    ';
+   titles [ 34 ] := '32 - 33                       ';
+   titles [ 35 ] := 'Tax                           ';
+   titles [ 36 ] := 'Additional Taxes              ';
+   titles [ 37 ] := 'Total Taxes                   ';
+   titles [ 38 ] := 'Political Contributions       ';
+   titles [ 39 ] := 'Credit for Elderly            ';
+   titles [ 40 ] := 'Child and Dependant           ';
+   titles [ 41 ] := 'Investment Credit             ';
+   titles [ 42 ] := 'Foreign Tax Credit            ';
+   titles [ 43 ] := 'Work Incentive                ';
+   titles [ 44 ] := 'Jobs Credit                   ';
+   titles [ 45 ] := 'Energy Credits                ';
+   titles [ 46 ] := 'Total Credits (lines 38 to 45)';
+   titles [ 47 ] := 'Balance (line 37 - line 46)   ';
+   titles [ 48 ] := 'Self Employment Tax           ';
+   titles [ 49 ] := 'Minimum Tax                   ';
+end;
+
+procedure init3;
+begin
+   titles [ 50 ] := 'Tax from Prior Year Inv-Credit';
+   titles [ 51 ] := 'FICA and RRTA Taxes           ';
+   titles [ 52 ] := 'Tax on IRA                    ';
+   titles [ 53 ] := 'Advance EIC Paymts Received   ';
+   titles [ 54 ] := 'Balance (lines 47 to 53)      ';
+   titles [ 55 ] := 'Total FICA Withheld           ';
+   titles [ 56 ] := '1980 Estimated Tax Payments   ';
+   titles [ 57 ] := 'Earned Income Credit          ';
+   titles [ 58 ] := 'Amount Paid with Form 4868    ';
+   titles [ 59 ] := 'Excess FICA and RRTA Tax Paid ';
+   titles [ 60 ] := 'Credit for Fed Tax on SP Fuel ';
+   titles [ 61 ] := 'Regulated Investment Co Credit';
+   titles [ 62 ] := 'Total (line 55 to 61)         ';
+   titles [ 63 ] := 'Overpaid                      ';
+   titles [ 64 ] := 'To be Refunded to You         ';
+   titles [ 65 ] := 'Applied to Est 1981 Tax       ';
+   titles [ 66 ] := 'Balance Due                   ';
+end;
+
+procedure init4;
+begin
+   titles [ 67 ] := '50 % of Medical Ins Prems     ';
+   titles [ 68 ] := 'Medicine and Drugs            ';
+   titles [ 69 ] := '1% of line 31 Form 1040       ';
+   titles [ 70 ] := 'Sub Total line 3 - line 2     ';
+   titles [ 71 ] := 'Balance of Ins Prems          ';
+   titles [ 72 ] := 'Other Medical and Dental      ';
+   titles [ 73 ] := 'Total (lines 4 to 6)          ';
+   titles [ 74 ] := '3% of line 31 Form 1040       ';
+   titles [ 75 ] := 'Line 7 - Line 8               ';
+   titles [ 76 ] := 'Total Medical and Dental      ';
+   titles [ 77 ] := 'State & Local Income Tax      ';
+   titles [ 78 ] := 'Real Estate Taxes             ';
+   titles [ 79 ] := 'General Sales Taxes           ';
+   titles [ 80 ] := 'Personal Property Taxes       ';
+   titles [ 81 ] := 'Other Taxes                   ';
+   titles [ 82 ] := 'Total Taxes lines 11 to 15    ';
+   titles [ 83 ] := 'Home Mortgage Interest        ';
+   titles [ 84 ] := 'Credit & Charge Cards         ';
+   titles [ 85 ] := 'Other Interest                ';
+   titles [ 86 ] := 'Total Int (lines 16 to 19)    ';
+end;
+
+procedure init5;
+begin
+   titles [ 87 ] := 'Cash Contributions            ';
+   titles [ 88 ] := 'Other Cash Contributions      ';
+   titles [ 89 ] := 'Carryover                     ';
+   titles [ 90 ] := 'Total Contributions           ';
+   titles [ 91 ] := 'Loss Before Insurance         ';
+   titles [ 92 ] := 'Insurance Reinbursement       ';
+   titles [ 93 ] := 'Line 25 - Line 26             ';
+   titles [ 94 ] := '$100 or Line 27               ';
+   titles [ 95 ] := 'Total Casualty or Theft       ';
+   titles [ 96 ] := 'Union Dues                    ';
+   titles [ 97 ] := 'Other Misc Deductions         ';
+   titles [ 98 ] := 'Total Miscellaneous           ';
+   titles [ 99 ] := 'Total Medical & Dental        ';
+   titles [100 ] := 'Total Taxes                   ';
+   titles [101 ] := 'Total Interest                ';
+   titles [102 ] := 'Total Contributions           ';
+   titles [103 ] := 'Total Casualty or Theft       ';
+   titles [104 ] := 'Total Miscellaneous           ';
+   titles [105 ] := 'Sum (lines 33 to 38)          ';
+   titles [106 ] := 'Adjustment                    ';
+end;
+
+procedure init6;
+begin
+   titles [107 ] := 'Line 39 - Line 40             ';
+   titles [108 ] := 'Interest Income               ';
+   titles [109 ] := 'Total Interest Income         ';
+   titles [110 ] := 'Dividend Income               ';
+   titles [111 ] := 'Total Dividend Income         ';
+   titles [112 ] := 'Capital Gain Distribution     ';
+   titles [113 ] := 'Nontaxable Distributions      ';
+   titles [114 ] := 'Total (lines 5 & 6)           ';
+   titles [115 ] := 'Dividends Berore Exclusions   ';
+end;
+
+begin
+   init1;
+   init2;
+   init3;
+   init4;
+   init5;
+   init6;
+   writefile;
+   wait;
+   readfile;
+end.
+

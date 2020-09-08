@@ -1,0 +1,256 @@
+(*XL LISTING.TEXT *)
+(*$I- *)
+(*$D 40COL- *)
+PROGRAM FREEFORM;
+(**********************************************************************)
+(*                                                                    *)
+(*        FREEFORM                                Jan  5, 1982        *)
+(*        ========                                                    *)
+(*                                                 _________          *)
+(*                                                /         \         *)
+(*        By S. Dale Ander                        | Version |         *)
+(*           Texas Instruments Incorporated       |   F.4   |         *)
+(*                                                \_________/         *)
+(*                                                                    *)
+(*                                                                    *)
+(*                                                                    *)
+(*                                                                    *)
+(**********************************************************************) 
+
+                {USES (*$U KERNEL.CODE *)    KERNEL;}
+                     uses screenops     (       sc_key_command,
+                                                sc_map_crt_command,
+                                                sc_use_info,
+                                                sc_clr_screen,
+                                                sc_choice,
+                                                sc_info_type,
+                                                sc_date_rec,
+                                                sc_chset,
+                                                sc_misc_rec,
+                                                sc_erase_to_eol); 
+                                        { comment out the selective uses
+                                          list if you don't have IV.1x  gws}
+CONST
+     MAXWHOLE   = 13;   (* max digits before decimal point     *)
+     MAXFRAC    = 11;   (* max digits after  decimal point     *)
+     ZEROS      = '000000000000';      (* MAXFRAC + 1  zeros   *)
+     MAXCOL     = 101;  (* max # cols allowed in one form      *)
+     MAXCONSTS  = 200;  (* number of consts allowed to be defined in a form *)
+     MAXPAGES   = 100;  (* number of pages allowed in one form *)
+     DIRSIZE    = 30;   (* size of freeform directory          *)
+
+     L_NAME     = 8;    (* length of a form name *)
+     L_ID       = 2;    (* length of form id     *)
+     L_DATE     = 6;    (* length of form date   *)
+     L_DESC     = 20;   (* length of form descr. *)
+     L_CDESC    = 15;   (* length of ctrl descr. *)
+     L_CFORMAT  = 13;   (* length of ctrl format *)
+     L_CALC     = 59;   (* length of calc string *)
+     L_TITLE    = 60;   (* length of page title  *)
+
+     WINDOWSIZE  = 63;     (* Number of numbers less 1 that fit in 1 block *)
+     MAXLISTSIZE = 31;     (* Max number of blocks that can be kept in mem *)
+
+     DIRNAME        = 'FREEFORM.DIR';
+
+     THEVERSION  = 'V4';   (* Validation string stored in directory *)
+     VERSIONDATE = 'Sep 24, 1983';
+     
+TYPE
+     TXTFILE = TEXT;
+
+     NUMBERTYPE = REAL;          (* Changed these to Reals   SDA   3/25/80 *)
+     BIGNUMTYPE = REAL;
+
+     DIRRECORD = PACKED RECORD
+                   FORM_NAME:    STRING[L_NAME];
+                   FORM_ID:      STRING[L_ID];
+                   FORM_DATE:    STRING[L_DATE];     (* Date of creation *)
+                   FORM_DESC:    STRING[L_DESC];
+                   VERSION:      PACKED ARRAY[1..02] OF CHAR;
+                   FILLER:       PACKED ARRAY[1..52] OF CHAR; (* Space holder *)
+                   FORMAT:       (FROW,FCOL);        (* Row or Col formatted  *)
+                   AUTO_SWITCH:  (NOAUTO,AROW,ACOL); (* Automatic headings?   *)
+                   START_MONTH:  0..12;
+                   THEMAXROW:    INTEGER;
+                   THEMAXCOL:    INTEGER;
+                   NO_CONSTS:    INTEGER;
+                   NO_PAGES:     INTEGER;
+                   NO_ROWS:      INTEGER;
+                   NO_COLS:      INTEGER;
+                 END;
+
+     TYPE_CTL = (DATA,INITIALC,HEADING,FINALC);
+
+     CTLRECORD = PACKED RECORD
+                   CTL_DESC:     STRING[L_CDESC];
+                   CTL_FORMAT:   STRING[L_CFORMAT];
+                   FILLER:       PACKED ARRAY[1..2] OF CHAR; (* for expansion *)
+                   CTL_CALC:     STRING[L_CALC];
+                   FILLER2:      PACKED ARRAY[1..2] OF CHAR;
+                   CTL_TYPE:     TYPE_CTL;
+                   CTL_CROSS:    BOOLEAN;
+                 END;
+   
+     CFILE = FILE OF CTLRECORD;
+     
+     TITLETYPE = STRING[L_TITLE];
+     
+     TFILE = FILE OF TITLETYPE;
+     
+     ACTIONTYPE = ( NOTHING, ANDGET, ANDPUT );
+     
+     LISTRANGE = 0..MAXLISTSIZE;
+     WINDOWTYPE = PACKED ARRAY[0..WINDOWSIZE] OF NUMBERTYPE;
+     AFILE = FILE;
+     FILEDESC = PACKED RECORD
+                  BLKSPERPAGE: INTEGER;
+                  LIST: PACKED ARRAY[LISTRANGE] OF
+                          PACKED RECORD
+                            DPAGE:   INTEGER;
+                            DBLOCK:  INTEGER;
+                            START:   INTEGER;
+                            WINDOW:  ^WINDOWTYPE;
+                            BEFORE:  LISTRANGE;
+                            AFTER:   LISTRANGE;
+                            CHANGED: BOOLEAN
+                          END;
+                  LISTHEAD, LISTTAIL, FREEHEAD: LISTRANGE;
+                  USEDHEAP: BOOLEAN
+                END;
+     
+
+VAR
+   DIGITS: SET OF CHAR;
+   MAX, FAKE, ZERO, EMPTY, OVERFLOW: NUMBERTYPE;
+   PRINTER_ON, FILEOPEN, CTL_OPEN, DAT_OPEN, TIT_OPEN,
+     CON_OPEN, QUIT, NO_PROMPT: BOOLEAN;
+   IS: STRING;
+   PAPER_LENGTH, CHARS_PER_LINE, S_HEIGHT, S_WIDTH, MSG_LINE, I: INTEGER;
+   {HOME, CURSOR_UP, CURSOR_DOWN, CURSOR_LEFT, CURSOR_RIGHT,}
+    ESCAPE, TAB, {CLEAR,
+     ERASELINE,} SPACE, ENTER, {INSKEY, DELKEY,} THEBELL,{ ERASEFIELD,}
+       ERASEINPUT, ABACKSPACE, CRT_CURSOR_LEFT: CHAR;{ not all of these are
+                                                        used }
+   DIRECTORY: FILE OF DIRRECORD;
+   FORM_TIT_FILE: TFILE;
+   FORM_CTL_FILE: CFILE;
+   FORM_DAT_FILE: AFILE;
+   FORM_DAT_DESC: FILEDESC;
+   FORM_CON_FILE: FILE OF NUMBERTYPE;
+   PRINTER: TEXT;
+   OPTION, RECNUMBER: INTEGER;
+   DISKDRIVE: STRING[3];
+   REQUESTED_FORM: STRING[L_NAME];
+   DASHES: STRING[60];
+   TEMP_FILE_NAME: STRING[7];
+   DEBUGMODE, FIRSTTIMESEEN: BOOLEAN;          (* SDA 11/14/80 *)
+
+PROCEDURE NUMBER( VAR DAT_FILE: AFILE;  VAR DAT_DESC: FILEDESC;  
+                     PAGE, ROW, COL: INTEGER;  VAR NUM: NUMBERTYPE;
+                       WHAT: ACTIONTYPE;  VAR ERR: BOOLEAN );  FORWARD;
+PROCEDURE VALUE(  RETURNINTEGER: BOOLEAN;  INSTRING: STRING;
+                  VAR REALANS: NUMBERTYPE;  VAR INTANS: INTEGER );  FORWARD;
+PROCEDURE PROMPT( MSG: STRING;  Y: INTEGER);  FORWARD;
+PROCEDURE ONEMOMENT ( REASON: STRING );  FORWARD;
+PROCEDURE PRESSRETURN( MSG: STRING;  Y: INTEGER);  FORWARD;
+PROCEDURE GETRESPONSE( ANY: BOOLEAN;  LMSG, DEFAULT, RMSG: STRING;
+                          LEN: INTEGER;  VAR RESPONSE: STRING);  FORWARD;
+PROCEDURE ERASE ( LINE: INTEGER );  FORWARD;
+FUNCTION  YESNO(  MSG, DEFAULT: STRING ):  BOOLEAN;  FORWARD;
+PROCEDURE LCTOUC( VAR INSTRING: STRING);  FORWARD;
+PROCEDURE OPENDIR;  FORWARD;
+PROCEDURE FREEMEM( VAR DAT_DESC: FILEDESC );  FORWARD;
+FUNCTION  OPEN_DAT ( REQUESTED_FORM: STRING;  VAR DAT_FILE: AFILE;
+                        VAR DAT_DESC: FILEDESC;  ISEGS: STRING;
+                             MAX: BOOLEAN ): BOOLEAN;
+  FORWARD;
+PROCEDURE CLOSE_DAT ( VAR DAT_FILE: AFILE;  VAR DAT_DESC: FILEDESC;
+                         VAR ERR: BOOLEAN );  FORWARD;
+FUNCTION  OPEN_CON ( RGQUESTED_FORM: STRING ): BOOLEAN;  FORWARD;
+FUNCTION  OPEN_CTL ( REQUESTED_FORM: STRING ): BOOLEAN;  FORWARD;
+FUNCTION  OPEN_TIT ( REQUESTED_FORM: STRING ): BOOLEAN;  FORWARD;
+PROCEDURE SEEKDIR ( REC: INTEGER;  WHAT: ACTIONTYPE );  FORWARD;
+PROCEDURE SEEKCON ( REC: INTEGER;  WHAT: ACTIONTYPE );  FORWARD;
+PROCEDURE SEEKCTL ( VAR CTL_FILE: CFILE;  COL: BOOLEAN;  REC: INTEGER;
+                        WHAT: ACTIONTYPE );  FORWARD;
+PROCEDURE SEEKTIT ( VAR TIT_FILE: TFILE;  REC: INTEGER;  WHAT: ACTIONTYPE );
+  FORWARD;
+PROCEDURE FINISH_UP;  FORWARD;
+PROCEDURE ERROR( INDEX: INTEGER );  FORWARD;
+FUNCTION  SEARCH( VAR LOC: INTEGER;  NAME: STRING ): BOOLEAN;  FORWARD;
+PROCEDURE GETNUM(MIN,THEMAX,DEFAULT: INTEGER; WHAT: STRING; VAR ANS: INTEGER);
+  FORWARD;
+PROCEDURE ENCODE( NUM: INTEGER;  VAR ANS: STRING );  FORWARD;
+
+PROCEDURE MEMORY;  FORWARD;
+
+
+SEGMENT PROCEDURE INITIALIZE;    FORWARD;
+SEGMENT PROCEDURE HELP;          FORWARD;
+SEGMENT PROCEDURE DEL;           FORWARD;
+SEGMENT PROCEDURE MISC;          FORWARD;
+SEGMENT PROCEDURE DATAIN;        FORWARD;
+SEGMENT PROCEDURE FORMS;         FORWARD;
+SEGMENT PROCEDURE COPYFORM;      FORWARD;
+SEGMENT PROCEDURE SETPREFIX;     FORWARD;
+SEGMENT PROCEDURE PRINTMENU;     FORWARD;
+SEGMENT PROCEDURE CHOOSEOPTION;  FORWARD;
+SEGMENT PROCEDURE NUMTOSTR(VAR ANS: STRING; NUM: NUMBERTYPE;
+                             BEFORE, AFTER: INTEGER );             FORWARD;
+SEGMENT FUNCTION  FIGURE( VAR Z: NUMBERTYPE;  X, Y: NUMBERTYPE;
+                             OP: CHAR ): BOOLEAN;                  FORWARD;
+SEGMENT PROCEDURE MOVEFORMDATA ( AROW: BOOLEAN; PAGE, SOURCE, DEST: INTEGER );
+                                 FORWARD;
+SEGMENT PROCEDURE SETPRINTER;    FORWARD;
+SEGMENT FUNCTION  DISK_DIR: BOOLEAN;                               FORWARD;
+SEGMENT FUNCTION  NAME_FORM( VAR REQUESTED_FORM: STRING;
+                                VAR RECNUMBER: INTEGER): BOOLEAN;  FORWARD;
+SEGMENT FUNCTION  GET_FORM_NAME( VAR REQUESTED_FORM: STRING;
+                                VAR RECNUMBER: INTEGER): BOOLEAN;  FORWARD;
+SEGMENT PROCEDURE ACCEPTNUM( ARROW: BOOLEAN;  MAX_LENGTH: INTEGER;
+                                 VAR IS: STRING;  VAR CH: CHAR;
+                                 var which_key : sc_key_command );  FORWARD;
+SEGMENT PROCEDURE ACCEPTSTR( ANY: BOOLEAN;  MAX_LENGTH, X, Y: INTEGER;
+                              DEFAULT: STRING;  VAR IS: STRING );  FORWARD;
+
+(*$I FF.MISC1.TEXT    *)
+(*$I FF.MISC2.TEXT    *)
+(*$I FF.DATA1.TEXT    *)
+(*$I FF.DATA2.TEXT    *)
+(*$I FF.DATA3.TEXT    *)
+(*$I FF.DATA4.TEXT    *)
+(*$I FF.DATA5.TEXT    *)
+(*$I FF.FORMS1.TEXT   *)
+(*$I FF.FORMS2.TEXT   *)
+(*$I FF.FORMS3.TEXT   *)
+(*$I FF.FORMS4.TEXT   *)
+(*$I FF.FORMS5.TEXT   *)
+(*$I FF.COPY1.TEXT    *)
+(*$I FF.COPY2.TEXT    *)
+(*$I FF.BASICS1.TEXT  *)
+(*$I FF.BASICS2.TEXT  *)
+(*$I FF.BASICS3.TEXT  *)
+
+BEGIN     (* FREEFORM *)
+  INITIALIZE;
+  REPEAT
+    PRINT_MENU;
+    CHOOSE_OPTION;
+    CASE OPTION OF
+      0: DATAIN;
+      1: FORMS;
+      2: FORMS;
+      3: FORMS;
+      4: FORMS;
+      5: MISC;
+      6: MISC;
+      7: COPYFORM;
+      8: DEL;
+      9: HELP;
+     10: DEBUGMODE := NOT DEBUGMODE;
+     11: SETPREFIX
+    END
+  UNTIL FALSE;
+END.
+

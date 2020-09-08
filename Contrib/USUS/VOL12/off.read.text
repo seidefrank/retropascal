@@ -1,0 +1,63 @@
+OffLoad Command Interpreter - 19-Feb-82 - Austin Tate
+-----------------------------------------------------
+
+The following files are on the disk:
+
+OFF.START.TEXT          The *SYSTEM.STARTUP program
+OFFLOAD.TEXT            The command interpreter --> *OFFLOAD.CODE
+-------------------------
+OFF.INFO.TEXT           The information file for the workstation
+-------------------------
+NEW.TEXT                A sample file to set up the editor "environment"
+                        for an empty file with reasonable margins, etc.
+NEW.PAGE.TEXT           A sample file to set up the editor "environment"
+                        for a file with reasonable margins, etc. and a single
+                        newpage (formfeed) character.
+EDIT.E.G.TEXT           A sample editor file for practicing editing.
+-------------------------
+HELP.DISK.TEXT          Help texts used by the OffLoad startup program and
+HELP.KEYS.TEXT          OffLoad Command Interpreter.
+HELP.OFF.TEXT
+HELP.UTIL.TEXT
+-------------------------
+OFF.READ.TEXT           This document.
+OFF.DOC.TEXT            A summary of the OffLoad System as configures at
+                        ERCC, the utilities used, etc.
+
+Preparation
+-----------
+_______________________________________________________________________
+
+Notes from the reviewer:
+
+     Offload REQUIRES a version IV.0 system with CHAIN (found in the system
+unit COMMANDIO).  It also uses ScreenOps, which is distributed with your IV.0
+system, to operate properly. I couldn't find the documentation for setting up
+OFF.INFO.TEXT, but the program fumbles around and more or less works without it.
+
+     If you really want to have some some fun, set up the window manager F(iler
+utility (found on this disk as WINDOWS and WFILER) first and call it
+*FILER.CODE.  - gws
+
+________________________________________________________________________
+
+     
+     
+1. Compile the OFF.START program and rename it *SYSTEM.STARTUP.
+
+2. Compile OFFLOAD to *OFFLOAD.CODE.
+
+3. Put all the other text files on the Boot Disk.
+
+4. Edit the *OFF.INFO.TEXT information file to hold the relevant
+   parameters for your workstation - disk size in blocks, command
+   sequences to copy disks, copy bootstraps, format disks, etc.
+   Change the version number at the top and bottom of this file
+   whenever you change the *OFF.INFO.TEXT file and it will be
+   reloaded the next time *OFFLOAD runs.
+   
+5. Rename or copy *SYSTEM.EDITOR to *EDITOR.CODE and
+   *SYSTEM.FILER to *FILER.CODE.
+
+6. Reboot and watch the fun.
+

@@ -1,0 +1,76 @@
+{Copyright 1980 by
+Stuart Lynne
+1350 Clifton Ave.
+Coquitlam, British Columbia,
+Canada
+V3J 5K6
+
+Permission granted to use for noncommercial purposes.  All
+other rights reserved}
+
+  
+{ chainer }
+{$S+}
+{
+*
+*       Chain
+*
+*       Author: Stuart Lynne
+*
+}
+{$C  Copyright (c) 1980, by Stuart Lynne. All rights reserved. }
+{$I globals}
+{L+}
+{D+}
+{L printer: }
+
+separate unit chainer;
+  
+  interface
+  
+    type
+      seg_set = set of 0..15;
+      
+      sysp = ^ syscomrec;
+      
+    procedure Chain (S: string);
+    procedure SysDate (var D: daterec);
+    procedure syscomp (var S: sysp);
+    
+  implementation
+  
+    type
+      intseg = array[1..15] of record
+              address, refcount: integer
+            end;
+    
+    procedure Chain (*S: string *);
+    
+      var dummy: integer;
+          kind:  filekind;
+      
+      begin
+      
+        state := linkandgo;
+        userinfo.gotcode := true;
+        if scantitle (S, userinfo.codevid, userinfo.codetid, dummy, kind) then;
+      end;
+      
+                                                              {$P}
+    procedure SysDate (* var D: daterec *);
+      begin
+        D := thedate
+      end;
+    
+    procedure syscomp (* var S: sysp *);
+      begin
+        S := syscom
+      end;
+      
+    
+  end;
+  
+  begin
+  end.
+  
+  

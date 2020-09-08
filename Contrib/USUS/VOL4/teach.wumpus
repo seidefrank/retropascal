@@ -1,0 +1,81 @@
+Welcome to 'Hunt the Wumpus' 
+
+     The Wumpus lives in a cave of 20 rooms.  Each room has 3 tunnels leading 
+to other rooms.  There are several caves that you can play in.  With only a
+small change in the program, you can even invent you own cave!
+
+     Hazards:  
+     
+Bottomless Pits - Two rooms have bottomless pits in them.  If you go there,  
+     you fall into the pit and lose!
+     
+Super Bats - Two rooms have super bats.  If you go there, a bat grabs you and 
+     takes to some other room at random.  (which mignt be troublesome)
+     
+     Wumpus:
+
+     The Wumpus is not bothered by the hazards (he has sucker feet and is too 
+big for a super bat to lift).  Usually he is asleep.  Two things wake him up:  
+your entering his room or your shooting an arrow.
+
+     If the Wumpus wakes he moves (p=.75) one room or stays still (p=.25).  
+After that, if he is where you are, he eats you up and you lose!
+$pause
+
+     You:
+
+     Each turn you can move or shoot a crooked arrow.  Moving:  you can go one 
+room (thru one tunnel).  Arrows:  you have 5 arrow.  You lose when you run 
+out.  Each arrow can go from 1 to 5 rooms.  You aim by telling the computer 
+the room numbers you want the arrow to go to.  If the arrow can't go that way 
+(ie. no tunnel) it moves at random to the next room.  If the arrow hits the 
+Wumpus, you win.  If the arrow hits you, you lose.
+
+     Warnings:
+
+     When you are one room away from the Wumpus or a hazard, the cumputer 
+says:
+Wumpus - 'I smell a Wumpus'
+Bat    - 'Bats nearby'
+Pit    - 'I feel a draft'
+
+  Caves:
+
+      All caves have have 20 rooms and 3 tunnels leading from one room
+to other rooms.  The caves are: 
+$pause 
+0 - Dodecahedron 
+     The rooms of this cave are on a 12-sided object, each forming a pentagon.
+The rooms are at the corners of the pentagons.  Each room has tunnels that 
+lead to 3 other rooms.  
+
+1 - Mobius Strip
+     This cave is two rooms wide and 10 rooms around (like a belt).  You will 
+notice that there is a half twist somewhere.
+
+2 - String of Beads
+     Five beads in a circle.  Each bead is a diamond with a virtical cross-
+bar.  The right and left corners lead to neighboring beads. (This one is 
+difficult to play)
+
+3 - Toroidal Hex Network
+     Imagine a hex tile floor.  Take a rectangle with 20 points (inter-
+sections) inside (4 X 4).  Join right and left sides to make a cylinder.  Then 
+join top and bottom to form a torus (doughnut).  Have fun imagining this one!
+
+$pause
+Caves 0-3 are regular in the sense that each room goes to three other rooms
+and each tunnel allows two-way traffic.  Caves 4 and 5 do not have these
+properties.
+
+4 - Dendrite with Degeneracies
+     Pull a plant from the ground.  The roots and branches form a Dendrite.
+There are no looping paths.  Degeneracy means that some rooms connect to
+themselves and some rooms have more than one tunnel to the same other room.
+
+5 - One Way Latice
+     Here all tunnels go one way only.  To return to the room you just left,
+you must go all the way around the cave (only 5 moves).
+
+GOOD LUCK - HAPPY WUMPUS HUNTING!
+$pause

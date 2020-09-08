@@ -1,0 +1,11 @@
+.PROC   CLR_BREAK
+; To clear break bit in CR_BREAK
+; This external procedures is for use with the
+; procedure CR_BREAK in REMUNIT for LSI-11s
+; M. A. Ikezawa, 17 July 1981
+XCSR    .EQU    177524
+        BIC     #1,@#XCSR
+        MOV     (SP)+,R0
+        JMP     @R0
+        .END
+

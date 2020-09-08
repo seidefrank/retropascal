@@ -1,0 +1,147 @@
+
+   procedure co_int_to_string;(* (INT       :  INTEGER;
+                                  BASE      :  CO_BASE_TYPE;
+                                  LEADING0  :  BOOLEAN;
+                                  LAST_CHAR :  INTEGER;
+                            VAR   STR       :  STRING); *)
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(* INT IS CONVERTED TO STRING REPRESENTATION TO   BASE BASE         -*)
+(* IT IS IN STR(STR'FIRST..LAST_CHAR) WITH LEADING ZEROS OR         -*)
+(* BLANKS (LEADING0). IF IT DOES NOT FIT IT IS LEFT TRUNCATED.      -*)
+(* IF INT<0 THEN "-" IS IN FRONT OF THE DIGITS.                     -*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+label 1701;
+var
+      int1 : integer;
+      digit, i : integer;
+      c : char;
+      minus : boolean;
+      loop_j : integer;
+   begin  (* CO_INT_TO_STRING*)
+      int1 := int;
+      minus := false;
+      if int1 < 0 then
+         minus :=true;
+    (*END IF;*)
+      i := last_char;
+      repeat
+         digit := int1 mod base;
+         if digit < 0 then
+            digit := - digit;
+       (*END IF;*)
+         if(0 <= digit)and(digit <= 9)then
+            str [i] := chr (digit + ord ('0'))
+         else
+            str [i] := chr (digit - 10 + ord ('A'));
+       (*END IF;*)
+         int1 := int1 div base;
+         i := i - 1;
+         if (i < sfirst)or(int1 = 0) then goto 1701;
+      until false;
+1701 :
+      if i >= sfirst then                                  begin
+         if leading0 then
+            c := '0'
+         else
+            c := ' ';
+       (*END IF;*)
+         if minus then                                     begin
+            str [i] := '-';
+            i := i - 1;                                    end;
+       (*END IF;*)
+         for loop_j := sfirst to i do
+            str [loop_j] := c;                                  end
+       (*END LOOP;*)
+    (*END IF;*)
+   end;   (*   CO_INT_TO_STRING;*)
+(*-------------------------------------------------------------------*)
+   procedure co_its_left; (* (INT            :  INTEGER;
+                              BASE           :  CO_BASE_TYPE;
+                        VAR   OUTP_LAST_CHAR :  INTEGER;
+                        VAR   STR            :  STRING);   *)
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(* INT IS CONVERTED TO STRING REPRESENTATION TO BASE BASE.          -*)
+(* THE DIGITS ARE LEFT ADJUSTED IN STR(STR'FIRST..LAST_CHAR)        -*)
+(* IF INT<0 THEN "-" IS IN FRONT OF THE DIGITS.                     -*)
+(* ONLY NECESSARY PART OF STR IS USED                               -*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+   label 1702;
+   var
+      int1 : integer;
+   begin  (* CO_ITS_LEFT*)
+      int1 := int;
+    (* COMPUTE NUMBER OF DIGITS*)
+      if int1 < 0 then
+         outp_last_char := sfirst + 1
+      else
+         outp_last_char := sfirst;
+    (*END IF;*)
+      repeat
+         int1 := int1 div base;
+         if int1 = 0 then goto 1702;
+         outp_last_char := outp_last_char + 1;
+      until false;
+1702 :
+     (* CALL CO_INT_TO_STRING*)
+      co_int_to_string (int, base, false, outp_last_char, str);
+   end;   (*   CO_ITS_LEFT;*)
+(*-------------------------------------------------------------------*)
+   procedure co_string_to_int; (* (BUFFER    :  STRING;
+                                   FIRSTC,
+                                   LASTC     :  INTEGER;
+                                   BASE      :  INTEGER;
+                              VAR  OUTP_TOO_LARGE :  BOOLEAN;
+                              VAR  OUTP_INT       :  INTEGER); *)
+(*-------------------------------------------------------------------*)
+(* THE DIGITS] IN BUFFER(FIRSTC..LASTC) ARE CONVERTED TO            -*)
+(* BINARY VALUE WITH BASE BASE. TOO_LARGE INDICATES WHETHER AN      -*)
+(* OVERFLOW HAS OCCURED; THEN INT=MAX_INT.                          -*)
+(* LASTC < FIRSTC IS ALLOWED, THEN INT=0.                           -*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+   label 1703;
+   var
+      digit : integer;
+      err : boolean;
+      loop_i : integer;
+   begin  (* CO_STRING_TO_INT*)
+      err := false;
+      outp_int := 0;  outp_too_large := false;
+      for loop_i := firstc to lastc do                     begin
+         case buffer [loop_i] of
+              '0' , '1' , '2' , '3' , '4' , '5' , '6' , '7' , '8' ,
+               '9' :
+               digit :=
+                  ord (buffer [loop_i]) - ord ('0');
+                 'A' , 'B' , 'C' , 'D' , 'E' , 'F' :
+               digit :=
+                  ord (buffer [loop_i]) - ord ('A') + 10;
+                 'G' , 'H' , 'I' , 'J' , 'K' ,  'L' ,  'M'  ,
+                 'N' , 'O' , 'P' , 'Q' , 'R' ,  'S' ,  'T'  ,
+                 'U' , 'V' , 'W' , 'X' , 'Y' ,  'Z'
+                                                        :
+               err :=true;
+         end;           (*  CASE;*)
+         if err or (digit >= base) then                    begin
+            er_error_message (1700,
+                              er_compiler_error,
+                              so_nil_position, lu_no_symbol  );
+            goto 1703;                                     end;
+       (*END IF;*)
+         if outp_int >((max_int - digit) div base)then       begin
+            outp_too_large :=true;
+            outp_int := max_int;                           end
+         else
+            outp_int := outp_int * base + digit;
+       (*END IF;*)
+                                                           end;
+    (*END LOOP;*)
+1703 :
+   end;    (*    CO_STRING_TO_INT;*)
+(*-------------------------------------------------------------------*)
+(*END CONVERSION; *)
+

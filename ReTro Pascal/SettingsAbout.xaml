@@ -1,0 +1,193 @@
+﻿<UserControl
+    x:Class="ReTro_Pascal.SettingsAbout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ReTro_Pascal"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="768"
+    d:DesignWidth="346">
+    <UserControl.Resources>
+        <Style x:Key="SettingsBackButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontSize" Value="26.66667"/>
+            <Setter Property="AutomationProperties.AutomationId" Value="BackButton"/>
+            <Setter Property="AutomationProperties.Name" Value="Back"/>
+            <Setter Property="AutomationProperties.ItemType" Value="Navigation Button"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid" Width="30" Height="30">
+                            <Grid Margin="-6,-6,0,0">
+                                <TextBlock x:Name="BackgroundGlyph" Text="&#xE0D4;" Foreground="#613a03"/>
+                                <TextBlock x:Name="NormalGlyph" Text="{StaticResource BackButtonSnappedGlyph}" Foreground="White"/>
+                                <TextBlock x:Name="ArrowGlyph" Text="&#xE0C4;" Foreground="#613a03" Opacity="0"/>
+                            </Grid>
+                            <Rectangle
+                            x:Name="FocusVisualWhite"
+                            IsHitTestVisible="False"
+                            Stroke="White"
+                            StrokeEndLineCap="Square"
+                            StrokeDashArray="1,1"
+                            Opacity="0"
+                            StrokeDashOffset="1.5"/>
+                            <Rectangle
+                            x:Name="FocusVisualBlack"
+                            IsHitTestVisible="False"
+                            Stroke="Black"
+                            StrokeEndLineCap="Square"
+                            StrokeDashArray="1,1"
+                            Opacity="0"
+                            StrokeDashOffset="0.5"/>
+
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundGlyph" Storyboard.TargetProperty="Foreground">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="LightGray"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="NormalGlyph" Storyboard.TargetProperty="Foreground">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="White"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundGlyph" Storyboard.TargetProperty="Foreground">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="White"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                            <DoubleAnimation
+                                            Storyboard.TargetName="ArrowGlyph"
+                                            Storyboard.TargetProperty="Opacity"
+                                            To="1"
+                                            Duration="0"/>
+                                            <DoubleAnimation
+                                            Storyboard.TargetName="NormalGlyph"
+                                            Storyboard.TargetProperty="Opacity"
+                                            To="0"
+                                            Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Visibility">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                            Storyboard.TargetName="FocusVisualWhite"
+                                            Storyboard.TargetProperty="Opacity"
+                                            To="1"
+                                            Duration="0"/>
+                                            <DoubleAnimation
+                                            Storyboard.TargetName="FocusVisualBlack"
+                                            Storyboard.TargetProperty="Opacity"
+                                            To="1"
+                                            Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused" />
+                                    <VisualState x:Name="PointerFocused" />
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Border BorderBrush="Black" BorderThickness="1,0,0,0">
+        <Grid Background="White" VerticalAlignment="Stretch">
+            <!-- Root grid definition -->
+            <Grid.RowDefinitions>
+                <RowDefinition Height="80" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Header area for panel -->
+            <Grid Name="HeaderBackground" Background="#613a03" Grid.Row="0">
+
+                <Grid Margin="40,32,17,13">
+
+                    <Grid.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition FromHorizontalOffset="50" />
+                        </TransitionCollection>
+                    </Grid.Transitions>
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="127*" />
+                        <ColumnDefinition Width="131*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Click="SettingsBackClicked" Margin="0,4,0,1" Grid.Column="0" Style="{StaticResource SettingsBackButtonStyle}" HorizontalAlignment="Left" Height="30" Width="30" />
+
+                    <TextBlock Margin="10,0,0,0" Grid.Column="1" FontFamily="Segoe UI" FontWeight="SemiLight" FontSize="24.6667" Foreground="#e78e0e" Text="About" HorizontalAlignment="Left" Width="188" Grid.ColumnSpan="2" />
+
+                    <Image Source="Assets/ProgramBegin 30 x 30.png" HorizontalAlignment="Right" Grid.Column="2" Margin="0,0,6,0" Width="35" />
+
+                </Grid>
+
+            </Grid>
+
+            <!-- Settings Panel Content -->
+            <Grid Grid.Row="1" Margin="40,24,23,0" VerticalAlignment="Top">
+                <Grid.Transitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition FromHorizontalOffset="120" />
+                    </TransitionCollection>
+                </Grid.Transitions>
+                <StackPanel Orientation="Vertical">
+                    <TextBlock TextWrapping="Wrap" FontSize="14" Foreground="Black" >
+                		<Run FontWeight="Bold" Text="Retro Pascal ]["/>
+                		<LineBreak/>
+                		<Run Text="By Frank Seide"/>
+                    </TextBlock>
+                    <TextBlock x:Name="SupportLink" TextWrapping="Wrap" FontSize="14" Foreground="Black" >
+                                <Underline><Run Foreground="Blue" Text="retropascal.frank@outlook.com"/></Underline>
+                    </TextBlock>
+                    <TextBlock TextWrapping="Wrap" FontSize="14" Foreground="Black" >
+                		<Run/>
+                		<LineBreak/>
+                		<Run Text="Windows Store App, Interpreter, Machine"/>
+                		<LineBreak/>
+                		<Run Text="Copyright 2013 Frank Seide"/>
+                		<LineBreak/>
+                		<Run Text="All Rights Reserved"/>
+                		<LineBreak/>
+                		<LineBreak/>
+                		<Run Text="UCSD Pascal"/>
+                		<LineBreak/>
+                		<Run Text="Copyright 1978, 1979 Regents of the University of California"/>
+                		<LineBreak/>
+                		<Run Text="All Rights Reserved"/>
+                		<LineBreak/>
+                		<LineBreak/>
+                		<Run FontSize="10" Text="Permission to use, copy, modify, and distribute any part of UCSD PASCAL solely authored by UC authors before June 1, 1979 for educational, research, and non-profit purposes, without fee, and without a written agreement is hereby granted, provided that the above copyright notice, this paragraph and the following three paragraphs appear in all copies."/>
+                		<LineBreak/>
+                		<LineBreak/>
+                		<Run FontSize="10" Text="Those desiring to incorporate UCSD PASCAL into commercial products or use for commercial purposes should contact the Technology Transfer Office, University of California, San Diego, 9500 Gilman Drive, Mail Code 0910, La Jolla, CA 92093-0910, Ph: (858) 534-5815, FAX: (858) 534-7345, E-mail: invent@ucsd.edu."/>
+                		<LineBreak/>
+                		<LineBreak/>
+                		<Run FontSize="10" Text="IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF UCSD PASCAL, EVEN IF THE UNIVERSITY OF CALIFORNIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."/>
+                		<LineBreak/>
+                		<LineBreak/>
+                		<Run FontSize="10" Text="THE SOFTWARE PROVIDED HEREIN IS ON AN &quot;AS IS&quot; BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS. THE UNIVERSITY OF CALIFORNIA MAKES NO REPRESENTATIONS AND EXTENDS NO WARRANTIES OF ANY KIND, EITHER IMPLIED OR EXPRESS, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, OR THAT THE USE OF UCSD PASCAL WILL NOT INFRINGE ANY PATENT, TRADEMARK, OR OTHER RIGHTS."/>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,126 @@
+
+                     A SUGGESTION FOR A UNIVERSAL I/O UNIT
+
+     Most of the UCSD Pascal programs that I have seen have a monotonous 
+beginning consisting of hardware-specific procedures like CLEARSCREEN, 
+EraseToEndOfLine, EraseToEndOfScreen, etc., required for any application that 
+manipulates data on the CRT screen.  It means you always have to diddle with 
+a new program before you can use it.  Although this information should be
+readily available in SYSCOM, where the system functions have access to it, the
+implementors of UCSD Pascal did not see fit to allow us to get at it easily.
+Direct reference to the SYSCOM variables requires you to compile in the
+variable declarations in GLOBALS.TEXT, then switch to the (*$U-*) compiler
+option, so the compiler knows what SYSCOM^ refers to.  This is clumsy, and it
+is not easy to debug software with all the checking turned off (the U- option
+disables i/o checking and rangechecking).
+
+     There are alternate ways to get at the information in SYSCOM, such as the 
+routine recently published in Dr. Dobb's to read in the SYSTEM.MISCINFO file.
+Programmers writing proprietary software will have to do something like this
+during initialization if their productions are to use the CRT efficiently. But
+there is additional problem: many programs rely on hardware-specific functions
+not implemented in SYSCOM.  For example, quite a number of authors have
+included routines to test if a console key has been pressed without having to
+READ a character and thus hang up a program until someone types something. 
+This allows optional user interaction with an ongoing program. Other programs,
+such as modem controllers, read and write data to specific hardware ports. 
+Finally, it would be nice to have a random-number seed available directly from
+the hardware, so we don't always have to "Type a number" to begin a game.
+
+     It seems elementary for the UCSD Pascal user community to agree on a 
+minimal series of functions, which we would all include in our SYSTEM.LIBRARY. 
+You would be free to add more, but at least you would be able to link the 
+standard functions into your applications programs without having to fiddle
+with source code.
+
+     If we all implemented a UNIT UNIVERSAL_IO, all your application program 
+would have to say is "USES UNIVERSAL_IO", and you've included all the
+necessary functions.
+
+     Here is a partial example of the way someone may implement such a UNIT:
+
+UNIT UNIVERSAL_IO;
+
+INTERFACE
+
+TYPE  BYTE = 0..255;
+
+
+FUNCTION KeyPress: BOOLEAN; 
+FUNCTION InPort (PORTNO: BYTE): CHAR;
+PROCEDURE OutPort (PORTNO: BYTE; CH: CHAR);
+PROCEDURE ClearScreen;
+PROCEDURE ClrToScreenEnd;
+PROCEDURE ClrToLineEnd;
+
+
+IMPLEMENTATION
+
+FUNCTION READY: BOOLEAN; EXTERNAL;
+{an assembly language routine that returns a "1" if a console key 
+ has been pressed}
+
+FUNCTION GetPort (PORTNO: BYTE): CHAR; EXTERNAL;
+{this assy-language routine reads a character from a specific port}
+
+PROCEDURE SendPort (PORTNO: BYTE; CH: CHAR); EXTERNAL;
+{this assy-language routine puts out a chararacter to a specific port}
+
+
+FUNCTION KeyPress;
+BEGIN
+  KeyPress := READY;
+END;
+
+FUNCTION InPort;
+BEGIN
+  InPort := GetPort (PORTNO);
+END;
+
+PROCEDURE OutPort;
+BEGIN
+  SendPort (PORTNO, CH);
+END;
+
+PROCEDURE ClearScreen;
+VAR Chrbuf: PACKED ARRAY [0..1] OF CHAR;
+BEGIN
+  Chrbuf [0] := CHR (12);
+  UNITWRITE (1, Chrbuf, 1)
+END;
+
+PROCEDURE ClrToScreenEnd;
+BEGIN
+. . .
+END;
+
+PROCEDURE ClrToLineEnd;
+BEGIN
+. . . 
+END;
+
+END.
+
+
+     Of course, the implementation would vary from system to system.  And this 
+would be one more thing that you would have to write and debug before you 
+could use UCSD Pascal Library software.  But you have to alter the procedures 
+other authors have included in their programs already!!
+
+     In addition to the procedures and functions listed above, we should 
+include FUNCTION RandomByte, which would return a random value from 0 to 255
+(e.g., the contents of the Z-80 R register; the lowest byte of the system
+clock if you don't reset it every time you do something; or the contents of an
+address in RAM that is not used by the system but is different every time you
+turn on your machine).
+
+     
+     I specifically do NOT want to implement PEEK and POKE, since we do not 
+need them to pass parameters to assembly language routines or anything else.
+
+     Let me know what you think....
+
+     Sincerely,
+
+     Jim Gagne, DATAMED RESEARCH.
+

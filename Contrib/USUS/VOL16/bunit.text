@@ -1,0 +1,158 @@
+ {$S+}
+ {$R+}
+ {$I-}
+ 
+ UNIT bunit;
+ (*      B-tree creation  and update routines
+                 Marvin White
+                 Kyle Goldman
+                 Michael Adams
+                 Robert Sims
+                 Applications Mathematics Research Staff
+                 U.S. Census Bureau
+                 Washington, D.C.
+                                         *)
+ 
+ 
+ (******************)  INTERFACE        (*********************)
+ 
+ 
+ CONST
+         btreek = 19;     (*must be btree2k DIV 2*)
+         btree2kp = 40;   (*must be btree2k + 1*)
+         btree2k = 39;    (* number of entries / page, must be odd *)
+         bal = 5;         (*num of children over which to balance*)
+         halfbal = 2;     (* bal DIV 2 *)
+         maxentries =240; (*used only by bbalance, must equal
+                                 btree2kp * (bal + 1) *)
+         keysize = 21;   (* number of INTEGER values in key *)
+         maxpages=32767; (* maximum possible pages *)
+         tempmax = 200; (*DEBUG max on pages*)
+ 
+ TYPE
+         btpointer = 0.. maxpages;       (* pointer to btree page *)
+ 
+         bpagesize = 0..btree2kp;
+         bkey = STRING[keysize];
+ 
+         bdata= INTEGER;         (* these btrees have only a single
+                                 integer datum*)
+ 
+ 
+ 
+         btentry = RECORD
+                         key : bkey;
+                         data: bdata;
+                 END; (* RECORD *)
+ 
+         buse = 0..2;            (* use designator for page in file *)
+ 
+         bdescrip = RECORD       (* record 0 in file is descriptor *)
+                         nrec: btpointer;        (*current last page *)
+                         maxrec: btpointer;      (* current allocation *)
+                         root: btpointer;        (* root of tree *)
+                         freehead: btpointer;    (* head of free list *)
+                 END; (* RECORD *)
+ 
+         bpage = RECORD          (* page in b-tree *)
+                         prntpage : btpointer;
+                         prntentry : 0..btree2k; (*same # as index of bpointer
+                          t???*)
+                         count: 0..btree2k;      (* entries in this page *)
+                         bentry: ARRAY[1..btree2k] OF btentry;
+                         bpointer: ARRAY[0..btree2k] OF btpointer;
+                 END; (* RECORD *)       
+ 
+         brecord = RECORD CASE use: buse OF
+                 0: (nextfree: btpointer);       (* free record *)
+                 1: (desc: bdescrip);            (* record 0 *)
+                 2: (pg: bpage);         (* b-tree page *)
+                 END; (*CASE*)
+ 
+         btree = FILE OF brecord;
+ 
+ 
+ FUNCTION broot(VAR f:btree):btpointer;
+ {  Returns page number of root of btree f }
+ 
+ FUNCTION bopen (VAR f: btree; name : STRING):BOOLEAN;
+ { Open the btree file named name, associate with fileid f }
+ 
+ PROCEDURE bread (VAR f : btree; r: btpointer);
+ { Read a btree record number r from tree f  }
+ 
+ PROCEDURE bclose (VAR f: btree);
+ { Close btree fileid f }
+ 
+ FUNCTION bnew (name : STRING; npages : btpointer):BOOLEAN;
+ { Create a btree file named name, containing npages, and close it }
+ 
+ FUNCTION bsearch (VAR f: btree; VAR pgnbr : btpointer; 
+                   VAR entrynbr : bpagesize; key : bkey) : BOOLEAN;
+ 
+ { search btree file f for key. Return TRUE if found, FALSE if not.
+   If found, pgnbr and entrynbr contain the location. If not found,
+   they contain the correct location for insertion }
+   
+ PROCEDURE binsert (VAR f: btree; insentry : btentry; inspointer : btpointer;
+                pgnbr : btpointer; entrynbr : bpagesize);
+                
+ { Insert insentry, inspointer, into btree file f at location pgnbr,
+   entrynbr.  Bsearch must be called first to insure uniqueness, and to
+   determine the insert location. User calls to binsert must set inspointer
+   to zero (0). }
+                
+                
+ PROCEDURE bdelete (VAR f: btree; pgnbr : btpointer; entnbr : bpagesize);
+ { Delete from btree file f the entry found at location pgnbr and entnbr.
+   Bsearch must be called first to determine correct location. }
+ 
+ PROCEDURE firstentry (VAR f: btree; VAR page : btpointer; 
+                       VAR entry : bpagesize);
+ { Find lexically first entry in tree f. Return location in page, entry. }
+ 
+ PROCEDURE lastentry (VAR f: btree; VAR page : btpointer; 
+                      VAR entry : bpagesize);
+ { Find lexically last entry in tree f. Return location in page, entry. }
+ 
+ FUNCTION nextentry (VAR f: btree; thispg : btpointer; thisent : bpagesize;
+                VAR nxtpg : btpointer; VAR nxtent : bpagesize) : BOOLEAN;
+                
+ { Start at thispg, thisent in btree f. Find next lexical entry. Return 
+   TRUE if not at end, location in nxtpg, nxtent. Return FALSE if at end,
+   location of last entry in nxtpg, nxtent. }
+   
+ FUNCTION preventry (VAR f: btree; thispg : btpointer; thisent : bpagesize;
+                VAR prvpg : btpointer; VAR prvent : bpagesize) : BOOLEAN;
+                
+ { Start at thispg, thisent in btree f. Find previous lexical entry. Return 
+   TRUE if not at beginning, location in nxtpg, nxtent. Return FALSE if at 
+   beginning, location of last entry in nxtpg, nxtent. }
+   
+ PROCEDURE bdump (VAR r: brecord);
+ (*      Dump contents of r to terminal*)
+ 
+ PROCEDURE showit(VAR f:btree; pagenbr : btpointer; entrynbr : bpagesize);
+ (*      Display contents of tree f, at pagenbr,entrynbr , formatted *)
+ 
+ 
+ (*******************)  IMPLEMENTATION  (************************)
+ 
+ 
+ PROCEDURE errtrap (errmsg : STRING); FORWARD;
+
+ (*$I BIO.TEXT*)
+ 
+ (*$I BDEBUG.TEXT*)
+ 
+ (*$I BHKEEP.TEXT*)
+ 
+ (*$I BINTERN.TEXT*)
+ 
+ (*$I BMAIN.TEXT*)
+ 
+ END.
+ 
+ 
+
+

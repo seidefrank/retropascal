@@ -1,0 +1,297 @@
+program randomtest;
+  
+{ Author:  Charles Rockwell, Microlog, Box 116, Guilford CT, 06437. }
+
+(* Variations on Meekings' Algorithm A1, PN #12, and *)
+(* a few simple tests for random number generators *)
+
+var seed:integer;
+    num:integer;
+    test:char;
+
+procedure blankscr; (* clear the screen *)
+  begin
+    write(chr(26));
+  end;
+  
+function rnd0(lo,hi:integer):integer;
+  (* A Tausworthe generator, using Kendall's algorithm, done bit by bit *)
+  (* Runtime is 30 min for 10000 randoms *)
+    
+    var a,b:record case boolean of
+      true:(int:integer);
+      false:(bol:packed array[0..15] of boolean);
+    end;
+    
+    i,j,range:integer;
+    q:real;
+  
+  begin
+    a.int:=seed;
+    for i:=0 to 15 do (* b:=a shifted right by 4 *)
+      begin
+        j:=(i+4)mod 16;
+        if i<12 then b.bol[i]:=a.bol[j] else b.bol[i]:=false;
+      end;
+    for i:=0 to 15 do (* a:=a xor b *)
+      a.bol[i]:=(a.bol[i]<>b.bol[i]);
+    for i:=0 to 15 do (* b:=a shifted left by 11 *)
+      begin
+        j:=(i+11)mod 16;
+        if j>10 then b.bol[j]:=a.bol[i] else b.bol[j]:=false;
+      end;
+    for i:=0 to 15 do (* a:=a xor b *)
+      a.bol[i]:=(a.bol[i]<>b.bol[i]);
+    a.bol[15]:=false; (* must clear the sign bit *)
+    seed:=a.int;
+    q:=(a.int-1)/32767; (* modified for a range of [0,1) *)
+    range:=hi-lo+1;
+    rnd0:=trunc(q*range)+lo;
+  end;
+
+function rnd1(lo,hi:integer):integer;
+  (* Meekings' Pascal version, from  PN #12 *)
+  (* This may or may not run *)
+  
+  const pshift=2048;
+        qshift=16;
+        big=32767;
+  
+  type dual=record
+              case boolean of
+                true:(int:integer);
+                false:(bol:boolean);
+              end;
+  
+  var a,b,acomp,bcomp:dual;
+      range:integer;
+      q:real;
+  
+  begin
+    a.int:=seed;
+    b.int:=a.int div qshift; (* b:=a shifted right by 4 *)
+    acomp.int:=big-a.int;
+    bcomp.int:=big-b.int;
+    a.bol:=(a.bol and bcomp.bol)or(acomp.bol and b.bol); (* a:=a xor b *)
+    b.int:=a.int * pshift; (* b:=a shifted left by 11 *)
+    acomp.int:=big-a.int;
+    bcomp.int:=big-b.int;
+    a.bol:=(a.bol and bcomp.bol)or(acomp.bol and b.bol); (* a:=a xor b *)
+    seed:=a.int; (* result is always positive *)
+    q:=(a.int-1)/32767; (* modified for a range of [0,1) *)
+    range:=hi-lo+1;
+    rnd1:=trunc(q*range)+lo;
+  end;
+
+function rnd2(lo,hi:integer):integer;
+  (* Meekings' Pascal version, using boolean XOR *)
+  (* This may or may not run *)
+  
+  const pshift=2048;
+        qshift=16;
+        pmod=16; (* Modified to clear sign bit *)
+        big=32767;
+  
+  type dual=record
+              case boolean of
+                true:(int:integer);
+                false:(bol:boolean);
+              end;
+  
+  var a,b:dual;
+      range:integer;
+      q:real;
+  
+  begin
+    a.int:=seed;
+    b.int:=a.int div qshift; (* b:=a shifted right by 4 *)
+    a.bol:=(a.bol and not b.bol)or(not a.bol and b.bol); (* a:=a xor b *)
+    b.int:=a.int mod pmod * pshift; (* b:=a shifted left by 11, sign cleared *)
+    a.bol:=(a.bol and not b.bol)or(not a.bol and b.bol); (* a:=a xor b *)
+    seed:=a.int; (* result is always positive *) 
+    q:=(a.int-1)/32767; (* modified for a range of [0,1) *)
+    range:=hi-lo+1;
+    rnd2:=trunc(q*range)+lo;
+  end;
+
+function rnd3 (lo,hi:integer):integer;
+  (* Meekings' Pascal version, using Miner's XOR *)
+  (* This should run *)
+    
+  const pshift=2048;
+        pmod=16; (* modified to clear sign bit *)
+        qshift=16;
+  
+  var q:real; range:integer;
+      a,b:record case boolean of
+        true:(int:integer);
+        false:(bitset:packed set of 0..15);
+      end;
+  
+  begin
+    a.int:=seed;
+    b.int:=a.int div qshift; (* b:=a shifted right by 4 *)
+    a.bitset:=(a.bitset-b.bitset)+(b.bitset-a.bitset); (* a:=a xor b *)
+    b.int:=a.int mod pmod * pshift; (* b:=a shifted left by 11, sign cleared *)
+    a.bitset:=(a.bitset-b.bitset)+(b.bitset-a.bitset); (* a:=a xor b *)
+    seed:=a.int; (* result is always positive *)
+    q:=(a.int-1)/32767; (* modified for a range of [0,1) *)
+    range:=hi-lo+1;
+    rnd3:=trunc(q*range)+lo;
+  end;
+
+procedure sort;
+  (* Generate a random integer from 1 to 10, and *)
+  (* increment the corresponding array member *)
+
+var a:array[0..11] of integer;
+    j,k,m:integer;
+    r:real;
+
+begin
+  write('Testing ');
+  for j:=0 to 11 do a[j]:=0;
+  for j:=1 to 10000 do
+    begin
+      if j mod 1000 = 0 then write('.');
+      case num of (* use the specified  RND function *)
+          0:k:=rnd0(1,10);
+          1:k:=rnd1(1,10);
+          2:k:=rnd2(1,10);
+          3:k:=rnd3(1,10);
+        end;
+      a[k]:=a[k]+1;
+    end;
+  writeln;
+  writeln('0 expected in a[0] and a[11], 930 to 1070 in a[1]..a[10]') ;
+  for j:=0 to 11 do writeln('  a[',j,']=',a[j]);
+end;
+
+
+procedure display;
+  (* Generate a random screen position, *)
+  (* gotoxy there, and write a marker *)
+
+var i,x,y:integer;
+
+begin
+  blankscr;
+  for i:=1 to 1000 do
+      begin
+          case num of
+              0: begin x:=rnd0(0,78); y:=rnd0(0,22) end;
+              1: begin x:=rnd1(0,78); y:=rnd1(0,22) end;
+              2: begin x:=rnd2(0,78); y:=rnd2(0,22) end;
+              3: begin x:=rnd3(0,78); y:=rnd3(0,22) end;
+           end;
+        gotoxy(x,y);
+        write('*');
+      end;
+end;
+
+procedure check;
+  (* Check for run length, no zero or negative integers, *)
+  (* and no duplicate positive integers *)
+
+type cnt=0..3;
+     byte=0..255;
+     rec=packed record
+           case boolean of
+              true:(x:byte; y:byte);
+              false:(z:integer);
+           end;
+
+var j,k,m,n,t:integer;
+    count:packed array[0..255,0..255] of cnt;
+    alias:rec; (* compiler will not allow 65536 x 2 array *)
+
+begin
+    n:=0;
+    write('Zeroing array ');
+    for j:=0 to 255 do
+      for k:=0 to 255 do
+        begin
+          if k=0 then if j mod 10 = 0 then write('.');
+          count[j,k]:=0;
+        end;
+    writeln;
+    write('Filling array ');
+    repeat
+      case num of (* use the specified  RND function, *)
+          0:t:=rnd0(0,1);
+          1:t:=rnd1(0,1);
+          2:t:=rnd2(0,1);
+          3:t:=rnd3(0,1);
+        end;
+      alias.z:=seed; (* but check the seed *)
+      if n mod 2560 = 0 then write('.');
+      n:=n+1;
+      count[alias.x,alias.y]:=count[alias.x,alias.y]+1;
+    until ((alias.z=12345) or (count[alias.x,alias.y]=3));
+     (* seed has come full circle, or generator is repeating *)
+    writeln;
+    writeln;
+    writeln('Run length:  ',n);
+    writeln;
+    writeln('Checking negative integers');
+    n:=0;
+    for j:=0 to 255 do
+      for k:=128 to 255 do
+        if count[j,k]<>0 then 
+          n:=n+1;
+    writeln;
+    if n=0 then write('No ') else write(n,' ');
+    writeln('negative integers generated');
+    writeln;
+    if count[0,0]=0
+      then writeln('Zero was not generated')
+      else writeln('Zero was generated');
+    writeln;
+    writeln('Checking positive integers');
+    n:=0;
+    m:=0;
+    for j:=0 to 255 do
+      for k:=0 to 127 do
+        if count[j,k]<>1 then 
+          begin
+            if count[j,k]=0
+              then
+                if ((j=0) and (k=0))
+                  then (* don't count zero as missing *)
+                  else  m:=m+1
+              else n:=n+1;
+          end;
+    writeln;
+    if m=0 then write('No ') else write(m,' ');
+    writeln('missing positive integers');
+    writeln;
+    if n=0 then write('No ') else write(n,' ');
+    writeln('duplicate positive integers');
+    end;
+
+begin (* randomtest *)
+  repeat
+    seed  :=12345; 
+    blankscr;
+    repeat
+      gotoxy(0,0);
+      write('S(ort, D(isplay, C(heck, Q(uit ? ');
+      read(test);
+    until test in ['S','s','D','d','C','c','Q','q'];
+    if test in ['Q','q'] then exit(program);
+    repeat
+      gotoxy(0,1);
+      write('Generator number [0..3] ? ');
+      readln(num);
+    until num in [0..3];
+    case test of
+        'S','s': sort;
+        'D','d': display;
+        'C','c':check;
+    end;
+    gotoxy(0,23);
+    write('Hit SPACE to continue: ');
+    read(test);
+  until false
+end.
+

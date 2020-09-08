@@ -1,0 +1,244 @@
+                      ADVENTURE.
+
+The history of this version of adventure has been lost, and I am
+unable to credit the originator. This program was converted
+to UCSD Pascal from a PL/1 version found on our local computer
+system. This version was obviously converted from a Fortran
+version (it said so in the comments) but any history was not
+indicated. If you need assistance with this program, you can
+write me. My address is:
+
+          Michael R. Turner
+          1622 Colonial Way
+          Frederick Md. 21701
+          (301)-663-9181
+
+
+GETTING STARTED.
+
+The steps required to run adventure are:
+
+1). Compile ADVINIT.TEXT. File needed is:
+        ADVINIT.TEXT
+
+2). Compile ADV.TEXT. Files needed are:
+        ADV.TEXT
+        ADVSUBS.TEXT
+        ADVVERB.TEXT
+
+3). Run ADVINIT to build the required files for Adventure.
+    Files needed are:
+        ADVS1.TEXT
+        ADVS2.TEXT
+        ADVS3.TEXT
+        ADVS4.TEXT
+        ADVS5.TEXT
+        ADVS6.TEXT
+        ADVS7.TEXT
+        ADVS8.TEXT
+        ADVS9.TEXT
+        ADVS10.TEXT
+        ADVS11.TEXT
+        ADVINIT.CODE
+    There are two output files produced by ADVINIT:
+        ADVMSGS[79]
+        ADVDATA[23]
+    Insure that there are at least 102 free contiguous blocks 
+    on the prefix disk. ADVINIT creates the msg file completely
+    before opening the data file. That way ADVINIT will work ok
+    if exactly 102 free blocks are available.
+
+4). Build an ADV.MISCINFO file. This is nothing more than a
+    text file with two numbers in it.The format is HEIGHT WIDTH.
+    (eg. 24 80) If you are an APPLE user using the 24x40
+    screen, this is not necessary (see Notes, below).
+
+5). The only files needed to run adventure are:
+         ADVDATA
+         ADVMSGS
+         ADV.CODE
+    Move these files to an appropriate disk if necessary.
+
+6). Be prepared to spend hours exploring the cave. Try not to
+    look at the source or the messages until all of adventuredom
+    pays tribute to you, Oh Grand Master Adventurer!
+    
+Notes:
+    
+    There is a save game feature. Try SAVE. You might like it.
+    The program asks for your name, but any identifier can be
+    used as long as it is valid for a filename.  Each save
+    file requires 6 blocks.
+    
+    The system clock is used to initialize the random number
+    generator. If the value returned by the TIME function
+    is zero, then the user is prompted for a number to start
+    the random number generator.
+    
+    The system MISCINFO is not used because the APPLE sets the
+    screen width to 80 on the 40 char screen. Flipping side to
+    side may be OK during editing, but not during ADVenture.
+    Also, The program defaults are such that APPLE users do
+    not need an ADV.MISCINFO.
+    
+    ADV.TEXT has {$S+} to allow it to compile on most machines.
+
+
+==============================================================
+PROGRAM-SECTION.
+
+ADV.TEXT............The adventure program.
+ADVSUBS.TEXT........Include file of adventure program.
+ADVVERB.TEXT........        ""
+ADVINIT.TEXT.......Initialization program. This program reads
+          ADVS1 through ADVS11 and produces ADVDATA and
+          ADVMSGS. These files must be on the default disk
+          in order to run the adventure program.
+
+==============================================================
+DATA-FILES-SECTION.
+
+ADV.MISCINFO........Sample miscinfo for adventure.
+
+ASVS1.TEXT..........Long form descriptions.
+
+          Each line contains a location number, a space, and
+          a line of text. The set of adjacent lines whose numbers
+          are X form the long description of location X.
+          
+ADVS2.TEXT..........Short form descriptions.
+
+          Same format as ADVS1.TEXT.  Not all places have
+          short descriptions.
+          
+ADVS3.TEXT..........Travel Table.
+
+          Each line contains a location number (X), a condition
+          value (M), a second location number (N), and a list
+          of motion numbers from ADVS4.TEXT.
+          Each motion represents a verb which will take you to N
+          if you are at X. M and N are interpreted as follows:
+          
+              If N<=300     location to go to.
+              If 300<N<=500 N-300 is used to select special code
+              If N>500      Message N-500 is to be issued.
+              
+          Meanwhile, M specifies the condition of motion.
+          
+              If M=0        Unconditional.
+              If 0<M<100    M% probability of motion.
+              If M=100      Unconditional but forbidden to dwarves.
+              If 100<M<=200 Must be carrying object M-100.
+              If 200<M<=300 Must be carrying or be in
+                            the same room as M-200.
+              If 300<M<=400 Property of (M MOD 100) must <> 0.
+              If 400<M<=500 Property of (M MOD 100) must <> 1.
+              If 500<M<=600 Property of (M MOD 100) must <> 2.
+                            Etc.
+          
+          If the condition is not met, then the next *DIFFERENT*
+          'destination' value is used (Unless it fails to meet
+          *ITS* conditions, in which case the next is found, etc).
+          Typically, the next destination will be for one of the
+          same verbs, so that its only use is as the alternate
+          destination for those verbs. For instance:
+          
+               15   110   22  29 31 34 35 23 43
+               15     0   14  45
+               
+          says that from location 15, any of the verbs (29,31,...,43)
+          will take you to 22 if you are carrying object 10.
+          Otherwise, they or verb 45 will take you to location 14.
+          
+               11  303    8  49
+               11    0    9  50
+               
+          says that from 11, 49 takes him to 8 unless the PROP(3)=0.
+          In that case, 49 takes you to 9. Verb 50 always takes
+          you to 9.
+          
+ADVS4.TEXT..........Vocabulary
+
+          Each line contains a number and a five letter word.
+          Let M=N DIV 1000.
+          
+          If M=0.  The word is a motion verb used in ADVS3.TEXT.
+          If M=1.  The word is an object.
+          If M=2.  The word is an action word (eg ATTACK).
+          If M=3.  Special case word. N MOD 1000 is an index
+                   into ADVS6.TEXT messages.
+                   
+ADVS5.TEXT..........Object descriptions.
+
+          Each line contains a number and a message. If 1<=N<=100,
+          it is the 'INVENTORY' message for object N. Otherwise
+          N should be 000,100,200 etc and the message is the
+          description of the preceding object when its property
+          value is N DIV 100. The N DIV 100 is used to destinguish
+          from multiple messages from multi-line messages. 
+          Properties that produce no message must be given
+          a null message.
+
+ADVS6.TEXT..........Miscellaneous messages.
+
+          Same format as ADVS1,ADVS2 and ADVS5, except that
+          the numbers are not related to anything. (Except
+          for special verbs in ADVS4).
+
+ADVS7.TEXT..........Object locations.
+
+           Each line contains an object number and its initial
+           location (zero if none) and a second location (also
+           zero if none). If the object is immovable, the
+           second location is set to -1. If the object has two
+           locations (eg GRATE), the second location field is set
+           to the second location and is assumed to be immovable.
+           
+ADVS8.TEXT..........Action defaults.
+
+           Each line contains an 'ACTION-VERB' number and the
+           index (into ADVS6) of the default message for the
+           verb.
+           
+ADVS9.TEXT..........Liquid Assetts, etc.
+           
+           Each line contains a number (N) and up to 20 location
+           numbers. Bit N (where 0 is the units bit) is set
+           in COND(LOC) for each loc given. The bits currently
+           assigned are:
+           
+               0   Light
+               1   If bit 2 is on; 1=oil,0=water.
+               2   Liquid asset, set bit 1.
+               3   Pirate doesn't go here unless following
+                   player.
+           The other bits are used to indicate areas of interest
+           to the hint routines:
+               4   Trying to get into the cave.
+               5   Trying to catch the bird.
+               6   Trying to deal with the snake.
+               7   Lost in maze.
+               8   Pondering the dark room.
+               9   At witts end.
+           COND(LOC) is set to 2, overriding all other bits,
+           if LOC has forced motion.
+           
+ADVS10.TEXT.........Player class messages.
+
+           Each line contains a number N and a message describing
+           the classification of the player. The scoring section
+           selects the appropriate message. A message applies
+           to a players whose scores are higher than the previous
+           N but not higher than this N.
+           
+ADVS11.TEXT.........Hints.
+
+           Each line contains a hint number corresponding to
+           the COND(LOC) bits (see ADVS9), the number of turns
+           he must be at the right LOC(s) before triggering
+           the hint, the points deducted for the hint, the
+           message number of the question (from ADVS6) and
+           the message number of the hint (also from ADVS6).
+           Hint numbers 1-3 are no usable as the COND(LOC)
+           bits 1-3 are otherwise assigned.
+           

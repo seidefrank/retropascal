@@ -1,0 +1,591 @@
+1.5.2.2 Listing Records with Certain Values 
+ 
+     It is also possible to list or export only certain records of a data file.
+ If <T> for Tests is pressed, the following screen will appear: 
+ 
+***************************************************************** 
+ 
+Comparison tests to be made on fields of each record:         Choose from the 
+                                                              following fields: 
+FIELD ID   OPERATOR                   VALUE 
+ 
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+________    _____     _____________________________________
+
+Valid operators are: < , > , = , <= , >= , or <> 
+
+Currently viewing tests 1 - 13 
+ 
+Get, Save tests, Change, Next, Back, Quit: 
+ 
+***************************************************************** 
+ 
+    Up to 52 tests can be performed on the fields of each record to
+determine whether or not that record should be listed (or exported).  If the
+Tests command is not used before a List or an Export, or if the user
+leaves all of the 52 tests blank, the program will assume it is to list or
+export all records. 
+ 
+   Each test consists of a field id, an operator and a value.  On the
+right hand side of the screen is a list of all valid field ids.  Any of the
+field ids in that list may be used in the tests and any may be used more than
+once.  The valid operators given on the screen have the following meanings: 
+ 
+                    <    less than 
+                    >    greater than 
+                    =    equal to 
+                    <=   less than or equal to 
+                    >=   greater than or equal to 
+                    <>   not equal to 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+As an example, the field id ZIPCODE could be tested for 
+ 
+                       ZIPCODE > 10000 
+                             and 
+                       ZIPCODE < 20000 
+ 
+These tests would select all records with ZIPCODE fields between 10000
+and 20000.  An error message will be displayed if an invalid field id or
+operator is entered or if the length of an entered value exceeds the maximum
+allowable.  To recover from an error, reenter the correct field id, operator or
+value. 
+ 
+    Only thirteen tests appear on the screen at one time, the rest may be
+entered or examined by using the Next and Back commands.  When first
+displayed, tests 1 - 13 are available for viewing and the line "Currently
+viewing tests 1 - 13" is displayed.  If the user presses N for Next, tests
+14 - 26 appear.  If B for Back is pressed, tests 1 - 13 reappear. 
+ 
+    The Get and Save commands allow tests to be saved to a disk file
+for subsequent reuse.  The operation of these commands is the same as that of
+the commands described in sections 1.1.4.4. and 1.1.4.5. 
+ 
+     When all of the tests have been entered, press <Q>.  If two or more tests
+have been entered, the following screen will be displayed: 
+ 
+***************************************************************** 
+ 
+List or export each record if: 
+ 
+1) All of the above tests have been met 
+ 
+2) Any of the above tests has been met 
+ 
+Enter 1 or 2 : 
+ 
+***************************************************************** 
+ 
+The user must respond correctly to the above prompt to get the desired
+result.  For example, to select all records with ZIPCODE fields between 10000
+and 20000, as in a previous example, the following tests would be entered: 
+ 
+                     ZIPCODE  >  10000 
+                               and 
+                     ZIPCODE  <  20000 
+ 
+The proper response to the above prompt would be a 1 in this case because
+both tests should be true if the record is to be copied.  If a 2 were entered,
+all records would be listed because all records would pass either one or the
+other or both of the tests.   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+    To select all records with ZIPCODE fields equal to either 10000 or
+20000 the following tests would be entered: 
+ 
+                            ZIPCODE  =  10000 
+                                 and 
+                            ZIPCODE  =  20000 
+          
+Since a record should be listed if either of the two tests is met, the
+proper response to the above prompt would be a 2.  A response of 1 would result
+in no records being listed because no record could have a ZIPCODE field equal
+to both 10000 and 20000. 
+ 
+    After a response is received to the above prompt, the program will
+return to the "Printed Listing Format" screen.  A subsequent List or Export
+will use only those records that pass the comparison tests. 
+ 
+1.5.2.3 Listing the Records 
+ 
+     Pressing <L> to execute the List command will list all active data
+list records or the records determined by the tests.  The listing will go to
+the printer unless a file name was specified in the Output file command.  If
+the width of all the user fields is longer than the Print Width, an error is
+given.  The user may then change the number of fields to be listed, or if
+possible, change the printer width field.  If the output is sent to a file, the
+file is closed and saved when the command is complete.  It may be printed
+later.  If this file name is used again as an output file, the contents of the
+first list will be overwritten by the contents of the second. 
+ 
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.5.2.4 Exporting the Records 
+ 
+     By pressing <E> for Export, the user can take selected fields from the
+data file and print them as part of another form or letter.  The format in
+which the exported records are printed is determined by a special text file
+which must have been created previously by the user with the text editor.
+ 
+   Upon entering the Export command the user will be prompted with: 
+ 
+***************************************************************** 
+ 
+ 
+                   EXPORT FILE NAME 
+                   ================ 
+ 
+ 
+Volume    : _________
+
+Name      : -------------
+ 
+Type      : TEXT 
+ 
+ 
+ 
+ 
+ 
+<ENTER> to execute, <ESC> to abort 
+ 
+ 
+***************************************************************** 
+ 
+ 
+Enter the name of the export format file.  Its name must end in .TEXT. 
+When <enter> is pressed the export will begin.  If the Output file
+command was used, the exported output will be written to the file specified,
+otherwise it will be sent to the printer.  When the export is complete, the
+user will be returned to the Printed Listing Format display. 
+ 
+1.5.2.5 Creating an Export file. 
+ 
+     Prior to executing Export the user must create a special file using the
+text editor. The file may contain anything desired from a business letter to
+a simple format for an insertion file. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.5.2.6 Export File Example 
+ 
+An example of an export file that is a format for a business letter is: 
+ 
+ 
+     June 20,19__
+      
+      
+     {*FIRST*} {*LAST} 
+     {*CONAME} 
+     {*ADDR} 
+     {*CITY*}, {STATE}  {ZIP} 
+      
+     Dear {*FIRST}, 
+      
+           Thank you for inquiring about the line of quality 
+     products.  I'm sure that you will find that our line of
+     {*ITEM*}  is just what you need.  Enclosed is a current 
+     price list  along with a general  description  of  each 
+     item on the list. I look forward to doing business with 
+     you, {*FIRST*}  and  {*CONAME*} in the near future.  If 
+     you  need any futher  information,  please feel free to
+     call me.
+      
+      
+                              Bob Updyke{12} 
+      
+      
+      
+The output then, might look like this: 
+      
+      
+     June 20,19__
+      
+      
+     John Customer 
+     INT.ENT. 
+     1111 N.W. Hwy 
+     Dallas, Tx  75211 
+      
+     Dear John, 
+      
+           Thank you for inquiring  about our line of quality
+     products.  I'm sure that you will find  that our line of 
+     microscopes is just what you need. Enclosed is a current 
+     price list along with a general description of each item 
+     on the list.  I look forward to doing business with you, 
+     John and INT.ENT. in  the near  future.  If you need any 
+     futher information, please feel free to call me. 
+      
+      
+                              Bob Updyke 
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+The names in the curly braces indicate that the value of the field by the name 
+enclosed should be inserted in the text at that point.  On the third line, the 
+first and last name of the customer was to be printed one line below the date.  
+An asterisk before the ID name indicates that any blanks before the field 
+should not be printed ("    John    " would be printed "John").  An asterisk 
+after the ID name indicates that any blanks to the right of the field should 
+not be printed ("    John    " would be printed "    John").  An asterisk 
+before and after the ID name indicates that blanks on either side of the field 
+should not be printed ("    John    " would be printed "John").  Placing a 
+number inside a set of curly braces causes the insertion of a character whose 
+ASCII code is that number.  It is primarily used to generate special characters 
+required by other computers for communications.  It is used here to send a top 
+of form character to the printer after each letter is printed. 
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.6  SORTING A DATA FILE 
+ 
+1.6.1  Accessing the Data File 
+ 
+     When <S> is pressed while in the UDE main display, the following
+screen appears: 
+ 
+ 
+******************************************************** 
+ 
+ 
+                   SORT A DATA BASE 
+                   ================ 
+ 
+ 
+Volume    : _________
+
+Name      : ______________
+ 
+Type      : SCRN and TEXT 
+ 
+ 
+ 
+ 
+ 
+<ENTER> to execute, <ESC> to abort 
+ 
+ 
+ 
+ 
+******************************************************** 
+ 
+ 
+ 
+     Two types of files are required to sort a data file, a TEXT file that
+contains data, and a SCRN file containing the UDE definition. 
+ 
+     Enter the volume and name, then press <enter>.  If the file ending in
+.SCRN or the file ending in .TEXT is not found, an error message is displayed. 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.6.2 Creating a Sorting Specification 
+ 
+     After the data file has been located, the following screen will appear: 
+ 
+ 
+*********************************************************** 
+ 
+ 
+               SORT A DATA BASE 
+               ================ 
+ 
+Sort Seq.     Field Id     Asc/Dsc          OUTPUT FILE 
+                                           (If different) 
+   1          _______         A
+   2          _______         A          Volume : _______
+   3          _______         A
+   4          _______         A          Name   : __________
+   5          _______         A
+   6          _______         A          Type   : TEXT
+   7          _______         A
+   8          _______         A
+   9          _______         A         VOLUME FOR WORK FILES
+  10          _______         A            (If different)
+
+                                        Volume : ________
+
+Get format, Save format
+Change, eXecute, Quit ?
+ 
+*********************************************************** 
+ 
+ 
+    The Field ID's to be sorted and the sort sequence are defined in the
+Field Id column.  The names entered must be spelled exactly the way they were
+in the Define program.  The sorting sequence for each data field, either
+ascending order or descending order, is specified in the Asc/Dsc column.  A
+D (or d) indicates descending order.  An A, a blank or any other
+character indicates ascending order. 
+ 
+    A new UDE data file of the sorted material can be created by entering
+the OUTPUT FILE information.  The volume entered under OUTPUT FILE does not
+need to be on-line when the program is executed.  When it is time for the
+output file to be written, the program will ask the user to put the volume that
+is to receive the output file into the disk drive.  In any case, the workfiles,
+if any, must be written to a disk that is to remain on line at all times.  If
+the OUTPUT FILE fields are left blank, the new sorted data file replaces the
+old unsorted file. 
+ 
+    It should be noted, however, that the program does not create a new
+SCRN file.  To use the new data file, the user must make a copy of the old SCRN
+file by transferring it to a file with the new output file name and a SCRN
+type. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+    The standard commands available at the bottom of the screen allow the
+operator to save the data on this screen, get data to fill in this screen from
+disk, change the data fields on the screen and return to the main command line.
+ These standard UDE commands are described in section 1.1.4 of this document. 
+ 
+     While sorting, the computer may not be able to store all the
+records in memory.  When this occurs, temporary work files must be written to a
+disk.  If the prefixed disk is short on space, specify another disk as the work
+file volume using the VOLUME FOR WORK FILES field.  The workfiles require
+approximately as much space as that taken up by the file to be sorted. 
+ 
+     Press the <X> to execute the sort operation.  Approximately 200 records
+can be sorted in 15 minutes and 1000 records in one hour.  The maximum file
+size that can be sorted is limited only by disk space.  There must be sufficient
+space for the workfiles on their destination disk and for the output file on
+its destination disk.  The final sorted file will be the same size as the
+previously unsorted database. 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+1.7 COPYING A UDE DATA FILE 
+ 
+     The Copy Data File program has the following features: 
+ 
+           * Data may be copied from a UDE data file into a UDE data file 
+            
+           * Data may be copied from any or all records of a data file 
+            
+           * Data may be copied from any or all fields of a record 
+            
+           * Fields may be tested for certain values before copying 
+            
+           * Additional records may be copied to an existing data file 
+            
+           * Fields from records of one data file may be combined with fields
+             from records of another 
+ 
+The data file that is to be copied from must, of course, already exist. 
+The UDE data file that is to be copied into must be defined before the copy is
+begun.  This is done with the UDE Define function.  Data may be copied into a
+file with no existing data records or into one that already has data. 
+ 

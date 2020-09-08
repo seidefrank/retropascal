@@ -1,0 +1,162 @@
+
+const (********************************************************)
+   sfirst = 1; (*  FIRST INDEX OF STRINGS*)
+   so_max_sorceline   = 9998; (*  DESCRIPTION OF SOURCE LINES*)
+   so_max_sourcecolumn = 257; (*ADJUST*) (*MUST BE MAX INPUT LENGTH+1*)
+   st_nil = 0; (* NULL CODING; USED TO INDICATE THAT SYMBOL IS NOT FOUND*)
+   st_sym_ubound = 101;  (* MUST BE PRIME *)
+   st_word_length = 9;  (* MAX RESERVED WORD LENGTH *)
+   stb_empty = 0;            (*EMPTY TEXT TABLE REFERENCE*)
+   stb_str_ubound = 600;    (*TEXT TABLE SIZE*)
+(* DECLARATIONS FROM LA*)
+(* SPECIAL CHARACTER FOR END OF FILE MARKING*)
+   eof_char = '$';
+(* CONSTANTS REPRESENTING CONTROL CHARACTERS IN ASCII  *)
+   nul = 0; ht = 5; del= 7; vt = 11; ff = 12; cr = 13; lf = 37; (*ADJUST*)
+   max_int = 32767;  { adjusted from  2147483647, by EDS }  (*ADJUST*)
+type  (********************************************************)
+   so_sorceline_range = 0 .. 9999 (*SO_MAX_SOURCELINE + 1*);
+           (* ONLY VALID FROM 1 .. 9998*)
+   so_sorcecolumn_range = sfirst .. so_max_sourcecolumn;
+           (* ALL COLUMNS ARE VALID*)
+   string           = packed array[so_sorcecolumn_range] of char;
+                             (* ONLY THIS STRING TYPE IS USED*)
+   so_sorce_string = string;(* SOURCE LINES*)
+   so_symbol_string = string;(* SYMBOLS HAVE AT MOST LINE SIZE*)
+(* SOURCE LINE POSITION DESCRIPTION USED THROUGHOUT THE COMPILER*)
+   so_position =
+      record
+         sourceline : so_sorceline_range;
+         column     : so_sorcecolumn_range
+      end;
+(* THE RANGE OF ERROR NUMBERS*)
+   er_errornumber_range = 0 .. 9999;
+{ adjusted, one 9 removed by EDS }
+(* DIFFERENT ERROR KINDS*)
+   er_error_type =
+      (er_warning   , er_symbol_error   , er_syntax_error   ,
+       er_sym_inserted, er_reset_position , er_semantic_error ,
+       er_comp_restriction, er_compiler_error , er_io_error  );
+   co_base_type = 2 .. 16;
+   st_symbol = 0 .. st_sym_ubound;
+              (* POSSIBLE RESULT OF CODING, INCLUDES THE NULL CODING*)
+   st_literal = packed array [sfirst .. st_word_length] of char;
+(*---------------------------------------------------------------*)
+(* ENUMERATION TYPE FOR ALL LEXICAL UNITS*)
+(*---------------------------------------------------------------*)
+   lu_lexical_unit =
+   (* LEXICAL UNITS WHICH ARE CODED*)
+     ( lu_identifier_sym , lu_integer_sym    , lu_real_sym  ,
+       lu_character_sym  , lu_string_sym,
+   (* END OF FILE*)
+       lu_eof_sym   ,
+   (* RESERVED WORDS*)
+       lu_abort_sym , lu_accept_sym, lu_access_sym, lu_all_sym   ,
+       lu_and_sym   , lu_array_sym , lu_at_sym    , lu_begin_sym ,
+       lu_body_sym  , lu_case_sym  , lu_constant_sym   ,
+       lu_declare_sym    , lu_delay_sym , lu_delta_sym , lu_digits_sym,
+       lu_do_sym    , lu_else_sym  , lu_elsif_sym , lu_end_sym   ,
+       lu_entry_sym , lu_exception_sym  , lu_exit_sym  , lu_for_sym   ,
+       lu_function_sym   , lu_generic_sym    , lu_goto_sym  ,
+       lu_if_sym    , lu_in_sym    , lu_is_sym    , lu_limited_sym    ,
+       lu_loop_sym  , lu_mod_sym   , lu_new_sym   , lu_not_sym   ,
+       lu_null_sym  , lu_of_sym    , lu_or_sym    , lu_others_sym,
+       lu_out_sym   , lu_package_sym    , lu_pragma_sym,
+       lu_private_sym    , lu_procedure_sym  , lu_raise_sym ,
+       lu_range_sym , lu_record_sym, lu_rem_sym   , lu_renames_sym    ,
+       lu_return_sym, lu_reverse_sym    , lu_salect_sym,
+       lu_seperate_sym   , lu_subtype_sym    , lu_task_sym  ,
+       lu_terminate_sym  , lu_then_sym  , lu_type_sym  , lu_use_sym   ,
+       lu_when_sym  , lu_while_sym , lu_with_sym  , lu_xor_sym   ,
+   (* DELIMITERS*)
+       lu_minus_sym , lu_dot_sym   , lu_interval_sym   , lu_less_sym  ,
+       lu_left_label_sym , lu_box_sym   , lu_less_equal_sym ,
+       lu_lpar_sym  , lu_plus_sym  , lu_separator_sym  ,
+       lu_catenation_sym , lu_multiply_sym   , lu_exponentiation_sym  ,
+       lu_rpar_sym  , lu_semicolon_sym  , lu_divide_sym,
+       lu_not_equal_sym  , lu_comma_sym , lu_greater_sym    ,
+       lu_right_label_sym, lu_greator_equal_sym   , lu_colon_sym ,
+       lu_assign_sym, lu_quote_sym , lu_equal_sym , lu_arrow_sym );
+(*---------------------------------------------------------------*)
+(* DESCRIPTOR OF LEXICAL UNITS*)
+(*---------------------------------------------------------------*)
+    lu_selector =  (lu_id, lu_int, lu_real, lu_other);
+              (* THIS IS NEEDED FOR DISCRIMINANT SELECTION*)
+   lu_sym_descriptor =
+      record
+         sym     : lu_lexical_unit;
+         case discrim : lu_selector  of
+            lu_id :      (* LU_IDENTIFIER_SYM, LU_STRING_SYM*)
+                         (* LU_CHARACTER_SYM, RESERVED_WORDS*)
+                        (* OPERATORS*)
+               (idcode : st_symbol)
+            (*OTHERS ARE NOT CODED*)
+      end;   (* RECORD;*)
+   lu_symbol_string =  so_symbol_string;
+(* TEXT TABLE*)
+   stb_str_0range =  0 .. stb_str_ubound;
+   stb_str_range  =  1 .. stb_str_ubound;
+   stb_s_tab_rec =
+      record
+         textb,
+         texte : stb_str_0range
+      end;
+(* DECLARATIONS FROM LA*)
+   character_type =
+      (letter_a_f   , letter_g_z   , low_letter   , digit   , dquote  ,
+       quote   , hyphen  , ampersand    , lpar    , rpar    , asterisk,
+       plus    , comma   , point   , slash   , colon   , semicolon    ,
+       langle  , equal   , rangle  , vbar    , underscore   , nwline  ,
+       ignore  , blank   , htab    , eofc     , other_graphics    , non_ada );
+var   (********************************************************)
+  (* SPECIAL POSITIONS*)
+   so_nil_position :                 (* USED IF NO POSITION AVAILABLE*)
+      (*CONSTANT*) so_position
+      (* := (SOURCELINE => SO_SOURCELINE_RANGE'FIRST   *)
+      (*     COLUMN     => SO_SOURCECOLUMN_RANGE'FIRST)*);
+   lu_reserved_word : array [st_symbol] of lu_lexical_unit;
+                             (* RESERVED WORD INDICATOR*)
+   lu_code_minus, lu_code_less, lu_cde_less_equal, lu_code_plus,
+      lu_code_catenation, lu_code_multiply, lu_code_exponentiation,
+      lu_code_divide, lu_code_not_equal, lu_code_greater,
+      lu_cde_greater_equal, lu_code_equal : st_symbol;
+   lu_no_symbol : lu_sym_descriptor;
+(*---------------------------------------------------------------*)
+(* INITIALIZATION*)
+(*---------------------------------------------------------------*)
+(*TEXT TABLE*)
+   stb_s_tab_strings : packed array [stb_str_range] of char;
+   stb_number_char : stb_str_0range;
+(*HASH TABLE*)
+   stb_s_tab_entries : array [st_symbol] of stb_s_tab_rec;
+   stb_texttable_full, stb_hashtable_full : boolean;
+(*-------------------------------------------------------------------*)
+(* SYMBOL TABLE CODES FOR ERROR UNITS*)
+   lub_cde_identifier, lub_code_integer, lub_code_real,lub_code_string,
+      lub_code_character : st_symbol;
+(*------------------------------------------------------------------*)
+(* DECLARATIONS FROM LA*)
+   char_type_table : array [char] of character_type;
+(* BUFFER, BUFFER-POINTER*)
+(* ASSERT: CURRENT_CHAR == BUFFER(CURRENT);*)
+(*        BUFFER(LAST_CHAR..LAST_CHAR+1)=(CR,CR) OR BUFFER(FIRST)=EOFC*)
+(*        CURRENT IS ALWAYS NEXT CHARACTER*)
+   buffer : so_sorce_string;
+   (*  LOOKAHEAD=2*)
+   current, last_char :  integer;
+   current_char : char;
+   line_no : integer;
+(* LAST RECOGNIZED LEXICAL UNIT (BECAUSE QUOTE AMBIGUITIES)*)
+   last_symbol : lu_sym_descriptor;
+   last_pos : so_position;
+(*------------------------------------------------------------------*)
+   errors_count   : integer;
+   warnings_count : integer;
+   error_no       : integer;
+   erb_last_pos   : so_position;
+(*-------------------------------------------------------------------*)
+      tabdat  : file of integer;
+      (********************************************************)
+   morefiles:boolean;
+   reply:char;
+

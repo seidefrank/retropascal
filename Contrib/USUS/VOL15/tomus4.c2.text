@@ -1,0 +1,616 @@
+
+{ L printer:}
+
+PROGRAM tomusus ;
+
+{
+Version 04  15 July 1982
+
+(C) Copyright 1981 ,1982 by Michael A. Ikezawa
+}
+
+{The comments contained in the MUSUS Library file TOMUS3.C1 should be
+inserted here.  They were made a separate file due to the 30 block
+limitation of the Screen Editor.  MAI}
+
+USES  (*$U remunit.l3.code*)REMUNIT ;
+
+CONST
+  BACKSPACE     =     8 ;
+  CR            =    13 ;
+  ESCAPE        =    27 ;
+  FORMFEED      =    12 ;
+  KB            =     2 ;
+  LF            =    10 ;
+  LOGLIMIT      =  1024 ;
+  PRINTER       =     6 ;
+  REMIN         =     7 ;
+  REMOUT        =     8 ;
+  RUBOUT        =   127 ;
+  xon           =    17 ;
+  xoff          =    19 ;
+
+
+
+VAR
+  C             : CHAR ;
+  DONE          : BOOLEAN ;
+  ECHO          : BOOLEAN ;
+  linefeed      : boolean ;
+  LOGARRAY      : PACKED ARRAY [ 1 .. LOGLIMIT ] OF CHAR ;
+                        {change lower limit from 0 for Yensen stuff}
+  LOGFILE       : file ;  {Yensen}
+  LOGFILENAME   : STRING[ 30 ] ;
+  LOGINDEX      : 0 .. LOGLIMIT ;
+  LOGTEXT       : BOOLEAN ;
+  pace          : boolean;
+  printext      : boolean;
+  printfile     : text;
+  wait_character: char;
+  wait_cr       : boolean;
+  outbuf        : packed array [ 1 .. loglimit ] of char;  {gws}
+
+procedure savelog; forward;
+procedure openlog; forward;
+
+PROCEDURE LOGIT( C : CHAR ) ;
+BEGIN
+  logindex := succ(logindex) ; {Yensen}
+  LOGARRAY[ LOGINDEX ] := C ;
+  IF LOGINDEX >= LOGLIMIT THEN
+    savelog;
+END ;
+
+
+PROCEDURE DISPLAY( C : CHAR ) ;
+
+BEGIN
+
+  IF C <> CHR(LF) THEN
+    begin
+    unitwrite(1,C,1,1) ;   {Yensen}
+    IF LOGTEXT THEN
+      LOGIT( C ) ;
+    If printext then
+      unitwrite(printer,C,1,1) ;  {Yensen}
+    end
+END ;
+
+
+FUNCTION QUESTION( PROMPT : STRING ) : BOOLEAN ;
+VAR
+  C             : CHAR ;
+BEGIN
+  WRITE  ( PROMPT, ' (y or n)? ' ) ;
+  REPEAT
+    READ( KEYBOARD, C ) ;
+  UNTIL C IN [ 'y', 'n', 'Y', 'N' ] ;
+  WRITEln( C ) ;
+  QUESTION := C IN ['y', 'Y'] ;
+END ;
+
+procedure menu; forward;
+
+
+PROCEDURE OPTIONS ;
+
+var     C       :CHAR;
+        B       :BOOLEAN;
+        good    :boolean;
+        o       :char;
+        quit    :boolean;
+        
+procedure wait;
+
+begin
+wait_cr := question( 'Wait for a returned character after each line' );
+IF WAIT_CR
+  THEN
+    REPEAT
+      WRITELN ;
+      write( 'Enter the character to wait for:' ) ;
+      READ( KEYBOARD, WAIT_CHARACTER ) ;
+      IF EOLN (keyboard) 
+        THEN 
+          WAIT_CHARACTER := CHR( CR ) ;
+      IF WAIT_CHARACTER IN ['A'..'~']
+        THEN
+          WRITELN( WAIT_CHARACTER )
+        ELSE
+          writeln( ' CHR(', ORD(WAIT_CHARACTER), ')' ) ;
+    UNTIL QUESTION( 'Is this the correct character ' )
+  ELSE
+    WAIT_CHARACTER := CHR( 0 ) ;
+end;
+
+procedure attention;  {Change attention character}
+
+begin
+REPEAT
+  REPEAT
+    write( 'What attention character will be used? ' ) ;
+    read(keyboard,C);
+    writeln( 'CHR(', ORD( C ), ')' ) ;
+    IF C IN [' '..'~']
+      THEN
+        WRITELN('You cannot use a displayable character')
+      ELSE
+        B := QUESTION( 'Is this correct' ) ;
+  UNTIL B ;
+UNTIL NOT (C IN [' '..'~']) ;
+cr_attenchar := C;
+end;
+
+BEGIN
+  writeln;
+  quit := false;
+  repeat
+    write('OPTIONS: E(cho, L(inefeed, P(ace, W(ait, A(ttention, Q(uit ? ');
+    repeat
+      read(keyboard,o);
+      good := o in ['e','E','l','L','p','P','w','W','a','A','q','Q'];
+      if good then
+        begin
+        writeln(o);
+        writeln;
+        case o of
+          'e','E' : echo    := question( 'Echo the keyboard' );
+          'l','L' : linefeed := question( 'Send linefeeds' );
+          'p','P' : pace := question( 'Wait for each character to be echoed' );
+          'w','W' : wait;
+          'a','A' : attention;
+          'q','Q' : quit := true;
+          end;
+        end
+      else
+        write(chr(7));
+    until good;
+    writeln;
+  until quit;
+        
+END ;
+
+
+PROCEDURE INITIALIZE ;
+
+VAR
+  B            : BOOLEAN ;
+  C            : CHAR ;
+  HAVEDIAL     : BOOLEAN ;
+  HAVEREM      : BOOLEAN ;
+  RESULT       : CR_BAUD_RESULT ;
+
+BEGIN
+
+  gotoxy(10,7);
+  write('TOMUSUS       ***********       Version 04, 15 July 1982');
+  gotoxy(10,9);
+  write('(C) Copyright, 1981, 1982   by Michael A. Ikezawa');
+  gotoxy(10,11);
+  write( 'This program is based on, and contains material from, the'); 
+  gotoxy(10,12);
+  write( 'copyrighted program TERMINAL by Robert W. Peterson, 28Mar81');
+  writeln;
+  writeln;
+  writeln;
+
+  DONE      := FALSE ;
+  logtext   := FALSE ;
+  printext  := false;
+  echo      := false;
+  linefeed  := false;
+  pace      := false;
+  wait_cr   := false;
+
+  C := CHR( 5 );
+
+  CR_COMMINIT( CR_ORIG, C, HAVEREM, HAVEDIAL ) ;
+  IF NOT HAVEREM
+    THEN
+      BEGIN
+      WRITELN( ' REMOTE not supported in current environment.' ) ;
+      WRITELN( ' Program is terminating.' ) ;
+      EXIT( TOMUSUS ) ;
+      END ;
+
+  CR_SETCOMMUNICATIONS( 
+                TRUE,
+                TRUE,
+                300,
+                7,
+                1,
+                CR_ORIG,
+                'LSI-11',
+                RESULT ) ;
+
+  WRITEln( 'Press <RETURN> when connection has been made.  Thereafter,' ) ;
+  writeln( 'use attention character (default Control-E) for TOMUSUS menu');
+  writeln( 'whenever necessary.');
+  writeln;
+  write('====================     ',
+        'begin communication      ',
+        '     ====================');
+  READLN( KEYBOARD, C ) ;
+  CR_ANSWER ;
+  WRITELN;
+
+END ;
+
+PROCEDURE CLEARLOG ;
+BEGIN
+  fillchar(logarray,loglimit,chr(0)) ;  {Yensen}
+  LOGINDEX := 0
+END ;
+
+
+PROCEDURE CLOSELOG ;
+VAR
+  RESULT        : INTEGER ;
+BEGIN
+  IF logtext
+    THEN
+      BEGIN
+      savelog;
+      {$I-}
+      CLOSE( LOGFILE, LOCK ) ;
+      RESULT := IORESULT ;
+      {$I+}
+      WRITE( LOGFILENAME ) ;
+      IF RESULT = 0
+        THEN
+          begin
+          WRITELN(' closed.' );
+          logtext := false;
+          end
+        ELSE
+          WRITELN(' Failed to close.  IORESULT = ', RESULT ) ;
+      END 
+END ;
+
+
+PROCEDURE openlog ;
+VAR
+  RESULT        : INTEGER ;
+BEGIN
+  REPEAT
+    WRITE  ( 'Log filename? ') ;
+    READLN ( LOGFILENAME ) ;
+    IF LENGTH( LOGFILENAME ) > 0
+      THEN
+        BEGIN
+        if ( pos ( '.text', logfilename ) = 0 ) and
+           ( pos ( '.TEXT', logfilename ) = 0 )
+          then logfilename := concat ( logfilename , '.TEXT' ); {gws}
+        WRITE( 'Open of ', LOGFILENAME, ' ' ) ;
+        {$I-}
+        REWRITE( LOGFILE, LOGFILENAME ) ;
+        RESULT := IORESULT ;
+        {$I+}
+        logtext := RESULT = 0 ;
+        IF NOT logtext
+          THEN
+            WRITELN( ' failed.  REWRITE RESULT = ', RESULT )
+          ELSE
+            WRITELN( ' was successful.' ) ;
+        END ;
+  UNTIL logtext OR (LENGTH( LOGFILENAME ) = 0 ) ;
+  
+  clearlog;
+  result := blockwrite ( logfile, logarray, 2 );  {write header block}
+  WRITELN ;
+
+END ;
+
+
+PROCEDURE SAVELOG ;  {completely rewritten to output a legal textfile - gws}
+VAR
+  RESULT        : INTEGER ;
+  excess_chars : integer;
+BEGIN
+  
+  if logindex = 0 then exit(savelog);
+  fillchar ( outbuf, sizeof ( outbuf ), chr ( 0 ) );
+  excess_chars := scan ( -1024, = chr ( 13 ),  
+                               logarray [ sizeof ( logarray ) ] );
+  excess_chars := - excess_chars;
+  moveleft ( logarray, outbuf, sizeof ( logarray ) - excess_chars );
+  result := (blockwrite(logfile,outbuf,2)) ;  
+  if result <> 2 then
+    writeln( 'Only ',result,' blocks written') 
+  else
+     begin
+        if excess_char <> 0 then
+           begin
+              moveleft ( logarray [ sizeof ( logarray ) - excess_chars + 1 ], 
+                              logarray, excess_chars );
+              fillchar ( logarray [ excess_chars + 1 ],
+                              sizeof ( logarray ) - excess_chars - 1, 
+                              chr ( 0 ) );
+              logindex := excess_chars;
+           end
+        else clear_log;
+     end;
+END ;
+
+
+PROCEDURE SENDLOGON ;
+
+BEGIN
+END ;
+
+
+PROCEDURE DUMPFILE ;
+
+VAR
+  I            : INTEGER ;
+  READBUFFER   : STRING ;
+  RESULT       : INTEGER ;
+  XMITFILE     : TEXT ;
+  XMITNAME     : STRING ;
+
+
+procedure endmarker;
+begin
+  writeln;
+  writeln('====================     ',
+          'end transmission         ',
+          '     ====================');
+end;
+
+PROCEDURE DUMPIT ;
+
+BEGIN
+
+  WRITELN( 'Transmitting ', XMITNAME ) ;
+  WRITELN( 'Use attention character to abort transmission' ) ;
+  writeln('====================     ',
+          'begin transmission       ',
+          '     ====================');
+  WHILE NOT EOF( XMITFILE ) DO
+    BEGIN
+    READLN( XMITFILE, READBUFFER ) ;
+    FOR I := 1 TO LENGTH( READBUFFER ) DO
+      BEGIN
+      IF NOT CR_CARRIER
+        THEN
+          BEGIN
+          endmarker;
+          WRITELN( 'Lost carrier.  Transmitting aborted.' ) ;
+          EXIT( DUMPIT ) ;
+          END ;
+      IF CR_REMSTAT
+        THEN
+          DISPLAY( CR_GETREM ) ;
+      CR_PUTREM( READBUFFER[ I ] ) ;
+      IF PACE
+        THEN
+          REPEAT
+          UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      END ;
+    CR_PUTREM( CHR( CR ) ) ;
+    IF LINEFEED
+      THEN
+        CR_PUTREM( CHR( LF ) ) ;
+    IF WAIT_CR
+      THEN
+        REPEAT
+          IF CR_REMSTAT
+            THEN
+              BEGIN
+              C := CR_GETREM ;
+              DISPLAY( C ) ;
+              END
+            ELSE
+              C := CHR( 0 ) ;
+        UNTIL (C = WAIT_CHARACTER) OR CR_KBSTAT ;
+    IF CR_KBSTAT
+      THEN
+        begin
+        c := cr_getkb;
+        IF c = CR_ATTENCHAR
+          THEN
+            begin
+            endmarker;
+            writeln('Transmission aborted by user.');
+            EXIT( DUMPIT ) ;
+            end
+        end
+    END;
+  
+  endmarker;
+
+END ;
+
+
+BEGIN
+
+(*$I-*)
+
+
+  WRITE  ( 'Transmit filename? ') ;
+  READLN ( XMITNAME ) ;
+  IF LENGTH( XMITNAME ) <> 0
+    THEN
+      BEGIN
+      RESET  ( XMITFILE, XMITNAME ) ;
+      RESULT := IORESULT ;
+      IF RESULT = 0
+        THEN
+          BEGIN
+          DUMPIT ;
+          WRITE( XMITNAME, ' completed.' ) ;
+          END
+        ELSE
+          BEGIN
+          WRITELN ;
+          WRITELN( 'Cannot find ', XMITNAME ) ;
+          END ;
+      END ;
+
+(*$I+*)
+
+END ;
+
+procedure openprinter;
+
+var     result  :integer;
+
+begin
+  {$I-}
+  rewrite(printfile,'printer:');
+  result := IORESULT;
+  {$I+}
+  if result = 0 then
+    begin
+    printext := true;
+    write(printfile,chr(12));
+    writeln('Printer opened');
+    end
+  else
+    writeln('Printer not opened.  IORESULT = ',result);
+end;
+
+
+procedure closeprinter;
+
+var     result  :integer;
+
+begin
+  writeln(printfile);
+  {$I-}
+  close(printfile);
+  result := IORESULT;
+  {$I+}
+  if result = 0 then
+    begin
+    printext := false;
+    writeln('Printer closed');
+    end
+  else
+    writeln('Printer not closed.  IORESULT = ',result);
+end;
+
+
+procedure logswitch;
+
+begin
+  if logtext then
+     begin
+     if (question('Logfile is open.  Close it')) then closelog
+     end
+  else
+    if (question('Logfile is closed.  Open it')) then openlog
+end;
+
+procedure printswitch;
+var     query   :boolean;
+begin
+  if printext then
+    closeprinter
+  else
+    openprinter;
+end;
+
+PROCEDURE MENU ;
+
+VAR
+  GOOD                  : BOOLEAN ;
+  O                     : CHAR ;
+
+BEGIN
+  unitclear(kb);
+  writeln;
+  writeln('====================     ',
+          'TOMUSUS menu on          ',
+          '     ====================');
+  write('Q(uit, C(ontinue, B(reak, X(off, O(ptions, ');
+  write('L(ogfile, P(rinter, T(ransmit ? ');
+  repeat
+    READ (keyboard, O ) ;
+    GOOD := O IN ['q','Q','c','C','b','B','x','X','o','O',
+                  'l','L','p','P','t','T'] ;
+    IF GOOD
+      THEN
+        begin
+        writeln(o);
+        writeln;
+        CASE O OF
+          'q','Q' : DONE := TRUE;
+          'c','C' : ;
+          'b','B' : cr_break;
+          'x','X' : cr_putrem(chr(xoff));
+          'o','O' : options;
+          'l','L' : logswitch ;
+          'p','P' : printswitch ;
+          't','T' : DUMPFILE ;
+          END ;
+        end
+      else
+        write(chr(7));
+  until good;
+  writeln;
+  writeln('====================     ',
+          'TOMUSUS menu off         ',
+          '     ====================');
+END ;
+
+
+
+BEGIN
+
+  INITIALIZE ;
+
+  REPEAT
+    IF CR_KBSTAT
+      THEN
+        BEGIN
+        C := CR_GETKB ;
+        IF C = CR_ATTENCHAR
+          THEN
+            BEGIN
+            MENU ;
+            IF NOT (CR_CARRIER OR DONE)
+              THEN
+                CR_ANSWER ;
+            END
+          ELSE
+            BEGIN
+            CR_PUTREM( C ) ;
+            IF ECHO
+              THEN
+                DISPLAY( C ) ;
+            if linefeed and (C=chr(CR)) then
+              cr_putrem(chr(LF));
+            END ;
+        END ;
+    IF NOT CR_CARRIER
+      THEN
+        BEGIN
+        WRITELN ;
+        WRITELN('LOST CARRIER');
+        WRITELN ;
+        MENU ;
+        IF NOT (CR_CARRIER OR DONE)
+          THEN
+            CR_ANSWER ;
+        END
+      ELSE
+        IF CR_REMSTAT
+          THEN
+            DISPLAY( CR_GETREM ) ;
+
+  UNTIL DONE ;
+
+  writeln('====================     ',
+          'end communication        ',
+          '     ====================');
+  
+  CLOSELOG ;
+
+  close(printfile);
+  
+  CR_COMMQUIT ;
+  writeln('Exit TOMUSUS');
+
+END.
+

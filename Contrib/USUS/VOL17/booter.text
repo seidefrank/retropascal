@@ -1,0 +1,26 @@
+PROGRAM BOOTSTRAPCOPIER;
+CONST
+  BOOTSIZE = 1024;
+VAR
+  BOOT: PACKED ARRAY[1..BOOTSIZE] OF CHAR;
+BEGIN
+  IF EOLN THEN READLN;
+  WRITE('Please insert the floppy with the source boot and type <return>');
+  READLN;
+  UNITREAD(4,BOOT,BOOTSIZE,0);
+  IF IORESULT <> 0 THEN
+    BEGIN
+      WRITELN('Error encountered reading boot.');
+      EXIT(PROGRAM)
+    END;
+  WRITELN('Please insert the floppy onto which the boot is to be written and');
+  WRITE('type <return>');
+  READLN;
+  UNITWRITE(4,BOOT,BOOTSIZE,0);
+  IF IORESULT <> 0 THEN
+    BEGIN
+      WRITELN('Error encountered writing boot.');
+      EXIT(PROGRAM)
+    END;
+  WRITELN('Bootstrap has been copied.');
+END.

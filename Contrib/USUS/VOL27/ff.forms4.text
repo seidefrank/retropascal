@@ -1,0 +1,223 @@
+SEGMENT PROCEDURE INITIALIZE;
+BEGIN
+  QUIT := FALSE;         (* User gave up flag               *)
+  NO_PROMPT := TRUE;
+  PREV_FORMAT := '####.##';
+  CONTROL_HEADER := CONCAT('#####  Description       D/I/F/H  C  ',
+                              'Format         Calculation');
+  MONTHS[1]  := 'Jan';  MONTHS[2]  := 'Feb';  MONTHS[3]  := 'Mar';
+  MONTHS[4]  := 'Apr';  MONTHS[5]  := 'May';  MONTHS[6]  := 'Jun';
+  MONTHS[7]  := 'Jul';  MONTHS[8]  := 'Aug';  MONTHS[9]  := 'Sep';
+  MONTHS[10] := 'Oct';  MONTHS[11] := 'Nov';  MONTHS[12] := 'Dec';
+END;     (* of initialize *)
+
+PROCEDURE BLANKREC;     (* Creates blank directory record *)
+BEGIN
+  FILLCHAR(DIRECTORY^,SIZEOF(DIRRECORD),0)
+END;     (* of blankrec *)
+
+PROCEDURE CHECKERR{ ERRORNUM: INTEGER; DELENTRY: BOOLEAN; COND: SETTYPE };
+VAR I: INTEGER;
+BEGIN
+  IF (ERRORNUM=0) OR (IORESULT <> 0) THEN
+    BEGIN
+      IF ERRORNUM > 0 THEN ERROR(ERRORNUM);
+      IF DELENTRY AND (COND = NEWFILE) THEN
+        BEGIN
+          OPEN_DIR;
+          SEEKDIR(RECNUMBER,ANDGET);
+          IF NOT DAT_OPEN THEN
+            BEGIN
+              RESET(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+              FORM_DAT_DESC.USEDHEAP := FALSE
+            END;
+          CLOSE(FORM_DAT_FILE, PURGE);
+          DAT_OPEN := FALSE;
+          IF FORM_DAT_DESC.USEDHEAP THEN FREEMEM(FORM_DAT_DESC);
+          BLANKREC;
+          SEEKDIR(RECNUMBER,ANDPUT);
+          IF OPEN_CTL(REQUESTED_FORM) THEN;
+          CLOSE(FORM_CTL_FILE,PURGE); CTL_OPEN := FALSE;
+          IF OPEN_CON(REQUESTED_FORM) THEN;
+          CLOSE(FORM_CON_FILE,PURGE); CON_OPEN := FALSE;
+          IF OPEN_TIT(REQUESTED_FORM) THEN;
+          CLOSE(FORM_TIT_FILE,PURGE); TIT_OPEN := FALSE
+        END;
+      FINISH_UP;
+      EXIT(FORMS)
+    END
+END; (* of checkerr *)
+
+FUNCTION ABORT{: BOOLEAN };
+BEGIN
+  ERASE(MSG_LINE-1);
+  ERASE(MSG_LINE+1);
+  ERASE(MSG_LINE+2);
+  PRESSRETURN('Warning ESC was pressed,',MSG_LINE);
+  ABORT := YESNO('Do you want to Stop','Y');
+  ERASE(MSG_LINE)
+END; (* of abort *)
+
+PROCEDURE PUTMAINHEAD;
+BEGIN
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  (*$B 40COL- *)
+  WRITELN(OUTPUT,'F R E E F O R M   F O R M S   C O N T R O L');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN(OUTPUT,'F R E E F O R M   FORMS CONTROL');
+  (*$E 40COL  *)
+  
+  MEMORY;
+  
+  PRINT_LINE := 2;
+END;
+
+PROCEDURE PUTCTRLHEAD{ WHAT: STRING;  NUM: INTEGER };
+BEGIN
+  PUTMAINHEAD;
+  (*$B 40COL- *)
+  WRITELN('FREEFORM ',WHAT,' Parameter Definition for ',REQUESTED_FORM,
+          '  ',WHAT,'s=',NUM);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN('FREEFORM ',WHAT,' Def. for ',REQUESTED_FORM,'  ',WHAT,'s=',NUM);
+  (*$E 40COL  *)
+  WRITELN(CONTROL_HEADER)
+END;
+
+PROCEDURE SETNUM{ MIN, MAX: INTEGER; WHAT: STRING; VAR ANS: INTEGER;
+                   LINE: INTEGER };
+BEGIN
+  GETNUM(MIN,MAX,-1,CONCAT('How many ',WHAT,'?'),ANS);
+  PROMPT(CONCAT('Number of ',WHAT,' -> '),LINE);
+  WRITE(OUTPUT,ANS);
+END;     (* of setnum *)
+
+PROCEDURE GETUSERID;
+BEGIN
+  GETRESPONSE(TRUE,'Enter user initials ->  ','','   (optional)',
+     L_ID,DIRECTORY^.FORMID);
+END;
+
+PROCEDURE GETFORMDESC;
+BEGIN
+  (*$B 40COL- *)
+  GETRESPONSE(TRUE,'Enter descriptive comment ->  ','','   (optional)',
+     L_DESC,DIRECTORY^.FORM_DESC);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  GETRESPONSE(TRUE,'Form description ->  ','','   (optional)',
+     L_DESC,DIRECTORY^.FORM_DESC);
+  (*$E 40COL  *)
+END;
+
+PROCEDURE GETDATE;
+var t_info : sc_info_type;
+BEGIN
+  sc_use_info ( sc_get, t_info );
+  WITH DIRECTORY^,t_info DO BEGIN
+    ENCODE(sc_date.DAY,FORM_DATE);
+    FORM_DATE := CONCAT(MONTHS[sc_date.MONTH],' ',FORM_DATE);
+    GETRESPONSE(TRUE,'Enter today''s date (MMDDYY)  ->  ',FORM_DATE,
+               '   (optional)',L_DATE,FORM_DATE)
+  END
+END;
+
+PROCEDURE GET_CONSTANT{ NUM, LINE: INTEGER;  OLD: BOOLEAN };
+VAR  TRASH: INTEGER;
+     xdummy : sc_key_command; (**gws*)
+     DUMY: CHAR;
+BEGIN
+  REPEAT
+    GOTOXY(0,MSG_LINE);
+    sc_erase_to_eol ( 0, msg_line );
+    WRITE(OUTPUT,'CONSTANT(',NUM:3,') = -',CRT_CURSOR_LEFT); (**gws*)
+    ACCEPTNUM(TRUE,MAXFRAC+MAXWHOLE+2,IS,DUMY,xdummy);
+  UNTIL (IS<>'INVALID');
+  IF IS = '' THEN IS := '-';
+  VALUE(FALSE, IS, FORM_CON_FILE^, TRASH);
+  SEEKCON(NUM,ANDPUT);  (* enter constant into the file  SDA 11/25/80 *)
+  NUMTOSTR(IS, FORM_CON_FILE^, MAXWHOLE, 5);          (* SDA  9/22/81 *)
+  IF NOT OLD THEN                                     (* SDA  9/22/81 *)
+    BEGIN
+      ERASE(LINE);
+      GOTOXY(2,LINE);
+      WRITELN(OUTPUT,'CONSTANT(',NUM:3,') = ',IS);
+      ERASE(LINE+1)
+    END
+END;   (* of get_constant *)
+
+PROCEDURE SET_PAGE{ PAGE: INTEGER; NO_PROMPT, NEWPAGE: BOOLEAN; COND: SETTYPE;
+                       VAR ERR: INTEGER };
+VAR
+     ALLOK: BOOLEAN;
+     I, J: INTEGER;
+     PAGES: STRING[2];
+     AWINDOW: WINDOWTYPE;
+
+BEGIN
+  ERR := 0;
+  ENCODE(PAGE,PAGES);    (* change Page into a string *)
+  IF PAGE<10 THEN PAGES := CONCAT(PAGES);
+  IF NEWPAGE THEN FORM_TIT_FILE^ := ''      (* initialize Title to nul string *)
+  ELSE SEEKTIT(FORM_TIT_FILE,PAGE,ANDGET);  (* Set Title to current value     *)
+  REPEAT
+    ALLOK := TRUE;
+    PROMPT(CONCAT('Enter Title for Page ',PAGES,' (60 chars. max.)'),
+           MSG_LINE-1);
+    GETRESPONSE(TRUE,'',FORM_TIT_FILE^,'',60,FORM_TIT_FILE^);
+    IF FORM_TIT_FILE^ = 'ESCAPE' THEN
+      IF ABORT THEN
+        BEGIN  ERR := 2;  EXIT( SET_PAGE )  END
+      ELSE
+        BEGIN  FORM_TIT_FILE^ := '';  ALLOK := FALSE  END
+    ELSE
+      BEGIN
+        ERASE(MSG_LINE-1);
+        ERASE(MSG_LINE);
+        (* Note: If the title is allowed to be longer than 60 chars then this
+           line will cause a string overflow !!!!  *)
+        PROMPT('Page ',(PAGE MOD (MSG_LINE-7)) + 4);
+        WRITE(PAGE:2,' Title is -> ',FORM_TIT_FILE^);
+        ERASE( (PAGE MOD (MSG_LINE-7)) + 5 );
+        IF NOT NO_PROMPT THEN
+          ALLOK := YESNO('Is Title Correct','Y')
+      END
+  UNTIL ALLOK;
+  SEEKTIT(FORM_TIT_FILE,PAGE,ANDPUT);
+  IF NEWPAGE THEN  (* Create a page file *)
+    WITH DIRECTORY^, FORM_DAT_DESC DO BEGIN
+      ONEMOMENT(CONCAT('Creating Page ',PAGES));
+      FOR I := 0 TO WINDOWSIZE DO AWINDOW[I] := EMPTY;
+      J := (PAGE-1) * BLKSPERPAGE;
+      FOR I := 0 TO BLKSPERPAGE-1 DO
+        IF BLOCKWRITE(FORM_DAT_FILE,AWINDOW,1,I+J) <> 1 THEN
+          BEGIN  ERR := 1;  EXIT(SET_PAGE)  END
+    END
+END;     (* of set_page *)
+
+PROCEDURE WRITEAREC{ VAR OUTFILE: TXTFILE; NUM: INTEGER; VAR AREC: CTLRECORD };
+VAR
+     I: INTEGER;
+     CH: CHAR;
+
+BEGIN
+  WITH AREC DO BEGIN
+    WRITE(OUTFILE,NUM:5,'  ',CTL_DESC,'      ');
+    FOR I := 1 TO L_CDESC-LENGTH(CTL_DESC) DO WRITE(OUTFILE,' ');
+    CASE CTL_TYPE OF
+      DATA:       CH := 'D';
+      INITIALC:   CH := 'I';
+      HEADING:    CH := 'H';
+      FINALC:     CH := 'F'
+    END;
+    WRITE(OUTFILE,CH,'     ');
+    IF CTL_CROSS THEN CH := 'Y' ELSE CH := 'N';
+    WRITE(OUTFILE,CH,'  ',CTL_FORMAT,'  ');
+    FOR I := 1 TO L_CFORMAT-LENGTH(CTL_FORMAT) DO WRITE(OUTFILE,' ');
+    WRITELN(OUTFILE,CTL_CALC);
+  END;
+END;   (* of writearec *)
+

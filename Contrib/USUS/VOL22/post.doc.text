@@ -1,0 +1,182 @@
+                             POST_ENTRY_OF_FUNCTION
+                      
+Reviewed by:  Henry E. Baumgarten
+              Department of Chemistry
+              University of Nebraska-Lincoln
+              Lincoln, Nebraska 68588-0304
+
+     The unit POST_ENTRY_OF_FUNCTION was written by Edward J. Grundler,
+apparently in 1978 or early 1979 (the original text file is dated 11 Feb 1979).
+The purpose of this unit is to make possible the entry of functions of one to
+three variables in algebraic form from the console or other input device. The
+function may then be used as the basis for plotting the function on a graphics
+terminal or hard-copy plotter, or for calculations of various sorts.  Several
+programs using this unit have been submitted to the USUS library by Edward J.
+Grundler, Dennis E. Grundler, and Ken Gaal.
+
+     The unit is fairly well documented internally; however, use of the unit may
+be facilitated by a brief analysis of its operation.  After a function F(x,y,z)
+is entered as a string, ENTERED_FUNCTION, at the terminal, the string is scanned
+(1) to remove blanks, (2) to convert lower char to upper case, (3) to make
+certain that parentheses are balanced, (4) to replace the identifiers for all of
+its standard functions and its extra functions (those provided by the unit but
+not in UCSD Pascal) by a single char code (e.g., COS is replaced by C and ASIN
+by H), and (5) to check for invalid chars left after steps (1) through (4). In
+the present version an additional step has been added because of problems
+encountered during review. The string is scanned to make certain that the
+arguments of all functions are enclosed in parentheses. In the original version
+this was not required (i.e., sinx and sin(x) were equivalent).  Although this
+has obvious advantages, it can cause problems when valid functions NOT present
+in this unit are entered. Thus, once again, the lamb of convenience had to be
+sacrified on the altar of reliability.
+
+     If no errors are encountered, the function string is transformed from
+algebraic (infix) to postfix (RPN) form by a sequence of operations resembling
+that used as a part of some compilers. From this process the function emerges as
+a string, FUNC, in postfix form together with a constant array V, in which all
+of the real constants of the function are stored in proper order (all numerical
+quantities are treated as real numbers). When the unit is called upon to
+evaluate the function by the call, some VAR := F(x,y,z), evaluation proceeds in
+typical RPN fashion using a STACK. If errors are noted, an error flag, ERROR, is
+set TRUE, and the variable, ERROR_CODE, is assigned an appropriate error number.
+In such instances the function becomes undefined (something that can cause
+problems if not properly prepared for).
+
+     Consider, for example, a limacon of Pascal, F(x) = 4*COS(X) + 3, where x is
+really theta (the counter-clockwise angle from the x-axis) and F(x) is r (the
+radial distance from the origin).  To enter this function, 4*COS(X) + 3 is typed
+at the terminal (with or without the blanks or spaces). After the initial scan
+the function string is reduced to the form, 4*C(X)+3. Then this string is
+rearranged to the postfix form needed in FUNC, VXC*V+, where V is the code for a
+"value" (or real constant).  The actual values, 4 and 3, are stored as the first
+and second elements, respectively, of the real array, V. At this point the
+function is ready to accept input values of x (theta).  Assume that we wish to
+evaluate the function at x = 0.  By whatever Pascal procedure we may devise we
+enter some VAR = F(0,0,0).  Note that x = 0, and we set the other values (y and
+z) also to zero because they are not being used by this particular function. The
+evaluation of the function proceeds by calling each operator in turn from the
+function string, performing its operation on the stack, and appropriately
+incrementing or decrementing the stack pointer. For the example function these
+operations and the contents of the stack can by decribed as in the following
+chart.
+
+     Operator        Top_of_stack     Top_of_stack_minus_one
+        V              4.00000
+        X              0.00000             4.00000
+        C              1.00000             4.00000
+        *              4.00000
+        V              3.00000             4.00000
+        +              7.00000
+
+     At the end, the value of F(x) = 7 (from the top of the stack) is assigned
+to VAR.  The operations used were (in order):  V, push V[1] on stack; X, push
+X = 0 on stack; C, replace tos with COS(tos); *, replace tos with tos*tos-1,
+V, push V[2] on stack; +, replace tos with tos+tos-1.
+
+     The unit provides three procedures or functions, GET_FUNCTION, REPLACE_
+FUNCTION, and F(X,Y,Z : REAL) : REAL. GET_FUNCTION is intended for use in
+obtaining the input function string from the console.  It contains a terminal-
+dependent code line, WRITE(CHR(31)). For the Terak terminal emulator used by
+the Grundlers, this code causes a reverse line feed, something apparently
+required by many of the Grundler graphics programs for the Terak computer.
+In some applications this line could cause problems---particularly for
+non-Terak computers. If POST_ENTRY is not being used with the Grundler programs,
+it is recommended that this line be removed and the whole section of code in
+which it is found be revised. For the Grundler-Gaal programs the line should
+be edited to fit the terminal emulator (or terminal) being used.
+
+     REPLACE_FUNCTION may be used to reenter a function (saved in some fashion)
+after using POST_ENTRY to enter a second function (or a value).  However, it can
+be used in place of GET_FUNCTION if properly coded. If so, note that the
+reverse line feed still takes place, AND, if a zero-length string or a string of
+blanks is entered via REPLACE_FUNCTION, the program will probably go into an
+indefinite loop, waiting for corrective action that cannot be taken: one more
+reason to get rid of that reverse line feed. Two typical uses of REPLACE_
+FUNCTION might be:
+
+  (1)    SAVECURSOR(XCUR,YCUR);  (routine that saves cursor coordinates)
+         REPEAT
+           READLN(STRG);
+           FOR I := LENGTH(STRG) DOWNTO 1 DO IF STRG[I] = ' ' THEN
+             DELETE(STRG,I,1);
+           IF (LENGTH(STRG)=0) THEN GOTOXY(XCUR,YCUR);
+         UNTIL ((LENGTH(STRG)>0);
+         ENTERED_FUNCTION := STRG;
+         REPLACE_FUNCTION;
+
+  (2)    SAVED_FUNCTION := ENTERED_FUNCTION; (saves original function)
+         GET_FUNCTION;  (enter number string, VALUE_STRG, from terminal)
+         INPUT_VALUE := F(0,0,0);  ("computes" the real number)
+         ENTERED_FUNCTION := SAVED_FUNCTION;
+         REPLACE_FUNCTION;
+
+     Note that in example (1) the possibility of a indefinite loop is
+circumvented.  In (2) the routines are used to enter a real number from
+the terminal (hopefully protecting the user from some of the vagaries of the
+usual system input idiosyncracies).
+
+     Some of the original forgiveness in this unit has been left in.  Thus,
+some missing '*' will be inserted.  For example: X9 -- > X*9; XX -- > X*X;
+COS(X)X -- > COS(X)*X.
+
+     Restrictions imposed by POST_ENTRY include:
+      (1) Input function string is limited to 80 char (on one line from
+            console).
+      (2) Scientific format for real constants is not implemented.
+      (3) The negative unary operator is processed by GET_UNARY, converting
+             function codes to lower case,
+                COS(X) --> C(X)          (chr(67))
+               -COS(X) --> c(X)          (chr(67+32))
+              --COS(X) --> chr(121)(X)   (chr(67+32+32))
+             so don't enter a string of minus signs.
+
+     The only change of any consequence made by the reviewer was the
+following. The original would not enforce encapsulation of function
+arguments in parentheses.  The following pairs were equivalent: sinx + sin(x);
+sinxx + sin(x)*x; sinxcosx + sin(x)*cos(x).  However, the original also accepted
+cosh(x) (hyperbolic cosine, not provided in the unit), converted it to CH(X),
+and discarded the C (in the GET_UNARY routine), leaving FUNC = XH (i.e., the
+arcsin(x), an initially baffling surprise to the reviewers.  In this version
+PROCEDURE VERIFY insists that parentheses surround arguments of functions.
+
+     In an attempt to retain the original procedure's relaxed attitude toward
+parentheses, a number of expedients were examined without much success. However,
+in the process POST_ENTRY was rather thoroughly reorganized and rewritten by the
+reviewer. Several new functions and debugging facilities were added.  The
+resulting unit was entitled, POST_FIX.  For many users POST_ENTRY is entirely
+adequate; for a few the additional capabilities of POST_FIX may be helpful. The
+principal changes or enhancements found in POST_FIX are as follows:
+
+     (1) Standard and extra functions are mapped to the user-defined char set
+(chr(128)-chr(255)) creating space for a total of 50 functions and 13 constants
+compared with 26 total constants, functions, and unary operators in POST_ENTRY.
+
+     (2) The functions COSH, SINH, TANH, ERF, ERFC, MOD, LNFACT(orial) plus
+the operator ! (for factorial) have been added.  ARCCOS, ARCSIN, and ARCTAN are
+accepted as well as ACOS, ASIN, and ATAN. (For electrochemists and others doing
+electrochemical research, the implementation of EXP(SQR(Z))*ERFC(Z) as a single
+function for a very wide range of Z values is very simple.)
+
+     (3) Input of real constants in scientific format is permitted.  Present
+real constant limits are 1.0E-37 to 1.0E37, with constants smaller than
+1.0E-37 being converted to zero (a WARNING flag is set and a WARNING message
+is made available when this conversion occurs).
+
+     (4) More extensive checking for errors is carried out.
+
+     (5) Error messages (as well as error code numbers) are available
+using a function ERROR_MESSAGE.
+
+     (6) For debugging purposes (or for pure curiosity) provision is made
+for step-wise evaluation with output of the post-fix function, the
+constant stack (array), and of the evaluation stack at each step of the
+evaluation.
+
+     (7) Multiple unary inputs (----X, -----X, etc.) are handled correctly.
+
+     (8) Functions of greater length can be handled.
+     
+     POST_FIX is already being used in both research and interactive educational
+applications at the University of Nebraska-Lincoln.  The POST_FIX unit will be
+submitted by the reviewer to the USUS library along with examples of its
+applications.

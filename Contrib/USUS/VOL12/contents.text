@@ -1,0 +1,88 @@
+USUS(UK) SOFTWARE LIBRARY VOLUME 2                     23rd March 1982
+
+Material submitted to the USUS(UK) Software Libary by Austin Tate, ERCC
+25-Feb-82
+-----------------------------------------------------------------------
+
+Most of the material on this disk uses UCSD version IV.0 facilities
+such as COMMANDIO, SCREENOPS and segments procedures in Units and won't work 
+under II.0.
+
+The files on this disk are as follows:-
+
+Window Manager
+--------------
+
+WINDOWS.TEXT            The main file for the Window Manager Unit.
+W.IMPLN.TEXT            The implementation part of the Unit.
+W.SEGS.TEXT             The segment procedures for the Unit.
+W.IO.TEXT               The I/O routines in the implementation of the Unit.
+
+WFILER.TEXT             A simple Filer utility using window management.
+                        This can act as a demonstration and source of ideas.
+
+W.DOC.TEXT              A short paper about the window manager and WFiler.
+
+OffLoad Office Workstation
+--------------------------
+
+The individual utilities in OffLoad are not present on the disk as they
+are copyrighted by others.  However, the command interpreter and other
+files may help to construct a suitable system for your own environment.
+Other utilities may be obtained from the USUS Software Library and
+commercial sources.
+
+OFF.START.TEXT          The *SYSTEM.STARTUP program
+OFFLOAD.TEXT            The command interpreter --> *OFFLOAD.CODE
+OFF.INFO.TEXT           The information file for the workstation
+
+MAKE.PAGE.TEXT          A trivial program to create NEW.PAGE.TEXt
+                        containing a form feed character only.  The
+                        NEW.TEXT and NEW.PAGE.TEXT files have then had
+                        the following S(et E(nvironment options set.
+                        F(illing False, A(uto indent False, R(ight margin
+                        70, C(ommand Character is ".", T(oken searches is
+                        False.
+
+NEW.TEXT                A sample file to set up the editor "environment"
+                        for an empty file with reasonable margins, etc.
+NEW.PAGE.TEXT           A sample file to set up the editor "environment"
+                        for a file with reasonable margins, etc. and a single
+                        newpage (formfeed) character.
+EDIT.E.G.TEXT           A sample editor file for practicing editing.
+
+HELP.DISK.TEXT          Help texts used by the OffLoad startup program and
+HELP.KEYS.TEXT          OffLoad Command Interpreter.
+HELP.OFF.TEXT
+HELP.UTIL.TEXT
+
+OFF.READ.TEXT           A Read Me file about the creation of an OffLoad system.
+OFF.DOC.TEXT            A summary of the way the OffLoad system is configured
+                        at ERCC, the Utilities used, etc.
+                        
+______________________________________________________________________________
+
+
+
+The following material was submitted by Chris Lee, INMOS  10-Feb-82:
+
+
+CPROC.TEXT               A 'toy' command interpreter which may be used as
+                         an example of how to use COMMANDIO facilities in
+                         UCSD version IV.
+VOLS.SMAC                A sample 'Monitor' file which can be used to
+                         put a VOLS command into CPROC.
+
+BENCH.BYTE.TEXT          Byte Benchmarks.
+BENCH.PCW.TEXT           Personal Computer World Benchmarks.
+BENCH.USUS.TEXT          Jon Bondy's USUS News Benchmarks.
+BENCH.SWAP.TEXT          process swapping benchmark for version IV.
+
+PRINT.MEM.TEXT           simple program to print memavail for USUS bench.
+PRINT.HEAP.TEXT          program to print free space on heap.  Could be
+                         used as a base for an algorithm to optimise
+                         the use of heap space in a program.
+
+CONTENTS.TEXT            This list.
+
+

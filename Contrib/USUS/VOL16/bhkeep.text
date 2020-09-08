@@ -1,0 +1,86 @@
+ (*------------------------------------------------------------------*)
+ FUNCTION broot(*VAR f:btree):btpointer*);
+ (*      Returns page number of root of btree f*)
+ 
+ BEGIN
+         bread(f,0);
+         broot:=f^.desc.root;
+ END; (* FUNCTION broot *)
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION getpage(VAR f:btree): btpointer;
+ (*      Get new page from free list or from end of
+         file *)
+ 
+ VAR
+         i, j, k : btpointer;
+ 
+ BEGIN
+         bread(f, 0);            (* read descriptor *)
+         i := f^.desc.freehead;
+         IF i <> 0 THEN BEGIN
+                 bread(f, i);
+                 j := f^.nextfree;
+                 bread(f, 0);
+                 f^.desc.freehead := j;
+                 bwrite(f, 0);
+         END (*THEN*)
+         ELSE BEGIN
+                 i := f^.desc.nrec + 1;
+                 IF i > f^.desc.maxrec THEN  errtrap(' File overflow');
+                 f^.desc.nrec := i;
+                 bwrite (f, 0);
+         END;
+         bread(f, i);
+         getpage := i;
+ END; (* FUNCTION getpage *)
+ (*------------------------------------------------------------------*)
+ 
+ PROCEDURE freepage (VAR f : btree; pgnbr : btpointer);
+ 
+ (* Opposite of getpage. Returns page indicated by pgnbr to the
+    head of the free list*)
+ 
+ VAR temp : btpointer;
+ 
+ BEGIN
+ 
+ bread(f, 0);
+ temp := f^.desc.freehead;
+ 
+ f^.desc.freehead := pgnbr;
+ bwrite (f, 0);
+ 
+ f^.use := 0;
+ f^.nextfree := temp;
+ bwrite(f, pgnbr);
+ 
+ END;  (*PROCEDURE freepage*)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE newroot(VAR f:btree; VAR entry: btentry; p0, p1: btpointer);
+ (*      Create a new root consisting of just one entry
+         and two pointers *)
+ 
+ VAR
+         r: btpointer;
+ 
+ BEGIN
+         r := getpage(f);        (* get new page *)
+         f^.use := 2;            (* btree page *)
+         f^.pg.count := 1;
+         f^.pg.bentry[1] := entry;
+         f^.pg.bpointer[0] := p0;
+         f^.pg.bpointer[1] := p1;
+         f^.pg.prntpage := 0;
+         bwrite(f, r);
+ 
+         bread (f, 0);   (*Update desc. to point to new root*)
+         f^.desc.root := r;
+         bwrite (f,0);
+ 
+ END;  (*PROCEDURE newroot*)
+ 
+ 
+
+

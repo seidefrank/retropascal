@@ -1,0 +1,60 @@
+ 
+ ;  FUNCTION  DISKREAD(TRACK,SECTOR,DISKNO)
+ ;
+ ;  THIS ROUTINE CALLS THE BIOS ROUTINES TO READ THE SPECIFIED SECTOR
+ ;  FROM THE SPECIFIED DISK. THE 128 BYTES READ ARE RETURNED TO A
+ ;  PUBLIC ARRAY NAMED IOBUFFER. THIS DISK PRIMITIVE IS PRIMARILY
+ ;  INTENDED TO ALLOW PASCAL PROGRAMS TO ACCESS CP/M FILES.
+ ;  THE DISK NUMBER MAY BE SPECIFIED EITHER AS 0 OR 1 AS IN THE BIOS
+ ;  OR AS 4 OR 5 AS USED BY PASCAL. THE FUNCTION RETURNS A BOOLEAN
+ ;  FUNCTION AS AN ERROR CODE. TRUE IF NO ERROR, FALSE FOR ANY DISK
+ ;  ERROR.
+ ;
+        
+        .FUNC   DISKREAD,3      ;THREE ARGUMENT
+        .PRIVATE RETADDR,DISKNO,SECTOR,TRACK
+        .PUBLIC  IOBUFFER
+        POP     HL              ;RETURN ADDR
+        LD      (RETADDR),HL    ;SAVE RETURN
+        POP     HL
+        POP     HL              ;TWO ZEROS
+        POP     HL              ;DISK NUMBER
+        LD      (DISKNO),HL     ;SAVE IT
+        LD      A,L             ;DISK NO
+        AND     1               ;EXTRACT LEAST SIGNIFICANT BIT
+        LD      C,A             ;MOVE IT TO C
+        LD      L,1BH           ;SELECT DISK
+        CALL    BIOS
+        POP     HL              ;SECTOR
+        LD      (SECTOR),HL     ;SAVE IT
+        LD      A,L             ;SECTOR NO
+        CP      28              ;CHECK SIZE
+        JP      P,ERROR         ;EXIT ON ERROR
+        LD      C,A             ;MOVE TO C
+        LD      L,21H           ;SET SECTOR ENTRY
+        CALL    BIOS            ;SET SECTOR
+        POP     HL              ;TRACK NO
+        LD      (TRACK),HL      ;SAVE IT
+        LD      A,L             ;TRACK NO
+        CP      77              ;CHECK LIMIT
+        JP      P,ERROR         ;ERROR IF > 76
+        LD      C,A             ;TO C
+        LD      L,1EH           ;SET TRACK ENTRY
+        CALL    BIOS            ;SELECT TRACK
+        LD      BC,IOBUFFER     ;POINT TO INPUT BUFFER
+        LD      L,24H           ;SET DMA ENTRY
+        CALL    BIOS            ;SET DMA ADDR
+        LD      L,27H           ;DISK READ ENTRY
+        CALL    BIOS
+        OR      A               ;TEST RETURN FLAG
+        JP      NZ,ERROR        ;ERROR IF NOT ZERO
+EXIT:   LD      HL,(RETADDR)    ;GET BACK RETURN ADDR
+        PUSH    DE              ;RETURN ARGUMENT
+        JP      (HL)            ;EXIT
+ERROR:  LD      DE,0            ;RETURN FALSE
+        JP      EXIT
+BIOS:   LD`     A,(0002H)       ;PAGE NO IN LOCATION 02H
+        LD      H,A
+        JP      (HL)
+        .END
+

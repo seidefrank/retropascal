@@ -1,0 +1,450 @@
+UNIT SCREEN40;{$l printer:}
+
+INTERFACE
+{ Screen handler compilation unit version II.2.B.40 }
+
+
+{ THIS VERSION FOR UCSD PASCAL VERSION IV.0 }
+
+
+const END_SCREEN    = 9999;      { Signals end of a screen file }
+      MAX_FLEN      = 40;        { Maximum length of prompt or data field }
+      LEN_ID        = 8;         { Maximum length of an ID Name }
+      SCREEN_FIELDS = 40;        { Maximum number of screen fields }
+      PROMPT_FIELDS = 40;        { Maximum number of prompt fields }
+ 
+type STRINGFL = STRING[MAX_FLEN];
+     STR_ID = STRING[LEN_ID];
+     FIELD_DEFS = Packed Record
+         S_ID : STR_ID;
+         S_ROW,S_COL,S_LEN,S_MIN: Integer;
+         S_TYP,S_JUS,S_NA : Char;
+         S_SKIP: Boolean;
+         S_DEF,S_FLD: STRINGFL;
+       end;
+     PROMPT_DEFS = Packed Record
+         P_ROW,P_COL : Integer;
+         P_FLD : STRINGFL;
+       end;
+     SCREEN_ARR = Packed Array[1..SCREEN_FIELDS] of FIELD_DEFS;
+     PROMPT_ARR = Packed Array[1..PROMPT_FIELDS] of PROMPT_DEFS;
+     SCREEN_REC = Packed record case TAG: Boolean of
+                     False : (S:FIELD_DEFS);
+                     True  : (P:Packed array[1..2] of PROMPT_DEFS)
+                   end;
+     T_THE_DATE = Packed Record
+       month    : 0..12 ;
+       day      : 0..31 ;
+       year     : 0..99 ;
+       end ;
+
+var 
+  ALARM_BELL   : Char;
+  CURSOR_DOWN  : Char;
+  CURSOR_LEFT  : Char;
+  CURSOR_RIGHT : Char;
+  CURSOR_UP    : Char;
+  DEL_KEY      : Char;
+  ENTER_KEY    : Char;
+  ERASE_FIELD  : Char;
+  ERASE_INPUT  : Char;
+  ESC_KEY      : Char;
+  FORM_FEED    : Char;
+  INS_KEY      : Char;
+  LINE_KEY     : Char;
+  RETURN_KEY   : Char;
+  TAB_LEFT     : Char;
+  TAB_RIGHT    : Char;
+  TAB_SKIP     : Char;
+  ULINE        : Char;
+  
+  FILE_TO_GET  : File of SCREEN_REC;
+  MAX_ROW      : Integer;
+  MAX_COL      : Integer;
+  THE_DATE     : T_THE_DATE ;
+  UNDERLINE    : STRINGFL;
+    
+      
+      
+Function FIND(FIELD_ID: STR_ID;                     { Field ID to find }
+              var FIND_SCREEN: SCREEN_ARR           { Screen array to search }
+              ): Integer;                           { Zero returned if field
+                                                       not found }
+
+Procedure EATSPL(var F_FLD: String);  { String to shorten }
+
+Procedure EATSPR(var F_FLD: String);  { String to shorten }
+
+Procedure FIELD(    F_ROW :Integer;   { Field row }
+                var F_COL :Integer;   { Field column }
+                    F_E_ROW,          { Field error row }
+                    F_E_COL,          { Field error column }
+                    F_LEN,            { Field length }
+                    F_MIN :Integer;   { Minimum field length }
+                var F_EXIT:Char;      { Exit character }
+                    F_JUS,            { Justify, L)eft, R)ight or N)one }
+                    F_AN: Char;       { L)etter, N)umeric, A)lpha, S)pecial }
+                var F_FLD:STRINGFL;   { Input and output string }
+                    F_SKIP:Boolean);  { Exit at end of field flag }
+                
+Procedure GET_FILE(    GET_NAME: String;          { File name to get }
+                   var GET_SCREEN: SCREEN_ARR;    { Screen to load }
+                   var GET_PROMPTS: PROMPT_ARR;   { Prompts to load }
+                   var GET_RESULT: Integer);      { IO return code }
+
+Procedure SAVE_FILE(    SAVE_NAME: String;          { File name to save }
+                    var SAVE_SCREEN: SCREEN_ARR;    { Screen to save }
+                    var SAVE_PROMPTS: PROMPT_ARR;   { Prompts to save }
+                    var SAVE_RESULT: Integer);      { IO return code }
+
+Procedure SCREEN(var RUNING_SCREEN: SCREEN_ARR;{ Screen to run }
+                     WRAP: Boolean;            { Wrapping option On or Off }
+                     START_FIELD,              { Field to position cursor }
+                     ROW_OFFSET,               { Row offset }
+                     COL_OFFSET,               { Column offset }
+                     START_ROW,                { Starting data field row }
+                     END_ROW,                  { Ending data field row }
+                     ERROR_ROW,                { Error row }
+                     ERROR_COL: Integer;       { Error column }
+                 var F_EXIT: Char);            { Key pressed to exit }
+
+Procedure DISPLAY_SCREEN(var SHOW_SCREEN: SCREEN_ARR;  { Screen to display }
+                         ROW_OFFSET,               { Row offset }
+                         COL_OFFSET,               { Column offset }
+                         START_ROW,                { Starting data field row }
+                         END_ROW: Integer);        { Ending data field row }
+
+Procedure DISPLAY_PROMPTS(var P_ARRAY: PROMPT_ARR;     { Prompts to display }
+                          ROW_OFFSET,              { Row offset }
+                          COL_OFFSET,              { Column offset }
+                          START_ROW,               { Starting prompt row }
+                          END_ROW: Integer);       { Ending prompt row }
+
+Procedure ERASE_SCREEN(var E_SCREEN: SCREEN_ARR;    { Screen to erase }
+                           ROW_OFFSET,          { Row offset }
+                           COL_OFFSET,          { Column offset }
+                           START_ROW,           { First data field row to erase}
+                           END_ROW: Integer);   { Last data field row to erase }
+
+Procedure ERASE_PROMPTS(var P_ARRAY: PROMPT_ARR;   { Prompts to erase }
+                            ROW_OFFSET,            { Row offset }
+                            COL_OFFSET,            { Column offset }
+                            START_ROW,             { First prompt row to erase }
+                            END_ROW: Integer);     { Last prompt row to erase }
+
+Procedure CLEAR_HOME ;
+Procedure ERASE_EOL( X:integer ; Y:integer ) ;
+Procedure ERASE_EOS( X:integer ; Y:integer ) ;
+Procedure HOME ;
+
+
+IMPLEMENTATION
+
+USES {$U SCREENOPS.CODE } SCREENOPS ;
+
+var
+  C            : Char ;
+  C_CLEAR_HOME : Char ;
+  C_HOME       : Char ;
+  CH           : Char ;
+  INFO_REC     : sc_info_type ;
+
+{$I SH.SAVE.TEXT}
+
+
+Segment Procedure GET_PHILE(    
+                       GET_NAME: String;          { File name to get }
+                   var GET_SCREEN: SCREEN_ARR;    { Screen to load }
+                   var GET_PROMPTS: PROMPT_ARR;   { Prompts to load }
+                   var GET_RESULT: Integer);      { IO return code }
+
+  var I,NFLDS,NP: Integer;
+
+  begin {GET_PHILE}
+   {$I-}
+    reset(FILE_TO_GET,GET_NAME);
+    GET_RESULT:=IO_RESULT;
+    if GET_RESULT <> 0 then
+      begin {open error}
+       close(FILE_TO_GET);
+       exit(GET_PHILE);
+      end;{open error}
+    seek(FILE_TO_GET,0);  get(FILE_TO_GET);
+    GET_RESULT:=IO_RESULT;
+    NFLDS:=0;  NP:=0;
+    while not eof(FILE_TO_GET) do
+     begin
+      if IO_RESULT<>0 then
+        begin {wierd error}
+          GET_RESULT:=IO_RESULT;
+          close(FILE_TO_GET);
+          exit(GET_PHILE);
+        end; {wierd error}
+      if FILE_TO_GET^.TAG then
+        begin {read prompt data}
+          if NP=PROMPT_FIELDS then
+            begin
+              GET_RESULT:=15;  exit(GET_PHILE);
+            end;
+          NP:=NP+1; GET_PROMPTS[NP]:=FILE_TO_GET^.P[1];
+          EATSPR(GET_PROMPTS[NP].P_FLD);
+          NP:=NP+1; GET_PROMPTS[NP]:=FILE_TO_GET^.P[2];
+          EATSPR(GET_PROMPTS[NP].P_FLD);
+         end {read prompt data}
+       else
+          begin {read field data}
+            if NFLDS=SCREEN_FIELDS then
+               begin
+                 GET_RESULT:=15;  exit(GET_PHILE);
+               end;
+            NFLDS:=NFLDS+1;
+            GET_SCREEN[NFLDS]:=FILE_TO_GET^.S;
+          end; {read field data}
+      get(FILE_TO_GET);
+      GET_RESULT:=IO_RESULT;
+    end; {while}
+    for I:=NFLDS+1 to SCREEN_FIELDS do GET_SCREEN[I].S_ROW:=END_SCREEN;
+    for I:=NP+1 to PROMPT_FIELDS do GET_PROMPTS[I].P_ROW:=END_SCREEN;
+    close(FILE_TO_GET);
+   {$I+}
+  end; {GET_PHILE}
+
+Procedure GET_FILE(*
+                       GET_NAME: String;          { File name to get }
+                   var GET_SCREEN: SCREEN_ARR;    { Screen to load }
+                   var GET_PROMPTS: PROMPT_ARR;   { Prompts to load }
+                   var GET_RESULT: Integer*);     { IO return code }
+BEGIN
+                   
+  GET_PHILE( GET_NAME,    { File name to get }
+             GET_SCREEN,  { Screen to load }
+             GET_PROMPTS, { Prompts to load }
+             GET_RESULT );{ IO return code }
+
+END ; { GET_FILE }
+
+
+Procedure SAVE_FILE(*   SAVE_NAME: String;          { File name to save }
+                    var SAVE_SCREEN: SCREEN_ARR;    { Screen to save }
+                    var SAVE_PROMPTS: PROMPT_ARR;   { Prompts to save }
+                    var SAVE_RESULT: Integer*);     { IO return code }
+begin
+
+  SAVE_PHILE(   SAVE_NAME,      { File name to save }
+                SAVE_SCREEN,    { Screen to save }
+                SAVE_PROMPTS,   { Prompts to save }
+                SAVE_RESULT ) ; { IO return code }
+
+end ;
+
+Function FIND; (* FIELD_ID: STR_ID; var FIND_SCREEN:SCREEN_ARR): Integer *)
+ var FIND_INDEX: Integer;
+ 
+ begin {FIND}
+  FIND_INDEX:=1;  FIND:=0;
+  while FIND_SCREEN[FIND_INDEX].S_ROW<>END_SCREEN do
+   begin {while}
+    if FIELD_ID=FIND_SCREEN[FIND_INDEX].S_ID
+     then
+      begin
+       FIND:=FIND_INDEX; exit(FIND);
+      end;
+    if FIND_INDEX=SCREEN_FIELDS then exit(FIND) else FIND_INDEX:=FIND_INDEX+1;
+   end; {while}
+ end; {FIND}
+
+{$I SH.FIELD.TEXT}
+
+{$I SH.DISPLAY.TEXT} 
+ 
+ Procedure SCREEN; (* var RUNING_SCREEN: SCREEN_ARR;
+                      ROW_OFFSET,COL_OFFSET,START_ROW,END_ROW,
+                      ERROR_COL,ERROR_ROW: Integer;    
+                  var F_EXIT: Integer *)
+  var FLD1,FLD2,RTEMP_COL,RTEMP_ROW,R_T_COL,RUN_INDEX: Integer;
+      FIELD_ERROR,EXIT_RUN: Boolean;
+  
+
+  Procedure COUNT_FIELDS(var COUNT_SCREEN:SCREEN_ARR; 
+                         var TOP_ROW,END_ROW,START_FLD,END_FLD:Integer);
+  
+   begin {COUNT}
+     START_FLD:=1;  
+     while COUNT_SCREEN[START_FLD].S_ROW<TOP_ROW do
+       if (START_FLD=SCREEN_FIELDS)
+       or (COUNT_SCREEN[START_FLD].S_ROW=END_SCREEN)
+        then exit(SCREEN) else START_FLD:=START_FLD+1;
+     END_FLD:=START_FLD;
+     while COUNT_SCREEN[END_FLD].S_ROW<=END_ROW do
+       if (END_FLD=SCREEN_FIELDS)
+           or (COUNT_SCREEN[END_FLD].S_ROW=END_SCREEN)
+         then exit(COUNT_FIELDS) else END_FLD:=END_FLD+1;
+     if END_FLD>1 then END_FLD:=END_FLD-1 else exit(SCREEN);
+   end; {COUNT}
+
+  Procedure CHECK_INPUT(var CHECK_SCREEN:SCREEN_ARR; {Screen being checked }
+                        var CHECK_START,
+                            CHECK_END,
+                            CHECK_E_COL,             {Error message column }
+                            CHECK_E_ROW:Integer;     {Error message row }
+                        var CHECK_ERROR:Boolean;     {Set true if error found }
+                        var CHECK_INDEX:Integer);    {Index of field with error }
+  
+   var NUM_CHAR,CHAR_INDEX: Integer;
+       KEY_IN:Char;
+   
+   begin {CHECK INPUT}
+    CHECK_INDEX:=CHECK_START;
+    CHECK_ERROR:=False;
+    while (not CHECK_ERROR) and (CHECK_INDEX<=CHECK_END) do
+     begin
+      with CHECK_SCREEN[CHECK_INDEX] do
+       begin
+        if S_TYP<>'C' then
+          begin
+            NUM_CHAR:=0;
+            for CHAR_INDEX:=1 to length(S_FLD) do
+              if S_FLD[CHAR_INDEX]=ULINE then S_FLD[CHAR_INDEX]:=' ' 
+                else NUM_CHAR:=NUM_CHAR+1;
+            if (NUM_CHAR<S_MIN) then
+              begin
+               CHECK_ERROR := True;
+               gotoxy(CHECK_E_COL,CHECK_E_ROW);
+               write(ALARM_BELL,'ERROR: Minimum input is ',S_MIN,' Character(s)')
+              end
+             else CHECK_ERROR:=False;
+          end; {if S_LEN}
+       end; {with}
+      CHECK_INDEX:=CHECK_INDEX+1;
+     end; {while}
+    CHECK_INDEX:=CHECK_INDEX-1;
+   end; {CHECK INPUT}
+  
+  Procedure NEXTFIELD(var FIELDNO: Integer;  DIRECTION: Integer);
+   begin {NEXTFIELD}
+    repeat 
+     FIELDNO:=FIELDNO+DIRECTION;
+     if FIELDNO>FLD2 then 
+         begin
+           FIELDNO:=FLD1;
+           if not WRAP then EXIT_RUN:=True;
+         end
+       else if FIELDNO<FLD1 
+             then
+              begin
+                FIELDNO:=FLD2;
+                if not WRAP then EXIT_RUN:=True;
+              end;
+    until RUNING_SCREEN[FIELDNO].S_TYP<>'C';
+   end; {NEXTFIELD}
+   
+  begin {SCREEN}
+   if END_ROW+ROW_OFFSET>MAX_ROW then END_ROW:=MAX_ROW-ROW_OFFSET;
+   if START_ROW+ROW_OFFSET<0 then START_ROW:=-ROW_OFFSET;
+   COUNT_FIELDS(RUNING_SCREEN,START_ROW,END_ROW,FLD1,FLD2);
+   if FLD1>START_FIELD then START_FIELD:=FLD1;
+   RUN_INDEX:=START_FIELD;
+   FIELD_ERROR:=False;
+   repeat
+    EXIT_RUN:=False;
+    repeat
+     with RUNING_SCREEN[RUN_INDEX] do
+      begin
+       R_T_COL:=S_COL+COL_OFFSET;
+       if S_TYP='C' then F_EXIT:=TAB_SKIP
+        else 
+         begin
+           EATSPR(S_FLD);  
+           if (S_FLD='') and (S_DEF>'') and (S_TYP<>'C')
+             then if (S_DEF[1]='[') and (length(S_DEF)<=LEN_ID+2)
+               then S_FLD:=RUNING_SCREEN[FIND(copy(S_DEF,2,length(S_DEF)-2),RUNING_SCREEN)].S_FLD
+                else S_FLD:=S_DEF;
+           FIELD(S_ROW+ROW_OFFSET,R_T_COL,ERROR_ROW,ERROR_COL,S_LEN,S_MIN,
+                 F_EXIT,S_JUS,S_NA,S_FLD,S_SKIP);
+         end; {else}
+      end; {with}
+     if FIELD_ERROR=True
+       then 
+         ERASE_EOL(ERROR_COL,ERROR_ROW);
+     {case F_EXIT of }
+     if F_EXIT in[TAB_SKIP,CURSOR_RIGHT,TAB_RIGHT] then NEXTFIELD(RUN_INDEX,1)
+      else if F_EXIT in[TAB_LEFT,CURSOR_LEFT] then NEXTFIELD(RUN_INDEX,-1)
+      else if F_EXIT=CURSOR_DOWN then
+         begin
+          with RUNING_SCREEN[RUN_INDEX] do
+           begin
+            RTEMP_ROW:=S_ROW;
+            RTEMP_COL:=S_COL;
+           end;
+          repeat
+           NEXTFIELD(RUN_INDEX,1);
+           if RUN_INDEX=FLD1 then RTEMP_ROW:=-1;
+          until (RUNING_SCREEN[RUN_INDEX].S_ROW>RTEMP_ROW)
+                           and
+                 (RUNING_SCREEN[RUN_INDEX].S_COL>=RTEMP_COL);
+         end
+      else if F_EXIT=CURSOR_UP then
+          begin
+           with RUNING_SCREEN[RUN_INDEX] do
+            begin
+             RTEMP_ROW:=S_ROW;
+             RTEMP_COL:=S_COL;
+            end;
+           repeat
+            NEXTFIELD(RUN_INDEX,-1);
+            if RUN_INDEX=FLD2 then RTEMP_ROW:=MAX_ROW+1;
+           until (RUNING_SCREEN[RUN_INDEX].S_ROW<RTEMP_ROW)
+                           and
+                 (RUNING_SCREEN[RUN_INDEX].S_COL<=RTEMP_COL);
+          end
+       else if F_EXIT=RETURN_KEY then 
+          begin
+           RTEMP_ROW:=RUNING_SCREEN[RUN_INDEX].S_ROW;
+           repeat
+            NEXTFIELD(RUN_INDEX,1);
+            if RUN_INDEX=FLD1 then RTEMP_ROW:=0;
+           until (RUNING_SCREEN[RUN_INDEX].S_ROW>RTEMP_ROW);
+          end
+       else if F_EXIT=ERASE_INPUT then 
+          begin
+           for RUN_INDEX:=FLD1 to FLD2 do
+            with RUNING_SCREEN[RUN_INDEX] do if S_TYP<>'C' then S_FLD:='';
+           DISPLAY_SCREEN(RUNING_SCREEN,ROW_OFFSET,COL_OFFSET,START_ROW,END_ROW);
+           RUN_INDEX:=START_FIELD;
+          end
+       else if F_EXIT=C_HOME then RUN_INDEX:=FLD1
+       else if F_EXIT=ENTER_KEY then EXIT_RUN:=True
+       else if F_EXIT=ESC_KEY   then exit(SCREEN)
+       else write(ALARM_BELL);
+    until EXIT_RUN=True;
+    CHECK_INPUT(RUNING_SCREEN,FLD1,FLD2,ERROR_COL,ERROR_ROW,FIELD_ERROR,RUN_INDEX);
+   until FIELD_ERROR=False;
+  end; {SCREEN}
+
+Procedure CLEAR_HOME ;
+begin
+  sc_home ;
+  sc_clr_screen ;
+end ;
+
+Procedure ERASE_EOL{ X:integer ; Y:integer } ;
+begin
+  sc_erase_to_eol( x, y ) ;
+end ;
+
+Procedure ERASE_EOS{ X:integer ; Y:integer } ;
+begin
+  sc_eras_eos( x, y ) ;
+end ;
+
+Procedure HOME ;
+begin
+  sc_home ;
+end ;
+
+
+{$I SH.INIT.TEXT}
+
+end. {UNIT}
+
+

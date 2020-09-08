@@ -1,0 +1,19 @@
+        .FUNC   CTS,0
+        .PRIVATE RETADDR
+STAT    .EQU    0C2H
+CARDET  .EQU    4H
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;CORRECT STACK
+        POP     HL
+        LD      HL,1            ;TRUE
+        IN      A,(STAT)        ;READ STATUS
+        CPL
+        AND     CARDET          ;CHECK FOR CARRIER
+        JP      NZ,DONE          
+        LD      HL,0            ;FALSE
+DONE    PUSH    HL
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

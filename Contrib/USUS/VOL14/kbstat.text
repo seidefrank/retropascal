@@ -1,0 +1,17 @@
+        .FUNC   KBSTAT,0        ; H-89 dependant keyboard status routine
+        .PRIVATE RETADDR        ; reserve space for return address
+RECRDY  .EQU    1               ; set up ready bit mask
+        POP     HL              ; pop return address
+        LD      (RETADDR),HL    ; and save it
+        POP     HL              ; pop two words of trash off stack
+        POP     HL              ;  second word
+        LD      HL,1            ; set condition to ready (true) 
+        IN      A,(237)         ; read keyboard line status register (355 octal)
+        AND     RECRDY          ; and compare with bit mask (looking for bit 0)
+        JP      NZ,DONE         ; branch if ready
+        LD      HL,0            ; set condition to false if not ready
+DONE    PUSH    HL              ; push condition on stack
+        LD      HL,(RETADDR)    ; retrieve return address
+        JP      (HL)            ; jump to return address
+        .END
+

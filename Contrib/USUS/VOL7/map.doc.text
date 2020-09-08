@@ -1,0 +1,105 @@
+          DOCUMENTATION FOR MAP - from the Pascal User Group News #17
+          
+     MAP provides four basic functions to Pascal: constant expression evalu-
+ation, source file inclusion, parameterized macro substitution, and condition-
+al compilation.  This section discusses each of these facilities.
+
+     MAP evaluates constant expressions (expressions where operands are 
+constants or previously defined symbolic constants) on the right-hand side of 
+CONST declarations.  Expressions may contain the following operators (listed 
+in descending precedence):
+
+     function:          name (arguments)
+     negating:          NOT -
+     multiplying:       AND * / DIV MOD MIN MAX
+     adding:            OR +
+     relating:          < <= = <> >= >
+     concatenating:     (one or more blanks)
+
+     All standard operators have the same meaning as in Pascal, and strong 
+typing is observed.  The operators MIN and MAX require operators of type 
+INTEGER or REAL and return the smaller and larger of their operands,
+respectively.  Concatenation requires operands of type PACKED ARRAY OF CHAR, 
+and returns a PACKED ARRAY OF CHAR which is their concatenation (the type CHAR 
+is assumed to be a packed array of one character for concatenation).
+
+     MAP recognizes the standard Pascal functions ABS, SQR, CHR, ORD, ROUND, 
+TRUNC, as well as two nonstandard functions, LENGTH and STRINGOF.  LENGTH 
+requires an argument of type PACKED ARRAY OF CHAR or CHAR, and returns the 
+number of characters in it.  STRINGOF requires an integer argument, and 
+returns a PACKED ARRAY OF CHAR consisting of its decimal representation.
+
+     Operands in CONST expressions may be constants or previously defined 
+CONST names.  Of course, Pascal scope rules apply to defined names.  MAP also 
+provides several predefined symbolic constants which may be used in CONST 
+expressions.  Two especially useful predefined names, TIME and DATE, give the 
+time and date on which the compilation was performed.  These predefined 
+constants help when writing production programs that must be time and date 
+stamped.  For example, in a production program a heading is usually printed 
+whenever the program runs:
+
+     'PROGRAM XYZ COMPILED ON mm/dd/yy AT hh:mm:ss'
+
+     Such a heading may provide the only link between an object version of a 
+program and its source.  Unfortunately, a programmer may fail to update the 
+heading when making changes to the program.  Using the predefined constants in 
+MAP to create the heading relieves the programmer of the updating task and 
+guarantees the heading will always be accurate:
+
+     CONST
+        READING = 'PROGRAM XYZ COMPILED ON' DATE 'AT' TIME;
+
+     In addition to constant expression evaluation, MAP supplies a macro 
+substitution facility.  A macro, which may have zero or more formal 
+parameters, may be defined anywhere in the source program using the syntax:
+
+     $DEFINE(name(formals),value)
+
+where 'name' is a valid Pascal identifier, 'formals' is a list of identifiers 
+separated by commas, and 'value' is a sequence of Pascal tokens which is well 
+balanced with respect to parentheses.  Once a macro has been defined, it can 
+be called by coding:
+
+     $name(actuals)
+
+where 'name' is the name of the macro, and 'actuals' is a list of actual 
+parameters separated by commas.  Each actual parameter must be a sequence of 
+Pascal tokens which is well balanced with respect to parentheses.
+
+     In addition to the user-defined macros, MAP recognizes several system 
+macros.  Definition of a new macro, as shown above, requires the use of one 
+such system macro, DEFINE.  Another system macro, INCLUDE, provides for source 
+file inclusion.  When MAP encounters a call:
+
+     $INCLUDE(file name)
+
+it opens the named file, and continues processing, reading input from the new 
+file.  Upon encountering an end-of-file condition, MAP closes the included 
+file, and resumes processing the original file.  Includes may be nested, but 
+they may not be recursive (even though there is a way to prevent infinite 
+recursion).
+
+     One may think of 'include' as a macro whose body is an entire file.  This 
+view, however, does not reflect the fact that the user also expects included 
+text to be listed like standard input rather than like the body of a macro.  
+While macro expansions are not usually displayed in the source listing, 
+included files are.  Therefore, INCLUDE has a special status among macros.
+
+     One other system macro, CODEIF, is provided to support the conditional 
+compilation of code.  The syntax of CODEIF is:
+
+     $CODEIF(constant Boolean expression,code)
+
+where the 'constant Boolean expression' follows the rules for CONST
+expressions outlined previously, and 'code' represents a sequence of Pascal 
+tokens which is well balanced with respect to parentheses.  If the Boolean 
+expression evaluates to 'true', the code is compiled; if the expression 
+evaluates to 'false', the code is skipped.
+
+
+                                   REFERENCE
+
+D. Comer, 'A Pascal Macro Preprocessor for Large Program Development', 
+Software Practice and Experience, Vol. 9, 203-209, 1979.
+
+

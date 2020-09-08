@@ -1,0 +1,6097 @@
+	.PROC	INTERP
+	; Includes for the Z80/8080 Interpreter
+	.INCLUDE	Z8080:INTERP.TEXT
+;********************************************************;
+;*							*;
+;*	UCSD Pascal Interpreter for			*;
+;*	  Zilog Z-80/Intel 8080A			*;
+;*							*;
+;*	Written by Peter A. Lawrence			*;
+;*	  and Joel J. McCormack				*;
+;*							*;
+;*	Written during	Summer/Fall 1977		*;
+;*	I.4 Released Mar. 1978				*;
+;*	I.5 Released Sep. 1978				*;
+;*							*;
+;*	For  Institute for Information Systems		*;
+;*	     UC San Diego, La Jolla, CA			*;
+;*							*;
+;*	Copyright (c) 1978				*;
+;*	Regents of the University of California		*;
+;*	Permission to copy or distribute this software	*;
+;*	in hard or soft copy granted only by written	*;
+;*	license obtained from the Institute for		*;
+;*	Information Systems.				*;
+;*							*;
+;********************************************************;
+
+;    20-Jul-78	JJM	Div and mod bug fixed
+;    19-Aug-78	JJM	Transcendental functions added
+;    13-Sep-78	JJM	Set comparison bug fixed
+;    13-Sep-78	JJM	String comparison bug fixed
+;    16-Sep-78	JJM	Assembly procedure facilities added
+	
+	.IF    LSTINT
+	.LIST
+	.ELSE
+	.NOLIST
+	.ENDC
+
+;****************** MACRO DEFINITIONS *******************;
+
+	.MACRO	RETURN
+	 JP	BACK
+	.ENDM
+
+	.MACRO	RESTORE
+	 JP	BACK1
+	.ENDM
+
+	.MACRO	TSTA
+	 AND	A
+	.ENDM
+
+	.MACRO	CLRA
+	 XOR	A
+	.ENDM
+
+	.MACRO	CLRCF
+	 AND	A
+	.ENDM
+
+	.IF Z80
+
+	 .MACRO NEGA
+	  NEG
+	 .ENDM
+
+	 .MACRO SAVIPC
+	  LD	(IPCSAV),BC
+	 .ENDM
+
+	 .MACRO GETIPC
+	  LD	BC,(IPCSAV)
+	 .ENDM
+
+	 .MACRO DJNZM
+	  DJNZ	%1
+	 .ENDM
+
+	 .MACRO SUBHLDE
+	  AND	A
+	  SBC	HL,DE
+	 .ENDM
+
+	 .MACRO SUBHLBC
+	  AND	A
+	  SBC	HL,BC
+	 .ENDM
+
+	 .MACRO SELREL
+	  SCF
+	  SBC	HL,DE
+	  LD	C,L
+	  LD	B,H
+	 .ENDM
+	.ENDC
+
+	.IF ~Z80
+
+	 .MACRO NEGA
+	  CPL
+	  INC	A
+	 .ENDM
+
+	 .MACRO SAVIPC
+	  LD	L,C
+	  LD	H,B
+	  LD	(IPCSAV),HL
+	 .ENDM
+
+	 .MACRO GETIPC
+	  LD	HL,(IPCSAV)
+	  LD	C,L
+	  LD	B,H
+	 .ENDM
+
+	 .MACRO DJNZM
+	  DEC	B
+	  JP	NZ,%1
+	 .ENDM
+
+	 .MACRO SUBHLDE
+	  LD	A,L
+	  SUB	E
+	  LD	L,A
+	  LD	A,H
+	  SBC	A,D
+	  LD	H,A
+	 .ENDM
+
+	 .MACRO SUBHLBC
+	  LD	A,L
+	  SUB	C
+	  LD	L,A
+	  LD	A,H
+	  SBC	A,B
+	  LD	H,A
+	 .ENDM
+
+	 .MACRO SELREL
+	  SCF
+	  LD	A,L
+	  SBC	A,E
+	  LD	C,A
+	  LD	A,H
+	  SBC	A,D
+	  LD	B,A
+	 .ENDM
+	.ENDC
+
+
+
+
+;******************** TRANSFER TABLE ********************;
+
+	.ORG	ROM
+XFRTBL	.WORD	ABI
+	.WORD	ABR
+	.WORD	ADI
+	.WORD	ADR
+	.WORD	LAND
+	.WORD	DIF
+	.WORD	DVI
+	.WORD	DVR
+	.WORD	CHK
+	.WORD	FLO
+	.WORD	FLT
+	.WORD	INN
+	.WORD	INT
+	.WORD	LOR
+	.WORD	MODI
+	.WORD	MPI
+	.WORD	MPR
+	.WORD	NGI
+	.WORD	NGR
+	.WORD	NOT
+	.WORD	SRS
+	.WORD	SBI
+	.WORD	SBR
+	.WORD	SGS
+	.WORD	SQI
+	.WORD	SQR
+	.WORD	STO
+	.WORD	IXS
+	.WORD	UNI
+	.WORD	S2P
+	.WORD	CSP
+	.WORD	LDCN
+	.WORD	ADJ
+	.WORD	FJP
+	.WORD	INCR
+	.WORD	STIND
+	.WORD	IXA
+	.WORD	LAO
+	.WORD	LCA
+	.WORD	LDO
+	.WORD	MOV
+	.WORD	MVB
+	.WORD	SAS
+	.WORD	SRO
+	.WORD	XJP
+	.WORD	RNP
+	.WORD	CIP
+	.WORD	CEQU
+	.WORD	CGEQ
+	.WORD	CGTR
+	.WORD	LDA
+	.WORD	LDC
+	.WORD	CLEQ
+	.WORD	CLSS
+	.WORD	LOD
+	.WORD	CNEQ
+	.WORD	STR
+	.WORD	UJP
+	.WORD	LDP
+	.WORD	STP
+	.WORD	LDM
+	.WORD	STM
+	.WORD	LDB
+	.WORD	STB
+	.WORD	IXP
+	.WORD	RBP
+	.WORD	CBP
+	.WORD	EQUI
+	.WORD	GEQI
+	.WORD	GTRI
+	.WORD	LLA
+	.WORD	LDCI
+	.WORD	LEQI
+	.WORD	LESI
+	.WORD	LDL
+	.WORD	NEQI
+	.WORD	STL
+	.WORD	CXP
+	.WORD	CLP
+	.WORD	CGP
+	.WORD	S1P
+	.WORD	IXB
+	.WORD	BYT
+	.WORD	EFJ
+	.WORD	NFJ
+	.WORD	BPT
+	.WORD	ABORT
+	.WORD	BACK
+	.WORD	SLDL, SLDL, SLDL, SLDL, SLDL, SLDL, SLDL, SLDL
+	.WORD	SLDL, SLDL, SLDL, SLDL, SLDL, SLDL, SLDL, SLDL
+	.WORD	SLDO, SLDO, SLDO, SLDO, SLDO, SLDO, SLDO, SLDO
+	.WORD	SLDO, SLDO, SLDO, SLDO, SLDO, SLDO, SLDO, SLDO
+	.WORD	SIND0
+	.WORD	SIND, SIND, SIND, SIND, SIND, SIND, SIND
+
+GOLOC	JP	BOOT		; Jump to Pascal-level booter (entry point
+				;   for booters that only read in interp)
+
+	.IF ~NMS
+INTENT	; Entry point for complex booter
+	POP	HL		; Get the address of BIOS jump table
+	LD	(BIOSJP),HL	; Save it for jump address calculations
+	JP	BACK1		; GO FOR IT
+BIOSJP	.WORD	0		; Vector to the BIOS jump table
+	.BLOCK	4H
+	.ENDC
+	
+
+	.IF NMS
+;Stuff for Northwest Micro disk densitys
+	.BLOCK	3		;to align with I.4
+FLGLF	.BYTE	0FFH
+FMTD0	.BYTE	0
+FMTD1	.BYTE	0
+	.BLOCK	7H	       ; for expansion
+	.ENDC
+
+
+; Arithmetic operations jump table
+	JP	MULT	; HL := BC*DE
+	JP	DIVPOS	;
+	JP	DIVD
+	JP	FPFADD
+	JP	FPFSUB
+	JP	FPFMUL
+	JP	FPFDIV
+	JP	FPFFLOAT
+	JP	FPFFIX
+	JP	FPFNEG
+	JP	FPFABS
+	JP	FPFSQR
+	JP	FPFINV
+	JP	FPFRND
+	JP	FPFPOT
+	
+
+
+;********* INTERPRETER CONSTANTS AND VARIBLES **********;
+
+; Constants
+NIL	.EQU	0001H		; value of NIL pointer
+MAXSEG	.EQU	0FH		; max segment #
+MSCWSIZE .EQU	0CH		; size of a mark stack control word
+DISP0	.EQU	0AH		; Offset from MSSTAT of variable with offset
+				; of 0
+
+; Internal P-machine registers, widely used temporaries
+	.ALIGN	2
+NP	.WORD	0		; ^top_of_heap
+MPD0	.WORD	0		; ^local var with offset of zero
+BASED0	.WORD	0		; ^global var with offset of zero
+IPCSAV	.WORD	0		; save IPC on complex ops, and for XEQERR
+FPERROR .WORD	0		; fp error status
+RETADR	.WORD	0  
+NEWSP	.WORD	0  
+LTSTRNG .BYTE	01H		; char to string conversion
+	.BYTE	0  
+
+; Internal segment table, contains refcounts and addr of each seg
+	.ALIGN	2
+INTSEGT .BLOCK	<MAXSEG+1>*4
+
+; General use reusable temporaries
+WORD1	.WORD	0
+WORD2	.WORD	0  
+WORD3	.WORD	0  
+WORD4	.WORD	0  
+BLOCK1	.BLOCK	08H
+BYTE1	.WORD	0  
+
+; Transcendental fp temporaries
+TFPT	.BLOCK	26.
+
+; Procedure temporaries
+TPROC	.BLOCK	20.
+ 
+
+
+;************************ SYSCOM ************************;
+
+	.ALIGN	 2
+SYSCOM	; Interpreter and pascalsystem communication area
+IORSLT	.WORD	0  
+XERRCD	.WORD	0  
+SYSUNT	.WORD	04H
+BUGSTA	.WORD	0  
+GDIRP	.WORD	NIL
+BOMBP	.WORD	0  
+BASE	.WORD	0  
+MP	.WORD	0  
+JTAB	.WORD	0  
+SEGP	.WORD	0  
+MEMTOP	.WORD	MAXADR		; we hope
+BOMIPC	.WORD	0  
+HLTLINE .WORD	0  
+BRKPTS	.BLOCK	2*4
+	.BLOCK	2*10.
+LOTIME	.WORD	0  
+HITIME	.WORD	0  
+MSCNFO	.WORD	0000H		; has xy addressing, has lowercase
+CRTTYP	.WORD	0000H
+CRTCTL	; output to CONSOLE:
+	.BYTE	00H		; escape
+	.BYTE	0DH		; [EM] - home
+	.BYTE	00H		; [VT] - eraseeos
+	.BYTE	00H		; [GS] - eraseeol
+	.BYTE	21H		; [FS] - non-destructive forward space
+	.BYTE	00H		; [US] - reverse line feed
+	.BYTE	08H		; [BS] - backspace
+	.BYTE	05H		; fillcount
+	.BLOCK	04H		; expansion
+CRTNFO	.WORD	18H		; height
+WIDTH	.WORD	50H		; width
+	; input from CONSOLE:
+	.BYTE	1FH		; [US] - up
+	.BYTE	0AH		; [LF] - down
+	.BYTE	08H		; [BS] - left
+	.BYTE	1CH		; [FS] - right
+SYEOF	.BYTE	03H		; ^C
+FLUSH	.BYTE	06H		; ^F
+BREAK	.BYTE	00H
+STOP	.BYTE	13H		; ^S
+	.BYTE	08H		; ^H - chardel
+	.BYTE	3FH		; ? - badch
+	.BYTE	7FH		; [del] - linedel
+	.BYTE	1BH		; [esc] - altmode
+	.BLOCK	06H		; expansion
+SEGTBL	.BLOCK	2*3*<MAXSEG+1>
+
+
+
+ 
+;********************** I - FETCH ***********************;
+     
+BACK1	GETIPC
+	JP	BACK
+
+SLDCI	; Short load constant word
+	RRA
+	LD	L,A
+	LD	H,00H
+	PUSH	HL
+
+BACK	LD	A,(BC)		; get opcode
+	INC	BC		; increment IPC
+	ADD	A,A
+	JP	NC,SLDCI	; if bit 7 zero push constant
+	; else decode op and jump to routine
+	LD	H,ROM/100H
+	LD	L,A		; HL points to routine address in jump table
+	LD	E,(HL)		; get address
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	JP	(HL)		; and go there
+
+
+
+
+;**************** RUN-TIME ERROR SUPPORT ****************;
+  
+XEQERR	; a run-time error has occured. pass some parameters
+	;   through syscom, then do a CXP 0,2 (PROCEDURE execerror)
+	LD	H,00H		; HL = error #
+	LD	(XERRCD),HL
+	LD	HL,-14.		; size of execerror stack frame (MSCW+with temp)
+	ADD	HL,SP
+	LD	(BOMBP),HL	; (BOMBP) := ^exerror MSCW
+	LD	HL,(IPCSAV)
+	LD	(BOMIPC),HL
+	LD	BC,CXP02
+	NOP			; leave here - handy for debugging
+	JP	BACK
+CXP02	.BYTE	77.+128., 0, 2
+
+INVNDX	LD	L,01H		; Invalid index
+	JP	XEQERR
+NOPROC	LD	L,02H		; Non-existent segment
+	JP	XEQERR
+NOEXIT	LD	L,03H		; Exitting procedure never called
+	JP	XEQERR
+STKOVR	LD	HL,INTEND	; stack overflow
+	LD	(NP),HL		; prevent recursive overflow
+	LD	L,04H	
+	JP	XEQERR
+INTOVR	LD	L,05H		; Integer overflow
+	JP	XEQERR
+DIVZER	LD	L,06H		; Divide by zero
+	JP	XEQERR
+BADMEM	LD	L,07H		; Bad memory access (PDP-11 error only)
+	JP	XEQERR
+UBREAK	LD	L,08H		; User break
+	JP	XEQERR
+SYIOER	LD	L,09H		; System IO error
+	JP	XEQERR
+UIOERR	LD	L,0AH		; User IO error
+	JP	XEQERR
+NOTIMP	SAVIPC			; Instruction not implemented
+	LD	L,0BH
+	JP	XEQERR
+FPIERR	LD	L,0CH		; Floating point error
+	JP	XEQERR
+S2LONG	LD	L,0DH		; String too long
+	JP	XEQERR
+HLT	SAVIPC			; Unconditional halt
+	LD	L,0EH
+	JP	XEQERR
+BPTHLT	LD	L,0FH		; Conditional halt or breakpoint
+	JP	XEQERR
+  
+
+BPT	; Conditional halt or breakpoint
+	CALL	GBDE
+	EX	DE,HL		; save line number
+	LD	(HLTLINE),HL
+	EX	DE,HL
+	SAVIPC
+	LD	A,(BUGSTA)
+	CP	3
+	JP	P,BPTHLT
+	; not in stepping mode, so check for breakpoint
+	LD	HL,BRKPTS
+	LD	B,4
+$10	LD	A,E
+	CP	(HL)
+	INC	HL
+	JP	NZ,$20
+	LD	A,D
+	CP	(HL)
+	JP	Z,BPTHLT
+$20	INC	HL
+	DJNZM	$10
+	JP	BACK1
+
+; End-of-File INTERP
+
+
+
+.INCLUDE	Z8080:VARS.TEXT
+		.IF ~LSTVARS
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; start of file VARS
+
+
+;********** LOADING, STORING, INDEXING, AND MOVING **********;
+
+
+;****The rest of the load constant word instructions
+
+LDCI	; Load constant word
+	LD	A,(BC)		; low byte
+	LD	L,A
+	INC	BC
+	LD	A,(BC)		; high byte
+	LD	H,A
+	INC	BC
+	PUSH	HL
+	JP	BACK
+
+LDCN	; Load constant nil pointer
+	LD	HL,NIL
+	PUSH	HL
+	JP	BACK
+
+
+GBDE	; get a big (possibly two byte) constant from code into DE
+	LD	A,(BC)
+	INC	BC
+	LD	E,A		; assume 1-byte...by far the most common case
+	LD	D,00H
+	TSTA
+	RET	P		; if bit 7 is zero, assumtion was correct
+	AND	7FH		; clear bit 7
+	LD	D,A		; this is the high order byte
+	LD	A,(BC)		; get lower
+	INC	BC
+	LD	E,A
+	RET
+
+
+;***** Local vars
+
+SLDL	; Short load local word
+	ADD	A,52H		; get displacement from opcode
+	LD	E,A		; DE := displacement
+	LD	D,00H
+	LD	HL,(MPD0)
+	ADD	HL,DE		; compute address of var
+	LD	E,(HL)		; load the data
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+
+LLA	; Load local address
+	CALL	GBDE
+	LD	HL,(MPD0)
+	ADD	HL,DE
+	ADD	HL,DE
+	PUSH	HL
+	JP	BACK
+  
+LDL	; Load local word
+	CALL	GBDE
+	LD	HL,(MPD0)
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+  
+STL	; Store local word
+	CALL	GBDE
+	LD	HL,(MPD0)
+	ADD	HL,DE
+	ADD	HL,DE
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	JP	BACK
+  
+
+;***** Global vars
+
+SLDO	; Short load global word - just like SLDL
+	ADD	A,32H
+	LD	E,A
+	LD	D,00H
+	LD	HL,(BASED0)
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+
+LAO	; Load global address
+	CALL	GBDE
+	LD	HL,(BASED0)
+	ADD	HL,DE
+	ADD	HL,DE
+	PUSH	HL
+	JP	BACK
+  
+LDO	; Load global word
+	CALL	GBDE
+	LD	HL,(BASED0)
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+   
+SRO	; Store global word
+	CALL	GBDE
+	LD	HL,(BASED0)
+	ADD	HL,DE
+	ADD	HL,DE
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	JP	BACK
+
+   
+;***** Intermediate vars
+
+GETIA	; Get intermediate address into HL. Routine used by LDA, LOD, STR
+	LD	A,(BC)		; # of lex levels to chain (always > 1)
+	INC	BC
+	LD	HL,(MP)
+$10	LD	E,(HL)		; go up static links till reach proper MSCW
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	DEC	A
+	JP	NZ,$10
+	CALL	GBDE		; get displacement...
+	ADD	HL,DE		; ...and calculate address
+	ADD	HL,DE
+	LD	DE,DISP0
+	ADD	HL,DE
+	RET
+
+LDA	; Load intermediate address
+	CALL	GETIA
+	PUSH	HL
+	JP	BACK
+  
+LOD	; Load intermedate word
+	CALL	GETIA
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+
+STR	; Store intermediate word
+	CALL	GETIA
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	JP	BACK
+
+
+;***** Indirect, Records, Arrays, and Indexing
+
+INCR	; Increment (SP) by literal
+	CALL	GBDE
+	POP	HL
+	ADD	HL,DE
+	PUSH	HL
+	JP	BACK
+
+STO	; Store indirect
+	POP	DE		; value
+	POP	HL		; address
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	JP	BACK
+
+SIND0	; Short index and load word, index=0 (load indirect)
+	POP	HL
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+  
+SIND	; Short static index and load word
+	POP	HL		; get array base address
+	ADD	A,10H		; calculate index from opcode
+	LD	E,A
+	LD	D,00H
+	ADD	HL,DE		; calculate address
+	LD	E,(HL)		; and load the value
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE
+	JP	BACK
+
+STIND	; Static index and load word
+	POP	HL		; base address
+	CALL	GBDE		; get index from code
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	E,(HL)		; load the word
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE		; and stick it on the stack
+	JP	BACK
+  
+IXA	; Index array
+	;   Given an array element_size in code stream,
+	;   an index and array base address on stack,
+	;   compute the indexed address and push it.
+	CALL	GBDE		; DE := element_size
+	SAVIPC
+	POP	BC		; BC := index
+	LD	H,B		; Check if element_size = 1
+	LD	L,C
+	LD	A,E
+	DEC	A
+	OR	D
+	CALL	NZ,MULT
+	ADD	HL,HL		; make into word offset
+	POP	BC		; get array base
+	ADD	HL,BC
+	PUSH	HL
+	JP	BACK1
+  
+MOV	; Move words
+	CALL	GBDE		; DE := number of words to move
+	SAVIPC
+
+	.IF Z80
+	 LD	A,E		; BC := number of bytes to move
+	 ADD	A,A
+	 LD	C,A
+	 LD	A,D
+	 ADC	A,D
+	 LD	B,A
+	 POP	HL		; HL := ^source
+	 POP	DE		; DE := ^dest
+	 LDIR			; move the stuff in one swell foop
+	 JP	BACK1
+	.ENDC
+
+	.IF ~Z80
+	 CLRA			; BC := -number of words to move
+	 SUB	E		; (allows counting up to zero)
+	 LD	C,A
+	 LD	A,00H
+	 SBC	A,D
+	 LD	B,A
+	 POP	HL		; HL := ^source
+	 POP	DE		; DE := ^dest
+$10	 LD	A,(HL)		; move a word
+	 INC	HL
+	 LD	(DE),A
+	 INC	DE
+	 LD	A,(HL)
+	 INC	HL
+	 LD	(DE),A
+	 INC	DE
+	 INC	C		; loop control
+	 JP	NZ,$10
+	 INC	B	 JP	NZ,$10
+	 JP	BACK1
+	.ENDC
+  
+
+
+;***** Multiple word vars (sets and reals)
+
+LDC	; Load multiple word constant (constant is backwards in code stream)
+	LD	A,(BC)		; A := number of words long
+	LD	HL,0002H	; put HL on a word boundary
+	ADD	HL,BC
+	LD	B,A		; B := # words to move
+	LD	A,L
+	AND	0FEH
+	LD	L,A
+$10	LD	E,(HL)		; transfer the stuff from code...
+	INC	HL
+	LD	D,(HL)
+	INC	HL
+	PUSH	DE		; ...to stack
+	DJNZM	$10
+	LD	C,L		; fix up IPC
+	LD	B,H
+	JP	BACK
+  
+LDM	; Load multiple words (no more than 255)
+	POP	DE		; DE := ^source
+	LD	A,(BC)		; A := number of words to transfer
+	INC	BC
+	TSTA
+	JP	Z,BACK		; just in case...supposedly unnecessary
+	LD	L,A		; HL := ^word following source
+	LD	H,00H
+	ADD	HL,HL
+	ADD	HL,DE
+$10	DEC	HL		; get words from dest...
+	LD	D,(HL)
+	DEC	HL
+	LD	E,(HL)
+	PUSH	DE		; ...and put them on the stack.
+	DEC	A
+	JP	NZ,$10 
+	JP	BACK
+  
+STM	; Store multiple words
+	LD	A,(BC)		; Number of words to transfer
+	INC	BC
+	TSTA
+	JP	Z,$20		; Again, just in case!
+	LD	L,A		; HL := ^dest  (the pointer is buried under all
+	LD	H,00H		;   the words that need to be transferred)
+	ADD	HL,HL
+	ADD	HL,SP
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+$10	POP	DE		; Transfer stuff from stack...
+	LD	(HL),E		; ...to dest.
+	INC	HL
+	LD	(HL),D
+	INC	HL
+	DEC	A
+	JP	NZ,$10 
+$20	POP	HL		; junk ^dest
+	JP	BACK
+  
+
+
+;***** Character vars, and byte array vars
+
+LDB	; Load byte
+	POP	HL		; HL := ^char
+	LD	E,(HL)
+	LD	D,00H
+	PUSH	DE
+	JP	BACK
+
+STB	; Store byte
+	POP	DE		; E := char
+	POP	HL		; HL := ^dest
+	LD	(HL),E		; store it
+	JP	BACK
+
+MVB	; Move bytes
+	CALL	GBDE		; DE := number of bytes to move
+	SAVIPC
+
+	.IF Z80
+	 LD	C,E
+	 LD	B,D
+	 POP	HL		; HL := ^source
+	 POP	DE		; DE := ^dest
+	 LDIR			; transfer the stuff
+	.ENDC
+
+	.IF ~Z80
+	 CLRA			; BC := -number bytes to move
+	 SUB	E
+	 LD	C,A
+	 LD	A,00H
+	 SBC	A,D
+	 LD	B,A
+	 POP	HL		; ^source
+	 POP	DE		; ^dest
+$10	 LD	A,(HL)		; move the stuff
+	 INC	HL
+	 LD	(DE),A
+	 INC	DE
+	 INC	C		; loop control
+	 JP	NZ,$10 
+	 INC	B
+	 JP	NZ,$10 
+	.ENDC
+	JP	BACK1
+
+IXB	; Index byte array
+	POP	DE		; DE := index
+	POP	HL		; HL := array base address
+	ADD	HL,DE
+	PUSH	HL
+	JP	BACK
+
+  
+;***** String vars
+
+; A String is...
+;   The first byte contains the current number of characters
+;     in the string.  (0..declared_size)
+;   The next bytes are those characters, with garbage fill
+;     out to the declared_size of the string.
+;
+;   Declared_size (<= 255) is in the instruction stream for instructions
+;     that need to know.
+
+LCA	; Load constant string address
+	;   The string is in the code.	Put its address on
+	;   the stack and move the IPC past it
+	PUSH	BC		; Address of string
+	LD	A,(BC)		; Get number of characters in string
+	INC	BC		; Skip over length byte
+	ADD	A,C		; Skip over characters
+	LD	C,A
+	LD	A,00H
+	ADC	A,B
+	LD	B,A
+	JP	BACK
+ 
+IXS	; Index string pointer
+	; Given index, ^string, compute ^string[index]
+	POP	DE		; index
+	POP	HL		; ^string
+	CLRA			; Make sure 1 <= index <= 255
+	OR	D
+	JP	NZ,$99	 
+	OR	E
+	JP	Z,$99	
+	CP	(HL)		; make sure index <= current length
+	JP	C,$20 
+	JP	NZ,$99	 
+$20	ADD	HL,DE		; Perform indexing
+	PUSH	HL
+	JP	BACK
+$99	INC	HL
+	PUSH	HL		; leave ^string[1] on top of stack
+	SAVIPC
+	JP	INVNDX
+  
+SAS	; String assignment
+	;   On stack can be either
+	;   ^src_string, ^dst_string  or
+	;   a character, ^dst_string
+MAXLEN	.EQU	 BYTE1
+	LD	A,(BC)		; Save declared_size of dest
+	LD	(MAXLEN),A
+	INC	BC
+	SAVIPC
+	POP	HL		; get the source
+	LD	A,H		; and see if char or ^string
+	TSTA			; char has zero upper byte
+	JP	NZ,$10 
+	LD	A,L
+	LD	(LTSTRNG+1),A	; turn the char into a string
+	LD	HL,LTSTRNG	; and point HL at it
+$10	LD	C,(HL)		; make sure source is not longer
+$20	LD	A,(MAXLEN)	; than declared_size of dest
+	CP	C
+	JP	C,$99	
+	POP	DE		; DE := ^dst_string
+	.IF Z80
+	 LD	B,00H
+	 INC	BC		; include length byte
+	 LDIR
+	.ENDC
+	.IF ~Z80
+	 INC	C		; include length byte
+$30	 LD	A,(HL)
+	 LD	(DE),A
+	 INC	HL
+	 INC	DE
+	 DEC	C
+	 JP	NZ,$30 
+	.ENDC
+	JP	BACK1
+$99	POP	HL		; junk ^dst
+	JP	S2LONG
+  
+BYT	.EQU	 BACK		; comvert word to byte address
+  
+S1P	; String to packed array on top of stack
+	POP	DE
+	INC	DE		; just point pointer past length byte
+	PUSH	DE
+	JP	BACK
+  
+S2P	; String to packed array of char under tos
+	POP	HL
+	POP	DE
+	INC	DE
+	PUSH	DE
+	PUSH	HL
+	JP	BACK
+
+
+;***** Packed arrays and record
+
+IXP	; Index a packed array
+	;   Given...
+	;     elements_per_words, bits_per_element in code stream,
+	;     index, base address of array on stack
+	; Compute...
+	;     right_bit_number, bits_per_element, ^indexed_word
+ELTLEN	.EQU	 WORD1
+	
+	LD	A,(BC)		; E := elements_per_word
+	LD	E,A
+	INC	BC
+	LD	A,(BC)		; (ELTLEN) := bits_per_element
+	LD	(ELTLEN),A
+	INC	BC
+	SAVIPC
+	POP	HL		; HL := index
+	LD	C,E		; BC := elements_per_word
+	LD	B,00H
+	CALL	DIVPOS		; HL := index in words, DE := remainder
+	EX	DE,HL
+	ADD	HL,HL		; HL := ^indexed word
+	POP	BC
+	ADD	HL,BC
+	PUSH	HL		; push ^indexed word
+$10	LD	A,(ELTLEN)	; HL := bits_per_element
+	LD	L,A
+	LD	H,00H
+	PUSH	HL
+	LD	B,L		; Compute right_bit_number :=
+	CLRA			;   remainder*bits_per_element
+$20	ADD	A,E
+	DJNZM	$20 
+	LD	L,A
+	PUSH	HL		; push right_bit_number
+	JP	BACK1
+  
+LDP	; Load a packed field
+	;   get the field described by
+	;     right_bit_number,
+	;     bits_per_element
+	;     ^word.  all info is on the stack
+  
+	SAVIPC
+	POP	DE		; B := right_bit_number
+	LD	B,E
+	POP	DE		; C := bits_per_element
+	LD	C,E
+	POP	HL		; DE := word field is in
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	; position the field by a bunch of right shifting
+	LD	A,B		; see if shift >= 8 bits
+	SUB	08H
+	JP	C,$10 
+	LD	B,A		; B := future right_bit_number
+	LD	L,D		; swap bytes
+	LD	D,E
+	LD	E,L
+	JP	NZ,$20		; if amount left to shift>0, do it
+	JP	$30 
+$10	ADD	A,08H		; restore amount to shift, and test if zero
+	JP	Z,$30 
+$20	; do the actual shifting
+	.IF Z80
+	 SRL	D
+	 RR	E
+	.ENDC
+	.IF ~Z80
+	 LD	A,D
+	 RRA
+	 LD	D,A
+	 LD	A,E
+	 RRA
+	 LD	E,A
+	.ENDC
+	DJNZM	$20 
+$30	LD	HL,CLRMSK	; clear out all the junk in high order bits
+	ADD	HL,BC
+	ADD	HL,BC		; HL = ^CLRMSK[bits_per_element]
+	LD	A,(HL)
+	AND	E
+	LD	E,A
+	INC	HL
+	LD	A,(HL)
+	AND	D
+	LD	D,A
+	PUSH	DE		; push the cleaned field
+	JP	BACK1
+  
+STP	; Store into a packed field
+	; Given data, right_bit_number, bits_per_element, ^target
+	SAVIPC
+	POP	DE		; DE := data
+	POP	BC		; A := right_bit_number
+	LD	A,C
+	POP	BC		; BC := CLRMSK[bits_per_word]
+	LD	HL,CLRMSK
+	ADD	HL,BC
+	ADD	HL,BC
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	; left shift data and mask
+	SUB	08H		; shift >= 8 bits ?
+	JP	C,$10 
+	LD	L,A		; save future # of bits to shift
+	LD	H,B		; swap bytes of mask
+	LD	B,C
+	LD	C,H
+	LD	H,D		; and of data.
+	LD	D,E
+	LD	E,H
+	JP	NZ,$20		; go on to shifting if necessary
+	JP	$30 
+$10	ADD	A,08H		; right_bit_number < 8, so restore
+	JP	Z,$30		; see if = 0
+	LD	L,A		; and stick into loop control variable
+	CLRCF
+$20	; do the shifting
+	.IF Z80
+	 SLA	E
+	 RL	D
+	 SLA	C
+	 RL	B
+	.ENDC
+	.IF ~Z80
+	 LD	A,E
+	 RLA
+	 LD	E,A
+	 LD	A,D
+	 RLA
+	 LD	D,A
+	 LD	A,C
+	 RLA
+	 LD	C,A
+	 LD	A,B
+	 RLA
+	 LD	B,A
+	.ENDC
+	DEC	L
+	JP	NZ,$20 
+$30	POP	HL		; HL = ^word
+	LD	A,C		; insert low byte
+	CPL
+	AND	(HL)
+	OR	E
+	LD	(HL),A
+	INC	HL		; insert high byte
+	LD	A,B
+	CPL
+	AND	(HL)
+	OR	D
+	LD	(HL),A
+	JP	BACK1
+  
+CLRMSK	.WORD	 0000H
+BITTER	.WORD	 0001H		 ; used by set stuff
+	.WORD	 0003H
+	.WORD	 0007H
+	.WORD	 000FH
+	.WORD	 001FH
+	.WORD	 003FH
+	.WORD	 007FH
+	.WORD	 00FFH
+	.WORD	 01FFH
+	.WORD	 03FFH
+	.WORD	 07FFH
+	.WORD	 0FFFH
+	.WORD	 1FFFH
+	.WORD	 3FFFH
+	.WORD	 7FFFH
+	.WORD	 0FFFFH
+
+; End-of-File VARS
+
+	
+
+.INCLUDE	Z8080:ARITH.TEXT
+		.IF ~LSTARIT
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; start of file ARITH
+
+
+;*************** TOP OF STACK ARITHMETIC ****************;
+
+
+;***** Logical
+
+LAND	; Logical AND
+	POP	DE
+	POP	HL
+	LD	A,E
+	AND	L
+	LD	L,A
+	LD	A,D
+	AND	H
+	LD	H,A
+	PUSH	HL
+	JP	BACK
+
+LOR	; Logical OR
+	POP	HL
+	POP	DE
+	LD	A,L
+	OR	E
+	LD	L,A
+	LD	A,H
+	OR	D
+	LD	H,A
+	PUSH	HL
+	JP	BACK
+
+NOT	; Logical NOT
+	POP	HL
+	LD	A,L
+	CPL
+	LD	L,A
+	LD	A,H
+	CPL
+	LD	H,A
+	PUSH	HL
+	JP	BACK
+
+
+;***** Integer
+
+ABI	; Integer absolute value
+	POP	HL
+	LD	A,H
+	TSTA
+	JP	P,$10 
+	CLRA
+	SUB	L
+	LD	L,A
+	LD	A,00H
+	SBC	A,H
+	AND	7FH		; in case of -32768
+	LD	H,A
+$10	PUSH	HL
+	JP	BACK
+
+ADI	; Add integers
+	POP	DE
+	POP	HL
+	ADD	HL,DE
+	PUSH	HL
+	JP	BACK
+
+DVI	; Divide integers
+	SAVIPC
+	POP	BC		; divisor
+	POP	DE		; dividend
+	CALL	DIVD
+	PUSH	DE		; quotient
+	JP	BACK1
+
+MODI	; Remainder of integer division
+	SAVIPC
+	POP	BC
+	POP	DE
+	CALL	DIVD
+	PUSH	HL
+	JP	BACK1
+
+MPI	; Integer multiply
+	SAVIPC
+	POP	DE
+	POP	BC
+	CALL	MULT
+	PUSH	HL
+	JP	BACK1
+
+SQI	; Square integers
+	SAVIPC
+	POP	DE
+	LD	C,E
+	LD	B,D
+	CALL	MULT
+	PUSH	HL
+	JP	BACK1
+
+NGI	; Negate integer
+	POP	HL
+	CLRA
+	SUB	L
+	LD	L,A
+	LD	A,00H
+	SBC	A,H
+	LD	H,A
+	PUSH	HL
+	JP	BACK
+
+SBI	; Subtract integers
+	POP	DE
+	POP	HL
+	SUBHLDE
+	PUSH	HL
+	JP	BACK
+   
+CHK	; Check number against limits (range-checking)
+	POP	HL		; max
+	POP	DE		; min
+	EX	(SP),HL
+	; HL = num, DE = min, (SP) = max
+	LD	A,D
+	XOR	H
+	JP	M,$10 
+	LD	A,L
+	SUB	E
+	LD	A,H
+	SBC	A,D
+	JP	P,$20 
+	JP	$98   
+$10	AND	D
+	JP	P,$98	
+$20	POP	DE		; max
+	PUSH	HL		; put num back
+	; HL = num, DE = max
+	LD	A,D
+	XOR	H
+	JP	M,$30 
+	LD	A,E		; is max >= num ?
+	SUB	L
+	LD	A,D
+	SBC	A,H
+	JP	P,BACK
+	JP	$99   
+$30	AND	H
+	JP	M,BACK
+	JP	$99   
+$98	EX	(SP),HL		; leave num on stack to help person debug
+$99	SAVIPC
+	JP	INVNDX
+
+;***************TEMPORARY EXPEDIENT
+
+MULT	; Two's complement integer multiply routine
+	; Entry	 BC = multiplicand, DE = multiplier
+	; Exit	 HL = product
+	.IF Z80
+	 LD	HL,0000H
+$10	 SRL	D
+	 JP	NZ,$20
+	 RR	E
+	 JP	Z,$50
+	 JP	$30
+$20	 RR	E
+$30	 JP	NC,$40
+	 ADD	HL,BC
+$40	 SLA	C
+	 RL	B
+	 JP	$10
+$50	 JP	NC,$60
+	 ADD	HL,BC
+$60	 RET
+	.ENDC
+
+	.IF ~Z80
+	 EX	DE,HL		; make HL multiplicand
+	 LD	DE,0000H	; and DE product
+	 LD	A,C		; A := lower 8 bits of multiplier
+$10	 LD	C,B		; set up next 8 bits for next time around
+	 LD	B,08H		; B := shift count
+$20	 RRA
+	 JP	NC,$30
+	 EX	DE,HL		; add in the partial product
+	 ADD	HL,DE
+	 EX	DE,HL
+$30	 ADD	HL,HL		; shift multiplicand left
+	 DEC	B
+	 JP	NZ,$20
+	 LD	A,C		; get high order byte of multiplier
+	 TSTA
+	 JP	NZ,$10
+	 EX	DE,HL		; put the product in HL to meet specs
+	 RET
+	.ENDC
+   
+DIVPOS	; Divide two positive integers
+	; Entry BC = divisor, HL = dividend
+	; Exit	BC = divisor, HL = remainder
+	;	DE = quotient
+SHFTCT	.EQU	 BYTE1
+	.IF Z80
+	 LD	DE,0000H
+	 LD	A,01H
+$10	 INC	A
+	 SLA	C
+	 RL	B
+	 JP	P,$10
+$20	 SCF
+	 RL	E
+	 RL	D
+	 SBC	HL,BC
+	 JP	NC,$30
+	 ADD	HL,BC
+	 DEC	DE
+$30	 SRL	B
+	 RR	C
+	 DEC	A
+	 JP	NZ,$20
+	 RL	C
+	 RL	B
+	 RET
+	.ENDC
+
+	.IF ~Z80
+	 ; make HL divisor, DE dividend while shifting divisor left
+	 EX	DE,HL
+	 LD	H,B
+	 LD	L,C
+	 CLRA
+$10	 INC	A		; A is shift count
+	 ADD	HL,HL
+	 JP	NC,$10
+	 ; for main loop, BC = divisor, DE = what's left of dividend,
+	 ;   HL = quotient so far
+	 LD	C,L
+	 LD	B,H
+	 LD	HL,0000H
+$20	 LD	(SHFTCT),A
+	 LD	A,B		; shift divisor right
+	 RRA
+	 LD	B,A
+	 LD	A,C
+	 RRA
+	 LD	C,A
+	 ADD	HL,HL		; shift quotient left
+	 LD	A,E		; dividend := dividend-divisor
+	 SUB	C
+	 LD	E,A
+	 LD	A,D
+	 SBC	A,B
+	 LD	D,A
+	 JP	NC,$30
+	 EX	DE,HL		; shit. restore dividend
+	 ADD	HL,BC
+	 EX	DE,HL
+	 CLRCF			; for shifting divisor right
+	 JP	$40
+$30	 INC	HL		; subtract was okay
+$40	 LD	A,(SHFTCT)
+	 DEC	A
+	 JP	NZ,$20
+	 EX	DE,HL		; satisfy exit conditions specified above
+	 RET
+	.ENDC
+
+DIVD	; Two's complement divide - mathematically correct even!
+	; NOTE WELL. Does not return values as specified in J & W.
+	; Entry BC = divisor, DE = dividend
+	; Exit	HL = remainder, DE = quotient
+	CLRA			; make sure divisor isn't 0 or -32768
+	OR	C
+	JP	NZ,$10
+	OR	B
+	JP	Z,$99	
+	XOR	80H
+	JP	Z,$99	
+$10	LD	A,B		; check divisor sign
+	TSTA
+	JP	M,$50
+$20	OR	D		; check dividend sign
+	JP	M,$40 
+$30	EX	DE,HL		; divide positive by positive
+	CALL	DIVPOS
+	; no adjustment necessary.  7 DIV 3 = 2, 7 MOD 3 = 1
+	;  6 DIV 3 = 2, 6 MOD 3 = 0
+	RET
+$40	; divide negative by positive
+	LD	A,E		; dividend := -dividend-1
+	CPL
+	LD	L,A
+	LD	A,D 
+	CPL
+	LD	H,A
+	CALL	DIVPOS
+	; now set realquotient := -quotient-1
+	;	  realremainder := divisor-remainder-1
+	; -7 DIV 3 = -3, -7 MOD 3 = 2
+	; -6 DIV 3 = -2, -6 MOD 3 = 0
+	LD	A,E
+	CPL
+	LD	E,A
+	LD	A,D
+	CPL
+	LD	D,A
+	; now for the remainder
+	SCF
+	LD	A,C
+	SBC	A,L
+	LD	L,A
+	LD	A,B
+	SBC	A,H
+	LD	H,A
+	RET
+$50	; divide by negative.  make divisor positive.
+	CLRA
+	SUB	C
+	LD	C,A
+	LD	A,00H
+	SBC	A,B
+	LD	B,A
+	LD	A,D		; check dividend sign
+	TSTA
+	JP	M,$80 
+	JP	NZ,$60 
+	OR	E
+	JP	Z,$80		; makes things cleanest, believe it or not
+$60	EX	DE,HL		; divide positive by negative
+	DEC	HL
+	CALL	DIVPOS
+	; now set realquotient := -quotient-1,
+	;	  realremainder := remainder+1-divisor
+	; 7 DIV -3 = -3, 7 MOD -3 = -2
+	; 6 DIV -3 = -2, 6 MOD -3 = 0
+	LD	A,E
+	CPL
+	LD	E,A
+	LD	A,D
+	CPL
+	LD	D,A
+$70	SUBHLBC
+	INC	HL
+	RET
+$80	; divide negative or zero by negative
+	CLRA			; make dividend positive
+	SUB	E
+	LD	L,A
+	LD	A,00H
+	SBC	A,D
+	LD	H,A
+	CALL	DIVPOS
+	; now set realremainder := -realremainder
+	; -7 DIV -3 = 2, -7 MOD -3 = -1
+	CLRA
+	SUB	L
+	LD	L,A
+	LD	A,00H
+	SBC	A,H
+	LD	H,A
+	RET
+$99	POP	HL		; return_address
+	PUSH	DE		; leave dividend on stack...
+	JP	DIVZER		; ...and bomb.
+
+;***** Word comparisons.  pop b; pop a; push (a <relop> b)
+
+EQUI	; Compare for =
+	POP	DE
+	POP	HL
+	LD	A,L
+	SUB	E
+	JP	NZ,PSHFLS
+	LD	A,H
+	SBC	A,D
+	JP	Z,PSHTRU
+PSHFLS	LD	HL,0000H
+	PUSH	HL
+	JP	BACK
+
+GEQI	; Compare for >=
+	POP	DE
+	POP	HL
+GEQ0	LD	A,D
+	XOR	H
+	JP	M,GEQ1
+	LD	A,L
+	SUB	E
+	LD	A,H
+	SBC	A,D
+	JP	P,PSHTRU
+	JP	PSHFLS
+GEQ1	AND	H
+	JP	P,PSHTRU
+	JP	PSHFLS
+
+GTRI	; Compare for >
+	POP	DE
+	POP	HL
+GTR0	LD	A,D
+	XOR	H
+	JP	M,GEQ1
+	LD	A,E
+	SUB	L
+	LD	A,D
+	SBC	A,H
+	JP	C,PSHTRU
+	JP	PSHFLS
+
+NEQI	; Compare for <>
+	POP	DE
+	POP	HL
+	LD	A,L
+	SUB	E
+	JP	NZ, PSHTRU
+	LD	A,H
+	SBC	A,D
+	JP	Z,PSHFLS
+PSHTRU	LD	HL,0001H
+	PUSH	HL
+	JP	BACK
+
+LEQI	; Compare for <=
+	POP	HL
+	POP	DE
+	JP	GEQ0
+
+LESI	; Compare for <
+	POP	HL
+	POP	DE
+	JP	GTR0
+
+
+;***** Comparisons of complex things
+  
+; Beware that many comparisons work only because compiler restricts you
+;   to = and <> on certain types.
+; The opcode tells what relation is being tested
+;   the next byte indicates the type of the things being compared
+;   if arrays are being compared, the next GBDE is the array size
+; Tests allowed...
+; Boolean:  all relations.  stuff is on the stack.
+; Real:		    all relations.  stuff is on the stack.
+; Set:	    =, <>, <= (subset), >= (superset).	stuff is on the stack.
+; String:   all relations. pointers to stuff are on stack.
+; Arrays and records:	=, <>. pointers to stuff on stack
+;
+;  after CSETUP flags are result of a-b.
+
+CEQU	CALL	CSETUP
+	JP 	Z,PSHTRU1
+PSHFLS1 LD  	HL,0000H
+	PUSH	HL
+	JP BACK1
+
+CNEQ	CALL	CSETUP
+	JP  	Z,PSHFLS1
+PSHTRU1 LD  	HL,0001H
+	PUSH	HL
+	JP  BACK1
+
+CGTR	CALL	CSETUP
+	JP	C,PSHFLS1
+	JP	NZ,PSHTRU1
+	JP	PSHFLS1
+
+CLEQ	CALL	CSETUP
+	JP	C,PSHTRU1
+	JP	NZ,PSHFLS1
+	JP	PSHTRU1
+
+CLSS	CALL	CSETUP
+	JP	C,PSHTRU1
+	JP	PSHFLS1
+
+CGEQ	CALL	CSETUP
+	JP	C,PSHFLS1
+	JP	PSHTRU1
+  
+; Find out the type of things being compared, jump to
+;   proper routine which follows the compare stuff and set flags.
+CSETUP	LD	A,(BC)		; A := type of stuff to compare
+	INC	BC
+	SAVIPC
+	LD	E,A		; branch off to proper routine
+	LD	D,00H
+	LD	HL,CMPTBL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	JP	(HL)
+
+CMPTBL	.EQU	 $-2
+	.WORD	 REALC
+	.WORD	 STRGC
+	.WORD	 BOOLC
+	.WORD	 POWRC
+	.WORD	 BYTEC
+	.WORD	 WORDC
+  
+STRGC	; Lexicographic string compare
+	;   Compare up to min(length(a), length(b)).  if still equal,
+	;   compare sizes
+LENA	.EQU	 BYTE1
+	POP	HL		
+	POP	DE		
+	EX	(SP),HL			
+	EX	DE,HL		; HL = ^b, DE = ^a, (SP) = return_address
+	; See if either HL or DE (but not both at the same time) is
+	;   really a single char...handle as in SAS
+	LD	A,H
+	TSTA
+	JP	NZ,$03
+	; HL is a disguised character !
+	LD	A,L
+	LD	(LTSTRNG+1),A
+	LD	HL,LTSTRNG
+	JP	$06
+$03	LD	A,D
+	TSTA
+	JP	NZ,$06
+	; DE is a char
+	LD	A,E
+	LD	(LTSTRNG+1),A
+	LD	DE,LTSTRNG
+$06	LD	C,(HL)		; C := length(b)
+	LD	A,(DE)		; B := (LENA) := length(a)
+	LD	(LENA),A
+	LD	B,A
+	CP	C		; B := min(length(a), length(b))
+	JP	C,$10	
+	LD	B,C
+	LD	A,C
+$10	TSTA			; check for min = 0
+	JP	Z,$30	
+$20	INC	HL
+	INC	DE
+	LD	A,(DE)
+	CP	(HL)
+	RET	NZ
+	DJNZM	$20   
+$30	; Strings are equal up to length of smallest, so compare sizes
+	LD	A,(LENA)
+	CP	C
+	RET
+
+BYTEC	; Byte array compare
+	CALL	GBDE		; DE := number of bytes to compare
+	SAVIPC
+	LD	C,E
+	LD	B,D
+	JP	GPTRS
+
+WORDC	; Word array or multiple word record compare
+	CALL	GBDE		; DE := number of words to compare
+	SAVIPC
+	EX	DE,HL		; DE := # bytes to compare
+	ADD	HL,HL
+	LD	C,L
+	LD	B,H
+GPTRS	; Set DE := ^a, HL := ^b
+	POP	HL
+	POP	DE
+	EX	(SP),HL
+	EX	DE,HL
+	JP	SWEQ
+  
+; Scan while equal.
+;   DE = ^b, HL = ^a, BC = # bytes to compare
+;   Scans until unequal comparison or compared all the bytes.
+;   Flags left set by last comparison
+  
+	.IF Z80
+SWEQ1	 INC	DE
+SWEQ	 LD	A,(DE)
+	 CPI
+	 JP	PO,$20		; if Parity Odd, BC = 0 and things 
+				; are equal throughout
+	 JP	Z,SWEQ1		; if Zero, both bytes were equal
+$20	 DEC	HL		; set flags as result of last compare
+	 CP	(HL)
+	 RET
+	.ENDC
+  
+	.IF ~Z80
+SWEQ	 CALL	NEGBC		; BC := -BC
+$10	 LD	A,(DE)
+	 CP	(HL)
+	 RET	NZ
+	 INC	HL
+	 INC	DE
+	 INC	C		; loop control
+	 JP	NZ,$10
+	 INC	B	 JP	NZ,$10
+	 CLRA			; equal, so set flags accordingly
+	 RET
+	.ENDC
+
+BOOLC	; Boolean compare.  Only look at bit 0.
+	POP	HL		; HL := a, DE := b
+	POP	DE
+	EX	(SP),HL
+	LD	A,E		; get low bit of b
+	AND	01H
+	LD	E,A
+	LD	A,L		; same for a
+	AND	01H
+	CP	E
+	RET
+
+
+  NEGBC	CLRA
+	SUB	C
+	LD	C,A
+	LD	A,00H
+	SBC	A,B
+	LD	B,A
+	RET
+
+; End-of-File ARITH
+
+
+.INCLUDE	Z8080:SET1.TEXT
+		.IF ~LSTSET
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; start of file SET1
+
+
+;************************************************
+;*************** Set arithmetic *****************
+
+SETUP	; routine to give needed information about sets on
+	;   stack to INT, DIF, and UNI set operators.
+; before  -------------------------------------------------------------
+;	  ! ret ! szb !	 set_b	! sza !	 set_a	!  rest of stack
+;	  -------------------------------------------------------------
+;	   !;	   SP
+;
+; after	  -------------------------------------------------------------
+;	  !  set_b  ! sza !  set_a  ! rest of stack
+;	  -------------------------------------------------------------
+;	   !	     !	   !
+;	   SP	  (NEWSP)  HL
+; 
+; B = szb, A = sza
+
+	SAVIPC
+	POP	HL		; return_address
+	EX	(SP),HL		; HL := szb
+	LD	B,L		; B := szb
+	INC	HL		; skip over return_addr on stack
+	ADD	HL,HL		; HL := ^sza
+	ADD	HL,SP
+	LD	A,(HL)		; A := sza
+	LD	(NEWSP),HL	; keep future SP around
+	INC	HL
+	INC	HL
+	RET
+
+INT	; Set intersection. AND set_b into set_a, then zero-fill
+	;   set_a if sza>szb
+	CALL	SETUP
+	SUB	B		; B := min(sza,szb), C := max(sza-szb, 0)
+	JP	NC,$10 
+	ADD	A,B
+	LD	B,A
+	CLRA
+$10	LD	C,A
+	LD	A,B		; if min(sza,szb)=0, skip intersection loop
+	TSTA
+	JP	Z,$30 
+$20	POP	DE		; intersection loop
+	LD	A,E
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$20 
+$30	LD	A,C
+	TSTA			; if sza <= szb, no zero-fill
+	JP	Z,$50 
+	LD	B,A
+	CLRA
+$40	LD	(HL),A
+	INC	HL
+	LD	(HL),A
+	INC	HL
+	DJNZM	$40 
+$50	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+
+DIF	; Set difference.  AND (NOT set_b) into set_a.
+	CALL	SETUP
+	CP	B		; B := min(sza,szb)
+	JP	NC,$10 
+	LD	B,A
+$10	LD	A,B
+	TSTA
+	JP	Z,$30 
+$20	POP	DE		; difference loop
+	LD	A,E
+	CPL
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	CPL
+	AND	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$20 
+$30	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+
+UNI	; Set union
+	CALL	SETUP
+	CP	B		; decide what kind of union to do...
+	JP	C,$30 
+	LD	A,B		; Uniona. Union set_b into set_a.
+	TSTA
+	JP	Z,$20 
+$10	POP	DE		; Uniona loop.
+	LD	A,E
+	OR	(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,D
+	OR	(HL)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$10 
+$20	LD	HL,(NEWSP)
+	LD	SP,HL
+	JP	BACK1
+$30	; Unionb. Szb>sza, so union set_a into set_b, then move set_b
+	;   up to newly created top of stack
+	LD	C,A		; C := sza
+	PUSH	BC		; push szb
+	EX	DE,HL		; DE := ^set_a
+	LD	HL,0002H	; HL := ^set_b
+	ADD	HL,SP
+	LD	B,C
+	LD	A,B
+	TSTA
+	JP	Z,$50 
+$40	LD	A,(DE)		; Unionb loop.
+	OR	(HL)
+	LD	(HL),A
+	INC	DE
+	INC	HL
+	LD	A,(DE)
+	OR	(HL)
+	LD	(HL),A
+	INC	DE
+	INC	HL
+	DJNZM	$40 
+$50	; DE = ^just past set_a
+	LD	HL,(NEWSP)	; HL := ^just past set_b
+	POP	BC		; szb is number of words to move
+	LD	C,B		; C := result_set size
+$60	DEC	HL		; move loop.
+	DEC	DE
+	LD	A,(HL)
+	LD	(DE),A
+	DEC	HL
+	DEC	DE
+	LD	A,(HL)
+	LD	(DE),A
+	DJNZM	$60 
+	; DE = ^result_set
+	EX	DE,HL
+	LD	SP,HL
+	PUSH	BC
+	JP	BACK1
+
+
+
+  
+POWRC	; set compares. very gross.  
+	;   (see SETUP below for picture of two sets on a stack)
+ALEQB	.EQU	BYTE1		; boolean filled by PCSETUP
+	POP	HL		; junk return address - each comparison will
+				; push a result
+	; find what rel_op to do
+	DEC	BC		; A := p-machine op that got us here
+	DEC	BC
+	LD	A,(BC)
+	ADD	A,A		; A := index into PCTBL
+	SUB	5EH
+	LD	E,A		; HL := ^jump address
+	LD	D,00H
+	LD	HL,PCTBL
+	ADD	HL,DE
+	LD	E,(HL)		; HL := jump address
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	JP	(HL)
+
+PCTBL	.WORD	 PCEQL
+	.WORD	 PCGEQ
+	.BLOCK	 6
+	.WORD	 PCLEQ
+	.BLOCK	 4
+	.WORD	 PCNEQ
+
+; Routines used in comparisons of sets...
+PCSETUP		; return HL = ^set_a, SP = ^set_b
+	; B = min(sza,szb), C = szb-sza, Zero flag set if B = 0
+	POP	HL		; return_address
+	EX	(SP),HL		; B := HL := szb
+	LD	B,L
+	INC	HL		; HL := ^sza
+	ADD	HL,HL
+	ADD	HL,SP
+	LD	C,(HL)		; C := sza
+	INC	HL		; HL := ^set_a
+	INC	HL
+	PUSH	HL
+	LD	E,C		; HL := newsp
+	LD	D,00H
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	(NEWSP),HL
+	POP	HL		; HL := ^set_a again
+	LD	E,0		; aleqb := false
+	LD	A,B		; A := szb-sza
+	SUB	C
+	JP	C,$10		; B := min(sza, szb)
+	INC	E		; aleqb := true
+	LD	B,C
+$10	LD	C,A		; C := szb-sza
+	LD	A,E		; Store aleqb
+	LD	(ALEQB),A
+	LD	A,B		; Zero flag := (B = 0)
+	TSTA
+	RET
+
+ZERCHKA ; insure rest of set_a is zeroes
+	POP	DE		; return_address
+	LD	SP,HL
+	CLRA			; negate C, cause it tells how much set_b is
+	SUB	C		; bigger than set_a
+	LD	C,A
+	EX	DE,HL
+	JP	ZER0
+ZERCHKB ; insure rest of set_b is zeroes
+	; SP = ^place to start, C = # of words to check
+	; return C = 1 (yep, only zeroes), or 0 (nope)
+RETADR2 .EQU	 WORD1
+	POP	HL
+ZER0	LD	(RETADR2),HL
+	LD	A,C		; need to check anything ?
+	TSTA
+	JP	Z,$20 
+	; yep...
+	LD	B,C		; ...set up loop control...
+	LD	C,00H		; ...and assume we're not going to make it
+	CLRA
+$10	POP	DE
+	OR	E
+	OR	D
+	JP	NZ,$30 
+	DJNZM	$10 
+$20	LD	C,01H		; we did make it...set is zero filled
+$30	LD	HL,(RETADR2)
+	JP	(HL)
+
+PCEQSN	; return c = 1 if set_a = set_b, C = 0 otherwise
+	POP	HL
+	LD	(RETADR),HL
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,E
+	CP	(HL)
+	JP	NZ,$40
+  	INC	HL
+	LD	A,D
+	CP	(HL)
+	JP	NZ,$40
+  	INC	HL
+	DJNZM	$10   $20	; so far sets are equal. make sure larger has zeroes from here on.
+	LD	A,(ALEQB)
+	TSTA
+	JP	NZ,$30
+	; set_a is larger
+	CALL	ZERCHKA
+	JP	$50    
+$30	; set_b is larger
+	CALL	ZERCHKB
+	JP	$50    
+$40	LD	C,00H
+$50	LD	HL,(RETADR)
+	JP	(HL)
+
+; At last, the comparison operators reached via PCTBL
+PCEQL	CALL	PCEQSN
+	JP	PCRSLT
+
+PCNEQ	CALL	PCEQSN
+	LD	A,01H		; want NOT C as result
+	XOR	C
+	LD	C,A
+PCRSLT	LD	HL,(NEWSP)
+	LD	SP,HL
+	LD	B,00H
+	PUSH	BC
+	JP	BACK1
+
+PCLEQ	; see if set_a subset_of set_b, ie., (set_a - set_b) = null_set
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,E
+	CPL
+	AND	(HL)
+	JP	NZ,PCFALSE
+	INC	HL
+	LD	A,D
+	CPL
+	AND	(HL)
+	JP	NZ,PCFALSE
+	INC	HL
+	DJNZM	$10   
+$20	; so far nothing is amiss
+	LD	A,(ALEQB)		; if set_a is bigger, zerocheck it
+	TSTA
+	CALL	Z,ZERCHKA
+	JP	PCRSLT
+PCFALSE	LD	C,00H
+	JP	PCRSLT
+
+PCGEQ	; see if set_a superset_of set_b, ie., (set_b - set_a) = null set
+	CALL	PCSETUP
+	JP	Z,$20	
+$10	POP	DE
+	LD	A,(HL)
+	CPL
+	AND	E
+	JP	NZ,PCFALSE
+	INC	HL
+	LD	A,(HL)
+	CPL
+	AND	D
+	JP	NZ,PCFALSE
+	INC	HL
+	DJNZM	$10   
+$20	; everything's alright so far. check zeroes
+	LD	A,(ALEQB)		; If set_b is bigger, zerocheck it
+	TSTA
+	CALL	NZ,ZERCHKB
+	JP	PCRSLT
+	
+; End-of-File SET1
+	
+
+
+
+.INCLUDE	Z8080:SET2.TEXT
+		.IF ~LSTSET
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+	
+; Copyright (c) 1978 by the
+;  Regents of the University of California, San Diego
+
+; start of file SET2
+
+
+;***** Set building and size adjusting
+  
+SGS	; Build a singleton set, the set [i]
+	POP	DE
+	PUSH	DE
+	PUSH	DE
+  
+SRS	; Build a subrange set, the set [i..j]
+IDIV	.EQU	BYTE1
+JDIV	.EQU	BYTE1
+	SAVIPC
+	; are i,j valid ?
+	POP	DE		; DE := j
+	POP	BC		; BC := i
+	LD	A,B		; is i<0 ?
+	TSTA
+	JP	M,$99	
+	LD	HL,0F010H	; is j >= 16*255 ?
+	ADD	HL,DE
+	JP	C,$99	
+	LD	A,E		; is j<i ?
+	SUB	C
+	LD	A,D
+	SBC	A,B
+	JP	C,$90	
+
+; The algorithm used to build the set...
+;   xx := bitter[j MOD 16];  t := j DIV 16;
+;   WHILE t>i DIV 16 DO
+;     BEGIN  push(xx);	xx := <all ones>;  t := t-1  END
+;   xx := xx AND unbitr[i MOD 16];  t := i DIV 16
+;   WHILE t >= 0 DO
+;     BEGIN  push(xx);	xx := <all zeroes>;  t := t-1  END
+;   push(j DIV 16 +1)	 (* set size *)
+
+; Actual code is slightly more efficient.
+
+; In the following,
+;   idiv = i DIV 16, imod = 2*(i MOD 16),
+;   jdiv = j DIV 16, jmod = 2*(j MOD 16)
+
+	; currently BC = i, DE = j.
+	; Compute C := imod, B := idiv
+	.IF Z80
+	 LD	HL,IDIV		; set up rotate digit environment
+	 LD	(HL),C
+	 LD	A,B
+	 RRD			; Presto chango.  A = i MOD 16, (IDIV) = idiv
+	 RLA			; A := imod
+	 LD	C,A
+	 LD	B,(HL)
+	 ; Compute HL := BITTER+jmod
+	 ; (JDIV) := jdiv;  A = jdiv
+	 LD	(HL),E		; JDIV=IDIV, so HL already set up
+	 LD	A,D
+	 RRD
+	 RLA			; A = jmod, (JDIV) = jdiv
+	 LD	E,A
+	 LD	D,00H
+	 LD	A,(HL)
+	 LD	HL,BITTER
+	 ADD	HL,DE
+	.ENDC
+
+	.IF ~Z80
+	 LD	A,C
+	 AND	0FH
+	 RLA
+	 LD	L,A		; L = imod
+	 LD	A,B
+	 RLA
+	 RLA
+	 RLA
+	 RLA
+	 LD	H,A		; H = 4 high bits of idiv, low 4 bits are 0
+	 LD	A,C
+	 AND	0F0H
+	 RRA
+	 RRA
+	 RRA
+	 RRA			; A = 4 low bits of idiv, high 4 bits are 0
+	 OR	H		; put 'em together
+	 LD	B,A
+	 LD	C,L
+	 ; Compute HL := BITTER+jmod
+	 ; (JDIV) := jdiv;  A := jdiv
+	 LD	A,E
+	 AND	0FH
+	 RLA
+	 LD	L,A		; L = jmod
+	 LD	A,D
+	 RLA
+	 RLA
+	 RLA
+	 RLA
+	 LD	H,A		; H = high digits of jdiv
+	 LD	A,E
+	 AND	0F0H
+	 RRA
+	 RRA
+	 RRA
+	 RRA
+	 OR	H		; A = jdiv
+	 LD	(JDIV),A
+	 LD	H,00H
+	 LD	DE,BITTER
+	 ADD	HL,DE
+	.ENDC
+
+	LD	E,(HL)		; DE := bitter[jmod]
+	INC	HL
+	LD	D,(HL)
+	SUB	B		; A := jdiv-idiv
+	; WHILE t > i DIV 16 stuff...
+	JP	Z,$30 
+	PUSH	DE
+	LD	DE,0FFFFH
+	JP	$20 
+$10	PUSH	DE
+$20	DEC	A
+	JP	NZ,$10 
+$30	; DE := DE AND unbitter[imod]
+	LD	A,B		; save idiv for a second
+	LD	B,00H
+	LD	HL,UNBITR
+	ADD	HL,BC
+	LD	B,A		; restore idiv
+	LD	A,E
+	AND	(HL)
+	LD	E,A
+	INC	HL
+	LD	A,D
+	AND	(HL)
+	LD	D,A
+	; WHILE t >= 0 DO stuff...
+	PUSH	DE
+	LD	DE,0000H
+	LD	A,B
+	TSTA
+	JP	Z,$50 
+$40	PUSH	DE
+	DJNZM	$40 
+$50	LD	A,(JDIV)	; push set size
+	INC	A
+	LD	L,A
+	LD	H,00H
+	PUSH	HL
+	JP	BACK1
+$90	LD	HL,0000H	; push the null set (set_size = 0)
+	PUSH	HL
+	JP	BACK1
+$99	LD	HL,0000H
+	PUSH	HL
+	JP	INVNDX
+  
+UNBITR	.WORD	0FFFFH
+	.WORD	0FFFEH
+	.WORD	0FFFCH
+	.WORD	0FFF8H
+	.WORD	0FFF0H
+	.WORD	0FFE0H
+	.WORD	0FFC0H
+	.WORD	0FF80H
+	.WORD	0FF00H
+	.WORD	0FE00H
+	.WORD	0FC00H
+	.WORD	0F800H
+	.WORD	0F000H
+	.WORD	0E000H
+	.WORD	0C000H
+	.WORD	08000H
+  
+ADJ	; Fix the size of the set on the stack
+SVDIF	.EQU	WORD1
+	; Algorithm...
+; szfinal := GETBYTE;  pop(szorig);
+; .IF szfinal <> szorig THEN
+;   .IF szorig > szfinal THEN
+;     BEGIN (* crunch set *)
+;	dst := SP+szorig-1;  src := SP+szf-1;
+;	THRU szfinal DO
+;	  BEGIN	 dst^ := src^;	dst := dst-1;  src := src-1  END;
+;	SP := dst+1
+;     END
+;   ELSE (* expand set *)
+;     BEGIN
+;	src := SP;  dst := SP-(szfinal-szorig);	 SP := dst;
+;	THRU szorig DO
+;	  BEGIN	 dst^ := src^;	dst := dst+1;  src := src+1  END;
+;	THRU (szfinal-szorig) DO  BEGIN	 dst^ := 0;  dst := dst+1  END	;
+;     END
+; NOTE: no zero checking on the part of the set that is crunched out.
+
+	.IF Z80
+	 LD	A,(BC)
+	 INC	BC
+	 LD	L,A
+	 LD	H,00H
+	 ADD	HL,HL
+	 EX	DE,HL
+	 POP	HL
+	 ADD	HL,HL		; HL := szorig (in bytes)
+	 SUBHLDE		; compare szorig-szfinal
+	 JP	Z,BACK
+	 ADD	HL,DE
+	 SAVIPC
+	 JP	M,$10 
+	; Crunch set
+	 LD	C,E		; BC := # bytes to move
+	 LD	B,D
+	 ADD	HL,SP		; Compute dst := sp+szorig-1
+	 DEC	HL
+	 EX	DE,HL		; DE := dst
+	 ADD	HL,SP		; Compute src := sp+szfinal-1
+	 DEC	HL		; HL := src
+	 LDDR			; move the stuff
+	 EX	DE,HL		; and cut back the stack
+	 INC	HL
+	 LD	SP,HL
+	 JP	BACK1
+$10	; Expand set
+	 LD	C,L		; BC := # bytes to move
+	 LD	B,H
+	 SUBHLDE
+	 LD	(SVDIF),HL	; (SVDIF) := -(szfinal-szorig)
+	 EX	DE,HL
+	 LD	HL,0000H
+	 ADD	HL,SP
+	 EX	DE,HL		; DE := sp, HL := -(szfinal-szorig)
+	 ADD	HL,SP		; HL := sp-(szfinal-szorig)
+	 LD	SP,HL
+	 EX	DE,HL		; all set up for transfer
+	 LD	A,C		; but skip if szorig=0
+	 OR	B
+	 JP	Z,$20 
+	 LDIR			; move stuff
+$20	 LD	A,(SVDIF)	; set BC := szfinal-szorig
+	 CPL
+	 LD	C,A
+	 LD	A,(SVDIF+1)
+	 CPL
+	 LD	B,A
+	 INC	BC
+	 LD	A,00H		; Do zero filling...
+	 LD	(DE),A
+	 LD	L,E		; Block move trickiness
+	 LD	H,D
+	 INC	DE
+	 DEC	BC
+	 LDIR
+	 JP	BACK1
+	.ENDC
+
+	.IF ~Z80
+	; for 8080, things are done in words rather than bytes
+	 LD	A,(BC)		; A := szfinal
+	 INC	BC
+	 POP	HL		; L := szorig
+	 CP	L		; szfinal-szorig
+	 JP	Z,BACK
+	 PUSH	HL		; so it doesn't get messed up
+	 SAVIPC
+	 POP	HL
+	 JP	NC,$10 
+	 ; Crunch the set
+	 LD	B,A		; B := # words to transfer
+	 ADD	HL,HL		; HL := sp+szorig (dst+1)
+	 ADD	HL,SP
+	 EX	DE,HL
+	 ADD	HL,HL
+	 ADD	HL,SP		; HL = src+1, DE = dst+1,
+$05	 DEC	HL		;  B = # words to transfer
+	 DEC	DE
+	 LD	A,(HL)
+	 LD	(DE),A
+	 DEC	HL
+	 DEC	DE
+	 LD	A,(HL)
+	 LD	(DE),A
+	 DEC	B
+	 JP	NZ,$05 
+	 EX	DE,HL		; now fix up SP
+	 LD	SP,HL
+	 JP	BACK1
+$10	 ; Expand the set
+	 LD	B,L		; B := # words to move
+	 SUB	L
+	 LD	C,A		; C := # words to zero fill
+	 CPL
+	 INC	A		; A := -(szfinal-szorig)
+	 LD	L,A		; HL := A, sign extended
+	 LD	H,0FFH
+	 ADD	HL,HL
+	 ADD	HL,SP		; HL = SP-(szfinal-szorig)
+	 EX	DE,HL
+	 LD	HL,0000H
+	 ADD	HL,SP
+	 EX	DE,HL		; DE := SP
+	 LD	SP,HL
+	 LD	A,B		; check for szorig=0
+	 TSTA
+	 JP	Z,$30 
+$20	 LD	A,(DE)		; move stuff
+	 LD	(HL),A
+	 INC	DE
+	 INC	HL
+	 LD	A,(DE)
+	 LD	(HL),A
+	 INC	DE
+	 INC	HL
+	 DEC	B
+	 JP	NZ,$20 
+$30	 LD	A,00H		; now do zero filling
+$40	 LD	(HL),A
+	 INC	HL
+	 LD	(HL),A
+	 INC	HL
+	 DEC	C
+	 JP	NZ,$40 
+	 JP	BACK1
+	.ENDC
+
+INN	;  -------------------------------------------------
+	;  ! sza !    set_a    ! i !  rest of stack
+	;  -------------------------------------------------
+	;  is i in set_a ?
+
+	SAVIPC
+	POP	HL		; E := sza
+	LD	E,L
+	ADD	HL,HL
+	ADD	HL,SP		; HL = ^i
+	LD	C,(HL)		; BC := i
+	INC	HL
+	LD	B,(HL)
+	INC	HL
+	PUSH	HL		; (SP) := ^rest of stack
+	LD	HL,0F010H	; is i >= 16*255 or < 0 ?
+	ADD	HL,BC
+	JP	C,$99	
+	; convert i to word and bit within word
+	; B := word, C := bit
+	.IF Z80
+	 LD	HL,IDIV
+	 LD	(HL),C
+	 LD	A,B
+	 RRD			; A = i mod 16, (IDIV) = i div 16
+	 LD	B,(HL)
+	 LD	C,A
+	 LD	A,B
+	.ENDC
+
+	.IF ~Z80		; drag...
+	 LD	A,C
+	 AND	0FH
+	 LD	L,A		; L = i mod 16
+	 LD	A,B
+	 RLA
+	 RLA
+	 RLA
+	 RLA
+	 LD	H,A
+	 LD	A,C		; H = i div 16, high 4 bits
+	 AND	0F0H
+	 RRA
+	 RRA
+	 RRA
+	 RRA
+	 OR	H
+	 LD	B,A
+	 LD	C,L
+	.ENDC
+
+	CP	E		; is set big enough to contain i ?
+	JP	NC,$20	
+	LD	A,C		; DE := bit offset in byte
+	AND	07H
+	LD	E,A
+	LD	D,00H
+	LD	HL,INMASK
+	ADD	HL,DE		; HL = ^INMASK[i mod 8]
+	LD	A,(HL)
+	PUSH	AF		; save mask for a bit
+	LD	L,B		; HL := ^needed byte of set_a
+	LD	H,00H
+	INC	HL
+	INC	HL		; take care of extra 2 word on stack
+	ADD	HL,HL
+	LD	A,C		; now add 1 to address if in high byte of word
+	AND	08H		; is bit 3 of i mod 16 on ?
+	JP	Z,$10 
+	INC	HL
+$10	ADD	HL,SP
+	POP	AF
+	AND	(HL)		; AND that byte and the mask
+	JP	Z,$20		; decide what to do now
+	POP	HL
+	LD	SP,HL
+	LD	HL,0001H
+	PUSH	HL
+	JP	BACK1
+$20	POP	HL
+	LD	SP,HL
+	LD	HL,0000H
+	PUSH	HL
+	JP	BACK1
+$99	POP	HL
+	LD	SP,HL
+	LD	HL,0000H
+	PUSH	HL		; after cleaning up stack...
+	JP	INVNDX		; bomb the program
+
+INMASK	.BYTE	01H
+	.BYTE	02H
+	.BYTE	04H
+	.BYTE	08H
+	.BYTE	10H
+	.BYTE	20H
+	.BYTE	40H
+	.BYTE	80H
+	
+; End-of-File SET2
+	
+
+
+.INCLUDE	Z8080:FPL.TEXT
+		.IF ~LSTFP
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; Beginning of file FPL
+
+; Floating point stuff...including basic stuff like the four math
+;   functions, fix, and float; and much more esoteric stuff, like
+;   transcendental functions.  All routines of any general interest
+;   are callable.
+; Hopefully in the near future there will be an arithmetic vector table,
+;   so you people adding assembly procedures to your system will
+;   be able to make use of all this wonderful software.
+
+
+; Naming conventions used throughout the floating point package...
+;   FPCa	Floating point constant a.
+;   FPMa	Floating point macro a.	 Some of these macros leave
+;		well-specified stuff in registers.
+;   FPFa	Floating point function a.  Takes argument(s) on tos,
+;		leaves result on tos, and also in EDCB (except for
+;		FPFFIX, FPFDOUB, FPFHALV).
+;   FPLa	Floating point low level function.  Not necessarily
+;		directly callable, and probably not of interest to
+;		the user.
+;   FPGa	Floating point global variable a.
+;   aLb		Floating point local variable b for function a.
+;   FPRa	Floating point relational function a.  Returns
+;		Z = false, NZ = true (not yet meaningful).
+
+
+
+;***************** BASIC FLOATING POINT ARITHMETIC *************;
+;	Based on an 8080 floating point package by John Lamping
+
+
+; Numbers are four byte quantities represented as...
+; [exp] [sabc v] [w x] [y z]
+
+; s, a, b, c are bits, v, w, x, y, z are hex digits.
+
+; Exponent is biased by 128.  Mantissa is always normalized, and includes
+;   "invisible" bit just in front of a.
+
+; If exp = 0, number value is zero.
+
+; number value = (1-2*s) * .1abcvwxyz * 2^(exp-128)
+
+; Currently only simple rounding is used...true rounding to be implemented
+;    sometime in the future.
+
+; Any operation causing overflow or underflow will store a 01H into (FPERROR)
+
+; (I know error handling in these low-level routines could be simplified,
+;  but error-protocol was changed after this stuff was adapted to be
+;  used in the P-machine, and it was easier to put in small fixes.)
+
+
+FPLSETUP ; for fpadd, fpmul, fpdiv, fpsub
+	; set HL = ^b, DE = ^a, A = # bytes of operands
+	; stack is   ret. addr. in fp. | ret. addr. | b | a
+	LD	HL,0004H
+	ADD	HL,SP
+	LD	E,L
+	LD	D,H
+	INC	E
+	INC	DE
+	INC	E
+	INC	DE
+	LD	A,8
+	CLRCF
+	RET
+
+
+FPFADD	CALL	FPLSETUP
+	PUSH	AF		; save stack cutting info and error info.
+	LD	A,02H		; indicate 'add'
+	JP	FPLSUM
+
+FPFSUB	CALL	FPLSETUP
+	PUSH	AF
+	LD	A,7FH		; indicate 'subtract'
+
+FPLSUM	LD	B,A		; save add/subtract info
+	LD	A,(DE)		; A := arg1.exp - arg2.exp
+	SUB	(HL)
+	JP	NC,$10	  	EX	DE,HL		; arg2.exp larger, so switch args...
+	INC	B		; ...indicate so in add/subtract info...
+	NEGA			; ...and negate exp diff.
+$10	LD	C,A		; save exp diff
+	LD	A,(HL)		; is arg2 = 0 ?
+	TSTA
+	JP	NZ,$20	  	INC	C		; yes. is arg1.exp = arg2.exp (= 0) ?
+	DEC	C
+	JP	Z,FPLZERO	 ; if so, result is 0.
+	LD	C,25		; only arg2 zero, so set exp diff
+				; past floating point precision.
+$20	PUSH	DE		; save addr of big exp
+	INC	HL		; move to mantissas
+	INC	DE
+	; Compute result sign.	If add, sign of mantissa with larger exp.
+	;   If non-swapped subtract, sign of larger exp mantissa, else CPL
+	;   of sign of larger exp mantissa.  Done by (swapped XOR sign of
+	;   larger mantissa).
+	LD	A,(DE)
+	LD	E,A		; save sign of larger exp mantissa
+	XOR	B
+	RLCA			; put computed result sign in bit 0
+	LD	D,A		; and save it.
+	; Compute difference of signs.	if add, XOR of signs; if subtract,
+	;   CPL of XOR of signs.
+	LD	A,E		; sign of larger exp mantissa
+	INC	B
+	XOR	B
+	XOR	(HL)
+	XOR	D		; merge with result sign
+	AND	80H
+	XOR	D
+	LD	E,A		; save it
+	LD	A,(HL)		; Load mantissa of smaller arg into BCDE
+	OR	80H		; Put in hidden bit
+	LD	B,A
+	LD	A,C
+	INC	HL
+	LD	C,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	H,E		; move sign information
+	LD	E,00H		; clear rest of mantissa
+	; position smaller mantissa
+	CP	26		; limit shifts to 25
+	JP	C,$30	 	LD	A,25
+$30	SUB	8		; at least 8 shifts ?
+	JP	C,$40	 	LD	E,D		; yep. shift registers.
+	LD	D,C
+	LD	C,B
+	LD	B,00H
+	JP	$30	 	; try that trick again.
+$40	ADD	A,8
+	LD	L,A
+	JP	Z,$60	 
+$50	; shift mantissa right one place
+	.IF Z80
+	 SRL	B
+	 RR	C
+	 RR	D
+	 RR	E
+	.ENDC
+	.IF ~Z80
+	 CLRCF
+	 LD	A,B
+	 RRA
+	 LD	B,A
+	 LD	A,C
+	 RRA
+	 LD	C,A
+	 LD	A,D
+	 RRA
+	 LD	D,A
+	 LD	A,E
+	 RRA
+	 LD	E,A
+	.ENDC
+	DEC	L		; done shifting ?
+	JP	NZ,$50
+$60	INC	H		; test sign diff (P signs same, M signs differ)
+	DEC	H
+	EX	(SP),HL 	; save result sign, get ^big arg
+	LD	A,(HL)		; A := answer exp
+	EX	(SP),HL 	; Store
+	LD	L,A		;  sign
+	EX	(SP),HL 	;   and exp
+	INC	HL		; point HL to low mantissa byte of big arg
+	INC	HL
+	INC	HL
+	JP	M,$70		; jump if signs were different
+	; Do Addition.
+	LD	A,D		; Add mantissas
+	ADD	A,(HL)
+	LD	D,A
+	DEC	HL
+	LD	A,C
+	ADC	A,(HL)
+	LD	C,A
+	DEC	HL
+	LD	A,(HL)
+	RLA			; turn on hidden bit
+	SCF
+	RRA
+	ADC	A,B
+	LD	B,A
+	POP	HL		; get sign, exp
+	JP	NC,FPLRND
+	; gotta shift down one place
+	.IF Z80
+	 RR	B
+	 RR	C
+	 RR	D
+	 RR	E
+	.ENDC
+	.IF ~Z80
+	 RRA
+	 LD	B,A
+	 LD	A,C
+	 RRA
+	 LD	C,A
+	 LD	A,D
+	 RRA
+	 LD	D,A
+	 LD	A,E
+	 RRA
+	 LD	E,A
+	.ENDC
+	INC	L		; Increment result exp, and
+	JP	FPLRND 		; go round result
+	; Do subtraction
+$70	CLRA			; subtract lowest byte from 0
+	SUB	E
+	LD	E,A
+	LD	A,(HL)
+	SBC	A,D
+	LD	D,A
+	DEC	HL
+	LD	A,(HL)
+	SBC	A,C
+	LD	C,A
+	DEC	HL
+	LD	A,(HL)
+	RLA			; turn on hidden bit
+	SCF
+	RRA
+	SBC	A,B
+	LD	B,A
+FPLSUMX JP	NC,FPLNRM	; if subtracted smaller from bigger normalize
+	POP	HL		; blew it. change answer sign.
+	INC	H
+	PUSH	HL
+	CLRA
+	LD	H,A
+	SUB	E		; and complement mantissa (subtracted 
+	LD	E,A		;  larger from smaller)
+	LD	A,H
+	SBC	A,D
+	LD	D,A
+	LD	A,H
+	SBC	A,C
+	LD	C,A
+	LD	A,H
+	SBC	A,B
+	LD	B,A
+	JP	FPLNRM
+
+
+FPFMUL	CALL	FPLSETUP
+	PUSH	AF		; save stack cutback, error info
+	LD	A,(DE)		; load exp's
+	LD	B,A
+	LD	C,(HL)
+	TSTA			; if either arg zero, result is zero
+	JP	Z,FPLZERO
+	INC	C
+	DEC	C
+	JP	Z,FPLZERO
+	INC	DE		; move pointers to mantissas
+	INC	HL
+	LD	A,(DE)		; Compute answer sign (in bit zero)
+	XOR	(HL)
+	RLCA
+	PUSH	AF		; and save it
+	LD	A,B		; get exp sum
+	DEC	A
+	ADD	A,C		; should be between 80 and 17F (hex)
+	POP	BC		; get back sign info
+	JP	M,$10		; check exp sum out
+	JP	NC,FPLUND
+	JP	$20    
+$10	JP	C,FPLOVRX
+$20	ADD	A,81H		; everything's cool.  bias exp sum.
+	LD	C,A		; and save with sign info
+	PUSH	BC
+	LD	A,(DE)		; load first two bytes of arg1 (putting in
+	OR	80H		;  hidden bit) and save on stack
+	LD	B,A
+	INC	DE
+	LD	A,(DE)
+	LD	C,A
+	PUSH	BC
+	INC	DE		; load last byte of arg1
+	LD	A,(DE)
+	LD	B,A
+	LD	A,(HL)		; load E,H,L with arg two mantissa
+	OR	80H
+	INC	HL
+	LD	D,(HL)
+	INC	HL
+	LD	E,(HL)
+	EX	DE,HL
+	LD	E,A
+	LD	C,8		; Set up
+	PUSH	BC		;  first multiplier
+	EX	(SP),HL 	;   and count
+	LD	BC,0000 	; Clear answer
+	LD	D,B
+	; Main Multiply Loop
+	; BCD holds 24 bit accumulated sum, E (SP) is multiplicand
+	; L is loop count, (SP+2) is high order bytes of multiplier
+	; H is low order byte of multiplier and extra bits of 
+	; precision of sum
+$30	LD	A,H		; get multiplier and previous shift outs
+$40	RRA			; get low bit, save previous shift out
+	LD	H,A		; put multiplier back
+	LD	A,B		; get B in case no add
+	EX	(SP),HL 	; get back multiplicand
+	JP	NC,$50		; jump if no add necessary
+	LD	A,D		; add multiplicand to acculumated sum
+	ADD	A,L
+	LD	D,A
+	LD	A,C
+	ADC	A,H
+	LD	C,A
+	LD	A,B
+	ADC	A,E
+$50	; shift sum right one bit
+	RRA
+	LD	B,A
+	.IF Z80
+	 RR	C
+	 RR	D		; carry on if bit shifted out
+	.ENDC
+	.IF ~Z80
+	 LD	A,C
+	 RRA
+	 LD	C,A
+	 LD	A,D
+	 RRA
+	 LD	D,A
+	.ENDC
+	EX	(SP),HL 	; get multiplier, count
+	DEC	L
+	JP	NZ,$30	 
+	LD	A,H		; save previous carries out
+	POP	HL		; get more multiplier
+	EX	(SP),HL
+	PUSH	AF		; save carries
+	LD	A,H		; Check for done - we are if high bytes of 
+	OR	L		; multiplier are zero
+	JP	Z,$60	 	POP	AF		; junk carry stuff
+	LD	A,L		; shift to next byte
+	LD	L,H
+	LD	H,00H
+	EX	(SP),HL 	; save shifted bytes
+	PUSH	HL		; save multiplicand
+	LD	L,8		; set count
+	JP	$40    
+$60	POP	AF		; get carries out
+	POP	HL		; junk multiplicand
+	RRA			; put carries into E
+	LD	E,A
+FPLMULX POP	HL		; get sign, exp
+	INC	B		; test sign of answer
+	DEC	B
+	JP	FPLNRMX 	; normalize it
+
+FPFDIV	CALL	FPLSETUP
+	PUSH	AF		; save stack cutback, error info
+	LD	A,(DE)		; get exp1
+	LD	C,A
+	INC	DE		; get arg1 sign in case div by zero
+	LD	A,(DE)
+	RLCA
+	LD	B,A
+	LD	A,(HL)		; get arg2.exp
+	TSTA			; check for zero
+	JP	Z,FPLOVRX	; divide by zero
+	INC	C		; check for dividend zero
+	DEC	C
+	JP	Z,FPLZERO
+	LD	B,A		; save arg2.exp
+	LD	A,(DE)		; compute and save result sign
+	INC	HL
+	XOR	(HL)
+	RLCA			; put in bit 0
+	PUSH	AF
+	LD	A,C		; get exp diff
+	SUB	B
+	POP	BC		; get back result sign again
+	JP	M,$10		 ; check for over or underflow
+	JP	C,FPLUND
+	JP	$20    
+$10	JP	NC,FPLOVRX
+$20	ADD	A,81H		; bias exponent
+	LD	C,A		; save future exp with sign info
+	PUSH	BC
+	LD	BC,0000 	; set up answer
+	PUSH	BC
+	INC	C		; put 1 in low bit so know when we have
+				; shifted 8 times
+	PUSH	BC
+	PUSH	HL		; save ^arg2
+	EX	DE,HL		; Load E,H,L with arg1.mantissa
+	LD	A,(HL)
+	OR	80H		; put in hidden bit
+	INC	HL
+	LD	D,(HL)
+	INC	HL
+	LD	E,(HL)
+	EX	DE,HL
+	LD	E,A
+	EX	(SP),HL 	; load B,C,D with arg2.mantissa
+	LD	A,(HL)
+	OR	80H
+	LD	B,A
+	INC	HL
+	LD	C,(HL)
+	INC	HL
+	LD	D,(HL)
+	POP	HL
+	; Main Divide Loop
+	; EHL remainder, BCD divisor, (SP) (SP+2) quotient so far
+$30	JP	C,$40		; jump if carry shifted out
+	LD	A,B		; compare magnitudes
+	CP	E
+	JP	C,$40	 	JP	NZ,$50	  	LD	A,C
+	CP	H
+	JP	C,$40	 	JP	NZ,$50	  	LD	A,L
+	CP	D
+	CCF			; so we remember what if we subtracted
+	JP	NC,$50
+$40	LD	A,L		; subtract divisor from remainder
+	SUB	D
+	LD	L,A
+	LD	A,H
+	SBC	A,C
+	LD	H,A
+	LD	A,E
+	SBC	A,B
+	LD	E,A
+	SCF			; so we remember we subtracted
+$50	EX	(SP),HL 	; Record if we subtracted
+	LD	A,L
+	RLA
+	LD	L,A
+	JP	NC,$70		; Jump if byte not full
+	EX	DE,HL		; Get some elbow room
+	PUSH	HL
+	LD	HL,0005 	; Point to most significant result byte
+	ADD	HL,SP
+	LD	A,(HL)		; If non-zero we are done
+	TSTA
+	JP	NZ,$80	  	DEC	HL		; move answer bytes up one byte
+	LD	A,(HL)
+	LD	(HL),D
+	INC	HL
+	LD	(HL),A
+	LD	D,E
+	LD	E,01		; set up 8 more loops
+	TSTA			; if high byte now non-zero, only need
+	JP	Z,$60		; two more loops for 26-bit precision.	 (24 for
+	LD	E,40H		; answer, 1 if high bit 0, 1 for rounding)
+$60	POP	HL		; give back elbow room
+	EX	DE,HL
+$70	EX	(SP),HL 	; get back remainder
+	ADD	HL,HL		; shift remainder left one bit
+	LD	A,E
+	RLA
+	LD	E,A
+	JP	$30	 	; go for it again
+$80	POP	BC		; junk remainder
+	POP	BC
+	POP	BC		; get rest of answer
+	LD	A,E		; put 25th and 26th bits in high part
+	RRCA			; of E
+	RRCA
+	LD	E,A
+	JP	FPLMULX	 	; go normalize answer
+
+FPFFLOAT ; convert integer tos to fp number
+	POP	HL		; return_address
+	POP	BC		; arg to float
+	PUSH	HL
+	XOR	A		; tell FPSTOR to cut stack back zero bytes,
+	PUSH	AF		; and that no error has occurred.
+	LD	DE,0090H	; set sign
+	PUSH	DE		;  and exponent
+	LD	E,D		; clear rest of mantissa
+	LD	A,B		; set carry and sign flags if sign negative
+	CLRCF
+	RLA
+	JP	FPLSUMX	 	; negate if necessary, then normalize
+
+
+FPFFIX	POP	HL		; return_address
+	; load high bytes of mantissa into BC, sign into D, exp into E
+	POP	DE		; D := high byte mantissa, E := exp
+	LD	A,D
+	OR	80H		; turn on hidden bit
+	POP	BC		; C := middle byte mantissa
+	LD	B,A
+	LD	A,E		; (only need 16 bits of man) if EXP >= 90H
+	SUB	90H
+	JP	C,$30
+	; Overflow! check sign bit of answer
+	INC	D
+	DEC	D
+	JP	M,$10	
+	LD	BC,7FFFH	; load maxint.
+	JP	$20   
+$10	LD	BC,8000H	; load -maxint-1
+$20	PUSH	BC
+	LD	A,1		; signify error
+	LD	(FPERROR),A
+	JP	(HL)		; and return
+$30	CP	-16	 	; max of 16 shifts
+	JP	NC,$40 
+	LD	A,-16
+$40	LD	E,A		; save shift count
+$50	; shift mantissa right one bit
+	.IF Z80
+	 SRL	B
+	 RR	C
+	.ENDC
+	.IF ~Z80
+	 CLRCF
+	 LD	A,B		; shift mantissa down
+	 RRA
+	 LD	B,A
+	 LD	A,C
+	 RRA
+	 LD	C,A
+	.ENDC
+	INC	E
+	JP	NZ,$50 
+	INC	D		; test result sign
+	DEC	D
+	JP	P,$70 
+	CLRA			; negate result
+	SUB	C
+	LD	C,A
+	LD	A,00H
+	SBC	A,B
+	LD	B,A
+$70	PUSH	BC		; push answer
+	JP	(HL)		; and return
+
+
+FPLNRM	POP	HL		; get sign info and exponent
+	JP	NZ,FPLNRMX	; jump if semi-normalized (high byte non-zero)
+	LD	A,E		; check mantissa for zero
+	OR	D
+	OR	C
+	JP	Z,FPLZERO
+	LD	A,L		; get exp
+$10	SUB	9		; exp big enough to move 8 bits?
+	JP	C,FPLUND
+	INC	A
+	LD	B,C		; shift mantissa one byte
+	LD	C,D
+	LD	D,E
+	LD	E,00
+	INC	B		; check new high byte
+	DEC	B
+	JP	Z,$10	 	
+	LD	L,A		; put back exp
+FPLNRMX JP	M,FPLRND
+$20	DEC	L		; decr exp
+	JP	Z,FPLUND
+	; Shift mantissa lift one bit
+	.IF Z80
+	 SLA	E
+	 RL	D
+	 RL	C
+	 RL	B
+	.ENDC
+	.IF ~Z80
+	 EX	DE,HL
+	 ADD	HL,HL
+	 EX	DE,HL
+	 LD	A,C
+	 RLA
+	 LD	C,A
+	 LD	A,B
+	 ADC	A,B
+	 LD	B,A
+	.ENDC
+	JP	P,$20	 
+FPLRND	LD	A,E		; jump if round up unnecessary
+	RLA
+	JP	NC,FPLSIGN
+	INC	D
+	JP	NZ,FPLSIGN
+	INC	C
+	JP	NZ,FPLSIGN
+	INC	B
+	JP	NZ,FPLSIGN
+	LD	B,80H
+	INC	L		; bump up exp
+	JP	FPLSIGN
+
+FPLZERO CLRA			; load a zero
+	JP	FPLSET	 	; and propagate it
+FPLOVRX LD	H,B		; position sign info
+FPLOVR	LD	A,0FFH
+	JP	FPLABN
+FPLUND	CLRA
+FPLABN  POP	HL		; indicate error
+	INC	L
+	PUSH	HL
+	LD	B,A		; propagate A through mantissa...
+FPLSET	LD	C,A
+	LD	D,A
+	LD	L,A		; and exp
+	TSTA			; see if we just put in zero's
+	JP	Z,FPLSTOR
+FPLSIGN INC	L		; last chance for overflow
+	DEC	L
+	JP	Z,FPLOVR
+	LD	A,H		; set answer sign
+	INC	A
+	RRCA
+	AND	80H
+	XOR	B
+FPLSTOR ; result is LACD. put into a good format (ie. EDCB), cut the stack
+	; back, and push result
+	LD	B,D
+	LD	D,A
+	LD	E,L
+	POP	HL		; get cutback and error info
+	EX	(SP),HL
+	LD	(RETADR),HL
+	POP	HL
+	LD	A,L
+	AND	01H		; junk all the high bits..they don't count
+	LD	L,A
+	LD	A,(FPERROR)	; flip error on if error occured
+	OR	L
+	LD	(FPERROR),A
+	LD	L,H		; calculate new tos
+	LD	H,00H
+	ADD	HL,SP
+	LD	SP,HL
+	PUSH	BC
+	PUSH	DE
+	LD	HL,(RETADR)
+	JP	(HL)
+
+; End of file FPL
+
+	
+	
+.INCLUDE	Z8080:FPI.TEXT
+		.IF ~LSTFP
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+	
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; Beginning of file FPI
+
+; ************ Macros...
+
+	.MACRO	 FPMPUSH	 ; push the fp # residing at addr given
+	 LD	HL,(%1 + 2)
+	 PUSH	HL
+	 LD	HL,(%1)
+	 PUSH	HL
+	.ENDM
+	
+	.MACRO	 FPMPOP		; pop the fp tos into addr given 
+	 POP	HL
+	 LD	(%1),HL
+	 POP	HL
+	 LD	(%1 + 2),HL
+	.ENDM
+
+	.MACRO	 FPMSAVE	; save to fp tos into addr given
+	 POP	DE		;   leaves fp on tos, and in LHED
+	 POP	HL
+	 LD	(%1 + 2),HL
+	 EX	DE,HL
+	 LD	(%1),HL
+	 PUSH	DE
+	 PUSH	HL
+	.ENDM
+	
+	 ; adjust stack which contains a ret addr
+	 ; and one fp.	leave fp in LHED.  If addr
+	 ; specified put arg into it.  If "junk"
+	 ; specified (only legal if addr given)
+	 ; then don't leave fp on stack.
+	 .MACRO	  FPMADJ	; Adjust stack, which contains a ret. addr.
+	 .IF "%1" = ""		;   and one fp.	 Leave fp in LHED.  If addr.
+	  POP	BC		;   passed to macro stick fp in it, too.  If
+	  POP	HL		;   "junk" passed (only legal is addr. is
+	  POP	DE		;   given) then don't leave fp as tos, but
+	  PUSH	BC		;   toss it away.
+	  PUSH	DE
+	  PUSH	HL
+	 .ELSE
+	  POP	BC
+	  POP	DE
+	  POP	HL
+	  PUSH	BC
+	  LD	(%1 + 2),HL
+	  EX	DE,HL
+	  LD	(%1),HL
+	  .IF "%2" <> "JUNK"
+	   PUSH DE
+	   PUSH HL
+	  .ENDC
+	 .ENDC
+	.ENDM
+	
+	.MACRO	 FPMDUP		 ; duplicate tos
+	 .IF "%1" = "LHED"
+	  PUSH	DE
+	  PUSH	HL
+	 .ENDC
+	 .IF "%1" = "EDCB"
+	  PUSH	DE
+	  PUSH	HL
+	 .ENDC
+	 .IF "%1" = ""
+	  POP	HL
+	  POP	DE
+	  PUSH	DE
+	  PUSH	HL
+	  PUSH	DE
+	  PUSH	HL
+	 .ENDC
+	.ENDM
+	
+	.MACRO	 FPMFRET	; the complement to FPMADJ.  leaves
+	 POP	DE		; function result on stack and in EDCB,
+	 POP	BC		; and returns from function
+	 POP	HL
+	 PUSH	BC
+	 PUSH	DE
+	 JP	(HL)
+	.ENDM
+	
+	
+
+;***** Floating point simple callable routines
+
+FPFNEG	; -x
+	POP	HL		; ret addr
+	POP	DE
+	POP	BC
+	LD	A,D		; get sign
+	XOR	80H		; flip it
+	LD	D,A
+	PUSH	BC
+	PUSH	DE
+	JP	(HL)		; and get out of here (very negative vibes)
+	
+FPFABS	; abs(x)
+	POP	HL		; ret addr
+	POP	DE
+	POP	BC
+	LD	A,D
+	AND	7FH		; clear sign
+	LD	D,A
+	PUSH	BC
+	PUSH	DE
+	JP	(HL)		; we are absolutely done
+	
+FPFSQR	; sqr(x: real): real
+	FPMADJ
+	FPMDUP	LHED
+	CALL	FPFMUL
+	FPMFRET
+	
+
+FPFRND	; round(x: real): integer
+	FPMADJ
+	LD	A,H		; get sign info, so know to add 0.5
+	AND	80H		; or -0.5
+	LD	H,A		; construct high mantissa
+	LD	L,80H		; set up exp
+	LD	DE,0000H	; set up low order mantissa
+	PUSH	DE
+	PUSH	HL
+	CALL	FPFADD
+	CALL	FPFFIX
+	POP	DE		; can't hang around here too long
+	POP	HL
+	PUSH	DE
+	JP	(HL)
+	
+FPFINV	; computes 1/x
+	POP	HL		; ret addr.
+	POP	DE
+	POP	BC
+	PUSH	HL
+	LD	HL,0		; low mantissa of 1.0
+	PUSH	HL
+	LD	HL,0081H	; high mantissa, sign, and exp
+	PUSH	HL
+	PUSH	BC
+	PUSH	DE
+	CALL	FPFDIV
+	FPMFRET			; eyb-eyb
+	
+FPFPOT	; pwroften(i:integer): real
+	; returns 10 ^ i, 0 <= i <= 38
+	POP	DE		; ret addr
+	POP	HL		; HL := power
+	PUSH	DE
+	LD	E,L		; save a sec
+	LD	D,H
+	LD	BC,-39		; check validity of power
+	ADD	HL,BC
+	JP	C,$99
+	EX	DE,HL		; multiply power by 4
+	ADD	HL,HL
+	ADD	HL,HL
+	LD	DE,TENTBL+3	; point HL at highest byte of right number
+	ADD	HL,DE
+	LD	B,(HL)		; and put fp in EDCB
+	DEC	HL
+	LD	C,(HL)
+	DEC	HL
+	LD	D,(HL)
+	DEC	HL
+	LD	E,(HL)
+	POP	HL		; get out ret addr back
+	PUSH	BC
+	PUSH	DE
+	JP	(HL)
+$99	POP	HL		;Mexican <obviously>
+	LD	DE,0000
+	PUSH	DE
+	PUSH	DE
+	LD	A,1
+	LD	(FPERROR),A
+	JP	(HL)
+
+TENTBL	; power of ten table...typed in by hand.
+	; 1E0..1E9
+	.BYTE	 81H,  00H,  00H,  00H,	    84H,  20H,	00H,  00H
+	.BYTE	 87H,  48H,  00H,  00H,	    8AH,  7AH,	00H,  00H
+	.BYTE	 8EH,  1CH,  40H,  00H,	    91H,  43H,	50H,  00H
+	.BYTE	 94H,  74H,  24H,  00H,	    98H,  18H,	96H,  80H
+	.BYTE	 9BH,  3EH, 0BCH,  20H,	    9EH,  6EH,	6BH,  28H
+	; 1E10..1E19
+	.BYTE	0A2H,  15H,  02H, 0F9H,	   0A5H,  3AH,	43H, 0B7H
+	.BYTE	0A8H,  68H, 0D4H, 0A5H,	   0ACH,  11H,	84H, 0E7H
+	.BYTE	0AFH,  35H, 0E6H,  21H,	   0B2H,  63H,	5FH, 0A9H
+	.BYTE	0B6H,  0EH,  1BH, 0CAH,	   0B9H,  31H, 0A2H, 0BDH
+	.BYTE	0BCH,  5EH,  0BH,  6CH,	   0C0H,  0AH, 0C7H,  24H
+	; 1E20..1E29
+	.BYTE	0C3H,  2DH,  78H, 0EDH,	   0C6H,  58H, 0D7H,  28H
+	.BYTE	0CAH,  07H,  86H,  79H,	   0CDH,  29H,	68H,  17H
+	.BYTE	0D0H,  53H, 0C2H,  1DH,	   0D4H,  04H,	59H,  52H
+	.BYTE	0D7H,  25H,  6FH, 0A7H,	   0DAH,  4EH, 0CBH,  91H
+	.BYTE	0DEH,  01H,  3FH,  3BH,	   0E1H,  21H,	8FH,  0AH
+	; 1E30..1E38
+	.BYTE	0E4H,  49H, 0F2H, 0CDH,	   0E7H,  7CH,	6FH,  80H
+	.BYTE	0EBH,  1DH, 0C5H, 0B0H,	   0EEH,  45H,	37H,  1CH
+	.BYTE	0F1H,  76H,  84H, 0E3H,	   0F5H,  1AH,	13H,  0EH
+	.BYTE	0F8H,  40H,  97H, 0D2H,	   0FBH,  70H, 0BDH, 0C7H
+	.BYTE	0FFH,  16H,  76H, 09CH
+
+
+
+; ********* Low level support routines used by the fp instructions
+
+FPLBEG	; used by instructions before routine called...
+	SAVIPC			; save the ipc...
+FPLCBEG ; (entry point for CSP routines)
+	CLRA			; ...and clear error flag
+	LD	(FPERROR),A
+	RET
+	
+FPLCHK	; exit point for all fp instructions and CSP's
+	LD	A,(FPERROR)
+	TSTA
+	JP	Z,BACK1
+	JP	FPIERR
+	
+
+;********** Simple fp instructions and standard procedures
+
+FLT	; float the top of stack
+	CALL	FPLBEG		; don't care about FPERROR, but need to savipc
+	CALL	FPFFLOAT
+	JP	BACK1
+
+FLO	; float the integer under the real on top of stack
+REAL1	.EQU	WORD1
+REAL2	.EQU	WORD2
+	CALL	FPLBEG
+	POP	HL
+	LD	(REAL1),HL
+	POP	HL
+	LD	(REAL2),HL
+	CALL	FPFFLOAT
+	LD	HL,(REAL2)
+	PUSH	HL
+	LD	HL,(REAL1)
+	PUSH	HL
+	JP	BACK1
+
+ABR	; Real absolute value
+	CALL	FPLBEG
+	CALL	FPFABS
+	JP	BACK1
+
+ADR	; Add reals
+	CALL	FPLBEG		; saves ipc and sets FPERROR to false
+	CALL	FPFADD
+	JP	FPLCHK		; checks FPERROR and bombs if necessary
+
+SBR	; Subtract reals
+	CALL	FPLBEG
+	CALL	FPFSUB
+	JP	FPLCHK
+
+MPR	; Multiply reals
+	CALL	FPLBEG
+	CALL	FPFMUL
+	JP	FPLCHK
+
+SQR	; Square reals
+	CALL	FPLBEG
+	CALL	FPFSQR
+	JP	FPLCHK
+
+DVR	; Divide reals
+	CALL	FPLBEG
+	CALL	FPFDIV
+	JP	FPLCHK
+
+NGR	; Negate real
+	CALL	FPLBEG
+	CALL	FPFNEG
+	JP	BACK1
+
+
+TNC	; truncate real and convert to integer
+	CALL	FPLCBEG		; csp fp set...doesn't do a savipc
+	CALL	FPFFIX
+	JP	FPLCHK
+
+RND	; round real
+	CALL	FPLCBEG
+	CALL	FPFRND
+	JP	FPLCHK
+
+POT	CALL	FPLCBEG
+	CALL	FPFPOT
+	JP	FPLCHK
+
+
+REALC	; compare the real numbers on the top of stack
+	POP	HL
+	LD	(RETADR),HL
+	POP	BC
+	POP	HL
+	POP	DE
+	PUSH	DE
+	; Compare signs
+	LD	A,D
+	AND	80H
+	LD	D,A
+	LD	A,B
+	AND	80H
+	CP	D
+	JP	NZ,$30 
+	TSTA
+	JP	Z,$10 
+	; comparing negative numbers, so switch before comparing
+	LD	E,C
+	LD	D,B
+	POP	BC
+	EX	(SP),HL
+	JP	$20 
+$10	POP	DE
+$20	; check exps
+	LD	A,E
+	CP	C
+	JP	NZ,$40 
+	; high mantissa bytes
+	LD	A,D
+	CP	B
+	JP	NZ,$40 
+	; low two bytes
+	POP	DE
+	LD	A,E
+	CP	L
+	JP	NZ,$50 
+	LD	A,D
+	CP	H
+	JP	$50 
+$30	POP	HL
+$40	POP	HL
+$50	LD	HL,(RETADR)
+	JP	(HL)
+
+
+; End of file FPI
+
+	
+.INCLUDE	Z8080:NOFPT.TEXT
+	.INCLUDE	Z8080:PROC1.TEXT
+		.IF ~LSTPROC
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+	
+; Copyright (c) by Regents of the University of California, San Diego
+
+;***************************************************************;
+;	     PROGRAM FLOW - JUMPS AND PROCEDURE CALLS		;
+;***************************************************************;
+
+;***** Jumps
+
+; JTAB format below...see procedure operators
+
+EFJ	; Equal false jump (jump if not equal)
+	POP	DE
+	POP	HL
+	LD	A,L
+	SUB	E
+	JP	NZ,UJP
+	LD	A,H
+	SBC	A,D
+	JP	NZ,UJP
+	JP	NOJ
+
+NFJ	; Not equal false jump (jump if equal)
+	POP	DE
+	POP	HL
+	LD	A,L
+	SUB	E
+	JP	NZ,NOJ
+	LD	A,H
+	SBC	A,D
+	JP	NZ,NOJ
+	JP	UJP
+
+FJP	 ; False jump
+	POP	AF		; Sneaky but quick.  Carry is bit zero.
+	JP	NC,UJP
+NOJ	INC	BC
+	JP	BACK
+
+UJP	; Unconditional jump
+	LD	A,(BC)		; get jump offset
+	INC	BC
+	TSTA			; if small then short relative jump
+	JP	M,$10 
+	ADD	A,C		; BC = BC + A
+	LD	C,A
+	LD	A,00H
+	ADC	A,B
+	LD	B,A
+	JP	BACK
+$10	LD	HL,(JTAB)	; use offset as index in JTAB
+	LD	C,A
+	LD	B,0FFH		; BC = sign extended offset,0FFH
+	ADD	HL,BC		; HL = ^jump entry
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	SELREL			; entry is self-relative
+	JP	BACK
+  
+XJP	; Case jump
+		; Index is (SP)
+		; In the code, starting on a word boundary,
+		; are 3 words...
+		;   min index for table
+		;   max index
+		;   else jump (point IPC here if index out of table range)
+		; ...and the case table jump addresses
+	INC	BC		; put HL on word boundary
+	LD	A,C
+	AND	0FEH
+	LD	L,A
+	LD	H,B
+	LD	C,(HL)	; BC = min
+	INC	HL
+	LD	B,(HL)
+	INC	HL
+	LD	E,(HL)	; DE = max
+	INC	HL
+	LD	D,(HL)
+	INC	HL
+	LD	(IPCSAV),HL	; save addr of else jump
+	POP	HL		; get index
+	EX	DE,HL
+	; HL = max, DE = index, BC = min
+	LD	A,D
+	XOR	H
+	JP	M,$10 
+	LD	A,L		; decide if index too large...
+	SUB	E
+	LD	A,H
+	SBC	A,D
+	JP	P,$20
+	JP	BACK1
+$10	AND	D
+	JP	P,BACK1
+$20	EX	DE,HL		; ...or too small.
+	LD	A,B
+	XOR	H
+	JP	P,$30 
+	AND	H
+	JP	M,BACK1
+$30	SUBHLBC			; and put index-min in HL
+	JP	M,BACK1
+	INC	HL		; take in to account else jump
+	ADD	HL,HL		; and set HL = case table[index]
+	EX	DE,HL
+	LD	HL,(IPCSAV)
+	ADD	HL,DE
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	DEC	HL
+	SUBHLBC			; entry is negative self relative again.
+	LD	C,L
+	LD	B,H
+	JP	BACK
+
+
+
+;***** Procedure calling and returning
+
+; Variables used...
+SEGBOT	.EQU	TPROC		; pointer to bottom of segment
+RLBASE	.EQU	TPROC+2		; base relocation amount
+REFP	.EQU	TPROC+4		; pointer to relevant refcount
+PROCBOT .EQU	TPROC+6		; pc relative (proc) relocation amount
+RLDELTA .EQU	TPROC+8		; the relocation abount for the relocation
+				;   currently being done.
+SEGNUM	.EQU	TPROC+10.	; segment # currently being called
+SEGTP	.EQU	TPROC+12.	; ^segtable entry for segment
+NEWSEG	.EQU	TPROC+14.	; new SEGP
+NEWJTB	.EQU	TPROC+16.	; new JTAB pointer
+
+; Mark stack control word (MSCW) format:
+  
+MSSP	.EQU	+0AH		; Caller's top of stack
+MSIPC	.EQU	+08H		; Caller's IPC (return address)
+MSSEG	.EQU	+06H		; Caller's segment (proc table) pointer
+MSJTAB	.EQU	+04H		; Caller's jtab pointer
+MSDYN	.EQU	+02H		; Dynamic link - pointer to caller's MSCW
+MSSTAT	.EQU	+00H		; Static link - pointer to parent's MSCW
+MSBASE	.EQU	-02H		; Base link (only if CBP) - pointer
+				; to base MSCW of caller
+  
+; Jump table (JTAB) format
+;	.EQU	+01H		; lex level of proc
+;	.EQU	 00H		; proc-num
+ENTRIC	.EQU	-02H		; address of entry point (self-relative)
+EXITIC	.EQU	-04H		; address of exit code (self-relative)
+PARMSZ	.EQU	-06H		; number of bytes of parameters
+DATASZ	.EQU	-08H		; number of bytes of local data segment
+; -0AH to -08H-2*(# of long jumps)	self-relative jump address
+
+;Proc table (pointed to by msseg) format
+;	.EQU	+01H		; number of procs in segment
+;	.EQU	 00H		; seg_num
+;-02H to -2*(number of procs)	self-relative pointers to each procs JTAB
+
+
+; Seg table (part of syscom) format:
+;		 00H		; unit number code for seg is on
+;		+02H		; block # code for seg starts at
+;		+04H		; segment length (in bytes)
+
+; Operator formats:
+;   RBP,RNP: number of words to return (0..2)
+;   CBP,CGP,CLP,CIP: proc_num
+;   CXP: seg_num, proc_num
+  
+  
+RBP	; Return from base procedure
+	LD	HL,(MP)		; HL := old base
+	DEC	HL
+	LD	D,(HL)
+	DEC	HL
+	LD	E,(HL)
+	EX	DE,HL
+	LD	(BASE),HL	; restore previous base environment
+	LD	DE,DISP0
+	ADD	HL,DE
+	LD	(BASED0),HL
+	; then fall into RNP
+RNP	; Return from normal procedure
+	LD	HL,(MPD0)	; DE := old sp (didn't want to index)
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	A,(BC)		; A := Number of words to return
+	ADD	A,A		; Double for bytes
+	JP	Z,$20		; No value to return
+	LD	C,A		; BC := # bytes to return
+	LD	B,00H
+	LD	HL,(MPD0)	; HL := ^last byte of where params go
+	ADD	HL,BC
+	INC	HL
+	.IF Z80
+	 DEC	DE	; do the move
+	 LDDR
+	 INC  DE        ;EITHER WAY TO $20 , DE = NEW SP
+	.ENDC
+	.IF ~Z80
+$10	LD	A,(HL)
+	DEC	DE
+	DEC	HL
+	LD	(DE),A
+	LD	A,(HL)
+	DEC	DE
+	DEC	HL
+	LD	(DE),A
+	DEC	C
+	DEC	C
+	JP	NZ,$10 
+	.ENDC
+$20	; use info in MSCW to restore machine state
+	LD	HL,(MP)
+	LD	SP,HL
+	POP	HL		; junk stat link
+	POP	HL		; HL := dyn link
+	LD	(MP),HL		; new local MSCW := dyn link
+	LD	BC,DISP0
+	ADD	HL,BC
+	LD	(MPD0),HL
+	POP	HL     		; rest should be obvious
+	LD	(JTAB),HL
+	; well...it used to be obvious.	 See if current seg same as old
+	POP	HL
+	LD	A,(SEGP)
+	CP	L
+	JP	NZ,$30 
+	LD	A,(SEGP+1)
+	CP	H
+	JP	Z,$40 
+$30	; it is different.  Decrement refcount for current segment.
+	PUSH	HL
+	LD	HL,(SEGP)
+	LD	A,(HL)
+	CALL	DECREF		; decrements refcount for seg A
+	POP	HL
+$40	LD	(SEGP),HL
+	POP	BC		; ipc
+	EX	DE,HL  		; restore SP
+	LD	SP,HL
+	JP	BACK
+  
+DECREF	; Decrements refcount for seg # A.
+	;   if count becomes 0, return Zero flag set
+	LD	L,A
+	LD	H,0
+	ADD	HL,HL
+	ADD	HL,HL
+	LD	BC,INTSEGT+1
+	ADD	HL,BC
+	LD	B,(HL)
+	DEC	L
+	LD	C,(HL)
+	DEC	BC
+	LD	(HL),C
+	INC	L
+	LD	(HL),B
+	LD	A,C
+	OR	B
+	RET
+  STKCHK	; check for stack overflow
+	LD	HL,(NP)
+	EX	DE,HL
+	LD	HL,-60. ; leave a 30-word evaluation stack
+	ADD	HL,SP
+	LD	A,L
+	SUB	E
+	LD	A,H
+	SBC	A,D
+	RET
+	
+	
+	; The callable routine used to build a mark stack control word...
+	;   each actual procedure opcode uses it as a basis, then does some
+	;   other stuff (usually setting the static chain pointer correctly).
+BLDXNL	; entry point for BLDMSCW if CXP is doing call
+	POP	HL		; (RETADR) := return_address
+	LD	(RETADR),HL
+	JP	BLD3 
+BLDMSCW ; Build a MSCW, copy down parameters, and set up proper environment
+	; for called procedure 
+	LD	HL,(SEGP)
+	LD	(NEWSEG),HL
+	POP	HL		; (RETADR) := return_address
+	LD	(RETADR),HL
+	XOR	A		; indicate no code read in, not a CXP call
+	PUSH	AF
+BLD3	LD	A,(BC)		; A := proc_num
+	INC	BC
+	SAVIPC
+	NEGA			; DE := -proc_num (need to index proc table
+	LD	E,A		;   backward...segp^[-proc_num] = ^jtab)
+	LD	D,0FFH
+	LD	HL,(NEWSEG)
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	E,(HL)		; DE := ^jtab
+	INC	HL
+	LD	D,(HL)
+	; entry is negative self-relative
+	.IF Z80
+	SCF
+	SBC	HL,DE
+	.ENDC
+	.IF ~Z80
+	SCF
+	LD	A,L
+	SBC	A,E
+	LD	L,A
+	LD	A,H
+	SBC	A,D
+	LD	H,A
+	.ENDC
+	LD	(NEWJTB),HL
+	; is it an assembly language proc ?
+	LD	A,(HL)
+	TSTA
+	JP	NZ,$40 
+	; it is. See if CXP and take special action if necessary,
+	; leave BACK1 as ret address, and jump to it !
+	POP	AF		; See if this was a CXP call
+	TSTA
+	JP	Z,$35
+	; oops. it was. this means we bumped ref pointer, but will never
+	;   execute a nice return instruction to bump down the pointer.
+	EX	DE,HL		; save ^jtab
+	LD	HL,(SEGNUM)	; To fix, we will just zero that refcount
+	LD	H,0
+	ADD	HL,HL
+	ADD	HL,HL
+	LD	BC,INTSEGT
+	ADD	HL,BC
+	DEC	(HL)		; just wipe out low...high should be zero
+	EX	DE,HL
+$35	LD	DE,BACK1
+	PUSH	DE
+	DEC	HL
+	LD	D,(HL)
+	DEC	L
+	LD	E,(HL)
+	EX	DE,HL
+	JP	(HL)
+$40	; Regular procedure...now get datasz and parmsz
+	LD	DE,DATASZ	; HL := ^datasz
+	ADD	HL,DE
+	LD	E,(HL)		; DE := datasz
+	INC	HL
+	LD	D,(HL)
+	INC	HL
+	LD	C,(HL)		; BC := parmsz
+	INC	HL
+	LD	B,(HL)
+	POP	AF		; now extend stack in proper manner...
+	JP	C,$50 
+	; code not read in, so extend by datasz
+	CLRA			; HL := SP-datasz
+	SUB	E
+	LD	L,A
+	LD	A,00H
+	SBC	A,D
+	LD	H,A
+	ADD	HL,SP
+	LD	SP,HL		; SP := SP-datasz
+	EX	DE,HL		; DE := ^param dest
+	ADD	HL,DE		; HL := ^params
+	JP	$60 
+$50	; code was read in, so extend by parmsz+datasz
+	EX	DE,HL		; HL := datasz
+	ADD	HL,BC		;		+ parmsz
+	CLRA			; HL := SP-datasz-parmsz
+	SUB	L
+	LD	L,A
+	LD	A,00H
+	SBC	A,H
+	LD	H,A
+	ADD	HL,SP
+	LD	SP,HL		; SP := SP-datasz-parmsz
+	EX	DE,HL		; DE := ^parma dest
+	LD	HL,(NEWSEG)	; HL := ^params
+	INC	HL
+	INC	HL
+$60	LD	A,C		; see if parsz = 0
+	OR	B
+	JP	Z,$80 
+	; copy the params down
+	.IF Z80
+	LDIR
+	.ENDC
+	.IF ~Z80
+	CLRA			; BC := -BC
+	SUB	C
+	LD	C,A
+	LD	A,00H
+	SBC	A,B
+	LD	B,A
+$70	LD	A,(HL)
+	LD	(DE),A
+	INC	HL
+	INC	DE
+	LD	A,(HL)
+	LD	(DE),A
+	INC	HL
+	INC	DE
+	INC	C
+	INC	C
+	JP	NZ,$70 
+	INC	B
+	JP	NZ,$70 
+	.ENDC
+	; now build a MSCW as if this were a CLP
+$80	PUSH	HL		; mssp
+	LD	HL,(IPCSAV)	; msipc
+	PUSH	HL
+	LD	HL,(SEGP)	; msseg
+	PUSH	HL
+	LD	HL,(JTAB)	; msjtab
+	PUSH	HL
+	LD	HL,(MP)		; msdyn
+	PUSH	HL
+	PUSH	HL		; msstat
+	;check for stack overflow
+	CALL	STKCHK
+	JP	C,STKOVR
+	; set up environment for called procedure
+	LD	HL,0000H	; (MP) := SP
+	ADD	HL,SP
+	LD	(MP),HL
+	LD	DE,DISP0
+	ADD	HL,DE
+	LD	(MPD0),HL
+	LD	HL,(NEWSEG)
+	LD	(SEGP),HL
+	LD	HL,(NEWJTB)
+	LD	(JTAB),HL
+	; DE := entric
+	DEC	HL
+	LD	D,(HL)
+	DEC	HL
+	LD	E,(HL)
+	LD	A,L		; negative self-relative, asusual
+	SUB	E
+	LD	C,A
+	LD	A,H
+	SBC	A,D
+	LD	B,A
+	LD	HL,(RETADR)
+	JP	(HL)
+
+CLP	; Call local procedure
+	CALL	BLDMSCW		; Does everything for CLP
+	JP	BACK
+  
+CGP	; Call global procedure
+	CALL	BLDMSCW
+	POP	HL		; Junk stat pointer BLDMSCW gave us...
+	LD	HL,(BASE)
+	PUSH	HL		; ... and make stat point to BASE
+	JP	BACK
+  
+CBP	; Call base procedure
+	CALL	BLDMSCW		; and then make this a BASE MSCW
+CBPXNL	LD	HL,(BASE)	; save old base pointer
+	PUSH	HL
+	PUSH	BC		; save new IPC
+	EX	DE,HL		; then make this MSCW the new base
+	LD	HL,(MPD0)
+	LD	(BASED0),HL
+	LD	HL,(MP)
+	LD	(BASE),HL
+	EX	DE,HL		; Use the old base's statlink...
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	EX	DE,HL		; ...as our own statlink
+	LD	(HL),C
+	INC	HL
+	LD	(HL),B
+	POP	BC		; get back IPC
+	JP	BACK
+  
+CIP	; Call intermediate procedure
+	CALL	BLDMSCW		; then try to point statlink at parent
+CIPXNL	PUSH	BC		; save IPC for awhile
+	LD	HL,(MP)		; BC := ^new MSCW
+	LD	C,L
+	LD	B,H
+	LD	HL,(JTAB)	; A := lex level of called proc
+	INC	HL
+	LD	A,(HL)
+	DEC	A
+	JP	P,$10		; if lex level <= 0, base procedure
+	POP	BC		; get back ipc
+	JP	CBPXNL		; and do call base proc stuff
+	
+	; find first proc with lex level one less than ours
+$10	; see if this is the MSCW that has the goods we need
+	LD	HL,MSJTAB+1	; HL := ^msjtab (high byte)
+	ADD	HL,BC
+	LD	D,(HL)		; DE := ^jump table
+	DEC	HL
+	LD	E,(HL)
+	DEC	HL		; BC := msdyn, ^ next mscw
+	LD	B,(HL)
+	DEC	HL
+	LD	C,(HL)
+	EX	DE,HL		; get lexl from jtab
+	INC	HL
+	CP	(HL)
+	JP	NZ,$10 
+	POP	DE		; get IPC
+	POP	HL		;junk old stat link
+	PUSH	BC		; new msstat is the found mscw
+	LD	C,E		; set up IPC again
+	LD	B,D
+	JP	BACK
+  
+	
+.INCLUDE	Z8080:PROC2.TEXT
+	; Copyright (c) 1978
+;   by Regents of the University of California
+;   San Diego
+
+; Start of file PROC2
+
+CXP	; Call external (different segment) procedure
+	; Find or read in desired seg, then CIP it
+	LD	A,(BC)		; A := seg_num
+	INC	BC
+	LD	HL,(SEGP)	; are we already in this seg. (can happen
+	CP	(HL)		;   when op sys does calls to read, etc.)
+	JP	Z,CIP
+	AND	A		; is this a call to the op sys (seg 0) ?
+	JP	NZ,$10 
+	; this IS a call to op sys
+	INC	A		; indicate CXP via a 1 in A...
+	PUSH	AF		; ...and push Carry = false, to inidicate no
+				;   code has been read in
+	LD	HL,(INTSEGT)	; bump up refcount, and set
+	INC	HL		;     (NEWSEG) := MEMTOP
+	LD	(INTSEGT),HL
+	LD	HL,(MEMTOP)
+	JP	$20 
+$10	; Call to arbitrary, different segment
+	SAVIPC
+	; A = segnumber, so
+	CALL	GETSEG		; get segment into memory
+	LD	A,1		; indicate this is a CXP call
+	PUSH	AF		; carry flag set or reset by GETSEG
+	GETIPC			; get back ipc, bu don't touch DE
+	EX	DE,HL		; HL := ^seg just read in
+$20	LD	(NEWSEG),HL
+	CALL	BLDXNL		; build a MSCW
+	JP	CIPXNL		; then set up stat link
+
+	
+READSEG ; read in segment from disk, setting newseg, segbot
+	; use seg_num as index into segment directory...
+	LD	HL,(SEGNUM)	; HL := 6*seg_num
+	LD	H,00H
+	ADD	HL,HL
+	LD	E,L
+	LD	D,H
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	DE,SEGTBL+04H	; HL := ^seg_len
+	ADD	HL,DE
+	LD	(SEGTP),HL
+	LD	E,(HL)		; DE := seg_len
+	INC	HL
+	LD	D,(HL)
+	LD	A,E		; if seg_len = 0 then seg non-existent
+	OR	D
+	JP	Z,NOPROC
+	LD	HL,0		; (NEWSEG) := SP, as that is where proc
+	ADD	HL,SP		; table will end up (remember ret addr.)
+	LD	(NEWSEG),HL
+	POP	BC		; grab ret addr.
+	SUBHLDE			; extend stack by seg_len
+	INC	L		; compensate for ret. addr. messing up
+	INC	HL		;   above calculations
+	LD	SP,HL
+	PUSH	BC		; restash ret addr.
+	LD	(SEGBOT),HL
+	; push parameters on stack for read routine...
+	LD	HL,(SEGTP)	; unit number
+	DEC	HL
+	DEC	HL
+	DEC	HL
+	LD	B,(HL)
+	DEC	HL
+	LD	C,(HL)
+	PUSH	BC
+	LD	HL,04H		; beginning address
+	ADD	HL,SP
+	PUSH	HL
+	PUSH	DE		; seg_len
+	LD	HL,(SEGTP)	; block on disk code is at
+	DEC	HL
+	LD	B,(HL)
+	DEC	HL
+	LD	C,(HL)
+	PUSH	BC
+	CALL	SYSRD
+	LD	A,(IORSLT)	;validate the code
+	AND	A
+	JP	NZ,SYIOER
+	LD	HL,(NEWSEG)
+	LD	A,(SEGNUM)
+	CP	(HL)
+	JP	NZ,NOPROC
+	RET			; everything appears to be okay
+	
+ RLLIST	; relocate a bunch of locations pointed to by a list of
+	;   self-relative pointers to memory.
+	; Passed DE = (^number of nodes) + 2
+	;	 HL = relocation delta (amount to add to each mem loc)
+	; Returns HL = ^last node
+	LD	(RLDELTA),HL
+	EX	DE,HL
+	DEC	HL		; BC := number of nodes in list
+	LD	B,(HL)
+	DEC	L
+	LD	C,(HL)
+$10	LD	A,C		; done yet ?
+	OR	B
+	RET	Z
+	; nope.	 set DE := ^word that needs relocating
+	DEC	HL
+	LD	D,(HL)		; nodes are self-relative pointers
+	DEC	L
+	LD	A,L
+	SUB	(HL)
+	LD	E,A
+	LD	A,H
+	SBC	A,D
+	LD	D,A
+	PUSH	HL		; save node pointer until next time around
+	EX	DE,HL		; do the relocation
+	LD	A,(RLDELTA)
+	ADD	A,(HL)
+	LD	(HL),A
+	INC	HL
+	LD	A,(RLDELTA+1)
+	ADC	A,(HL)
+	LD	(HL),A
+	POP	HL		; get back node pointer...
+	DEC	BC		; ...and try another round
+	JP	$10    
+
+RLSEG	; Relocate an entire segment. 
+	; Given newseg = ^segment, segbot = ^ bottom of segment,
+	;   rlbased0 = ^ base to use in base relocation
+	; Each proc has its own entric to relocate pc relative stuff.
+	; While we're at it, turn all assembly self-relative entrics
+	;   into absolute addresses
+	
+	; A := # of procedures in seg
+	LD	HL,(NEWSEG)
+	INC	L
+	LD	A,(HL)
+	DEC	L		; leave HL = 2 + ^proc 1 jtab pointer
+$10    ; relocate one procedures worth
+	PUSH	AF		; save number of procs left
+	; DE := ^jtab for proc.
+	DEC	HL
+	LD	D,(HL)
+	DEC	L
+	LD	A,L
+	SUB	(HL)
+	LD	E,A
+	LD	A,H
+	SBC	A,D
+	LD	D,A
+	PUSH	HL		; save ^proc jtab pointer
+	; is relocation needed ? proc # = zero means assembly proc.
+	EX	DE,HL
+	LD	A,(HL)
+	TSTA
+	JP	NZ,$20	 
+	; too bad. Change entric to an absolute mem address, and store
+	;   that address in (PROCBOT)
+	DEC	HL
+	DEC	L
+	LD	A,L
+	SUB	(HL)
+	LD	(HL),A
+	LD	E,A
+	INC	L
+	LD	A,H
+	SBC	A,(HL)
+	LD	(HL),A
+	LD	D,A
+	DEC	L
+	EX	DE,HL
+	LD	(PROCBOT),HL
+	; relocate base relative stuff
+	LD	HL,(RLBASE)
+	CALL	RLLIST
+	; relocate seg relative stuff
+	EX	DE,HL
+	LD	HL,(SEGBOT)
+	CALL	RLLIST
+	; relocate proc relative stuff
+	EX	DE,HL
+	LD	HL,(PROCBOT)
+	CALL	RLLIST
+	; that wasn't so bad.  get back old proc pointer, and # of procs
+$20	POP	HL
+	POP	AF
+	DEC	A
+	JP	NZ,$10	  	; what a relief.  All done
+	RET
+	
+
+GETSEG	; callable routine to insure a segment is in memory
+	; takes: A = segnum
+	; returns: DE = ^seg, carry set if code read in
+	
+	; look in internal table to get refcount for seg
+	; if refcount > 0, seg in memory, and so increment refcount.
+	;  otherwise we have to open a space on the stack, read in seg,
+	;  relocate any assembly language stuff according to strange and
+	;  mysterious conditions, make the refcount for the seg 1, and
+	;  fill in the entry telling where the seg is.
+	
+	
+	POP	HL	      ; save return address
+	LD	(RETADR2),HL
+	LD	(SEGNUM),A
+	LD	L,A	       ; calc address of desired refcount
+	LD	H,0
+	ADD	HL,HL
+	ADD	HL,HL
+	LD	DE,INTSEGT+1	; HL := 1 + ^intsegt[segnum].refcount
+	ADD	HL,DE
+	LD	A,(HL)
+	LD	D,A		; save high byte, on the offchance refcount > 0
+	DEC	L
+	OR	(HL)
+	JP	Z,GSGREAD
+	; whew...segment is in core.
+	LD	E,(HL)		; increment refcount
+	INC	DE
+	LD	(HL),E
+	INC	L
+	LD	(HL),D
+	INC	HL		; now set DE = ^seg
+	LD	E,(HL)
+	INC	L
+	LD	D,(HL)
+	CLRCF			; indicate no code read in
+	JP	GSGXIT
+GSGREAD ; need to bring in seg off disk
+	; HL points to low byte of refcount
+	LD	(REFP),HL	; so stash HL, as info handy later
+	CALL	READSEG		; bring in the segment off disk
+	; Decide how to calc base relocation info...
+	;   if we are loading in a base segment procedure,
+	;     then calc future base,
+	;     else use current base, as will not change when seg is called
+	LD	HL,(NEWSEG)
+	DEC	HL		; DE := ^proc1's jtab
+	LD	D,(HL)
+	DEC	L
+	LD	A,L
+	SUB	(HL)
+	LD	E,A
+	LD	A,H
+	SBC	A,D
+	LD	D,A
+	; if assembly procedure then relocate against old BASE
+	;   (note that seg 1 disallowed from having BASE relocate stuff
+	;   so it doesn't matter how its base stuff is relocated)
+	EX	DE,HL
+	LD	A,(HL)
+	TSTA
+	JP	Z,$05
+	; look at proc 1's lex level, if zero then this is a BASE procedure
+	INC	HL		; point HL at lex level
+	LD	A,(HL)
+	TSTA
+	JP	Z,$10
+$05	; use current base as relocation
+	LD	HL,(BASE)
+	JP	$20
+$10	; calculate what base will be
+	; (Crystal Ball, so many things I need to know.	 --Styx)
+	LD	DE,-6		; HL := 1 + ^parmsize
+	ADD	HL,DE
+	LD	D,(HL)		; DE := parmsize, BC := datasz
+	DEC	L
+	LD	E,(HL)
+	DEC	HL
+	LD	B,(HL)
+	DEC	L
+	LD	C,(HL)
+	EX	DE,HL		; set HL := SP-(datasz+parmsize+mscwsize)
+	ADD	HL,BC
+	LD	BC,MSCWSIZE
+	ADD	HL,BC
+	CLRA
+	SUB	L
+	LD	L,A
+	LD	A,0
+	SBC	A,H
+	LD	H,A
+	ADD	HL,SP
+$20	LD	(RLBASE),HL	; and stash information in a safe place
+	CALL	RLSEG		; relocate the sucker.
+	; fill in intsegt entries correctly
+	LD	HL,(NEWSEG)
+	EX	DE,HL
+	LD	HL,(REFP)
+	INC	(HL)		; refcount := 1
+	INC	L
+	INC	HL
+	LD	(HL),E		; and point at new seg
+	INC	L
+	LD	(HL),D
+	SCF			; and indicate that code was read in
+GSGXIT	; leave routine
+	LD	HL,(RETADR2)
+	JP	(HL)
+
+
+
+GSEG	; Standard procedure getseg.
+	; loads in a segment if it isn't in already
+	; segnum is on tos.
+	POP	HL
+	LD	A,L
+	CALL	GETSEG		; With A = segnum
+	CALL	STKCHK		; make sure we didn't wipe out heap
+	JP	BACK1
+	
+RSEG	; Standard procedure releaseseg
+	;   bumps down refcount, then junks seg if count goes to 0
+	POP	HL
+	LD	A,L
+	CALL	DECREF		; Decrement refcount for segment # HL
+	JP	NZ,BACK1
+	; HL = ^entry in intsegt
+	INC	HL		 ; refcount = 0.  set DE := ^seg
+	LD	E,(HL)
+	INC	L
+	LD	D,(HL)
+	EX	DE,HL		; then set SP := ^seg+2
+	INC	L
+	INC	HL
+	LD	SP,HL
+	JP	BACK1
+
+
+EXIT	; Exit a specified procedure
+	; fix IPC of current executing procedure to point to exit code.
+	; if current proc is the one to exit from, JP BACK1
+	; otherwise...
+	;   calculate parent of (BASE), ie., MSCW of PROGRAM pascalsystem.
+	;   BC := (MP)
+	;   repeat
+	;     if BC = system MSCW then die for exitting procedure not called
+	;     change IPC of this MSCW to point to exit code for proc
+	;     done := proc and seg of this MSCW match passed parameters
+	;     BC := MSDYN(BC)
+	;   until done;
+PROCNUM .EQU	WORD1
+SYSMSCW .EQU	WORD2
+	POP	HL		; param_proc_num
+	LD	(PROCNUM),HL
+	POP	HL		; param_seg_num
+	LD	(SEGNUM),HL
+	; fix IPC of current proc
+	LD	HL,(JTAB)	; HL := ^exitic
+	LD	DE,EXITIC
+	ADD	HL,DE
+	LD	E,(HL)		; DE := exitic (unmodified)
+	INC	HL
+	LD	D,(HL)
+	SCF			; negative self-relative
+	LD	A,L
+	SBC	A,E
+	LD	L,A
+	LD	A,H
+	SBC	A,D
+	LD	H,A
+	LD	(IPCSAV),HL
+	; done yet ?
+	LD	HL,(JTAB)	; check proc num
+	LD	A,(PROCNUM)
+	CP	(HL)
+	JP	NZ,$10	 
+	LD	HL,(SEGP)	; check seg num
+	LD	A,(SEGNUM)
+	CP	(HL)
+	JP	Z,BACK1
+$10	LD	HL,(BASE)	; (SYSMSCW) := ^PASCALSYTEM MSCW
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	(SYSMSCW),HL
+	LD	HL,(MP)			; start at current proc
+	LD	C,L
+	LD	B,H
+$20	LD	HL,(SYSMSCW)		; about to exit pascalsystem ?
+	LD	A,L
+	SUB	C
+	JP	NZ,$30	 
+	LD	A,H
+	SBC	A,B
+	JP	Z,NOEXIT
+$30	; nope, it's cool. change this MSCW's IPC
+	LD	HL,MSJTAB		; DE := ^proc_num
+	ADD	HL,BC
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	PUSH	DE			; for later use
+	LD	HL,EXITIC		; DE := exitic (unmodified)
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	SCF				; DE := exitic (self-relatived)
+	LD	A,L
+	SBC	A,E
+	LD	E,A
+	LD	A,H
+	SBC	A,D
+	LD	D,A
+	LD	HL,MSIPC		; HL := ^MSIPC
+	ADD	HL,BC
+	LD	(HL),E		; stash new IPC
+	INC	HL
+	LD	(HL),D
+	DEC	HL		; HL := ^MSSEG
+	DEC	HL
+	DEC	HL
+	EX	DE,HL
+	; done yet ?
+	POP	HL		; HL = ^proc_num
+	LD	A,(PROCNUM)
+	CP	(HL)
+	JP	NZ,$40	
+	EX	DE,HL		; HL := ^MSSEG
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	A,(SEGNUM)
+	CP	(HL)
+	JP	Z,BACK1		; (yea!)
+$40    ; go up dynamic link
+	LD	L,C
+	LD	H,B
+	INC	HL
+	INC	HL
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	JP	$20  
+
+	
+	; end of file PROC2
+	
+	
+.INCLUDE	Z8080:STP.TEXT
+		.IF ~LSTSTP
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; start of file STP
+
+
+;********************************************************
+;*****************Standard Procedures*******************;
+
+CSP	; Call standard procedure
+	; extension opcodes and assembly intrinsics.
+	LD	A,(BC)		;get proc number
+	INC	BC
+	SAVIPC			;for simplicity
+	LD	E,A		;index CSPTBL and jump indirect
+	LD	D,00H
+	LD	HL,CSPTBL
+	ADD	HL,DE
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	JP	(HL)
+
+CSPTBL	;Standard Procedure transfer table
+	.WORD	IOC		; 0
+	.WORD	NEW
+	.WORD	MVL
+	.WORD	MVR
+	.WORD	EXIT
+	.WORD	UREAD		; 5
+	.WORD	UWRITE
+	.WORD	IDS
+	.WORD	TRS
+	.WORD	TIM
+	.WORD	FLC		; 10
+	.WORD	SCN
+	.WORD	0
+	.WORD	0
+	.WORD	0
+	.WORD	0		; 15
+	.WORD	0
+	.WORD	0
+	.WORD	0
+	.WORD	0
+	.WORD	0		; 20
+	.WORD	GSEG
+	.WORD	RSEG
+	.WORD	TNC
+	.WORD	RND
+	.WORD	SIN		; 25
+	.WORD	COS
+	.WORD	LOG
+	.WORD	ATAN
+	.WORD	LN
+	.WORD	EXP		; 30
+	.WORD	SQT
+	.WORD	MRK
+	.WORD	RLS
+	.WORD	IOR
+	.WORD	UBUSY		; 35
+	.WORD	POT
+	.WORD	UWAIT
+	.WORD	UCLEAR
+	.WORD	HLT
+	.WORD	MEMA		; 40
+	
+
+MEMA	;function MEMAVAIL: integer (* # words of memory left *) ;
+	LD	HL,(NP)		;compute SP-NP
+	XOR	A
+	SUB	L
+	LD	L,A
+	LD	A,00H
+	SBC	A,H
+	LD	H,A
+	ADD	HL,SP
+	AND	A		;convert to words
+	LD	A,H
+	RRA
+	LD	H,A
+	LD	A,L
+	RRA
+	LD	L,A
+	PUSH	HL		;return function value
+	JP	BACK1
+
+
+TIM	; Time(var hitime, lotime:integer) - Roger Ramjet strikes again
+	; Presumably the real-time clock increments the two words
+	;   LOTIME and HITIME every 1/60th of a second
+	POP	DE
+	LD	HL,(LOTIME)
+	EX	DE,HL
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	POP	DE
+	LD	HL,(HITIME)
+	EX	DE,HL
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	RETURN
+
+MRK	; mark(VAR i: ^integer)	  store NP in i
+	CALL	CGDIRP		; release GDIRP if necessary
+	POP	DE
+	LD	HL,(NP)
+	EX	DE,HL
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	RETURN
+
+RLS	; release(VAR i: ^integer)   store contents of i into NP
+	POP	HL
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	(NP),HL
+	LD	HL,NIL		; GDIRP := NIL
+	LD	(GDIRP),HL
+	RETURN
+
+NEW	; new(VAR p: ^; size_p: integer)
+	; p := NP; NP := NP+size_p
+	CALL	CGDIRP		; release GDIRP if necessary
+	POP	BC		; BC := size_p
+	POP	DE		; DE := ^p
+	LD	HL,(NP)		; p := NP
+	EX	DE,HL
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	EX	DE,HL		; then extend heap 
+	ADD	HL,BC
+	ADD	HL,BC
+	LD	(NP),HL
+	CALL	STKCHK		; check for stack overflow
+	JP	NC,BACK1
+	JP	STKOVR
+
+CGDIRP	;Check Global Directory Pointer
+	;Roger Ramjet strikes again
+	LD	HL,(GDIRP)
+	LD	A,L		;THIS CODE RELIES ON NIL===1.!.!.!.!.!.!.
+	DEC	A
+	OR	H
+	RET	Z		;if eql nil then nothing special
+	LD	(NP),HL		;else release GDIRP from heap
+	LD	HL,NIL
+	LD	(GDIRP),HL
+	RET
+
+;**********Editor Intrinsics*********
+	.IF Z80
+TSTCNT	 LD	A,B
+	 TSTA
+	 JP	M,$10	 
+	 OR	C		;zero count is also no good
+	 JP	Z,$10	 
+	 RET
+$10	 POP	HL
+	 JP	BACK1
+	.ENDC
+
+FLC	; fillchar(buffer: ^; count: integer; ch: char)
+	POP	DE
+	POP	BC
+	POP	HL
+	.IF Z80
+	 CALL	TSTCNT		; no work to do if count <= 0
+	 LD	(HL),E		;fill one byte
+	 DEC	BC
+	 LD	A,B		;are we done?
+	 OR	C
+	 JP	Z,BACK1
+	 LD	E,L		;if not then propagate char
+	 LD	D,H
+	 INC	DE
+	 LDIR
+	.ENDC
+	.IF ~Z80
+	 CALL	NEGBC		; negate count for easier loop control
+	 JP	P,BACK1		; and check for count <= 0
+$10	 LD	(HL),E
+	 INC	HL
+	 INC	C
+	 JP	NZ,$10 
+	 INC	B
+	 JP	NZ,$10 
+	.ENDC
+	RESTORE
+
+MVBS	; movebytes(source, dest: ^; length:integer);
+	POP	BC
+	POP	DE
+	POP	HL
+	LD	A,L		; moveleft or moveright ?
+	SUB	E
+	LD	A,H
+	SBC	A,D
+	JP	C,RMOV
+	JP	LMOV
+MVL	;moveleft
+	POP	BC
+	POP	DE
+	POP	HL
+LMOV	; entry point if from generalized movebytes
+	.IF Z80
+	 CALL	TSTCNT
+	 LDIR
+	.ENDC
+	.IF ~Z80
+	 CALL	NEGBC
+	 JP	P,BACK1
+	 LD	A,C		; move word at a time for extra speed
+	 AND	01H
+	 JP	NZ,$20	
+$10	 LD	A,(HL)
+	 LD	(DE),A
+	 INC	HL
+	 INC	DE
+	 INC	C
+$20	 LD	A,(HL)
+	 LD	(DE),A
+	 INC	HL
+	 INC	DE
+	 INC	C
+	 JP	NZ,$10	
+	 INC	B
+	 JP	NZ,$10	
+	.ENDC
+	RESTORE
+MVR	;moveright
+	POP	BC
+	POP	DE
+	POP	HL
+RMOV	; entry from movebytes
+	EX	DE,HL		; start at other end of arrays
+	ADD	HL,BC
+	EX	DE,HL
+	ADD	HL,BC
+	.IF Z80
+	 CALL	TSTCNT
+	 DEC	HL
+	 DEC	DE
+	 LDDR
+	.ENDC
+	.IF ~Z80
+	 CALL	NEGBC
+	 JP	P,BACK1
+	 LD	A,C		; move word at a time
+	 AND	01H
+	 JP	NZ,$20	
+$10	 DEC	HL
+	 DEC	DE
+	 LD	A,(HL)
+	 LD	(DE),A
+	 INC	C
+$20	 DEC	HL
+	 DEC	DE
+	 LD	A,(HL)
+	 LD	(DE),A
+	 INC	C
+	 JP	NZ,$10	
+	 INC	B
+	 JP	NZ,$10	
+	.ENDC
+	RESTORE
+
+SCN	; scan(maxdisp: integer; forpast: (forch, pastch); ch: char;
+	;	 start: ^; mask: PACKED ARRAY[0..7] of boolean): integer
+	; scan until either
+	;   maxdisp characters examined, or
+	;   a match (if forpast=forch) or non-match (if forpast=pastch) occurs.
+	; as function value return end_position-start
+	POP	HL		; junk the mask (fuckin' Richard)
+	POP	HL		; HL := start
+	POP	DE		; E := ch
+	POP	AF		; Carry flag set if scan past
+	POP	BC		; BC := maxdisp
+	PUSH	HL		; (SP) := start, so as to make function
+				; value easy to calculate later
+	JP	NC,$10
+	CALL	SCPSTX
+	JP	SCOUT
+$10	CALL	SCFORX
+SCOUT	; function return HL_final-HL_initial
+	POP	DE		;saved initial
+	SUBHLDE
+	PUSH	HL
+	RESTORE
+
+SCFOR	; scanfor(maxdisp:integer; ch: char; start: ^;
+	;	    mask: PACKED ARRAY[0..7] OF boolean): integer
+	CALL	SPARMS
+SCFORX	INC	B		;test for scan up or down
+	DEC	B
+	JP	M,$30	
+	CALL	NEGBC
+	RET	P		; maxdisp = 0 ?
+	LD	A,E		; A := ch
+$20	CP	(HL)
+	RET	Z
+	INC	HL
+	INC	C
+	JP	NZ,$20
+	INC	B
+	JP	NZ,$20	 
+	RET
+$30	LD	A,E		; A := ch
+$40	CP	(HL)
+	RET	Z
+	DEC	HL
+	INC	C
+	JP	NZ,$40 
+	INC	B
+	JP	NZ,$40
+	RET
+SCPST	;scanpast(........
+	CALL	SPARMS
+SCPSTX	LD	A,B		; which way to scan ?
+	TSTA
+	JP	M,$70
+	CALL	NEGBC
+	RET	P		; done if maxdisp = 0
+	LD	A,E
+$60	CP	(HL)
+	RET	NZ
+	INC	HL
+	INC	C
+	JP	NZ,$60
+	INC	B
+	JP	NZ,$60
+	RET
+$70	LD	A,E
+$80	CP	(HL)
+	RET	NZ
+	DEC	HL
+	INC	C
+	JP	NZ,$80
+	INC	B
+	JP	NZ,$80	 
+	RET
+SPARMS	; get params for scanfor or scanpast
+	; (SP) := SCOUT; (SP+2):=HL:=start; E:=ch; BC:=maxdisp
+	POP	HL		; return_addr
+	POP	DE		; junk mask
+	POP	DE		; DE := start
+	POP	BC		; A := ch
+	LD	A,C
+	POP	BC		; BC := maxdisp
+	PUSH	DE
+	PUSH	HL
+	EX	DE,HL
+	LD	E,A
+	RET
+
+
+
+;**********Compiler Intrinsics******
+
+; idsearch(VAR symcursor: cursrange; symbufp: ^symbufarray)
+
+; The following declaration order for the compiler is assumed, as IDSCH is
+;  passed only ^symcursor.
+;    symcursor: cursrange (* index into symbufarray *);
+;    sy: symbol (* symbol = (ident..othersy), set by info in reswrdtable *);
+;    op: operator (* more info from reswrdtable *);
+;    id: alfa (* packed array [1..8] of char, gets filled with first 8 chars
+;	   of token isolated by IDSRCH if token is an identifier *);
+
+; Isolate token, converting to upper case.
+; If token in reswrdtable set sy and op from table,
+; else set st := ident, and put first 8 chars (left-justified) of
+;   token into id.
+; symcursor is left pointing to the last char of the token
+
+SYMCUR	.EQU	WORD1		; index into symbufarray
+SYMBUFP .EQU	WORD2		; ^symcursarray
+RESWRDP .EQU	WORD3		; ^reswrdtable
+IDEND	.EQU	WORD4		; loop control
+TOKEN	.EQU	BLOCK1		; first 8 chars of isolated token goes here
+
+RESTBL	; reswrdtable
+	; TYPE table = RECORD
+	;		 indexes: ARRAY ['A'..succ('Z')] OF integer;
+	;		 tokens: ARRAY [0..#] OF RECORD
+	;			   tokenname: alfa;
+	;			   tokentype: symbol;
+	;			   optype: operator
+	;			 END	;	       END;
+; Index part
+	.WORD	0,  2,	3,  5,	8, 11., 15., 16., 16.
+	.WORD  20., 20., 20., 21., 22., 23., 25., 28., 28.
+	.WORD  30., 33., 36., 39., 40., 42., 42., 42., 42.
+; Array part
+	.ASCII	"AND	 "
+	.WORD	39., 2
+	.ASCII	"ARRAY	 "
+	.WORD	44., 15.
+	.ASCII	"BEGIN	 "
+	.WORD	19., 15.
+	.ASCII	"CASE	 "
+	.WORD	21., 15.
+	.ASCII	"CONST	 "
+	.WORD	28., 15.
+	.ASCII	"DIV	 "
+	.WORD	39., 3
+	.ASCII	"DO	 "
+	.WORD	 6., 15.
+	.ASCII	"DOWNTO	 "
+	.WORD	 8., 15.
+	.ASCII	"ELSE	 "
+	.WORD	13., 15.
+	.ASCII	"END	 "
+	.WORD	 9., 15.
+	.ASCII	"EXTERNAL"
+	.WORD	53., 15.
+	.ASCII	"FOR	 "
+	.WORD	24., 15.
+	.ASCII	"FILE	 "
+	.WORD	46., 15.
+	.ASCII	"FORWARD "
+	.WORD	34., 15.
+	.ASCII	"FUNCTION"
+	.WORD	32., 15.
+	.ASCII	"GOTO	 "
+	.WORD	26., 15.
+	.ASCII	"IF	 "
+	.WORD	20., 15.
+	.ASCII	"IMPLEMEN"
+	.WORD	52., 15.
+	.ASCII	"IN	 "
+	.WORD	41.,14.
+	.ASCII	"INTERFAC"
+	.WORD	51., 15.
+	.ASCII	"LABEL	 "
+	.WORD	27., 15.
+	.ASCII	"MOD	 "
+	.WORD	39., 4
+	.ASCII	"NOT	 "
+	.WORD	38., 0
+	.ASCII	"OF	 "
+	.WORD	11., 15.
+	.ASCII	"OR	 "
+	.WORD	40., 7
+	.ASCII	"PACKED	 "
+	.WORD	43., 15.
+	.ASCII	"PROCEDUR"
+	.WORD	31., 15.
+	.ASCII	"PROGRAM "
+	.WORD	33., 15.
+	.ASCII	"RECORD	 "
+	.WORD	45., 15.
+	.ASCII	"REPEAT	 "
+	.WORD	22., 15.
+	.ASCII	"SET	 "
+	.WORD	42., 15.
+	.ASCII	"SEGMENT "
+	.WORD	33., 15.
+	.ASCII	"SEPARATE"
+	.WORD	54., 15.
+	.ASCII	"THEN	 "
+	.WORD	12., 15.
+	.ASCII	"TO	 "
+	.WORD	 7., 15.
+	.ASCII	"TYPE	 "
+	.WORD	29., 15.
+	.ASCII	"UNIT	 "
+	.WORD	50., 15.
+	.ASCII	"UNTIL	 "
+	.WORD	10., 15.
+	.ASCII	"USES	 "
+	.WORD	49., 15.
+	.ASCII	"VAR	 "
+	.WORD	30., 15.
+	.ASCII	"WHILE	 "
+	.WORD	23., 15.
+	.ASCII	"WITH	 "
+	.WORD	25., 15.
+
+; Initialize: put passed and synthesized parameters into fixed locations
+;   and blank-fill TOKEN.
+
+IDS	LD	HL,RESTBL	;old version entry point
+	JP	IDSRCHX
+IDSRCH	POP	HL
+IDSRCHX LD	(RESWRDP),HL
+	POP	HL
+	LD	(SYMBUFP),HL
+	POP	HL
+	LD	(SYMCUR),HL
+	LD	HL,TOKEN
+	LD	A,20H		; ' '
+	LD	B,07H		; blank-fill last 7 chars
+$10	INC	HL
+	LD	(HL),A
+	DJNZM	$10   
+
+	; Copy the first 8 chars of the token into TOKEN and set SYMCUR
+	;   to point at the very last character.
+	LD	HL,(SYMCUR)	; DE := ^beginning of token
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	HL,(SYMBUFP)
+	ADD	HL,DE
+	EX	DE,HL
+	LD	HL,TOKEN	; HL := ^dest
+	; HL^ :=  translate(DE^); DE := DE+1;  B := 7;
+	; WHILE translate(DE^) IN ['A'..'Z', '0'..'9'] DO
+	;   BEGIN
+	;     IF B>0 THEN
+	;	BEGIN  B := B-1; HL := HL+1; HL^ := translate(DE^)  END;
+	;     DE := DE+1
+	; END
+	LD	B,7
+	LD	A,(DE)
+	AND	7FH
+	CP	60H
+	JP	C,$20
+	SUB	20H
+$20	LD	(HL),A
+	INC	DE
+	; the identifier scan loop
+$30	LD	A,(DE)		;get char
+	AND	7FH		;mask bit 7 out
+	CP	5FH		;Underscore _ is ignored
+	JP	Z,$70
+	CP	60H		;translated to upper case
+	JP	C,$40
+	SUB	20H
+$40	CP	41H		; 'A'
+	JP	C,$50
+	CP	41H+26.		; 'Z'
+	JP	C,$60
+$50	CP	30H		; '0'
+	JP	C,SCDONE
+	CP	39H+1H		; '9'
+	JP	NC,SCDONE
+$60	; this is an okay character
+	DEC	B
+	JP	M,$70
+	INC	HL
+	LD	(HL),A
+$70	INC	DE		;inc source pointer
+	JP	$30
+
+	; we have an identifier...
+SCDONE	LD	HL,(SYMBUFP)	;calc new SYMCUR := DE-1-(SYMBUFP)
+	SCF
+	LD	A,E
+	SBC	A,L
+	LD	E,A
+	LD	A,D
+	SBC	A,H
+	LD	D,A
+	LD	HL,(SYMCUR)	;stash new index
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+
+; Locate TOKEN in reswrdtable if possible
+	LD	A,(TOKEN)	;first char as index
+	CALL	CALCAD		; HL := ^start looking record
+	PUSH	HL
+	LD	A,(TOKEN)	; succ(first char) as index
+	INC	A
+	CALL	CALCAD		; (IDEND) := ^stop looking record
+	LD	(IDEND),HL
+	POP	DE
+$100	LD	A,L		; done looking yet ?
+	SUB	E
+	JP	NZ,$110
+	LD	A,H
+	SBC	A,D
+	JP	Z,NOTOKE
+$110	PUSH	DE		; save for next time around
+	LD	B,7		;comp for 7 chars (first is okay)
+	LD	HL,TOKEN+1	
+$120	INC	DE
+	LD	A,(DE)
+	CP	(HL)
+	JP	NZ,$130
+	INC	HL
+	DJNZM	$120 
+	JP	IDMATCH
+$130	POP	DE		; ^record we just looked at
+	LD	HL,0CH		; size of each record
+	ADD	HL,DE
+	EX	DE,HL
+	LD	HL,(IDEND)
+	JP	$100
+
+IDMATCH POP	HL		; junk ^record we're looking at
+	LD	HL,(SYMCUR)	;match, now return type and op
+	INC	HL
+	INC	HL		; HL = ^sy, DE = ^tokentype (in table) -1
+	LD	B,04H
+$150	INC	DE
+	LD	A,(DE)
+	LD	(HL),A
+	INC	HL
+	DJNZM	$150
+	JP	BACK1
+
+NOTOKE	LD	HL,(SYMCUR)	; We can't find what we wanted...TOKEN isn't
+	INC	HL		;   a reserved word.  (You probably thought it
+	INC	HL		;   meant we didn't have any papers!)
+	LD	(HL),00H	; return sy := ident...
+	INC	HL
+	LD	(HL),00H
+	INC	HL
+	INC	HL
+	INC	HL
+	LD	DE,TOKEN	; ...and copy TOKEN into id.
+	LD	B,08H
+$170	LD	A,(DE)
+	LD	(HL),A
+	INC	DE
+	INC	HL
+	DJNZM	$170
+	JP	BACK1
+
+CALCAD	; set HL := ^reswordtable.tokens[reswrdtable.indexes[A-'A']]
+	SUB	41H		;'A' normalize index
+	ADD	A,A
+	LD	C,A
+	LD	B,00H
+	LD	HL,(RESWRDP)	; BC := reswrdtable.indexes[A-'A']
+	ADD	HL,BC
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)		
+	LD	L,C		;now mult by recsz of 0CH, 1100b, 12.
+	LD	H,B
+	ADD	HL,BC
+	ADD	HL,BC
+	ADD	HL,HL
+	ADD	HL,HL
+	EX	DE,HL		; DE := byte offset for TOKENS
+	LD	BC,2*27.	; size of indexes
+	LD	HL,(RESWRDP)
+	ADD	HL,DE
+	ADD	HL,BC		;do final indexing, leave junk in HL
+	RET
+
+
+
+; treesearch(rootp: ^node; VAR foundp:^node; VAR target: alfa): integer
+
+;  TYPE node = RECORD
+;		 key: alfa;
+;		 rlink: ^node;
+;		 llink: ^node
+;	       END;
+;  function returns...
+;     0: foundp points to matching node
+;    +1: foundp points to a leaf, and target>foundp.key
+;    -1: foundp points to a leaf, and target<foundp.key
+	;initialize by putting all params in fixed locations
+TARGETP .EQU	WORD1
+FOUNDP	.EQU	WORD2
+ROOTP	.EQU	WORD3
+TRS	POP	HL
+	LD	(TARGETP),HL
+	POP	HL
+	LD	(FOUNDP),HL
+	POP	DE
+TCMP	EX	DE,HL
+	LD	(ROOTP),HL
+	EX	DE,HL
+	LD	HL,(TARGETP)
+	LD	B,08H
+$20	LD	A,(DE)		;compare for 8 chars
+	CP	(HL)
+	JP	NZ,TNEXT
+	INC	HL
+	INC	DE
+	DJNZM	$20
+	LD	HL,0000H	;match, func code
+TEND	PUSH	HL
+	LD	HL,(ROOTP)	; foundp := rootp  (which points to
+				;		 last node examined)
+	EX	DE,HL
+	LD	HL,(FOUNDP)
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	RESTORE
+TNEXT	JP	NC,GOLEFT
+	LD	HL,(ROOTP)
+	LD	DE,08H
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	A,E		; see if rlink = nil
+	DEC	A
+	OR	D
+	JP	NZ,TCMP
+	LD	HL,0001H
+	JP	TEND
+GOLEFT	LD	HL,(ROOTP)	;go down left link of ROOT
+	LD	DE,0AH		;offset of LLINK
+	ADD	HL,DE
+	LD	E,(HL)		;get link
+	INC	HL
+	LD	D,(HL)
+	LD	A,E		;test for NIL link
+	DEC	A
+	OR	D
+	JP	NZ,TCMP
+	LD	HL,-0001H	;if so then return this
+	JP	TEND
+
+; End-of-File STP
+
+
+
+.INCLUDE	Z8080:CPMIO.TEXT
+		.IF ~LSTIO
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c)	1978  by the
+;  Regents of the University of California
+;  San Diego Campus
+
+; Start of file CPMIO
+
+;**********************************************************
+
+ABORT	JP	ABORT
+
+
+;******************UNITIO
+
+
+MAXU	.EQU	07H
+INBIT	.EQU	01H
+OUTBIT	.EQU	02H
+CLRBIT	.EQU	04H
+ALLBIT	.EQU	INBIT|OUTBIT|CLRBIT
+
+; the unittable unithandler vectors
+
+UNITBL	.EQU	$-04H
+	.WORD	ALLBIT		; Unit 1: CONSOLE:
+	.WORD	CHDRVR
+	.WORD	ALLBIT		; Unit 2: SYSTERM: (non-echoing keyboard)
+	.WORD	CHDRVR
+	.WORD	00H,00H		; Unit 3: GRAPHICS:
+	.WORD	ALLBIT		; Unit 4: drive 0
+	.WORD	DR0DRVR
+	.WORD	ALLBIT		; Unit 5: drive 1
+	.WORD	DR1DRVR
+	.WORD	OUTBIT|CLRBIT	; Unit 6: PRINTER:
+	.WORD	CHDRVR1
+	.WORD	ALLBIT		; Unit 7: REMOTE:
+	.WORD	CHDRVR1
+
+UPTR	.WORD	0000H	;points into UNITBL for specific unit
+UREQ	.BYTE	00H	;denotes read or write operation
+UNIT	.BYTE	00H	;set to LUN of operation
+UBUF	.WORD	0000H	;user's buffer address
+ULEN	.WORD	0000H	;user's buffer length
+UBLK	.WORD	0000H	;block number, for disk I/O
+UASY	.WORD	0000H	;async boolean
+ASNCBIT .EQU	01H	;applies to the async param
+DRCTBIT .EQU	02H	;applies to the async param
+URTN	.WORD	0000H	;
+
+IOC	; IO check - bomb for user IO error if IORSLT <> 0
+	LD	HL,(IORSLT)
+	LD	A,L
+	OR	H
+	JP	Z,BACK
+	JP	UIOERR
+
+IOR	; IO result - return IORSLT
+	LD	HL,(IORSLT)
+	PUSH	HL
+	RETURN
+
+
+GETU	;get logical unit number and validate
+	XOR	A	;assume operation is going to be valid
+	LD	(IORSLT),A
+	POP	HL	; get LUN from under the retn adrs
+	EX	(SP),HL
+	LD	A,L	;0 < LUN <= MAXU ...
+	AND	A
+	JP	Z,BLUN
+	CP	MAXU+1
+	JP	NC,BLUN
+	LD	(UNIT),A ;save for driver
+	ADD	A,A	;times UNITBL elt size
+	ADD	A,A
+	LD	H,00H
+	LD	L,A
+	LD	DE,UNITBL ;index into UNITBL
+	ADD	HL,DE
+	LD	(UPTR),HL ; save this also
+	LD	A,(UREQ) ; validate request
+	AND	(HL)
+	RET	NZ	; and return
+BDIR	LD	A,03H	; bad I/O direction
+	JP	BOMIT
+BLUN	LD	A,02H	; bad unit number
+BOMIT	LD	(IORSLT),A
+	POP	HL
+	JP	BACK1
+
+UBUSY	LD	HL,00H	; assume false ...
+	EX	(SP),HL ; and insert under LUN
+	PUSH	HL
+UWAIT	LD	A,INBIT|OUTBIT
+	LD	(UREQ),A
+	CALL	GETU
+	JP	BACK1	;Boy that was easy.
+UCLEAR	LD	A,CLRBIT
+	LD	(UREQ),A
+	LD	HL,BACK1
+	LD	(URTN),HL
+	CALL	GETU
+	JP	CALLIO
+SYSRD	LD	HL,00H
+	EX	(SP),HL
+	LD	A,INBIT
+	JP	SYSIO
+UWRITE	LD	A,OUTBIT
+	JP	UIO
+UREAD	LD	A,INBIT
+UIO	LD	HL,BACK1
+SYSIO	LD	(UREQ),A
+	LD	(URTN),HL
+	POP	HL	; junk async param
+	LD	(UASY),HL
+	POP	HL	; put others in param space
+	LD	(UBLK),HL
+	POP	HL
+	LD	(ULEN),HL
+	POP	HL
+	LD	(UBUF),HL
+	CALL	GETU	; get unit number, form table adrs
+CALLIO	INC	HL	; get driver adrs from table
+	INC	HL
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	HL,(ULEN)	; check for no bytes
+	LD	A,H
+	OR	L
+	JP	Z,IOXIT
+	EX	DE,HL
+	JP	(HL)	; GO FOR IT ||
+IOXIT	LD	HL,(URTN)
+	JP	(HL)	; Be see'n you.
+
+
+
+;********* DISK DRIVER FOR CPM ***************************
+
+BYPS	.EQU	80H	;Bytes per sector
+DSCT0	.BYTE	00H
+DSCT	.BYTE	00H
+DTRK	.BYTE	00H
+
+DR0DRVR LD	C,00H	;select drive
+	JP	DSK0
+DR1DRVR LD	C,01H
+DSK0	LD	L,1BH	;BIOS/SELDSK
+	CALL	BIOS
+	LD	A,(UREQ)
+	AND	CLRBIT
+	JP	Z,$10  
+	LD	L,18H	;BIOS/HOME
+	CALL	BIOS
+	JP	XDSK
+$10	;Start initializing for the loop
+	LD	HL,(ULEN)	;HI(ULEN) = # sectors to do
+	ADD	HL,HL
+	INC	H		;adjust for predecr in loop
+	LD	(ULEN),HL
+	LD	HL,(UBUF)
+	LD	C,L
+	LD	B,H
+	LD	L,24H		;BIOS/SETDMA
+	CALL	BIOS
+	LD	HL,(UBLK)	;LSN := 4*BLOCK
+	ADD	HL,HL
+	ADD	HL,HL
+	LD	BC,1AH		; Q,R := LSN div,mod 26
+	CALL	DIVPOS		;  HL=R, DE=Q
+	PUSH	HL
+	PUSH	DE
+	LD	A,E
+	INC	A
+	LD	(DTRK),A
+	LD	C,A
+	LD	L,1EH		;BIOS/SETTRK
+	CALL	BIOS
+	POP	DE
+	LD	A,06H		; S0 := 6*Q
+	LD	HL,0000H
+$20	ADD	HL,DE
+	DEC	A
+	JP	NZ,$20	
+	LD	BC,1AH		; S0 := S0 mod 26 +1+(R>12)
+	CALL	DIVPOS
+	INC	HL
+	POP	DE		;get R
+	LD	A,E
+	CP	0CH+1
+	JP	C,$30  
+	INC	HL
+$30	LD	A,L
+	LD	(DSCT0),A
+	ADD	A,E		; S := S0+2*R-1 mod 26 +1
+	ADD	A,E
+	DEC	A
+$40	SUB	1AH
+	JP	NC,$40	
+	ADD	A,1AH+1
+	LD	(DSCT),A
+	LD	C,A
+	LD	L,21H		;BIOS/SETSEC
+	CALL	BIOS
+$50			;--------LOOP ON SECTORS, Gross Control, Kludge.
+	LD	HL,(ULEN)
+	DEC	H
+	LD	(ULEN),HL
+	JP	NZ,$80 
+	LD	A,L
+	RRCA
+	JP	C,$60 
+	AND	A
+	JP	Z,XDSK
+	INC	H
+	INC	L
+	LD	(ULEN),HL
+	LD	A,(UREQ)	;do whole sector anyway on output
+	AND	OUTBIT
+	JP	NZ,$80 
+	LD	HL,-BYPS	;fractional read, oh shoot.
+	ADD	HL,SP
+	LD	SP,HL
+	LD	C,L
+	LD	B,H
+	LD	L,24H		;BIOS/SETDMA
+	CALL	BIOS
+	JP	$80 
+$60	LD	A,(UREQ)	;what happened to the fraction?
+	AND	OUTBIT
+	JP	NZ,XDSK		;lots to do if read though
+	LD	HL,(UBUF)
+	LD	DE,-BYPS
+	ADD	HL,DE
+	EX	DE,HL
+	LD	HL,0000H
+	ADD	HL,SP
+	LD	A,(ULEN)
+	RRA
+	LD	B,A
+$70	LD	A,(HL)
+	LD	(DE),A
+	INC	HL
+	INC	DE
+	DEC	B
+	JP	NZ,$70 
+	LD	HL,BYPS
+	ADD	HL,SP
+	LD	SP,HL
+	JP	XDSK
+$80	LD	A,(UREQ)	;now finally do the I/O request
+	AND	OUTBIT
+	JP	Z,$90 
+	LD	L,2AH		;BIOS/WRITE
+	JP	$100
+$90	LD	L,27H		;BIOS/READ
+$100	CALL	BIOS
+	AND	A		;test for I/O errors from CPM
+	JP	Z,$110
+	LD	A,04H
+	LD	(IORSLT),A
+$110	LD	HL,(UBUF)
+	LD	DE,BYPS
+	ADD	HL,DE
+	LD	(UBUF),HL
+	LD	C,L
+	LD	B,H
+	LD	L,24H		;BIOS/SETDMA
+	CALL	BIOS
+	LD	A,(DSCT)	; S := S+1 mod 26 +1
+	ADD	A,02H
+	CP	1BH
+	JP	C,$120
+	SUB	1AH
+$120	LD	HL,DSCT0	; if S = S0 then
+	CP	(HL)
+	JP	NZ,$150
+	INC	A		;    S := S+1
+	RRCA			; if odd(s) then
+	RLA
+	JP	NC,$140
+	ADD	A,04H		;	S := S+4 mod 26
+	CP	1AH+1
+	JP	C,$130
+	SUB	1AH
+$130	PUSH	AF		;	T := T+1
+	LD	A,(DTRK)
+	INC	A
+	LD	(DTRK),A
+	LD	C,A
+	LD	L,1EH		;BIOS/SETTRK
+	CALL	BIOS
+	POP	AF
+$140	LD	(DSCT0),A	;    S0 := S
+$150	LD	(DSCT),A
+	LD	C,A
+	LD	L,21H		;BIOS/SETSEC
+	CALL	BIOS
+	JP	$50		;--------KEEP ON TRUCKIN'.
+XDSK	JP	IOXIT
+
+
+;*** ALL PURPOSE BIOS LINKER ***
+BIOS	LD	A,(0002H)	; do YOU believe this will work
+	LD	H,A
+	JP	(HL)
+
+
+
+
+;************* DRIVER FOR ALL CHARACTER ORIENTED DEVICES ON CPM **************
+
+CLAST	.BYTE	0
+CIVECT	.BYTE	0
+COVECT	.BYTE	0
+CTABLE	.BYTE	00H,00H
+	.BYTE	09H,0CH,09H,0CH		;BIOS/CONIN,CONOUT
+	.BYTE	00H,00H,00H,00H,00H,Ê0H
+	.BYTE	00H,0FH,15H,12H		;BIOS/LIST,READER,PUNCH
+
+
+
+CHDRVR	LD	A,(UREQ)
+	AND	CLRBIT
+	JP	Z,CH01
+	; clear out console input stream
+	XOR	A
+	LD	(CLAST),A
+	CALL	CHCLR
+	JP	CHX
+CHDRVR1 LD	A,(UREQ)
+	AND	CLRBIT
+	JP	NZ,CHX
+CH01	CALL	SETVECT		; set up BIOS in and out vectors
+	LD	HL,(ULEN)	;prepare for loop
+	EX	DE,HL
+	LD	HL,(UBUF)
+$10	LD	A,E	;---LOOP---	length zero yet ?
+	OR	D
+	JP	Z,CHX
+	DEC	DE
+	LD	A,(UREQ)	;which direction
+	AND	OUTBIT
+	JP	Z,$20 
+	LD	C,(HL)		;do output
+	CALL	ECHO
+	JP	$30
+$20	CALL	CBIS		;do input
+	LD	C,A
+	LD	(HL),A
+	LD	A,(UNIT)
+	CP	01H
+	JP	NZ,$30
+	CALL	ECHO
+	LD	A,(UASY)
+	AND	DRCTBIT
+	JP	NZ,$30
+	LD	A,(SYEOF)	; if eof char, zero out rest of request buffer
+	CP	(HL)
+	JP	NZ,$30
+	INC	DE
+$25	LD	(HL),0
+	DEC	DE
+	INC	HL
+	LD	A,E
+	OR	D
+	JP	NZ,$25
+	JP	CHX
+$30	INC	HL
+	JP	$10 
+CHX	JP	IOXIT
+
+ECHO	;char in the Creg is interpreted and output
+	LD	A,(UASY)
+	AND	DRCTBIT
+	JP	Z,$10
+	CALL	CBOS
+	JP	$40
+$10	LD	A,(CLAST)
+	CP	10H		;DLE- blank expansion
+	JP	NZ,$30
+	LD	A,C
+	SUB	20H
+	LD	(CLAST),A
+$20	LD	A,(CLAST)
+	DEC	A
+	JP	M,$40
+	LD	(CLAST),A
+	LD	C,20H
+	CALL	CBOS
+	JP	$20
+$30	LD	A,C		;output done here
+	LD	(CLAST),A
+	CP	10H
+	JP	Z,$40
+	CALL	CBOS
+	LD	A,(CLAST)
+	CP	0DH		;CR- requires an LF
+	JP	NZ,$40
+	LD	A,0AH
+	LD	(CLAST),A
+	LD	C,A
+	CALL	CBOS
+$40	RET
+
+CHCLR	LD	L,06H		;BIOS/CONST
+	CALL	BIOS
+	AND	A
+	RET	Z
+	LD	L,09H		;BIOS/CONIN
+	CALL	BIOS
+	JP	CHCLR
+
+SETVECT LD	HL,(UNIT)	;compute BIOS vector
+	LD	H,00H
+	ADD	HL,HL
+	LD	DE,CTABLE
+	ADD	HL,DE
+	LD	A,(HL)
+	LD	(CIVECT),A
+	INC	HL
+	LD	A,(HL)
+	LD	(COVECT),A
+	RET
+
+;routines called by the character driver.
+CBIS	LD	A,(CIVECT)
+	JP	CBIS1
+CBOS	LD	A,(COVECT)
+CBIS1	PUSH	HL
+	PUSH	DE
+	LD	L,A
+	CALL	BIOS
+	POP	DE
+	POP	HL
+	RET
+
+
+; end of file CPMIO
+	
+	
+.INCLUDE	Z8080:BOOT.TEXT
+		.IF ~LSTBOOT
+	 .NOLIST
+	.ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; Beginning of file BOOT
+
+;****************BOOTSTRAP LOADER****************;
+
+; This is a Pascal-system loader, it assumes that
+;the complete interpreter and booter have been
+;loaded by the host machine. It assumes that on
+;unit 4 ,block 2 is a directory with the pascal
+;operating system 'SYSTEM.PASCAL'. The booter
+;reads this, initializes the interpreter to enter
+;the system outer block and goes to it.
+
+;     Six easy steps toward the realization of Pascal.
+;  1: initialize all I/O drivers
+;  2: read directory, find 'SYSTEM.PASCAL'
+;  3: read block zero and set up SEGTBL
+;  4: read in segment zero
+;  5: set up machine state for seg 0 proc 1
+;  6: GO FOR IT.
+
+	.ALIGN	 2		;These decs are for Step 2.
+INTEND	;Marks the end of the core resident interpreter
+SYSTLE	.BYTE	0DH		;length byte of String
+	.ASCII	"SYSTEM.PASCAL" ;characters of String
+DENTSZ	.EQU	1AH		;directory entry size, bytes
+DTITLE	.EQU	06H		;offset of title in an entry
+DENTP	.WORD	0		;gets set by this Step
+
+SYSBLK	.WORD	0  
+SEGCNT	.BYTE	0  
+
+
+
+
+
+QWIK	; Assume p-code at 2000H, move to high core
+	LD	HL,(2006H)	; Get code length (bytes)
+	EX	DE,HL	
+	LD	HL,(MEMTOP)	; Get maximum memory address
+	SUBHLDE			; Get address to transfer program to
+	LD	SP,HL		; Stack grows from here
+	LD	DE,2200H	; Address of start of p-code
+	LD	BC,(2006H)	; Set byte counter to # of bytes to transfer
+	CLRA			; Get
+	SUB	C		;  negative
+	LD	C,A		;   byte
+	LD	A,00H		;    count
+	SBC	A,B		;
+	LD	B,A
+
+$10	LD	A,(DE)		; Get byte to transfer
+	LD	(HL),A		; Move byte to new home
+	INC	DE		; Bump address
+	INC	HL		; Bump destination address
+	INC	C		; Increment lower part of byte count
+	JP	NZ,$10		; Overflow into upper byte ?
+	INC	B		; Yes, increment upper one, too
+	JP	NZ,$10		; Are we done (BC=0) ?
+	DEC	HL		; Yes, adjust HL for
+	DEC	HL		;  STEP5 of booter
+	JP	STEP5		; COWABUNGA !!!!!
+
+
+BOOT	;Start here and follow the yellow brick road.
+	LD	SP,RELSEG+1000H	;if that doesn't do it I'll be
+	.IF CPM
+	 LD	HL,(0001H)	;BIOS JUMP VECTOR
+	 LD	DE,-11H		; leave some space for shitty (Tarbell) BIOS
+	 ADD	HL,DE
+	 LD	(MEMTOP),HL
+	.ENDC
+
+;   Step 1
+;Initialize all I/O drivers.
+	.IF CML
+	 LD	A,0C3H		; set up keyboard interrupt vecto
+	 LD	(38H),A
+	 LD	HL,CHINT
+	 LD	(39H),HL
+	.ENDC
+
+
+;   Step 2
+;read directory from abs block 2 into 
+;memory just above the interp
+;find system.pascal and leave the
+;address of its direntry in DENTP
+
+;	read in the directory
+	LD	HL,(SYSUNT)	;unit number for booting
+	PUSH	HL
+	LD	HL,NRPTOP	;I/O buffer, way out there
+	PUSH	HL
+	LD	HL,04H*200H	;length, 4 blocks
+	PUSH	HL
+	LD	HL,02H		;DIR starts at block 2
+	PUSH	HL
+	CALL	SYSRD		; that does it folks
+;	search dir
+	LD	HL,FSTENT	;skip over entry 0, disk name
+	LD	(DENTP),HL
+	LD	C,00H
+;		;(DENTP)=^DIR ENTRY, HL=^DIR.TITLE, DE=^SYSTITLE, C=counter
+$20	;outer, loop on each dir entry
+	LD	DE,DTITLE	;inc HL to .TITLE in entry
+	ADD	HL,DE
+	LD	DE,SYSTLE	;set DE to title for comparison
+	LD	B,0EH		;comp for length of title
+$30	;inner, loop on characters
+	LD	A,(DE)
+	CP	(HL)
+	JP	NZ,$40	
+	INC	DE
+	INC	HL
+	DJNZM	$30  
+	JP	FOUND
+$40	; No match here - go to next dir entry
+	LD	HL,(DENTP)
+	LD	DE,DENTSZ
+	ADD	HL,DE
+	LD	(DENTP),HL
+	DEC	C
+	JP	NZ,$20	
+$45	JP	$45		; We didn't find it.  Maybe one of this days
+				;   we'll put out an error message here.
+FOUND	;adrs left in DENTP
+
+
+
+;   Step 3
+;RELSEG .EQU	NRPTOP+800H	;address to read block 0 at, above dir
+;SYSBLK .WORD	0		;amount to make rel seg blk nos absolute
+;SEGCNT .BYTE	0  
+
+	;do the read
+	LD	HL,(SYSUNT)	;unit
+	PUSH	HL
+	LD	HL,RELSEG	;buffer
+	PUSH	HL
+	LD	HL,40H		;length, 16 entries
+	PUSH	HL
+	LD	HL,(DENTP)	;block, from directory
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	PUSH	BC
+	LD	L,C
+	LD	H,B
+	LD	(SYSBLK),HL
+	CALL	SYSRD
+	;put stuff into SEGTBL
+;			HL => RELSEG: array [0..15] of
+;					DISKADR, relative block number
+;					CODELEN	 length in bytes
+;			DE => SEGTBL: array [0..15] of
+;					UNIT, device index
+;					BLOCK, absolute
+;					LENGTH same as above
+	LD	A,10H		;loop control
+	LD	(SEGCNT),A
+	LD	DE,SEGTBL
+	LD	HL,RELSEG
+$50	LD	A,(SYSUNT)	;set SEGTBL.UNIT := 4
+	LD	(DE),A
+	INC	DE
+	XOR	A
+	LD	(DE),A
+	INC	DE
+	LD	C,(HL)		;BC := RELSEG.DISKADR
+	INC	HL
+	LD	B,(HL)
+	INC	HL
+	PUSH	HL		;calc abs block num
+	LD	HL,(SYSBLK)
+	ADD	HL,BC
+	EX	DE,HL
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	INC	HL
+	EX	DE,HL		;restore pointers
+	POP	HL
+	LD	A,(HL)		;set SEGTBL.LENGTH := RELSEG.CODELEN
+	LD	(DE),A
+	INC	DE
+	INC	HL
+	LD	A,(HL)
+	LD	(DE),A
+	INC	DE
+	INC	HL
+	LD	A,(SEGCNT)	;do this 16 times
+	DEC	A
+	LD	(SEGCNT),A
+	JP	NZ,$50	
+
+
+
+;   Step 4
+; read segment zero, pointed at by SEGTBL[0], 
+;into the highest memory address possible, up
+;to MAXADR. Also set SP at bottom of code read in.
+
+	LD	HL,SEGTBL+04H	;get len of seg zero
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	LD	HL,(MEMTOP)
+	INC	HL
+	INC	HL
+	SUBHLDE
+	LD	SP,HL
+	LD	A,(SYSUNT)	;unit
+	LD	C,A
+	LD	B,00H
+	PUSH	BC
+	PUSH	HL		;buffer
+	PUSH	DE		;length
+	LD	HL,(SEGTBL+02H) ; block
+	PUSH	HL
+	CALL	SYSRD
+
+; Fill in internal seg table
+	LD	HL,INTSEGT+4
+	LD	BC,-<MAXSEG*4>
+	CLRA
+$60	LD	(HL),A
+	INC	HL
+	INC	C
+	JP	NZ,$60
+	INC	B
+	JP	NZ,$60
+	LD	HL,1		; initialize entries for op sys
+	LD	(INTSEGT),HL
+	LD	HL,(MEMTOP)
+	LD	(INTSEGT+2),HL
+	
+
+;   Step 5
+; Initialize all P-machine registers including
+;SP, NP, MP, BASE, IPC, JTAB, SEG.
+;Create an initial stack frame and MSCW including
+;the automagic ^SYSCOM parameter.
+
+	LD	HL,(MEMTOP)
+STEP5	LD	(SEGP),HL
+	DEC	HL		;set JTAB := SEG^[-1]
+	LD	B,(HL)
+	DEC	HL
+	LD	C,(HL)
+	SUBHLBC			; self relative
+	LD	(JTAB),HL
+	DEC	HL		;set IPCSAV := JTAB^[-1]
+	LD	B,(HL)
+	DEC	HL
+	LD	C,(HL)
+	SUBHLBC			; self relative
+	LD	(IPCSAV),HL
+	LD	HL,(JTAB)	;new stack frame
+	LD	BC,DATASZ
+	ADD	HL,BC		; SP := SP-JTAB^[-8]
+	LD	C,(HL)
+	INC	HL
+	LD	B,(HL)
+	XOR	A
+	SUB	C
+	LD	L,A
+	LD	A,00H
+	SBC	A,B
+	LD	H,A
+	ADD	HL,SP
+	LD	SP,HL
+	LD	DE,SYSCOM	;^SYSCOM parameter
+	PUSH	DE
+	PUSH	HL		;create MSCW, dummy save state
+	LD	HL,-04H		;address of an ABORT opcode
+	ADD	HL,SP
+	PUSH	HL
+	LD	HL,00D6H	; an ABORT opcode
+	PUSH	HL
+	PUSH	HL
+	LD	HL,-04H		;STAT and DYN must be self referencing
+	ADD	HL,SP
+	PUSH	HL
+	PUSH	HL
+	LD	(MP),HL		;set all MSCW pointers
+	LD	(BASE),HL
+	LD	BC,DISP0
+	ADD	HL,BC
+	LD	(MPD0),HL
+	LD	(BASED0),HL
+	LD	HL,INTEND	;set NP
+	LD	(NP),HL
+
+
+
+;   Step 6
+; enable interrupts and do other junky stuff
+
+	RESTORE
+
+
+
+
+NRPTOP	.EQU	$
+RELSEG	.EQU	NRPTOP+800H
+FSTENT	.EQU	NRPTOP+DENTSZ
+	.END	GOLOC		;you learn to pray.
+	
+; End of file BOOT, and end of interpreter !
+
+	
+
+	.END
+
+         

@@ -1,0 +1,194 @@
+This document describes an early version of the Window Manager and Window
+Filer (March 1981).  At the end is a note of the Window Functions available
+in the most recent version (February 1982).
+
+__________________________________________________________________________
+
+A note by the reviewer:
+
+     The window manager unit uses SEGMENT procedures WITHIN a UNIT which is
+forbidden in UCSD version II.0.  You MUST use version IV.0 or another version
+which allows this construct to even compile the window manager.
+
+     A UNIT, ScreenOps, is used by the window manager.  Your version IV.0
+system came with a file, ScreenOps.code, which you should install in your
+SYSTEM.LIBRARY before WINDOWS is compiled.   - gws
+__________________________________________________________________________
+
+~A Window Manager for the UCSD p-System~
+
+                                        Austin Tate
+                                        Microcomputer Support Unit
+                                        Edinburgh Regional Computing Centre
+                                        
+
+
+1.  ~Introduction~
+
+     There has been a great deal of interest recently in the use of
+computer displays which allow a screen to be divided into a number of
+separate areas or 'windows' such as are used in the Xerox environment
+(Alto, 1979). Examples of software environments based on the Alto using
+windows include Smalltalk (a summary of several environments is given
+in Goldberg, 1979) and the Lisp Programmer's Assistant (Teitelman,
+1977). In these systems, separate windows are often 'attached' to
+separate, possibly concurrent, processes.
+
+     As part of the development of course materials for a series of
+seminars on Electronic Office Systems, the author has developed a
+demonstration Window Manager package for the portable UCSD p-System for
+microcomputers (Softech).  Although the hardware on which this system
+is being used is too slow for this software to be used in a production
+environment it does provide a realistic demonstration of the types of
+facilities we can expect to be available on future personal computers.
+For example, the Three Rivers Computer Corporation's 'PERQ' computer
+(Three Rivers) includes a 'Raster Op' microcoded instruction to
+facilitate various windows on the screen.
+
+     The window manager package has been used in a demonstration
+program which provides some of the facilities of the UCSD Filer
+utility.
+
+
+2.  ~Structure of the Package~
+
+     The Window Manager is written as a UCSD Pascal Unit.  A Unit
+provides a publically available set of constants, variables,
+procedures, etc. and gives implementation details of how these
+'interfaces' are provided. The listing of the window manager interface
+section is provided in Appendix I.
+
+     The structure of the implementation relies heavily on an internal
+data structure for individual windows not visible to the user.  This
+includes the following items:
+
+     a) position of top left corner of window in screen coordinates
+
+     b) size of window in horizontal and vertical directions
+
+     c) position of current input or output portion in the window in
+        window coordinates (i.e. position of ~this~ windows' cursor).
+
+     d) a data structure for lines of text in the window.   These are
+        allocated from a heap of lines.
+
+     e) a list structure pointer to show order in which windows were
+        displayed to ensure they currectly overlap if moved, killed,
+        etc.
+
+     f) flags to show various characteristics of the window.   E.g. if
+        horizontal scrolling is allowed, whether the window has a
+        'heading' line, etc.
+
+     Given this data structure and a carefully chosen interface, the
+package itself is straightforward to write.  The actual implementation
+and testing took less than 40 man/hours.  The Window Manager is about
+1000 lines of commented Pascal code.  It is straightforward to build
+the implementation gradually providing the more estoteric procedures
+later.
+
+
+3.  ~Window Frames~
+
+     Due to the different capabilities of video displays, it was found
+desirable to write the Window Manager in such a way that window frames
+were handled in a separately implemented Unit.  The interface section
+for this FRAMES unit is provided in Appendix II.  A straightforward,
+but rather unimpressive looking, character framing capability is
+possible on normal character displays.  However, where graphics
+facilities can be used, e.g. on the Terak 8510a microcomputer (Terak),
+these can be exploited to provide quite impressive looking frames and
+header backgrounds.  The Terak frames package was generated in a few
+hours by Ken Currie of ERCC. The frame unit for the Terak is
+approximately 120 lines of commented Pascal code.
+
+4.  ~The 'Window' Filer~
+
+     The Window Filer is a demonstration utility which provides a
+subset of the facilities available in the UCSD p-System Filer
+component.
+
+     It employs the window manager package for all input and output. It
+was generated in a few hours by adding simple window initialisation
+code and altering the (already localised) input and output instruction
+in on existing program which provided the subset of UCSD filer
+facilities.
+              
+     There are facilities to view the volumes on-line or the
+directories of floppy disk volumes in brief or detailed forms, to
+remove files from disk, to create text files on disk, to view the
+system date, etc.  Displays are created in separate areas of the screen
+known as 'windows'.
+
+     The window filer is entered by X(executing) WFILER at the UCSD
+command (outer) level.
+     
+     Several standard windows will appear.  A 'message' window at the
+top of the screen where prompts to a user will normally appear, a list
+of commands and a 'typescript' window in which user input is normally
+solicited.  There is a 'window cursor' (@ sign) on the screen
+(initially in the centre of the screen.
+
+     The system expects a single character command as detailed in the
+commands list (e.g.  "V" to get a list of volumes on-line).
+
+     At any time, the four cursor control (arrowed) keyed can be used
+to move the window cursor to a new position.  In addition, CTRL/0 (for
+"Over") can be used to bring the window area in which the window cursor
+currently resides into full view. Windows may be M(oved) and K(illed)
+within WFILER.
+
+     The use of screen windows to simulate moving sheets of paper on a
+desk to access information needed for some work can be shown by using a
+(create file) function.  While input is being typed to a file, the
+window manager can be directed to bring windows of interest on top.
+
+5.  ~Availability~
+
+     The window manager unit is not considered to be a potential tool
+at present.  However, for demonstration purposes it is being submitted
+to the UCSD p-System Users Society Software Library.  If it passes the
+relevant review procedure it will subsequently become available to
+members of USUS.
+
+6.  ~References~
+
+     Alto          Thacker, C.P., McGeight, E.M., Lampson, B.W.,
+                   Sproull, R.F. and Boggs, D.R. (1979)
+                   Alto: a personal computer.  In Siewiorek, D.,
+                   Bell, C.G., and Newell, A., Computer Structures,
+                   Readings and Examples. Second Edition, McGraw-Hill.
+
+     Goldberg      Goldberg, A. (1979) Educational uses of a Dynabook.
+                   Computers and Education Vol.8 pp 247-266.
+                   
+     Softech       UCSD p-System User's Manual.  Softech Microsystems Inc.
+                   9494, Black Mountain Road, San Diego, California 92126.
+
+     Teitelman     Teitelman, W. (1977) A display oriented programmer's
+                   assistant.  Proceedings of the 5th International Joint
+                   Conference on Artificial Intelligence, pp 905-915.
+     
+     Terak         Terak 8510/a brochure. Terak Corporation,
+                   14151, North 76th Street, Scottsdale, Arizona 85260.
+     
+     Three Rivers  PERQ brochure. Three Rivers Computer Corporation.
+                   160, North Craig Street, Pittsburg, Pennsylvania 15213.
+     
+
+Current Release - Window Manager Functions
+------------------------------------------
+Enter Window Manager Mode using ESC.
+In this mode you can type:
+ESC or <space> to leave this Mode or
+       to make a 'mark'
+<arrow keys> move cursor
+1..9   move cursor over screen
+S(how  window under cursor
+K(ill  window under cursor
+H(ide  window under cursor
+M(ove  window under cursor to 'mark'
+A(lter window under cursor to fit
+within next two 'marks'
+?      give this help window
+

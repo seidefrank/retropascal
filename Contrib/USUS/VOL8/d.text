@@ -1,0 +1,280 @@
+PROGRAM   DIR;
+{$I-,R-}
+{
+  This program is for NONcommercial use only, without written permission from
+  the authors.  Jim Gagne, Datamed Research, 1433 Roscomare Road, Los Angeles,
+  California 90024.}
+
+CONST
+        Has40ColApple = false;
+        ScreenWidth = 80;
+        LastLine    = 23;      {last line no. on screen, starting from line 0.}
+        MaxDirEnt   = 77;
+        UnusedFlag  = -1;
+        LastUnusedFlag = -2;
+
+TYPE
+
+     DATEREC = PACKED RECORD
+                        MONTH: 0..12;
+                        DAY: 0..31;
+                        YEAR: 0..100
+               END;
+
+     DIRRANGE = 0..MaxDirEnt;
+
+     VID = STRING[7];
+     TID = STRING[15];
+     FILEKIND = (UNTYPED,XDISK,CODE,TEXT,
+                 INFO,DATA,GRAF,FOTO,SECUREDIR);
+
+     DIRENTRY = RECORD
+                  DFIRSTBLK: INTEGER;
+                  DLASTBLK: INTEGER;
+                  CASE DFKIND:FILEKIND OF
+                    SECUREDIR,UNTYPED:
+                                       (DVID:VID;
+                                        DEOVBLK,
+                                        DLOADTIME,
+                                        DBLOCKS:INTEGER;
+                                        DLASTBOOT:DATEREC);
+                    XDISK,CODE,TEXT,INFO,DATA,
+                    GRAF,FOTO:
+                               (DTID:TID;
+                                DLASTBYTE:1..512;
+                                DACCESS:DATEREC)
+                END;
+
+     DIRP = ^DIRECTORY;
+     DIRECTORY = ARRAY[0..78] OF DIRENTRY;
+
+
+VAR
+    I, RoomLeft, TotlEntries, TotlBlocks, TotlFiles, UnusedLines,
+      FilesOnScrn, PrevBlk, TotFilesListed, DirLinesThatFit, StartLine: INTEGER;
+    FoundSysFile, WantsInAlphaOrder: boolean;
+    IdxArry: ARRAY [DIRRANGE] OF Integer;
+    SysNames: string[120];
+    DIRX: DIRECTORY;
+
+
+PROCEDURE ALPHABETIZE_DIRECTORY;
+VAR I : integer;
+
+
+PROCEDURE NRQuickSort(First,Last:integer);
+
+{this procedure was taken from "PASCAL PROGRAMS FOR SCIENTISTS AND ENGINEERS"
+ by Alan R. Miller, published by SYBEX.  You ought to buy it, its a very good
+ book}
+
+VAR
+   Left,Right : ARRAY [1..20] OF integer;
+   I,J,SP,MID : integer;
+   Pivot : STRING;
+   
+
+PROCEDURE Swap(VAR P,Q : integer);
+VAR HOLD : integer;
+BEGIN HOLD := P;  P := Q;  Q := HOLD END;
+
+
+BEGIN
+  Left[1] := First;  Right[1] := Last;  SP := 1;
+  WHILE SP > 0 DO
+    BEGIN
+      IF Left[SP]>= Right[SP] THEN SP := SP-1
+      ELSE BEGIN
+        I := Left[SP];  J := Right[SP];  Pivot := DIRX[IdxArry[J]].DTID;
+        MID := (I+J) DIV 2;
+        IF (J-I) > 5 THEN
+          IF ((DIRX[IdxArry[MID]].DTID < Pivot) AND
+              (DIRX[IdxArry[MID]].DTID > DIRX[IdxArry[I]].DTID)) OR
+             ((DIRX[IdxArry[MID]].DTID > Pivot) AND
+              (DIRX[IdxArry[MID]].DTID < DIRX[IdxArry[I]].DTID))
+            THEN Swap(IdxArry[MID],IdxArry[J])
+            ELSE IF ((DIRX[IdxArry[I]].DTID < DIRX[IdxArry[MID]].DTID) AND
+                   (DIRX[IdxArry[I]].DTID > Pivot)) OR
+                  ((DIRX[IdxArry[I]].DTID > DIRX[IdxArry[MID]].DTID) AND
+                   (DIRX[IdxArry[I]].DTID < Pivot))
+              THEN Swap(IdxArry[I],IdxArry[J]);
+          Pivot := DIRX[IdxArry[J]].DTID;
+          WHILE I < J DO
+            BEGIN
+              WHILE DIRX[IdxArry[I]].DTID < Pivot DO I := I+1;
+              J := J-1;
+              WHILE (I < J) AND (Pivot < DIRX[IdxArry[J]].DTID) DO J := J-1;
+              IF I < J THEN Swap(IdxArry[I],IdxArry[J]);
+            END;
+          J := Right[SP];  Swap(IdxArry[I],IdxArry[J]);
+          IF (I-Left[SP]) >= (Right[SP] - I)
+            THEN BEGIN
+              Left[SP+1] := Left[SP];  Right[SP+1] := I-1;  Left[SP] := I+1;
+            END
+            ELSE BEGIN
+              Left[SP+1] := I+1;  Right[SP+1] := Right[SP];  Right[SP] := I-1;
+            END;
+          SP := SP+1;
+      END;
+    END;
+END;
+               
+BEGIN
+  FOR i := 1 TO TotlEntries DO
+    BEGIN
+      IdxArry[i] := i;  
+      WITH DIRX[i] DO IF Length (DTID) > 0
+        THEN BEGIN 
+          TotlFiles := TotlFiles + 1;
+          RoomLeft := RoomLeft - DLASTBLK + DFIRSTBLK;
+        END
+    END;
+  NRQuickSort(1,DIRX[0].DLOADTIME);  SysNames := '';
+END;
+
+
+PROCEDURE WriteDate (Date: DateRec);
+BEGIN
+  WITH Date DO
+    BEGIN
+      WRITE(DAY:3,'-');
+      CASE MONTH OF
+        1: WRITE('Jan');
+        2: WRITE('Feb');
+        3: WRITE('Mar');
+        4: WRITE('Apr');
+        5: WRITE('May');
+        6: WRITE('Jun');
+        7: WRITE('Jul');
+        8: WRITE('Aug');
+        9: WRITE('Sep');
+        10: WRITE('Oct');
+        11: WRITE('Nov');
+        12: WRITE('Dec');
+      END {case};
+      WRITE('-',YEAR:2);
+    END {with};
+END;
+
+
+PROCEDURE Initialize;
+VAR     Unitnum, i, j: integer;
+        chbuf : char;
+BEGIN
+  WantsInAlphaOrder := true;  FoundSysFile := false;  UnusedLines := 0;
+  Writeln(
+'Type "-" if you want files listed in order present on disk (not alphabetized)'
+  );
+  Write('...then the unit number for the directory you wish --> ');
+  REPEAT
+    Read (keyboard, chbuf);  
+    IF chbuf = '-' THEN BEGIN Write('-');  WantsInAlphaOrder := false END;
+  UNTIL (chbuf IN ['4', '5', '9', '1']);
+  Unitnum := ORD (chbuf) - ORD ('0');  
+  IF Unitnum = 1
+    THEN BEGIN
+      Write(Unitnum);  REPEAT Read(keyboard,chbuf) UNTIL (chbuf IN ['0'..'2']);
+      Unitnum := 10 + ORD(chbuf) - ORD('0')
+    END;
+  Write(Unitnum MOD 10);  UNITREAD(UNITNUM,DIRX[0],2024,2);
+  SysNames := 'SYSTEM: ';  TotlFiles := 0;  DirLinesThatFit := LastLine - 2;
+  IF IORESULT <> 0
+    THEN
+      BEGIN
+        WRITELN('Unit No. ', Unitnum, ' is not on line.');
+        EXIT(DIR);
+      END;
+  FOR i := 0 TO MaxDirEnt DO IdxArry[i] := 0;
+  TotlEntries := DIRX[0].DLOADTIME;  i := 1;
+  WHILE (Length(DIRX[i].DTID) = 0) AND (i < TotlEntries) DO i := i + 1;
+  Gotoxy(0,LastLine);  Writeln;  Writeln;  Writeln;  Writeln;     {clear screen}
+  j := ScreenWidth - 44;  IF Has40ColApple OR (j < 0) THEN j := 0;  
+  Gotoxy (j DIV 2, 1);
+  WITH DIRX[0] DO
+    BEGIN
+      WRITELN ('Directory of Unit #', Unitnum, ' -**- Volume ', DVID,':');
+      RoomLeft := DBLOCKS- DIRX[i].DFIRSTBLOCK;  TotlBlocks := DBLOCKS;
+    END;
+  IF WantsInAlphaOrder THEN AlphabetizeDirectory
+    ELSE BEGIN
+      TotlFiles := 0;  PrevBlk := 10;
+      i := 1;  WHILE Length(DIRX[i].DTID) = 0 DO i := i + 1;
+      FOR i := i TO TotlEntries DO WITH DIRX[i] DO IF Length(DTID) > 0
+        THEN BEGIN
+          IF DFIRSTBLK > PrevBlk
+            THEN BEGIN
+              TotlFiles := TotlFiles + 1;  IdxArry[TotlFiles] := UnusedFlag;
+              UnusedLines := UnusedLines + 1;
+            END;
+          TotlFiles := TotlFiles + 1;  IdxArry[TotlFiles] := i;
+          PrevBlk := DLASTBLK;  RoomLeft := RoomLeft - DLASTBLK + DFIRSTBLK
+        END;
+      IF PrevBlk < TotlBlocks - 1
+        THEN BEGIN
+          TotlFiles := TotlFiles + 1;  IdxArry[TotlFiles] := LastUnusedFlag;
+          UnusedLines := UnusedLines + 1;
+        END;
+    END;
+END;
+
+
+PROCEDURE WriteDirEntries;
+VAR     ch: char;
+        i,j,k: integer;
+BEGIN
+  FilesOnScrn := 0;  TotFilesListed := 0;  StartLine := 2;  PrevBlk := 10;
+  FOR i:= 1 TO MaxDirEnt DO IF IdxArry[i] <> 0
+    THEN BEGIN
+      IF WantsInAlphaOrder
+        THEN Gotoxy((FilesOnScrn DIV DirLinesThatFit)*27,
+          (FilesOnScrn MOD DirLinesThatFit)+StartLine)
+        ELSE Gotoxy((FilesOnScrn DIV DirLinesThatFit)*40,
+          (FilesOnScrn MOD DirLinesThatFit)+StartLine);
+      FilesOnScrn := FilesOnScrn + 1;  TotFilesListed := TotFilesListed + 1;
+      IF IdxArry[i] = LastUnusedFlag
+        THEN Write('  < unused >    ', TotlBlocks - PrevBlk:3, PrevBlk:16)
+      ELSE IF IdxArry[i] = UnusedFlag
+        THEN Write('  < unused >    ', DIRX[IdxArry[i+1]].DFIRSTBLK - PrevBlk:3,
+          PrevBlk:16)
+      ELSE WITH DIRX[IdxArry[i]] DO
+        BEGIN
+          j := DLASTBLK-DFIRSTBLK;  PrevBlk := DLASTBLK;
+          WRITE(DTID,' ':16-LENGTH(DTID), j: 3, ' ');
+          IF NOT WantsInAlphaOrder
+            THEN BEGIN WriteDate(DACCESS);  Write(DFIRSTBLK:5) END
+        END {else};
+     IF (FilesOnScrn MOD DirLinesThatFit = 0)
+       THEN IF (TotFilesListed < TotlFiles)
+         AND ((WantsInAlphaOrder AND (FilesOnScrn = DirLinesThatFit * 3))
+             OR (NOT WantsInAlphaOrder AND (FilesOnScrn = DirLinesThatFit * 2)))
+       THEN BEGIN
+         j := ScreenWidth - 42;  IF Has40ColApple OR (j < 0) THEN j := 0;
+         GotoXY (j DIV 2, LastLine);
+         Write ('tap <space bar> to continue, <esc> to quit...');
+         REPEAT Read(keyboard,ch) UNTIL ch IN [' ',CHR(27)];
+         GotoXY(0,LastLine);  Write(' ':screenWidth-2);
+         IF ch = CHR(27) THEN EXIT(WriteDirEntries);
+         k := TotlFiles - TotFilesListed;
+         IF WantsInAlphaOrder
+           THEN BEGIN j := k MOD 3;  k := k DIV 3 END
+           ELSE BEGIN j := k MOD 2;  k := k DIV 2 END;
+         IF j > 0 THEN k := k + 1;
+         IF k > DirLinesThatFit THEN k := DirLinesThatFit;
+         FilesOnScrn := 0;  FOR j := 1 TO k+1 DO Writeln;
+         StartLine := DirLinesThatFit - k +2;  DirLinesThatFit := k;
+       END;
+    END {for}
+END;
+
+
+BEGIN
+  Initialize;
+  WriteDirEntries;
+  IF FoundSysFile THEN BEGIN Gotoxy(0,LastLine -1);  Write(SysNames) END;
+  I := ScreenWidth - 52;  IF Has40ColApple OR (I < 0) THEN I := 0;
+  Gotoxy (I DIV 2, LastLine);  I := TotlFiles - UnusedLines;
+  IF I = 1 THEN Write ('1 file; ') ELSE Write (I,' files; ');
+  Write (TotlBlocks - RoomLeft, ' blocks used, ',
+    RoomLeft, ' remaining, ', TotlBlocks, ' total.');
+END.
+

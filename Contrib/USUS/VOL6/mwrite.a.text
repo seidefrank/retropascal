@@ -1,0 +1,19 @@
+        .PROC   MWRITE,1
+        .PRIVATE OUTC,RETADDR
+TSTAT   .EQU    0C0H            ;STATUS PORT
+DATA    .EQU    0C1H            ;DATA PORT
+TRE     .EQU    01H             ;XMIT REG EMPTY    
+
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL
+        LD      (OUTC),HL
+WAIT:   IN      A,(TSTAT)        ;GET STATUS
+        AND     TRE             ;CK STATUS        
+        JP      Z,WAIT          ;XMIT BUSY 
+        LD      A,(OUTC)
+        OUT     (DATA),A        ;SEND DATA
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

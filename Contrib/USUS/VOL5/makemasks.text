@@ -1,0 +1,307 @@
+PROGRAM MakeCRTMasks;
+USES CRTInput, GetNumber;
+
+CONST
+       MaxX = 79;
+       MaxY = 23;
+       MaxData = 50;
+       DefaultMark = '^';
+       LengthChar = '*';
+       TESTING = FALSE;
+
+TYPE
+       YLimits = 0..MaxY;
+       XLimits = 0..MaxX;
+       DataLimits = 1..MaxData;
+       CRTLineArray = PACKED ARRAY [XLimits] OF char;
+       DataRec = PACKED RECORD
+                   X: XLimits;
+                   Y: YLimits;
+                   Lngth, Decimal: XLimits;
+                 END;
+       MaskRec = RECORD
+                   Line: ARRAY [YLimits] OF CRTLineArray;
+                   Data: ARRAY [DataLimits] OF DataRec;
+                 END;
+       
+VAR
+     i, j, ThisRecordNo, NoOfDataRecords: integer;
+     ch, Datamark: char;
+     NumberSet: SET OF DataLimits;
+     InfileName, DFileName: string[30];
+     TextBuf: ARRAY [YLimits] OF string;
+     Mask: MaskRec;
+     Infile, List: text;
+     DataFile: FILE OF MaskRec;
+ 
+ 
+ PROCEDURE ClearScreen; EXTERNAL;
+ 
+ 
+ FUNCTION Yes (prompt: string) : boolean; EXTERNAL;
+ 
+ 
+ PROCEDURE OpenDataFile;
+ VAR  Newfile: boolean;
+ 
+ BEGIN
+   REPEAT
+     NoOfDataRecords := 0;
+     NewFile := false;
+     Write ('What is the name of the CRT mask data file?  ');
+     DFileName := '';
+     GetString (23, DFileName);
+     Writeln;
+     IF (DFileName = '') OR  (DFileName = ' ') 
+       THEN IF Yes ('Do you want to quit') THEN EXIT (program);
+     {$I-}
+     Allcaps (DFileName);
+     Reset (DataFile, DFileName);
+     IF IORESULT > 0 THEN Reset (Datafile, CONCAT ('#5:', DFileName));
+     {$I+}
+     i := IORESULT;
+     IF i = 10
+       THEN BEGIN
+         IF Yes ('NEW FILE.  Correct')
+           THEN BEGIN
+             Newfile := true;
+             {$I-}
+             Rewrite (DataFile, DFileName);
+             {$I+}
+             i := IORESULT;
+           END
+       END;
+  UNTIL i = 0;
+  IF NOT Newfile
+    THEN BEGIN
+      REPEAT
+        Get (DataFile);
+        NoOfDataRecords := NoOfDataRecords + 1;
+      UNTIL eof (DataFile);
+      Reset (DataFile)
+    END;
+END;
+
+
+PROCEDURE TranslateCRTData (LineNo: YLimits);
+VAR L, FieldStart, FieldEnd, DataNumber: integer;
+    DataDec, DataLength, TextLength: XLimits;
+    HasData: boolean;
+    
+    
+PROCEDURE ScanField;
+VAR Done, HasDecimal: boolean;
+    ChL: char;
+    Dec: integer;
+BEGIN
+  L := FieldStart;
+  HasDecimal := false;
+  Dec := 0;
+  
+IF TESTING THEN BEGIN WRITE ('X = ', FIELDSTART:3, '; Y = ', I:3);
+IF DATANUMBER MOD 4 = 0 THEN WRITELN ELSE WRITE ('   ') END;
+  
+  REPEAT
+    L := L + 1;
+    Done := (L > TextLength) OR (L > MaxX);
+    IF NOT Done
+      THEN BEGIN
+        ChL := Mask.Line [LineNo,L];
+        Done := NOT (ChL IN ['0'..'9', '.', LengthChar])
+      END;
+    IF NOT Done AND (ChL = '.') THEN IF HasDecimal
+      THEN BEGIN                  {second period marks end of field.      }
+        Done := true;
+        IF (Mask.Line [LineNo, L-1] = '.') {i.e., are we really at the start of}
+          THEN BEGIN              { a dotted line?  Then dump ALL periods.}
+            HasDecimal := false;
+            Dec := 0;
+            L := L-1;
+          END
+      END
+      ELSE BEGIN
+        HasDecimal := true;
+        Dec := L
+      END;
+  UNTIL Done;
+  DataLength := L - FieldStart;
+  IF Dec = 0 THEN DataDec := 0 ELSE DataDec := L - (Dec +1);
+  FieldEnd := L;
+END;
+  
+
+PROCEDURE GetFieldNumber;
+
+
+PROCEDURE FigureOutNumber;
+VAR i: integer;
+BEGIN
+  i := 0;
+  REPEAT i := i + 1 UNTIL NOT (i IN NumberSet);
+  IF i > MaxData
+    THEN BEGIN
+      Writeln (CHR (7), '** ERROR **':40);
+      Writeln ('There is no room in the table for the data field starting at ', 
+FieldStart, ', ', LineNo, '.'); 
+      i := 0;
+    END;
+  DataNumber := i
+END;
+      
+      
+BEGIN
+  DataNumber := 0;
+  L := FieldStart + 1;
+  REPEAT
+    IF Mask.Line [LineNo,L] IN ['0'..'9']
+      THEN DataNumber := DataNumber * 10 
+           + ORD (Mask.Line [LineNo,L]) - ORD ('0');
+    L := L + 1;
+  UNTIL L >= FieldEnd;
+  IF (DataNumber > MaxData) OR (DataNumber = 0) OR (DataNumber IN Numberset)
+    THEN FigureOutNumber;
+END;
+
+
+BEGIN
+  TextLength := Length (TextBuf [LineNo]);
+  FieldStart := -1;
+  REPEAT
+    REPEAT
+      FieldStart := FieldStart + 1;
+      HasData := Mask.Line [LineNo, FieldStart] = Datamark
+    UNTIL HasData OR (FieldStart > TextLength) OR (FieldStart = MaxX);
+    IF HasData
+      THEN BEGIN
+        ScanField;
+        GetFieldNumber;
+        IF DataNumber > 0 THEN WITH Mask.Data[DataNumber] DO
+          BEGIN
+            X := FieldStart;
+            Y := LineNo;
+            Lngth := DataLength;
+            Decimal := DataDec
+          END;
+        FOR L := FieldStart TO FieldEnd - 1 DO Mask.Line [LineNo,L] := ' ';
+        NumberSet := NumberSet + [DataNumber];
+      END
+  UNTIL NOT HasData;
+END;
+
+
+FUNCTION GotInstructions: boolean;
+BEGIN
+  ClearScreen;
+  Writeln (
+'The current marker of the start of a CRT data field is a "', DataMark, '".');
+  IF Yes ('Do you wish to change this character')
+    THEN BEGIN
+      Write ('Please type the new field start character:  ');
+      Read (DataMark);
+    END;
+  IF NOT OpenTextFile 
+     ('What is the name of the file containing the desired mask?', InfileName, 
+       GetOld, 0, Infile)
+    THEN GotInstructions := false
+    ELSE BEGIN
+      GotInstructions := true;
+      Gotoxy (0,6);
+      Writeln (
+    'The file ', DFileName, ' now contains ', NoOfDataRecords, ' records.');
+      ch := '0';    {dummy character}
+      IF NoOfDataRecords > 0
+        THEN BEGIN
+          Writeln ('Where would you like to write this mask?');
+          Writeln ('     N)ext new record in file.');
+          Writeln ('     C)orrect previously existing record.');
+          REPEAT Read (ch) UNTIL (ch IN ['C', 'c', 'N', 'n']);
+          Writeln;
+        END;
+      ThisRecordNo := NoOfDataRecords;  {record no's start at 0, remember}
+      IF (ch IN ['N', 'n']) OR (NoOfDataRecords = 0)
+        THEN NoOfDataRecords := NoOfDataRecords + 1
+        ELSE BEGIN
+          IF NoOfDataRecords = 1 
+            THEN ThisRecordNo := 0
+            ELSE BEGIN
+              Write ('Then what record number would you like ',
+                     'to replace (0 TO ', NoOfDataRecords-1, ')?   ');
+              GetInteger (-1, -1, 0, NoOfDataRecords-1, true, ThisRecordNo);
+              Writeln;
+            END
+        END;
+    END
+END;
+    
+
+PROCEDURE PrintMask;
+BEGIN
+  Writeln (List, '      C R T   M A S K   G E N E R A T O R   U T I L I T Y',
+'   (c) 1980 by DATAMED RESEARCH.');
+  Writeln (List, 'Source Textfile = ', InFileName,
+'    Mask File = ', DFileName, '    Mask Number = ', ThisRecordNo);
+  Writeln (List);
+  Writeln (List,
+'   Y  X:0....5...10....5...20....5...30....5...40....5...50....5...60',
+'....5...70....5..79');
+  FOR i := 0 TO MaxY DO
+    BEGIN
+      Write (List, i:4, '   !', Mask.Line [i,0]);
+      FOR j := 1 TO MaxX DO 
+        IF (Mask.Line [i,j] = ' ') AND (j MOD 10 = 0) 
+            AND (Mask.Line [i,j-1] = ' ') 
+          THEN Write (List, '!') 
+          ELSE Write (List, Mask.Line [i,j]);
+      Writeln (List, '!');
+    END;
+  Writeln (List, 
+'       !:....,....:....,....:....,....:....,....:....,....:....,....:',
+'....,....:....,....!');
+  Writeln (List);
+  Writeln (List, 'FIELD NUMBER  ', 'X COORDINATE   ':13, 'Y COORDINATE   ':16,
+         'FIELD END':10, 'LENGTH':9, 'DECIMAL PLACES':20);
+  FOR i := 1 TO MaxData DO WITH Mask.Data [i] DO IF Lngth > 0 THEN
+    Writeln (List, i:6, X:16, Y:16, (X + Lngth -1):12, Lngth:10, Decimal:16);
+  Page (List);
+END;
+           
+
+PROCEDURE ProcessAMask;
+BEGIN
+IF TESTING THEN WRITELN ('CURRENT RECORD NO. = ', THISRECORDNO);
+  Seek (DataFile, ThisRecordNo);
+  NumberSet := [];
+  FOR i := 0 TO MaxY DO FOR j := 0 TO MaxX DO Mask.Line [i,j] := ' ';
+  FOR i := 1 TO MaxData DO WITH Mask.Data [i] DO
+    BEGIN
+      X := 0;
+      Y := 0;
+      Lngth := 0;
+      Decimal := 0;
+    END;
+  i := 0;
+  WHILE NOT eof (Infile) AND (i <= MaxY) DO 
+    BEGIN
+      Readln (Infile, TextBuf[i]);
+      FOR j := 1 TO Length (TextBuf [i]) DO Mask.Line [i,j-1] := TextBuf [i,j];
+      TranslateCRTData (i);
+      i := i + 1;
+    END;
+  DataFile^ := Mask;
+  Put (DataFile);
+  IF Yes ('Would you like to print this mask <if so, have printer ready..>')
+    THEN PrintMask;
+  CLOSE (Infile);
+  Write ('Process complete.  ');
+END;
+
+
+BEGIN
+  OpenDataFile;
+  Rewrite (List, 'PRINTER:');
+  DataMark := DefaultMark;
+  REPEAT IF GotInstructions THEN ProcessAMask
+  UNTIL NOT Yes ('More masks to do');
+  CLOSE (DataFile, Lock);
+END.
+  

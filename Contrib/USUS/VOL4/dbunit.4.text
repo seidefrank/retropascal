@@ -1,0 +1,574 @@
+FUNCTION DBPUT(*DESTINATION:DBWRKINDEX):DBERRTYPE*);
+(*replace current item in workarea with the contents of DBMAIL*)
+VAR DELTA,OLDLINKV,NEWLINKV,ISTACK:INTEGER;
+  FP:FLDDESPTR;
+  
+  PROCEDURE PUTLINKF;
+  (*replace current linked item with the item in DBMAIL*)
+  BEGIN
+    WITH WRKTABLE[DESTINATION] DO
+      BEGIN (*replace the linked item*)
+        WITH WIB^[TOS] DO
+          BEGIN
+            OLDLINKV:=LINKVALUE(WA,OFFSET);
+            NEWLINKV:=ORD(DBMAIL.TXT[0]);
+            IF DBMAIL.DBMAILTYPE = STRINGF THEN
+              NEWLINKV:=NEWLINKV+1; (*link is 1 greater than
+                                                string length*)
+            DELTA:=NEWLINKV-OLDLINKV;
+            IF DELTA > 0 THEN
+              DBSHOWERR('DBPUT#1',MOVETAIL(DESTINATION,DELTA,OFFSET))
+            ELSE
+              DBSHOWERR('DBPUT#2',MOVETAIL(DESTINATION,DELTA,OFFSET-DELTA));
+(*$R-*)
+            MOVELEFT(DBMAIL.TXT,WA^[OFFSET],NEWLINKV);
+            WA^[OFFSET]:=NEWLINKV;
+(*$R+*)
+          END (*WITH WIB*);
+        (*now correct enclosing links also*)
+        IF TOS > 0 THEN
+          FIXLINKS(DESTINATION,(TOS-1),DELTA);
+      END (*WITH WRKTABLE*);
+  END (*PUTLINKF*);
+  
+  PROCEDURE PUTFIXEDF(FP:FLDDESPTR);
+  (*replace a fixed width item in a record assumed already present*)
+  CONST FIXEDWIDTH = 1;
+  VAR SW:CRACKSWTYPE;
+    FOFFSET:INTEGER;
+  BEGIN
+    WITH WRKTABLE[DESTINATION] DO
+      WITH WIB^[TOS] DO
+        WITH FP^ DO
+          BEGIN
+            SW.BL:=SWITCHES;
+            IF NOT SW.A[FIXEDWIDTH] THEN
+              DBPUT:=37 (*fixed width item expected*)
+            ELSE
+(*$R-*)
+              WITH DBMAIL DO
+                MOVELEFT(TXT, WA^[OFFSET+GETFOFFSET(DESTINATION)],
+                                        MAXWIDTH);
+(*$R+*)
+          END (*WITH FP^*);
+  END (*PUTFIXEDF*);
+  
+BEGIN (*DBPUT*)
+  DBPUT:=0;
+  TRACEWA(14,DESTINATION);
+  IF DBTYPECHECK THEN
+    WITH WRKTABLE[DESTINATION] DO
+      WITH WIB^[TOS] DO
+        WITH DBMAIL DO
+          BEGIN
+            IF DBMAILTYPE = GROUPF THEN
+              BEGIN
+                IF LEVEL <> GROUPT THEN
+                  DBPUT:=36
+                ELSE
+                  PUTLINKF;
+              END
+            ELSE
+              IF LEVEL <> FIELDT THEN
+                DBPUT:=38
+              ELSE
+              IF (DESCRIPTORNUM >= 0) 
+                  AND (DESCRIPTORNUM <= LASTFIELDDESCRIPTOR) THEN
+                BEGIN (*it's a simple field*)
+                  FP:=ACTIVEFIELDS[DESCRIPTORNUM];
+                  IF FP = NIL THEN
+                    DBPUT:=31 (*no such field initialized*)
+                  ELSE
+                    WITH FP^ DO
+                      IF FLDTYPE <> DBMAILTYPE THEN
+                        DBPUT:=36 (*mismatch*)
+                      ELSE
+                        IF DBMAILTYPE IN [STRINGF,INTEGERF,LONGINTF] THEN
+                          CASE DBMAILTYPE OF
+                            STRINGF: PUTLINKF;
+                            LONGINTF,INTEGERF: PUTFIXEDF(FP)
+                          END (*CASES*)
+                        ELSE
+                          DBPUT:=12; (*not yet implemented*)
+                END (*simple field*)
+              ELSE
+                DBPUT:=31 (*no such field exists*);
+          END (*WITH DBMAIL*)
+  ELSE (*item assumed to be linked string*)
+    PUTLINKF;
+  TRACEWA(15,DESTINATION);
+END (*DBPUT*);
+
+
+(*SUPPORT PRIMITIVES*)
+FUNCTION DBWRITEFIELD(*FID:TEXT; SOURCE:DBWRKINDEX):DBERRTYPE*);
+(*access to Pascal's WRITE referring to the item currently pointed to
+    in the source workarea; output is to file FID*)
+VAR FP:FLDDESPTR;
+  S:STRING[255];
+  IA:REFLIST;
+BEGIN
+  DBWRITEFIELD:=0;
+  WITH WRKTABLE[SOURCE] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        IF LEVEL <> FIELDT THEN
+          DBWRITEFIELD:=28 (*can't write out a whole group*)
+        ELSE
+          BEGIN
+            FP:=ACTIVEFIELDS[DESCRIPTORNUM];
+            IF FP=NIL THEN
+              DBWRITEFIELD:=29
+            ELSE
+              WITH FP^ DO
+                CASE FLDTYPE OF
+                  GROUPF: DBWRITEFIELD:=28;
+                  STRINGF:
+                    BEGIN
+(*$R-*)
+                      MOVELEFT(WA^[OFFSET],S,LINKVALUE(WA,OFFSET));
+(*$R+*)
+                      DELETE(S,LENGTH(S),1); (*correct for link*)
+                      WRITE(FID,S);
+                    END;
+                  INTEGERF:
+                    BEGIN
+(*$R-*)
+                      MOVELEFT(WA^[OFFSET+GETFOFFSET(SOURCE)],IA[0],2);
+(*$R+*)
+                      WRITE(FID,IA[0]);
+                    END;
+                  BYTEF,LONGINTF,TEXTF: DBWRITEFIELD:=12; (*not implemented*)
+                  ADDRCOUPLEF,SETF: DBWRITEFIELD:=30
+                END (*CASE*);
+          END (*LEVEL=FIELDT*);
+      END (*WITH WIB*);
+END (*DBWRITEFIELD*);
+
+PROCEDURE DBGETDESCRIPTOR(*LEVEL:DBLEVELTYPE; 
+                           DESCRIPTORNUM:INTEGER;
+                           VAR PTR:FLDDESPTR)*);
+(*used to pass descriptors to external programs. to avoid excessive
+  interface symbol table, TRIX record is used to pass pointer as
+  FLDDESPTR. external program is expected to declare its own records
+  corresponding to RECORDT and GROUPT since they are not in the interface
+  part*)
+TYPE
+  TRIXPTR=
+    RECORD CASE DBLEVELTYPE OF
+      FIELDT: (F:FLDDESPTR);
+      RECORDT:(R:RECDESPTR);
+      GROUPT: (G:GRPDESPTR)
+    END;
+VAR TP:TRIXPTR;
+BEGIN
+  IF DESCRIPTORNUM < 0 THEN
+    TP.F := NIL
+  ELSE
+    CASE LEVEL OF
+      FIELDT:  TP.F:=ACTIVEFIELDS[DESCRIPTORNUM];
+      RECORDT: TP.R:=ACTIVERECORDS[DESCRIPTORNUM];
+      GROUPT:  TP.G:=ACTIVEGROUPS[DESCRIPTORNUM]
+    END (*CASES*);
+  PTR:=TP.F;
+END (*DBGETDESCRIPTOR*);
+
+FUNCTION DBTAG(*NAME:STRING; SOURCE:DBWRKINDEX; VAR ITEMNUM:INTEGER):DBERRTYPE*);
+(*search the current level for a descriptor corresponding to NAME*)
+BEGIN
+END (*DBTAG*);
+
+
+(**WORKAREA PRIMITIVES*)
+FUNCTION DBWRKOPEN(*WI:DBWRKINDEX; SIZE:INTEGER):DBERRTYPE*);
+CONST WADELTA=64;
+(*open a workarea for business*)
+VAR I:INTEGER;
+  P:WAPTR;
+BEGIN
+  DBWRKOPEN:=0;
+  WITH WRKTABLE[WI] DO
+    IF (SIZE <= 0) OR (SIZE > (PAGELASTBYTE+1)) THEN
+      DBWRKOPEN:=2 (*size out of range*)
+    ELSE
+      IF (WA <> NIL) OR (WIB<>NIL) THEN
+        DBWRKOPEN:=3 (*workarea already open*)
+      ELSE
+        IF NOT CHECKHEAP(SIZE+SIZEOF(WIBTYPE)) THEN
+          DBWRKOPEN:=1 (*insufficient memory*)
+        ELSE
+          BEGIN  (*should be safe - do it*)
+            NEW(WIB);
+            NEW(WA); (*allocates WADELTA bytes - minimum wa size*)
+            IF SIZE > WADELTA THEN
+              I:=HEAPALLOCATE(SIZE-WADELTA); (*already checked for error*)
+            WSIZE:=MAX(WADELTA,SIZE);
+            ZEROWORKAREA(WI);
+          END;
+END (*DBWRKOPEN*);
+
+FUNCTION DBWRKCLOSE(*WI:DBWRKINDEX):DBERRTYPE*);
+BEGIN
+END (*DBWRKCLOSE*);
+
+
+(**FILE PRIMITIVES*)
+FUNCTION DBFOPEN(*FNUM:DBFILENUM; TITLE:STRING):DBERRTYPE*);
+BEGIN
+  DBFOPEN:=0;
+(*$I-*)
+  CASE FNUM OF
+    0: RESET(F0,TITLE);
+    1: RESET(F1,TITLE);
+    2: RESET(F2,TITLE);
+    3: RESET(F3,TITLE);
+    4: RESET(F4,TITLE)
+  END (*CASE*);
+  DBIORESULT:=IORESULT;
+  IF DBIORESULT <> 0 THEN
+    DBFOPEN:=23 (*unable to open file*)
+  ELSE
+    OPENFILES[FNUM]:=TRUE;
+(*$I+*)
+END (*DBFOPEN*);
+
+FUNCTION DBFCLOSE(*FNUM:DBFILENUM):DBERRTYPE*);
+BEGIN
+  DBFCLOSE:=0;
+(*$I-*)
+  CASE FNUM OF
+    0: CLOSE(F0);
+    1: CLOSE(F1);
+    2: CLOSE(F2);
+    3: CLOSE(F3);
+    4: CLOSE(F4)
+  END (*CASE*);
+  IF IORESULT <> 0 THEN
+    DBFCLOSE:=26; (*unable to close file*)
+(*$I+*)
+END (*DBFCLOSE*);
+
+FUNCTION DBFCREATE(*FNUM:DBFILENUM; WASCRATCH:DBWRKINDEX;
+                                    SPEXTITLE,NEWTITLE:STRING):DBERRTYPE*);
+(*open a new database file; lock it into directory; if there is a non-empty
+  specification file fitle, copy the spex into the new file. uses wascratch
+  to initialize the file.  assumes wascratch will be associated with fnum
+  file*)
+VAR RSLT:INTEGER;
+
+  PROCEDURE BLANKZEROPAGE(VAR F:FILETYPE);
+  VAR BLOCKCOUNT:INTEGER;
+  BEGIN
+    BLOCKCOUNT:=(PAGELASTBYTE+1) DIV 512;
+    RSLT:=BLOCKWRITE(F,WRKTABLE[WASCRATCH].WA^,BLOCKCOUNT,0);
+    DBFCREATE:=0;
+    IF RSLT <> BLOCKCOUNT THEN
+      DBFCREATE:=9
+    ELSE
+(*$I-*)
+      BEGIN
+        CLOSE(F,LOCK);
+        IF IORESULT <> 0 THEN
+          DBFCREATE:=10  (*unable to lock file*)
+        ELSE
+          BEGIN
+            RESET(F,NEWTITLE);
+            IF IORESULT <> 0 THEN
+              DBFCREATE:=11 (*unable to re-open the file*)
+            ELSE
+              OPENFILES[FNUM]:=TRUE;
+          END;
+      END (*RSLT = BLOCKCOUNT*);
+  END (*BLANKZEROPAGE*);
+
+BEGIN (*DBFCREATE*)
+  RSLT:=CHECKWORKAREA(WASCRATCH,(PAGELASTBYTE+1));
+  IF RSLT<>0 THEN
+    DBFCREATE:=RSLT (*pass on error from checkworkarea*)
+  ELSE
+    IF OPENFILES[FNUM] THEN
+      DBFCREATE:=5 (*file already open and in use*)
+    ELSE
+      IF LENGTH(NEWTITLE) = 0 THEN
+        DBFCREATE:=6 (*requires non-nul title string*)
+  ELSE
+(*$I-*)
+    BEGIN
+      CASE FNUM OF
+        0: RESET(F0,NEWTITLE);
+        1: RESET(F1,NEWTITLE);
+        2: RESET(F2,NEWTITLE);
+        3: RESET(F3,NEWTITLE);
+        4: RESET(F4,NEWTITLE)
+      END (*CASE*);
+      RSLT:=IORESULT;
+  (*$I+*)
+      IF RSLT=0 THEN (*file already on disk*)
+        DBFCREATE:=4
+      ELSE
+        IF RSLT = 12 THEN (*file already open, but not caught above*)
+          DBFCREATE:=99 (*system error*)
+    ELSE
+      BEGIN
+  (*$I-*)
+        CASE FNUM OF
+          0: REWRITE(F0,NEWTITLE);
+          1: REWRITE(F1,NEWTITLE);
+          2: REWRITE(F2,NEWTITLE);
+          3: REWRITE(F3,NEWTITLE);
+          4: REWRITE(F4,NEWTITLE)
+        END (*CASE*);
+        RSLT:=IORESULT;
+  (*$I+*)
+        IF RSLT <> 0 THEN
+          DBFCREATE:=7 (*rewrite failure*)
+        ELSE
+          IF LENGTH(SPEXTITLE) = 0 THEN
+            BEGIN  (*ok to create the file now*)
+              ZEROWORKAREA(WASCRATCH);
+              CASE FNUM OF
+                0: BLANKZEROPAGE(F0);
+                1: BLANKZEROPAGE(F1);
+                2: BLANKZEROPAGE(F2);
+                3: BLANKZEROPAGE(F3);
+                4: BLANKZEROPAGE(F4)
+              END (*CASE*);
+            END (*LENGTH(SPEXTITLE) = 0*)
+          ELSE
+            DBFCREATE:=12; (*spexfile transfer not yet implemented*)
+      END (*RSLT <> 12*);
+    END (*LENGTH(NEWTITLE) <> 0*);
+END (*DBFCREATE*);
+
+FUNCTION DBFREMOVE(*FNUM:DBFILENUM):DBERRTYPE*);
+BEGIN
+  DBFREMOVE:=0;
+(*$I-*)
+  CASE FNUM OF
+    0: CLOSE(F0,PURGE);
+    1: CLOSE(F1,PURGE);
+    2: CLOSE(F2,PURGE);
+    3: CLOSE(F3,PURGE);
+    4: CLOSE(F4,PURGE)
+  END (*CASE*);
+  IF IORESULT <> 0 THEN
+    DBFREMOVE:=22
+  ELSE
+    OPENFILES[FNUM]:=FALSE;
+(*$I+*)
+END (*DBFREMOVE*);
+
+FUNCTION DBGETPAGE(*FNUM:DBFILENUM; DESTINATION:DBWRKINDEX;
+                                   PAGENUM:INTEGER):DBERRTYPE*);
+VAR BLOCKSMOVED,BLOCKSINPAGE,LINKV,LX,DUMMY:INTEGER;
+
+  PROCEDURE MOVEWA(VAR F:FILETYPE);
+  BEGIN
+    BLOCKSMOVED:=BLOCKREAD(F,WRKTABLE[DESTINATION].WA^,
+                                    BLOCKSINPAGE, (PAGENUM*BLOCKSINPAGE));
+  END;
+
+BEGIN
+  DBGETPAGE:=DBHOME(DESTINATION);
+  BLOCKSINPAGE:=(PAGELASTBYTE+1) DIV 512;
+  WITH WRKTABLE[DESTINATION] DO
+    CASE FNUM OF
+      0: MOVEWA(F0);
+      1: MOVEWA(F1);
+      2: MOVEWA(F2);
+      3: MOVEWA(F3);
+      4: MOVEWA(F4)
+    END (*CASE*);
+  IF BLOCKSMOVED <> BLOCKSINPAGE THEN
+    DBGETPAGE:=25
+  ELSE
+    WITH WRKTABLE[DESTINATION] DO
+      BEGIN
+        (*get SPACEINUSE by following links to end*)
+        LX:=0;
+        LINKV:=LINKVALUE(WA,0);
+        WHILE LINKV<>0 DO
+          BEGIN
+            LX:=LX+LINKV;
+            LINKV:=LINKVALUE(WA,LX);
+          END;
+        SPACEINUSE:=LX+1;
+        WITH WIB^[0] DO
+          BEGIN
+            LINKV:=LINKVALUE(WA,0);
+            DESCRIPTORNUM:=LINKVALUE(WA,LINKSIZE(LINKV)); (*tag*)
+          END;
+      END (*WITH WRKTABLE*);
+END (*DBGETPAGE*);
+
+FUNCTION DBPUTPAGE(*FNUM:DBFILENUM; SOURCE:DBWRKINDEX;
+                                   PAGENUM:INTEGER):DBERRTYPE*);
+VAR BLOCKSMOVED,BLOCKSINPAGE:INTEGER;
+
+  PROCEDURE MOVEWA(VAR F:FILETYPE);
+  BEGIN
+    BLOCKSMOVED:=BLOCKWRITE(F,WRKTABLE[SOURCE].WA^,
+                          BLOCKSINPAGE, (PAGENUM*BLOCKSINPAGE));
+  END;
+
+BEGIN
+  DBPUTPAGE:=0;
+  BLOCKSINPAGE:=(PAGELASTBYTE+1) DIV 512;
+  WITH WRKTABLE[SOURCE] DO
+    CASE FNUM OF
+      0: MOVEWA(F0);
+      1: MOVEWA(F1);
+      2: MOVEWA(F2);
+      3: MOVEWA(F3);
+      4: MOVEWA(F4)
+    END (*CASE*);
+  IF BLOCKSMOVED <> BLOCKSINPAGE THEN
+    DBPUTPAGE:=24;
+END (*DBPUTPAGE*);
+
+
+(**DESCRIPTOR INITIALIZING PRIMITIVES*)
+FUNCTION DBGROUPINIT(*FNUM:DBFILENUM; VAR GROUPNUM:INTEGER;
+                     GROUPNAME:STRING):DBERRTYPE*);
+(*load the descriptor lists from groups 1,2,3 of the database using
+  workarea 0 as temporary store. note: these groups may extend over
+  more than one page*)
+CONST
+  WA0=0; (*work area #0*)
+VAR GN,LINKV,PAGENUM,DUMMY:INTEGER;
+
+  PROCEDURE LOADDESCRIPTORS(LVL:DBLEVELTYPE);
+  VAR GPTR:GRPDESPTR;
+    RPTR:RECDESPTR;
+    FPTR:FLDDESPTR;
+  BEGIN
+    WITH WRKTABLE[WA0] DO
+      WITH WIB^[TOS] DO
+        BEGIN
+          GN:=0;
+          LINKV:=LINKVALUE(WA,OFFSET);
+          WHILE LINKV > 2 (*ignore empty dummy records*) DO
+            BEGIN
+              CASE LVL OF
+                GROUPT:
+                  BEGIN
+                    NEW(GPTR);
+                    DBSHOWERR('GROUPINIT(G)',
+                              HEAPALLOCATE(LINKV-SIZEOF(GRPDESCRIPTOR)));
+      (*$R-*)
+                    MOVELEFT(WA^[OFFSET],GPTR^,LINKV);
+      (*$R+*)
+                    ACTIVEGROUPS[GN]:=GPTR;
+                  END (*GROUPT*);
+                RECORDT:
+                  BEGIN
+                    NEW(RPTR);
+                    DBSHOWERR('GROUPINIT(R)',
+                              HEAPALLOCATE(LINKV-SIZEOF(RECDESCRIPTOR)));
+      (*$R-*)
+                    MOVELEFT(WA^[OFFSET],RPTR^,LINKV);
+      (*$R+*)
+                    ACTIVERECORDS[GN]:=RPTR;
+                  END (*RECORDT*);
+                FIELDT:
+                  BEGIN
+                    NEW(FPTR);
+                    DBSHOWERR('GROUPINIT(F)',
+                              HEAPALLOCATE(LINKV-SIZEOF(FLDDESCRIPTOR)));
+      (*$R-*)
+                    MOVELEFT(WA^[OFFSET],FPTR^,LINKV);
+      (*$R+*)
+                    ACTIVEFIELDS[GN]:=FPTR;
+                  END (*FIELDT*)
+              END (*CASE*);
+              DUMMY:=DBNEXT(WA0);
+              LINKV:=LINKVALUE(WA,OFFSET);
+              IF LINKV <> 0 THEN GN:=GN+1;
+            END (*WHILE*);
+        END (*WITH*);
+  END (*LOADDESCRIPTORS*);
+  
+  PROCEDURE NEWPAGE;
+  BEGIN
+    PAGENUM:=PAGENUM+1;
+    DBSHOWERR('GROUPINIT#2',DBGETPAGE(FNUM,WA0,PAGENUM));
+  END (*NEWPAGE*);
+                     
+BEGIN (*DBGROUPINIT*)
+  DBGROUPINIT:=0;
+  (*initially load all descriptors - selection to be added later*)
+  IF GROUPNAME <> 'ALL' THEN
+    DBGROUPINIT:=12;
+  (*loads descriptor groups into WA0*)
+  PAGENUM:=-1;
+  NEWPAGE;
+  SPECIALGROUPPAGE[1]:=PAGENUM;
+  DUMMY:=DBHOME(WA0);
+  DUMMY:=DBNEXT(WA0); (*go to head of group descriptor list*)
+  DUMMY:=DBDESCEND(WA0); (*head of 1st record*)
+  WITH WRKTABLE[WA0] DO
+    WITH WIB^[TOS] DO
+      BEGIN
+        LOADDESCRIPTORS(GROUPT);
+        GROUPNUM:=GN;
+        (*now load record descriptors*)
+        DUMMY:=DBHOME(WA0);
+        IF DBSEEK(WA0,2(*RD'S*)) <> 0 THEN NEWPAGE;
+        SPECIALGROUPPAGE[2]:=PAGENUM;
+        DUMMY:=DBDESCEND(WA0);
+        LOADDESCRIPTORS(RECORDT);
+        (*now fields*)
+        DUMMY:=DBHOME(WA0);
+        IF DBSEEK(WA0,3(*FD'S*)) <> 0 THEN NEWPAGE;
+        SPECIALGROUPPAGE[3]:=PAGENUM;
+        DUMMY:=DBDESCEND(WA0);
+        LOADDESCRIPTORS(FIELDT);
+      END (*WITH WIB*);
+END (*DBGROUPINIT*);
+
+FUNCTION DBGROUPRELEASE(*GROUPNUM:INTEGER):DBERRTYPE*);
+(*de-allocate storage for the designated group descriptors, and
+  their dependent record and field descriptors*)
+BEGIN
+END (*DBGROUPRELEASE*);
+
+
+(**INITIALIZATION*)
+PROCEDURE DBINITIALIZE;
+VAR WI:INTEGER;
+BEGIN
+  FOR WI:=0 TO LASTFILENUM DO OPENFILES[WI]:=FALSE;
+  FOR WI:=0 TO LASTWRKINDEX DO
+    WITH WRKTABLE[WI] DO
+      BEGIN
+        TOS:=0;
+        WIB:=NIL;
+        WSIZE:=0;
+        SPACEINUSE:=0;
+        WA:=NIL;
+      END;
+  FOR WI:=0 TO LASTSPECIALGROUP DO SPECIALGROUPPAGE[WI]:=0;
+  FOR WI:=0 TO LASTGROUPDESCRIPTOR DO ACTIVEGROUPS[WI]:=NIL;
+  FOR WI:=0 TO LASTRECDESCRIPTOR DO ACTIVERECORDS[WI]:=NIL;
+  FOR WI:=0 TO LASTFIELDDESCRIPTOR DO ACTIVEFIELDS[WI]:=NIL;
+  MARK(HEAPMARKER);
+  WI:=DBWRKOPEN(0,(PAGELASTBYTE+1)); (*open wa # 0 for full page*)
+  DBTYPECHECK:=TRUE;
+  
+  (*following lines are for debugging*)
+  DEBUGGING:=FALSE;
+  DBTRACESET:=[ ];
+  TRACELB:=0;
+  TRACEUB:=99;
+END (*DBINITIALIZE*);
+
+
+(**ORDERLY TERMINATION*)
+FUNCTION DBCLOSEDOWN(*:DBERRTYPE*);
+BEGIN
+END (*DBCLOSEDOWN*);
+
+
+
+END. (*END OF DBUNIT*)
+

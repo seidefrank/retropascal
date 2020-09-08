@@ -1,0 +1,179 @@
+PROGRAM Sort;                                                                          
+ TYPE lrec = RECORD
+              stpart : STRING;
+              lpart  : ^lrec;
+             END;
+ VAR optr, tptr, first, ptr : ^lrec;
+     ifile, ofile : TEXT; 
+     nlines,temp : INTEGER; 
+     added : BOOLEAN;
+     space,key1,key2,key3 : STRING;
+     infile, outfile : STRING[30];  
+     b1,l1,o1,b2,l2,o2,b3,l3,o3 : INTEGER;
+ 
+ FUNCTION Atrectoaddat : BOOLEAN;
+  VAR intb : BOOLEAN;
+      tkey1,tkey2,tkey3 : STRING; 
+  BEGIN 
+   WITH tptr^ DO   
+    BEGIN
+     tkey1 := COPY(CONCAT(stpart,space),b1,l1);    
+     tkey2 := COPY(CONCAT(stpart,space),b2,l2);  
+     tkey3 := COPY(CONCAT(stpart,space),b3,l3);
+    END;   
+   intb := FALSE;      
+   CASE (o1*4) + (o2*2) + o3 OF        
+    0 : IF      tkey1<key1  THEN intb := TRUE              
+       ELSE IF (tkey1=key1) AND             
+               (tkey2<key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND      
+               (tkey2=key2) AND 
+               (tkey3<key3) THEN intb := TRUE;    
+    1 : IF      tkey1<key1  THEN intb := TRUE                 
+       ELSE IF (tkey1=key1) AND  
+               (tkey2<key2) THEN intb := TRUE           
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND       
+               (tkey3>key3) THEN intb := TRUE;                
+    2 : IF      tkey1<key1  THEN intb := TRUE            
+       ELSE IF (tkey1=key1) AND 
+               (tkey2>key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND 
+               (tkey3<key3) THEN intb := TRUE;    
+    3 : IF      tkey1<key1  THEN intb := TRUE             
+       ELSE IF (tkey1=key1) AND 
+               (tkey2>key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND 
+               (tkey3>key3) THEN intb := TRUE;    
+    4 : IF      tkey1>key1  THEN intb := TRUE             
+       ELSE IF (tkey1=key1) AND 
+               (tkey2<key2) THEN intb := TRUE     
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND 
+               (tkey3<key3) THEN intb := TRUE;         
+    5 : IF      tkey1>key1  THEN intb := TRUE             
+       ELSE IF (tkey1=key1) AND   
+               (tkey2<key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND 
+               (tkey3>key3) THEN intb := TRUE;    
+    6 : IF      tkey1>key1  THEN intb := TRUE             
+       ELSE IF (tkey1=key1) AND             
+               (tkey2>key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND
+               (tkey2=key2) AND     
+               (tkey3<key3) THEN intb := TRUE;    
+    7 : IF      tkey1>key1  THEN intb := TRUE             
+       ELSE IF (tkey1=key1) AND 
+               (tkey2>key2) THEN intb := TRUE 
+       ELSE IF (tkey1=key1) AND      
+               (tkey2=key2) AND 
+               (tkey3>key3) THEN intb := TRUE;    
+    END; 
+    Atrectoaddat := intb;          
+  END;          
+     
+ PROCEDURE Putinlinkedlist;
+  BEGIN
+   IF tptr<>first THEN   
+    BEGIN
+     optr^.lpart := ptr;
+     ptr^.lpart  := tptr;
+    END
+   ELSE
+    BEGIN
+     ptr^.lpart := first;
+     first := ptr;      
+    END;
+  added := TRUE;
+  END;    
+ 
+ PROCEDURE Getitandputitinlinkedlist;             
+  BEGIN
+   NEW(ptr);
+   READLN(ifile,ptr^.stpart); 
+   WITH ptr^ DO           
+    BEGIN
+     key1 := COPY(CONCAT(stpart,space),b1,l1);    
+     key2 := COPY(CONCAT(stpart,space),b2,l2);     
+     key3 := COPY(CONCAT(stpart,space),b3,l3);  
+    END;
+   tptr := first; 
+   optr := NIL;   
+   added := FALSE;
+   WHILE (NOT added) AND (tptr<>NIL) DO 
+    IF Atrectoaddat 
+    THEN Putinlinkedlist       
+    ELSE 
+     BEGIN
+      optr := tptr; 
+      tptr := tptr^.lpart;  
+     END;  
+    IF NOT added THEN
+    BEGIN          
+     optr^.lpart := ptr;    
+     ptr^.lpart  := NIL;
+    END
+   END;    
+  
+ BEGIN
+  first := NIL;
+  WRITE('enter input file name ---->');
+  READLN(infile);  
+  WRITE('enter output file name --->');    
+  READLN(outfile);
+  RESET(ifile,infile);
+  REWRITE(ofile,outfile);
+  WRITELN;
+  WRITELN;
+  WRITELN('enter sort specification: ');
+  WRITELN;  
+  WRITE('beginnig byte of sortkey 1 --->');  
+  READLN(b1);
+  WRITE('length of sortkey1 ----------->');
+  READLN(l1);
+  WRITE('order (0=asc, 1=desc) -------->'); 
+  READLN(o1); 
+  WRITELN; 
+  WRITE('beginnig byte of sortkey 2 --->'); 
+  READLN(b2);
+  WRITE('length of sortkey2 ----------->');
+  READLN(l2);
+  WRITE('order (0=asc, 1=desc) -------->');
+  READLN(o2);
+  WRITELN; 
+  WRITE('beginnig byte of sortkey 3 --->'); 
+  READLN(b3);
+  WRITE('length of sortkey3 ----------->');
+  READLN(l3);
+  WRITE('order (0=asc, 1=desc) -------->');
+  READLN(o3);
+  WRITELN;
+  WRITELN;
+  WRITE('enter the number of lines for header info --->');
+  READLN(nlines);
+  NEW(ptr);   
+  FOR temp := 1 TO nlines DO 
+   BEGIN
+    READLN(ifile,ptr^.stpart);
+    WRITELN(ofile,ptr^.stpart);
+   END;
+  READLN(ifile,ptr^.stpart); 
+  space := '';
+  FOR temp := 1 TO 8 DO space := CONCAT(space,'          '); 
+  first := ptr;
+  ptr^.lpart := NIL;     
+  WHILE NOT EOF(ifile) DO Getitandputitinlinkedlist;     
+  ptr := first;
+  WHILE ptr <> NIL DO
+   BEGIN
+    WRITELN(ofile,ptr^.stpart);
+    ptr := ptr^.lpart;
+   END;
+  CLOSE(ofile,lock);
+  CLOSE(ifile); 
+ END.
+
+

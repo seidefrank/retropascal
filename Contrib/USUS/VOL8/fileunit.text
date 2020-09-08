@@ -1,0 +1,708 @@
+{$S+}
+UNIT FILEUNIT;
+
+{                      George W. Schreyer   
+                       412 North Maria Ave.
+                       Redondo Beach, California, 90277
+                       (213)-376-9348 
+    
+     This unit may be used for non-commercial purposes only.  Any commercial
+use is prohibited without expressed written permission from the author.  
+Except where noted this code is all original work. }
+                       
+
+INTERFACE
+
+USES (*$U SCREENUNIT.CODE*)SCREENUNIT;
+
+PROCEDURE VER_FILEUNIT;
+PROCEDURE REWRT_DISK (VAR FILEID          : XFILE;
+                      VAR FILENAME        : STRING;
+                      VAR IORESLT         : INTEGER;
+                      VAR REWROTE       : BOOLEAN);
+PROCEDURE RESET_DISK (VAR FILEID        : XFILE;
+                      VAR FILENAME      : STRING;
+                      VAR IORESLT       : INTEGER);
+PROCEDURE OPNDSKREAD (VAR FILEID        : TEXT;
+                          PROMPT        : STRING;
+                      VAR FILENAME      : STRING;
+                          X             : INTEGER;
+                          Y             : INTEGER);
+PROCEDURE OPNDSKWRT ( VAR FILEID                : TEXT;
+                          PROMPT                : STRING;
+                      VAR FILENAME              : STRING;
+                          X                     : INTEGER;
+                          Y                     : INTEGER);
+PROCEDURE GET_FILE_DATE (VAR FILENAME : STRING;
+                         VAR DATE     : STRING);
+PROCEDURE DIR;
+{*****************}
+
+IMPLEMENTATION
+{$R-}
+{$I-}
+
+{*****************}
+
+     {This record discribes the structure of a UCSD directory.  It was taken
+      from Monaco and Soles' procedure DIR in volume 5 of the USUS library.}
+     
+TYPE 
+     DATEREC = PACKED RECORD
+                        MONTH: 0..12;
+                        DAY: 0..31;
+                        YEAR: 0..100
+               END;
+
+     DIRRANGE = 0..79;  {this is set to 79 instead of 77 to make the record
+                         larger than 4 blocks.  This allows the directory
+                         to be read with a blockread without memory allocation
+                         problems.  The final two records (or parts of a 
+                         record) cannot be accessed because DLOADTIME will 
+                         never exceed 77.}
+
+     VID = STRING[7];
+     TID = STRING[15];
+     FILEKIND = (UNTYPED,XDISK,CODE,TEXT,
+                 INFO,DATA,GRAF,FOTO,SECUREDIR);
+
+     DIRENTRY = RECORD
+                  DFIRSTBLK: INTEGER;
+                  DLASTBLK: INTEGER;
+                  CASE DFKIND:FILEKIND OF
+                    SECUREDIR,UNTYPED: 
+                                       (DVID:VID;
+                                        DEOVBLK,
+                                        DLOADTIME,
+                                        DBLOCKS:INTEGER;
+                                        DLASTBOOT:DATEREC);
+                    XDISK,CODE,TEXT,INFO,DATA,
+                    GRAF,FOTO: 
+                               (DTID:TID;
+                                DLASTBYTE:1..512;
+                                DACCESS:DATEREC)
+                END;
+
+     DIRECTORY = ARRAY[DIRRANGE] OF DIRENTRY;
+
+
+{***************}
+
+PROCEDURE VER_FILEUNIT;
+BEGIN
+   WRITELN('uses fileunit   version N      20-Jul-81');
+END;
+      
+{****************}
+
+PROCEDURE LEGAL_UNIT(VOLNAME : STRING; 
+                     VAR BADUNIT : BOOLEAN);
+
+BEGIN
+   BADUNIT:=FALSE;
+   IF (VOLNAME <> '') AND (VOLNAME[LENGTH(VOLNAME)] = ':' )   THEN
+      BEGIN
+        IF VOLNAME <> ':' THEN 
+           BEGIN
+             DELETE(VOLNAME,POS(':',VOLNAME),1);
+             IF POS('#',VOLNAME) =1 THEN
+                BEGIN
+                  DELETE(VOLNAME,1,1);
+                  IF (VOLNAME = '0') OR
+                     (VOLNAME = '1') OR
+                     (VOLNAME = '2') OR
+                     (VOLNAME = '3') OR
+                     (VOLNAME = '6') OR
+                     (VOLNAME = '7') OR
+                     (VOLNAME = '8') THEN BADUNIT:=TRUE; 
+                END
+              ELSE
+                 IF (VOLNAME = 'CONSOLE') OR
+                    (VOLNAME = 'SYSTERM') OR
+                    (VOLNAME = 'GRAPHIC') OR
+                   {(VOLNAME = 'PRINTER') OR}
+                    (VOLNAME = 'REMIN') OR
+                    (VOLNAME = 'REMOUT') THEN BADUNIT := TRUE;
+          END;
+    END;
+END;
+         
+PROCEDURE LEGALNAME (VAR FILENAME : STRING;
+                     VAR NAMEOK   : BOOLEAN);
+VAR
+   IORESLT        : INTEGER;
+   BADUNIT        : BOOLEAN;
+   TESTFILE       : XFILE;
+
+BEGIN
+   NAMEOK:=FALSE;
+   BADUNIT:=FALSE;
+   IF LENGTH(FILENAME)<>0 THEN 
+      BEGIN
+         LEGAL_UNIT(FILENAME,BADUNIT);
+         IF NOT BADUNIT THEN
+            BEGIN
+              IF (POS('?',FILENAME)<>0) 
+                 OR (POS('=',FILENAME)<>0)
+                 OR (POS('$',FILENAME)<>0) THEN IO_ERROR(128,FILENAME)
+              ELSE
+                 IF(POS(',',FILENAME)<>0) THEN IO_ERROR(129,FILENAME)
+                 ELSE
+                    BEGIN
+                      RESET(TESTFILE,FILENAME);
+                      IORESLT:=IORESULT;
+                      IF IORESLT<>7 THEN NAMEOK:=TRUE 
+                         ELSE IO_ERROR(IORESLT,FILENAME);
+                      CLOSE(TESTFILE);
+                    END;
+              END
+        ELSE IO_ERROR(3,FILENAME);
+     END;
+END;    {legalname}
+
+{*****************}
+
+PROCEDURE ADD_TEXT (VAR FILENAME : STRING);
+
+BEGIN
+   IF POS('.TEXT',FILENAME)=0 THEN
+      BEGIN
+         FILENAME:=CONCAT(FILENAME,'.TEXT');
+      END;
+END;  {add_text}
+
+{*****************}
+
+PROCEDURE REMOVE_SPACES( VAR FILENAME : STRING);
+
+BEGIN
+   REPEAT
+      DELETE(FILENAME,POS(' ',FILENAME),1);
+   UNTIL POS(' ',FILENAME)=0;
+END;  {remove_spaces}
+
+{*****************}
+
+PROCEDURE GETFILNAME (VAR FILENAME : STRING;
+                          PROMPT   : STRING;
+                      VAR X,Y      : INTEGER;
+                      VAR GOTNAME  : BOOLEAN);
+
+BEGIN
+   GOTNAME:=FALSE;
+   REPEAT
+      GOTOXY(52,22);
+      WRITE('<space> <ret> for directory');
+      GOTOXY(65,23);
+      WRITE('<ret> to leave');
+      GOTOXY(X,Y);
+      WRITE(PROMPT,' ');
+      READLN(FILENAME);
+      GOTOXY(0,22);
+      CRT(ERASEOS);
+      GOTOXY(X,Y);
+      CRT(ERASEOL);
+      IF FILENAME='' THEN 
+         BEGIN
+            GOTOXY(0,0);
+            CRT(ERASEOS);
+         END
+      ELSE
+         BEGIN
+            IF FILENAME = ' ' THEN 
+               BEGIN
+                  GOTOXY(0,0);
+                  CRT(ERASEOS);
+                  DIR;
+                  X:=0;
+                  Y:=0;
+                  GETFILNAME(FILENAME,PROMPT,X,Y,GOTNAME);
+               END;
+            REMOVE_SPACES(FILENAME);
+            LEGALNAME(FILENAME,GOTNAME);
+         END;
+   UNTIL GOTNAME OR (FILENAME = '');
+END;   {getfilname}
+
+{*****************}
+
+PROCEDURE REWRT_DISK{(VAR FILEID          : XFILE;
+                      VAR FILENAME        : STRING;
+                      VAR IORESLT         : INTEGER;
+                      VAR REWROTE         : BOOLEAN)};
+  VAR
+     REPLY      : CHAR;
+     DATE       : STRING;
+     TEMP_NAME  : STRING;
+     
+BEGIN
+
+   IORESLT:=0;
+   REWROTE:=FALSE;
+   IF FILENAME <> '' THEN 
+      BEGIN
+         RESET(FILEID,FILENAME);
+         IORESLT:=IORESULT;
+         CLOSE(FILEID);
+         IF IORESLT=0 THEN
+            BEGIN
+               GOTOXY(0,23);
+               TEMP_NAME:=FILENAME;
+               GET_FILE_DATE(TEMP_NAME,DATE);
+               WRITE(CHR(7),TEMP_NAME,' dated ',DATE,' already exists.  ');
+               WRITE('Destroy it? (Y/N) ');
+               READ(KEYBOARD,REPLY);
+               GOTOXY(0,23);
+               CRT(ERASEOL);
+               IF REPLY IN [ 'Y','y']  THEN 
+                  BEGIN
+                     REWRITE(FILEID,FILENAME);
+                     IORESLT:=IORESULT;
+                     REWROTE:=TRUE;
+                  END;
+            END
+          ELSE
+             BEGIN
+                REWRITE(FILEID,FILENAME);
+                IORESLT:=IORESULT;
+                REWROTE:=TRUE;
+             END;
+       END;
+END;  {rewrt_disk}
+
+{*****************}
+
+PROCEDURE RESET_DISK{(VAR FILEID        : XFILE;
+                      VAR FILENAME      : STRING;
+                      VAR IORESLT       : INTEGER)};
+
+VAR TEMP_NAME : STRING;
+                      
+   BEGIN
+      TEMP_NAME:=FILENAME;
+      RESET(FILEID,FILENAME);
+      IORESLT:=IORESULT;
+      IF IORESLT <> 0 THEN 
+         BEGIN
+            ADD_TEXT(FILENAME);
+            RESET(FILEID,FILENAME);
+            IORESLT:=IORESULT;
+            IF IORESLT <> 0 THEN FILENAME:=TEMP_NAME;
+         END;
+   END {reset_disk};
+
+{*****************}
+
+PROCEDURE OPNDSKREAD {(VAR FILEID        : TEXT;
+                           PROMPT        : STRING;
+                       VAR FILENAME      : STRING;
+                           X             : INTEGER;
+                           Y             : INTEGER)};
+
+ 
+VAR
+   NAMEOK       :BOOLEAN;
+   IORESLT      :INTEGER;
+   DATE         :STRING;
+   
+
+BEGIN
+   IORESLT:=0;
+   DATE:='';
+   REPEAT
+      FILENAME:='';
+      GETFILNAME(FILENAME,PROMPT,X,Y,NAMEOK);
+      IF NAMEOK THEN 
+         BEGIN
+           RESET_DISK(FILEID,FILENAME,IORESLT);
+           IF IORESLT <> 0 
+             THEN IO_ERROR(IORESLT,FILENAME)
+             ELSE GET_FILE_DATE(FILENAME,DATE);
+         END
+      ELSE FILENAME:='';
+   UNTIL (IORESLT = 0) OR (FILENAME = '');
+END;   {opndskread}
+
+{*****************}
+
+PROCEDURE OPNDSKWRT {( VAR FILEID                : TEXT;
+                           PROMPT                : STRING;
+                       VAR FILENAME              : STRING;
+                           X                     : INTEGER;
+                           Y                     : INTEGER)};
+
+
+VAR
+   REWROTE  : BOOLEAN;
+   NAMEOK   : BOOLEAN;
+   IORESLT  : INTEGER;
+   DATE     : STRING;
+   
+BEGIN
+   DATE:='';
+   REWROTE:=FALSE;
+   REPEAT
+      FILENAME:='';
+      GETFILNAME(FILENAME,PROMPT,X,Y,NAMEOK);
+      IF NAMEOK THEN 
+         BEGIN
+           ADD_TEXT(FILENAME);
+           REWRT_DISK(FILEID,FILENAME,IORESLT,REWROTE);
+           IF (IORESLT <> 0) 
+              THEN IO_ERROR(IORESLT,FILENAME)
+              ELSE GET_FILE_DATE(FILENAME,DATE);
+         END;
+   UNTIL (REWROTE AND (IORESLT=0)) OR (FILENAME = '');
+END;  {opndskwrt}
+
+{****************}
+
+PROCEDURE GET_FILE_DATE {(VAR FILENAME : STRING;
+                         VAR DATE     : STRING)};
+VAR DIRX : DIRECTORY;
+    POS_COLON : INTEGER;
+    TEMP_NAME : STRING;
+    VOL_ID    : STRING;
+    DIREC     : XFILE;
+    H,K,Q     : INTEGER;
+    MON       : STRING;
+    IO_OK     : BOOLEAN;
+    DAYSTRING : STRING;
+    YEARSTRING: STRING;
+    HI,LO     : INTEGER;
+    BADUNIT   : BOOLEAN;
+    MIS_MATCH : BOOLEAN;
+    
+          
+PROCEDURE DECODE_DATE(DAY,MONTH,YEAR:INTEGER);
+   BEGIN
+    CASE MONTH OF
+      1: MON:='Jan';
+      2: MON:='Feb';
+      3: MON:='Mar';
+      4: MON:='Apr';
+      5: MON:='May';
+      6: MON:='Jun';
+      7: MON:='Jul';
+      8: MON:='Aug';
+      9: MON:='Sep';
+      10:MON:='Oct';
+      11:MON:='Nov';
+      12:MON:='Dec'
+    END;
+    STR(DAY,DAYSTRING);
+    STR(YEAR,YEARSTRING);
+ END;
+                
+BEGIN   {get_file_date}
+   DATE:='';
+   Q:=0;
+   MON:='';
+   DAYSTRING:='';
+   YEARSTRING:='';
+   LEGAL_UNIT(FILENAME,BADUNIT);
+   IF (FILENAME <> '') AND (NOT BADUNIT) THEN
+      BEGIN
+        POS_COLON:=POS(':',FILENAME);
+        IF POS('*',FILENAME) = 1 THEN
+           BEGIN
+              VOL_ID:='*';
+              IF LENGTH(FILENAME) = 1 THEN TEMP_NAME:=''
+              ELSE 
+                 BEGIN
+                    TEMP_NAME:=FILENAME;
+                    DELETE(TEMP_NAME,1,1);
+                 END;
+           END
+        ELSE
+           BEGIN
+              IF POS_COLON > 0 THEN
+                 BEGIN
+                    IF LENGTH(FILENAME) = 1 THEN
+                       BEGIN
+                          TEMP_NAME:='';
+                          VOL_ID:=':';
+                       END
+                    ELSE
+                       BEGIN
+                          IF POS_COLON = LENGTH(FILENAME) THEN
+                             BEGIN
+                                VOL_ID:=FILENAME;
+                                TEMP_NAME:='';
+                             END
+                          ELSE
+                             BEGIN
+                                TEMP_NAME:=COPY(FILENAME,POS_COLON+1,
+                                   LENGTH(FILENAME)-POS_COLON);
+                                VOL_ID:=COPY(FILENAME,1,POS_COLON);
+                             END;
+                       END;
+                 END
+              ELSE
+                 BEGIN
+                    VOL_ID:=':';
+                    TEMP_NAME:=FILENAME;
+                 END;
+           END;
+        RESET(DIREC,VOL_ID);
+        FOR H:= 1 TO LENGTH(TEMP_NAME) DO
+           IF TEMP_NAME[H] IN ['a'..'z'] THEN
+              TEMP_NAME[H]:=CHR(ORD(TEMP_NAME[H])-32);
+        IF IORESULT = 0 THEN 
+           BEGIN
+             K:=BLOCKREAD(DIREC,DIRX,4,2);
+             IF IORESULT = 0 THEN
+                BEGIN
+                   IF FILENAME <> '' THEN
+                      BEGIN
+                         FOR K:=1 TO DIRX[0].DLOADTIME DO 
+                            WITH DIRX[K] DO 
+                               BEGIN
+                                 MISMATCH:=FALSE;
+                                 H:=0;
+                                 REPEAT
+                                    IF (DTID[H] = TEMP_NAME[H])
+                                      THEN H:=H+1
+                                      ELSE MISMATCH:=TRUE;
+                                 UNTIL MIS_MATCH OR (H=LENGTH(DTID));
+                                 IF NOT MISMATCH THEN Q:=K;
+                               END;
+                      END;
+                   IF (VOL_ID = '*') AND (TEMP_NAME = '') THEN
+                      WITH DIRX[0].DLASTBOOT DO
+                        BEGIN
+                           DECODE_DATE(DAY,MONTH,YEAR);
+                           Q:=1;
+                        END
+                   ELSE WITH DIRX[Q].DACCESS DO 
+                      DECODE_DATE(DAY,MONTH,YEAR); 
+                   IF Q <> 0 THEN DATE:=CONCAT(DAYSTRING,'-',MON,'-',
+                      YEARSTRING);
+                   WITH DIRX[0] DO VOL_ID:=CONCAT(DVID,':');
+                   FILENAME:=CONCAT(VOL_ID,TEMP_NAME);
+                END;
+           END;
+      END;
+   CLOSE(DIREC);
+END;   {get_file_date}
+  
+{****************}
+
+PROCEDURE DIR;
+
+TYPE POINTER_ARRAY = ARRAY [DIRRANGE] OF INTEGER;
+
+VAR DIRX : DIRECTORY;
+    BADUNIT : BOOLEAN;
+    ROW,COLUMN : INTEGER;
+    VOLNAME : STRING;
+    DIREC : XFILE;
+    K,I: INTEGER;
+    INDEX: POINTER_ARRAY;
+    NAME_OK : BOOLEAN;
+
+
+
+PROCEDURE SWAP(VAR P,Q : INTEGER);
+VAR HOLD : INTEGER;
+BEGIN
+   HOLD:=P;
+   P:=Q;
+   Q:=HOLD;
+END;
+
+PROCEDURE NR_QUICK_SORT(VAR DIRX : DIRECTORY;
+                        VAR INDEX : POINTER_ARRAY;
+                            FIRST,LAST:INTEGER);
+
+{this procedure was taken from "PASCAL PROGRAMS FOR SCIENTISTS AND ENGINEERS"
+ by Alan R. Miller, published by SYBEX.  You ought to buy it, its a very good
+ book}
+
+VAR
+   LEFT,RIGHT : ARRAY [1..20] OF INTEGER;
+   I,J,SP,MID : INTEGER;
+   PIVOT : STRING;
+   
+BEGIN
+   LEFT[1]:=FIRST;
+   RIGHT[1]:=LAST;
+   SP:=1;
+   WHILE SP > 0 DO
+      BEGIN
+         IF LEFT[SP]>= RIGHT[SP] THEN SP:=SP-1
+         ELSE
+            BEGIN
+            I:=LEFT[SP];
+            J:=RIGHT[SP];
+            PIVOT:=DIRX[INDEX[J]].DTID;
+            MID:=(I+J) DIV 2;
+            IF (J-I) > 5 THEN
+               IF ((DIRX[INDEX[MID]].DTID < PIVOT) AND
+                   (DIRX[INDEX[MID]].DTID > DIRX[INDEX[I]].DTID)) OR
+                  ((DIRX[INDEX[MID]].DTID > PIVOT) AND
+                   (DIRX[INDEX[MID]].DTID < DIRX[INDEX[I]].DTID)) THEN
+                   SWAP(INDEX[MID],INDEX[J])
+               ELSE
+                  IF ((DIRX[INDEX[I]].DTID < DIRX[INDEX[MID]].DTID) AND
+                      (DIRX[INDEX[I]].DTID > PIVOT)) OR
+                     ((DIRX[INDEX[I]].DTID > DIRX[INDEX[MID]].DTID) AND
+                      (DIRX[INDEX[I]].DTID < PIVOT)) THEN
+                      SWAP(INDEX[I],INDEX[J]);
+             PIVOT:=DIRX[INDEX[J]].DTID;
+             WHILE I < J DO
+                BEGIN
+                   WHILE DIRX[INDEX[I]].DTID < PIVOT DO I:=I+1;
+                   J:=J-1;
+                   WHILE (I < J) AND (PIVOT < DIRX[INDEX[J]].DTID) DO
+                      J:=J-1;
+                   IF I < J THEN SWAP(INDEX[I],INDEX[J]);
+                END;
+             J:=RIGHT[SP];
+             SWAP(INDEX[I],INDEX[J]);
+             IF (I-LEFT[SP]) >= (RIGHT[SP] - I) THEN
+                BEGIN
+                   LEFT[SP+1]:=LEFT[SP];
+                   RIGHT[SP+1]:= I-1;
+                   LEFT[SP]:=I+1;
+                END
+             ELSE
+                BEGIN
+                   LEFT[SP+1]:=I+1;
+                   RIGHT[SP+1]:=RIGHT[SP];
+                   RIGHT[SP]:=I-1;
+                END;
+             SP:=SP+1;
+          END;
+    END;
+ END;
+                
+PROCEDURE ALPHABETIZE_DIRECTORY;
+
+VAR I : INTEGER;
+
+BEGIN
+   FOR I:=1 TO DIRX[0].DLOADTIME DO INDEX[I]:=I;
+   NR_QUICK_SORT(DIRX,INDEX,1,DIRX[0].DLOADTIME);
+END;
+
+PROCEDURE MAKE_LOWER_CASE( VAR STRG :STRING);
+VAR QQ : INTEGER;
+BEGIN
+  FOR QQ:=1 TO LENGTH(STRG) DO
+       IF STRG[QQ] IN ['A'..'Z'] THEN
+         STRG[QQ]:=CHR(ORD(STRG[QQ])+32);
+END;
+
+PROCEDURE VOLUMES;
+
+VAR
+    I,K         : INTEGER;
+    DISK        : XFILE;
+    VOLID,STRG  : STRING;
+    VOLNAME     : STRING;
+    DATE        : STRING;
+
+BEGIN
+   GOTOXY(0,5);
+   FOR I:=4 TO 12 DO IF I IN [4,5,9,10,11,12] THEN
+      BEGIN
+         STR(I,STRG);
+         VOLNAME:=CONCAT('#',STRG,':');
+         RESET(DISK,VOLNAME);
+         IF IORESULT = 0 THEN
+            BEGIN
+               K:=BLOCKREAD(DISK,DIRX,4,2);
+               IF IORESULT = 0 
+                  THEN 
+                     BEGIN
+                        VOLID:=DIRX[0].DVID;
+                        MAKE_LOWER_CASE(VOLID);
+                        VOLID:=CONCAT('  ',VOLID,':');
+                        WRITELN('#',I:2,VOLID);
+                     END;
+               CLOSE(DISK);
+            END;
+      END;
+   WRITELN;
+   VOLID:='*';
+   GET_FILE_DATE(VOLID,DATE);
+   WRITELN('  root volume is ',volid,'   system date is ',date);
+   VOLID:=':';
+   GET_FILE_DATE(VOLID,DATE);
+   WRITELN('prefix volume is ',volid);
+      
+END;
+      
+BEGIN  {dir}
+ 
+  REPEAT
+     REPEAT
+        VOLNAME:='';
+        NAME_OK:=TRUE;
+        GOTOXY(54,22);
+        WRITE('<space> <ret> for volumes');
+        GOTOXY(65,23);
+        WRITE('<ret> to leave');
+        GOTOXY(0,3);
+        WRITE('volume of directory to display ? ');
+        READLN(VOLNAME);
+        GOTOXY(0,0);
+        CRT(ERASEOS);
+        IF VOLNAME = '' THEN EXIT(DIR);
+        IF VOLNAME = ' ' THEN VOLUMES;
+     UNTIL VOLNAME <> ' ';
+     REMOVE_SPACES(VOLNAME);
+     IF (POS(':',VOLNAME) <> LENGTH(VOLNAME)) AND
+        (VOLNAME <> '*') THEN VOLNAME:=CONCAT(VOLNAME,':');
+     LEGAL_UNIT(VOLNAME,BADUNIT);
+     IF BADUNIT OR (VOLNAME='PRINTER:') THEN
+        BEGIN
+          GOTOXY(0,23);
+          WRITE(CHR(7),'Unit ',VOLNAME,' has no directory');
+          NAME_OK:=FALSE;
+        END;
+     IF NAME_OK THEN 
+        BEGIN
+          REMOVE_SPACES(VOLNAME);
+          LEGALNAME(VOLNAME,NAME_OK);
+          RESET(DIREC,VOLNAME);
+          IF IORESULT <> 0
+            THEN
+              BEGIN
+                 IO_ERROR(9,VOLNAME);
+                 NAME_OK:=FALSE;
+              END;
+        END;
+  UNTIL NAME_OK;
+  K:=BLOCKREAD(DIREC,DIRX,4,2);
+  CLOSE(DIREC);
+  ALPHABETIZE_DIRECTORY;
+  GOTOXY(0,2);
+  WITH DIRX[0] DO
+     BEGIN
+        MAKE_LOWER_CASE(DVID);
+        WRITELN('vol = ',DVID,':');
+     END;
+  ROW:=4;
+  COLUMN:=0;
+  FOR I:=1 TO DIRX[0].DLOADTIME DO
+    BEGIN
+      WITH DIRX[INDEX[I]] DO
+         BEGIN
+           GOTOXY(COLUMN,ROW);
+           MAKE_LOWER_CASE(DTID);
+           WRITE(DTID,' ':16-LENGTH(DTID));
+           ROW:=ROW+1;
+           IF (ROW MOD 22 = 0) OR ((COLUMN =0) AND (ROW = 21)) THEN
+              BEGIN
+                 COLUMN:=COLUMN+20;
+                 ROW:=2;
+              END;
+         END;
+    END;
+END; 
+
+END.
+
+

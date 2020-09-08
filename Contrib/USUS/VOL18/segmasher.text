@@ -1,0 +1,81 @@
+program segmasher;
+
+{This program tests the speed of segment swaps.  It was originally written
+to test the swapping ability of the IV.1 LSI-11 extended memory p-system vs.
+the non-extended memory implementation of IV.0.
+
+     The program causes successive segment swaps.  If the value of "selector" 
+is set to 2, then the segments are very small, and can co-reside in the IV.0 
+code pool.  They can be called without causing stack or heap faults and should
+present very little overhead.
+
+     If the value of "selector" is set to be very large, 8165 in this case, 
+the compiler generates a huge jump table, and the segment will very large.  In 
+this case each segment is nearly 16k bytes, the maximum allowed under the LSI-
+11 IV.1 implementation.  Each of the two segments has this size.  However, 
+depending on how much memory you have, they may still be able to co-reside in 
+the code pool.  If this is the case, there will be very little difference in 
+swapping speed.  
+
+     The global variable "buffer" is designed to eat up a lot of stack to 
+cause the system to be forced to cause segment loads of each segment.  When 
+this happens, the segment swaps in IV.0 will be quite slow, depending on the 
+speed of your disks.  To cause the segments to swap, set "stack_filler" so 
+that the varavail displayed is between about 9000 and 15,000 words, or enough 
+room for one, but not both of the segments.
+
+     Version IV.1 swaps from extended memory, so its swaps should be much 
+quicker.  The swapping speed should not be dependant on the size of the 
+segments.  The results I got on an 11/23 with IV.0 and IV.1 are shown below.
+
+                IV.0 hard disk          IV.0 floppy             IV.1
+
+small segment     0.8 ms/swap           0.8 ms/swap             1.7 ms/swap
+large segment   190   ms/swap        2000   ms/swap             1.7 ms/swap
+
+    Swapping the small segment under IV.1 is slower than IV.0 as the system 
+must massage some memory mapping registers to access the new segment in 
+extended memory.  However, if IV.0 must do a disk swap, IV.1 has a decided 
+advantage.  The disk swaps from floppy disk are so slow as not only is a seek 
+performed, but 16k of code, or about 64 sectors, must be loaded.
+
+     george w. schreyer}
+
+const stack_filler = 20000;
+      selector     = 8165;
+      
+var i : integer;
+    num_swaps : integer;
+    buff : packed array [ 0..stack_filler ] of char;
+
+segment procedure big_seg1;
+var i : integer;
+begin
+   case i of
+        1 : ;
+      selector : ;
+   end;
+end;
+
+segment procedure big_seg2;
+var i : integer;
+begin
+   case i of
+        1 : ;
+      selector : ;
+   end;
+end;
+
+begin
+   writeln ( varavail ( 'segmasher' ) );
+   write ( 'number of swaps ? ' );
+   readln ( num_swaps );
+   write ( chr ( 7 ) );
+   for i := 1 to ( num_swaps div 2 ) do
+      begin
+         bigseg1;
+         bigseg2;
+      end;
+  write ( chr ( 7 ) );
+end.
+

@@ -1,0 +1,49 @@
+
+{$S+}  
+ 
+{$C Copyright (C) 1980  Wynn Newhouse and Herb Jellinek. }
+{$C All rights reserved. Unauthorized reproduction is a  }
+{$C violation of applicable laws.                        }
+ 
+Program Runon;
+ 
+(*$I DECLARE.TEXT*)
+(*$I INITC.TEXT*)
+ 
+ 
+Procedure include_file(f_name : string);  Forward;
+ 
+ 
+   Procedure out_proc(cmd : commandtype);
+ 
+   var
+      i, j      : posint;
+      v         : old_new;
+      eo_input,
+      eo_output : boolean;
+ 
+ 
+   Procedure putline(n : posint);  Forward;
+ 
+ 
+      (*$I DOPAGE.TEXT*)
+ 
+   Procedure d_c_p;
+ 
+   var
+      searching,
+      eo_line    : boolean;
+      cmd        : commandtype;
+      pos        : posint;
+ 
+ 
+   (*$I READNU.TEXT*)
+ 
+ 
+   Procedure process_file(var source  : text;
+                              inc_fil : boolean);
+ 
+ 
+(*$I READLN.TEXT*)
+(*$I MAIN.TEXT*)
+ 

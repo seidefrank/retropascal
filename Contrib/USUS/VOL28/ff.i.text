@@ -1,0 +1,173 @@
+Form Consolidation 
+
+
+1.7 FORM CONSOLIDATION 
+ 
+     FREEFORM provides a facility for numerical consolidation of multi-page
+Forms.  Consolidation sequencing is not preset and may be changed at will. 
+Typical applications for consolidation would be instances where the same data
+is prepared for multiple entities and the summation to one or more overall
+entity levels is desired. 
+ 
+     Prior to Form definition of a multi-page Form, consider the extra pages
+needed to serve as 'scratch pads' for what-if consolidations and add these to
+the total number of pages required during a Form definition. 
+ 
+   To envoke the Form CONSOLIDATE procedure select menu option number 5. 
+ 
+     ********************************************************************* 
+ 
+          F R E E F O R M   The Electronic Worksheet  [F.4] 
+          ========================================== 
+                                        June 24, 1981
+ 
+ 
+          0. 
+          1. 
+          2. 
+          3. 
+          4. 
+          5.  Consolidation Utility        <======== CONSOLIDATE routine 
+          6. 
+          7. 
+          8. 
+          9. 
+ 
+ 
+ 
+          Enter desired option # _      Press ESC to leave 
+ 
+     ********************************************************************* 
+ 
+     Once the program has loaded, the screen will clear and a new title will be 
+displayed. 
+ 
+     F R E E F O R M   C O N S O L I D A T I O N 
+ 
+*<Note> If FREEFORM does not find a 'directory' file on its first try (FREEFORM
+searches on the prefix disk unless another drive was previously specified), it 
+displays an error message stating there is no directory.  If this happens, 
+FREEFORM will ask if you wish to try another disk.  If so press <return>; 
+otherwise type <N>.  If <return> was pressed, the program will prompt for the 
+disk drive number to search in for a directory file.  After receiving a valid 
+disk drive number, the program will instruct the user to insert a disk into 
+that drive and press <return>. 
+ 
+*<Note> To avoid confusion, review the Standard Keyboard Procedures
+(1.1.3). 
+ 
+     The program then displays the prompt... 
+ 
+*** Form Name (8 alpha max.) __________    Press ESC to leave 
+ 
+     There are three possible responses to this command.  Press <esc> to
+return to the FREEFORM main menu, supply a Form name, or press <?>.  Each
+time <?> is pressed FREEFORM looks at the FreeForm directory and displays a
+possible Form name.  If a selected Form name is not found on the user diskette,
+the prompt 
+ 
+*** Form named <name given> not found... 
+*** Try another Form name? (Y/N)  Y 
+ 
+will appear.  The user may now try another Form name by supplying the desired
+Form name in the manner previously described.  If a user chooses not to select
+another Form name, by typing <N> control will return to the FREEFORM main menu. 
+ 
+     If the Form name selected is valid, the program will operate normally and 
+inform the user that the Form controls are being loaded.  Freeform then asks if
+there is a control file to use.  Consolidation control files contain the 
+destination page number as well as the consolidation expression to use.  To use
+an existing control file the Volume name of the disk it is on and its name must
+be specified.  When this has been accomplished the program will prompt: 
+ 
+*** Enter Consolidation Page # __  (max. is XX) 
+ 
+      Enter the page number into which the results of the consolidation are to 
+be stored.  This should be done carefully to avoid unintentionally writing over
+other pages. 
+ 
+*** Enter Consolidation Control 
+***=_________________________________ 
+ 
+     A prompt is given for a calculation string which will govern the
+consolidation process.  The syntax and capabilities of this calculate string
+are similar to those used in defining row and column calculations.  Constants
+may be specified, however, parenthesis are not permitted.  All operators are of
+equal precedence and are therefore executed in left-to-right order. 
+ 
+Examples: 
+ 
+(1) Pages 1, 2, and 3 represent three department profit and loss statements.  A
+division total profit and loss statement is requested for the three pages.  In 
+FORMDEF, 4 pages are allocated; 1 for each department, and 1 for a division 
+total.  The consolidation page for this problem is 4.  The calculation string 
+which defines the consolidation control is 1 + 2 + 3. 
+ 
+(2) If, on the other hand, the division total and department 1 and 2 data is 
+known, the objective would be to compute or 'squeeze' department 3 data.  The 
+consolidation page for this would be 3, and the appropriate calculation string 
+would be 4 - 1 - 2. 
+ 
+(3) A different Form may contain inventory in Dollar amounts on page one.  To 
+get the amounts in British pounds on page two, a constant would have to exist 
+containing the exchange rate for Dollars and Pounds.  Suppose C1 equals 2.1900.
+The appropriate calculation string would be 2 / C1 with the consolidation page 
+set to two. 
+ 
+(4) The inventory of 12 items in seven warehouses exists.  Three of the 
+warehouses are in Texas, two are in Oklahoma, and two are in Louisiana.  A
+record of beginning inventory, issues, receipts, and computed ending inventory
+by item in each warehouse, a total of all items in each state, and a grand
+total of all warehouses has been requested.  The Form to define would consist
+of 11 pages; one for each warehouse, one for each state total, and one for a
+total of all warehouses.  Each page would have 12 data rows to represent each
+of the 12 inventory items and one calculated row to total the 12 items, plus
+three data columns in which the quantities would be entered and one column for
+computing the ending inventories.  The user would probably want to sequence the
+pages so the display would be most meaningful.  Any sequence will work.  Some
+examples are: 
+ 
+ 
+ 
+ 
+ 
+ 
+               Sequence #1         Sequence #2         Sequence #3 
+            pg 1 Tex. WH 1           Tex. WH 1         Grand Tot. 
+            pg 2 Tex. WH 2           Tex. WH 2         Tex. SUB 
+            pg 3 Tex. WH 3           Tex. WH 3         Okl. SUB 
+            pg 4 Okl. WH 1           Tex. SUB          La.  SUB
+            pg 5 Okl. WH 2           Okl. WH 1         Tex. WH 1
+            pg 6 La.  WH 1           Okl. WH 2         Tex. WH 2 
+            pg 7 La.  WH 2           Okl. SUB          Tex. WH 3 
+            pg 8 Tex. SUB            La. WH 1          Okl. WH 1 
+            pg 9 Okl. SUB            La. WH 2          Okl. WH 2 
+            pg10 La.  SUB            La. SUB           La . WH 1 
+            pg11 Grand Tot.          Grand Tot.        La . WH 2 
+ 
+    The consolidation controls and sequence for these cases: 
+ 
+          8 = 1 + 2 + 3       4 = 1 + 2 + 3       2 = 5 + 6 + 7 
+          9 = 4 + 5           7 = 5 + 6           3 = 8 + 9 
+         10 = 6 + 7          10 = 8 + 9           4 = 10 + 11 
+         11 = 8 + 9 + 10     11 = 4 + 7 + 10      1 = 2 + 3 + 4 
+ 
+*<Note> The user may want to define an extra page to be used as a scratchpad 
+for hypothetical cases;  for example, in the inventory example above, Tex. WH 1
+and La. WH 2 are both within 100 miles of a customer.  What is the total supply
+of item 6 available in these locations? 
+ 
+     After the consolidation string is entered, the program will perform the 
+prescribed consolidation math and rewrite the consolidation page to the Form 
+data file. 
+ 
+     When this process has completed (time required will vary with the number
+of pages in the consolidation and the number of calculated rows and columns in
+the Form), FREEFORM will ask if the consolidation controls used should be
+saved.  It will then ask if there are more consolidations to be done with the
+current Form.  When there are no more consolidations to be done with the 
+current Form, FREEFORM will return to the main menu. 
+ 
+ 
+
+

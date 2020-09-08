@@ -1,0 +1,610 @@
+(*$S+*)
+PROGRAM PRETTYPRINT;
+
+CONST  maxsymbolsize = 200 (* max # of char in symbol scanned by scanner*);
+       maxstacksize = 100 (* max # of symbols causing indentation that may
+                             be stacked *);
+       maxkeylength = 10 (* max length Pascal reserved word *);
+       maxlinesize = 72 (* max length of line output by program *);
+       slofail1 = 30 (* up to this column position, margin will be indented
+                        by "indent1". *);
+       slofail2 = 48 (* up to this column positn, each time "indentbytab" is
+                        invoked, the margin will be indented by "indent2." *);
+       indent1 = 3;
+       indent2 = 1;
+       space = ' ';
+       
+        
+TYPE   keysymbol = (progsym,     funcsym,        procsym,        labelsym,
+                    constsym,    typesym,        varsym,         beginsym,
+                    repeatsym,   recordsym,      casesym,        casevarsym,
+                    ofsym,       forsym,         whilesym,       withsym,
+                    dosym,       ifsym,          thensym,        elsesym,
+                    endsym,      untilsym,       becomes,        opencomment,
+                    closecomment,semicolon,      colon,          equals,
+                    openparen,   closeparen,     openbracket,    closebracket, 
+                    period,      endoffile,      othersym);
+       
+       option = (crsuppress,    crbefore,       blanklinebefore,
+                 dindentonkeys, dindent,        spacebefore,
+                 spaceafter,    gobblesymbols,  indentbytab,
+                 indenttoclp,   crafter);
+       
+       optionset = SET OF option;
+       
+       keysymset = SET OF keysymbol;
+       
+       tableentry = RECORD
+                        optionsselected  : optionset;
+                        dindentsymbols   : keysymset;
+                        gobbleterminators: keysymset
+                    END;
+                    
+       optiontable = ARRAY [keysymbol] OF tableentry;
+       
+       key = PACKED ARRAY [1..maxkeylength] OF CHAR;
+       
+       keywordtable = ARRAY [progsym..untilsym] OF key;
+       
+       specialchar = PACKED ARRAY [1..2] OF CHAR;
+       
+       dblchrset = SET OF becomes..opencomment;
+       
+       dblchartable = ARRAY [becomes..opencomment] of specialchar;
+
+       sglchartable = ARRAY [semicolon..period] OF char;
+       
+       lstring = ARRAY [1..maxsymbolsize] OF char;
+       
+       symbol = RECORD
+                   name         : keysymbol;
+                   valu         : lstring;
+                   lngth       : integer;
+                   spacesbefore : integer;
+                   crsbefore    : integer
+                END;
+                
+       symbolinfo = ^symbol;
+       
+       charname = (letter,      digit,          blank,          quote,
+                   endofline,   filemark,       otherchar);
+                   
+       charinfo = RECORD
+                     name : charname;
+                     valu : char
+                  END;
+       
+       stackentry = RECORD
+                       indentsymbol: keysymbol;
+                       prevmargin  : integer
+                    END;
+                    
+       symbolstack = ARRAY [1..maxstacksize] OF stackentry;
+       
+       
+VAR  recordseen: boolean;
+     currchar, nextchar     : charinfo;
+     currsym, nextsym       : symbolinfo;
+     crpending              : boolean;
+     ppoption               : optiontable;
+     keyword                : keywordtable;
+     dblchars               : dblchrset;
+     dblchar                : dblchartable;
+     sglchar                : sglchartable;
+     stack                  : symbolstack;
+     top                    : integer;
+     startpos,              (* starting position of last symbol written *)
+     currlinepos, currmargin: integer;
+     infile, outfile        : TEXT;
+     infilename, outfilename: STRING [20];
+     
+     
+(*$IINITVAR.TEXT*)
+
+
+PROCEDURE Getchar (* from input *) ((* updating *) VAR nextchar: charinfo;
+                                    (* returning *)VAR currchar: charinfo);
+BEGIN (* getchar *)
+  currchar := nextchar;
+  WITH nextchar DO
+    BEGIN
+      IF eof (infile) 
+        THEN name := filemark
+        ELSE IF eoln (infile)
+          THEN name := endofline
+          ELSE IF infile^ IN ['A'..'Z', 'a'..'z']
+            THEN name := letter
+            ELSE IF infile^ in ['0'..'9']
+              THEN name := digit
+              ELSE IF infile^ = ''''
+                THEN name := quote
+                ELSE IF infile^ = space
+                  THEN name := blank
+                  ELSE name := otherchar;
+      IF name IN [filemark, endofline]
+        THEN valu := space
+        ELSE valu := infile^;
+      IF name <> filemark THEN get(infile)
+    END (*with*)
+END; (*getchar*)
+
+
+
+PROCEDURE Storenextchar (* from input *)
+                ( (*updating *) VAR lngth   : integer;
+                                VAR currchar,
+                                    nextchar : charinfo;
+                  (*placing in*)VAR valu     : lstring);
+BEGIN (*storenextchar*)
+  getchar (nextchar, currchar);
+  IF lngth < maxsymbolsize
+    THEN BEGIN
+      lngth := succ (lngth);
+      valu [lngth] := currchar.valu
+    END
+END (*storenextchar*);
+
+
+PROCEDURE Skipspaces ( (* updating*) VAR currchar, nextchar     : charinfo;
+                       (*returning*) VAR spacesbefore, crsbefore: integer);
+BEGIN
+  spacesbefore := 0;
+  crsbefore    := 0;
+  WHILE nextchar.name IN [blank, endofline] DO
+    BEGIN
+      getchar (nextchar, currchar);
+      CASE currchar.name OF
+        blank     : spacesbefore := succ (spacesbefore);
+        endofline : BEGIN
+                      crsbefore := succ (crsbefore);
+                      spacesbefore := 0
+                    END
+      END (*case*)
+    END (*while*)
+END (*Skipspaces*);
+
+
+PROCEDURE Getcomment (* from input, updating: *)
+               (VAR currchar, nextchar: charinfo;
+                VAR name              : keysymbol;
+                VAR valu              : lstring;
+                VAR lngth             : integer);
+BEGIN
+  name := opencomment;
+  WHILE NOT (   ((currchar.valu = '*') AND (nextchar.valu = ')'))
+             OR (currchar.valu = '}')
+             OR (nextchar.name = endofline)
+             OR (nextchar.name = filemark)) DO
+    storenextchar (lngth, currchar, nextchar, valu);
+  IF (currchar.valu = '*') AND (nextchar.valu = ')')
+    THEN BEGIN
+      storenextchar (lngth, currchar, nextchar, valu);
+      name := closecomment
+    END;
+  IF currchar.valu = '}' THEN name := closebracket
+END (*Getcomment*);
+
+
+
+FUNCTION Idtype ( (*of*) valu:lstring; (*using*) lngth:integer): keysymbol;
+
+VAR  i: integer;
+     keyvalu: key;
+     hit: boolean;
+     thiskey: keysymbol;
+     
+BEGIN
+  idtype := othersym;
+  IF lngth <= maxkeylength THEN
+    BEGIN
+      FOR i := 1 TO lngth DO 
+        IF valu [i] IN ['A'..'Z'] (* switch to lower case*)
+          THEN keyvalu [i] := CHR (ORD (valu [i]) + ORD ('a') - ORD ('A'))
+          ELSE keyvalu [i] := valu [i];
+      FOR i := lngth+1 TO maxkeylength DO keyvalu [i] := space;
+      thiskey := progsym;
+      hit     := false;
+      WHILE NOT (hit OR (thiskey = succ(untilsym))) DO
+        IF keyvalu = keyword [thiskey]
+          THEN hit := true
+          ELSE thiskey := succ (thiskey);
+      IF hit THEN idtype := thiskey
+    END
+END (*Idtype*);
+
+
+PROCEDURE Getidentifier ( (*from input*)
+                        (* updating *) VAR currchar, nextchar: charinfo;
+                        (* returning*) VAR name  : keysymbol;
+                                       VAR valu  : lstring;
+                                       VAR lngth: integer );
+BEGIN
+  WHILE nextchar.name IN [letter, digit] DO
+    Storenextchar (lngth, currchar, nextchar, valu);
+  name := idtype (valu, lngth);
+  IF name IN [recordsym, casesym, endsym]
+    THEN CASE name OF
+      recordsym : recordseen := true;
+      casesym   : IF recordseen THEN name := casevarsym;
+      endsym    : recordseen := false
+    END (*case*)
+END (*Getidentifier*);
+
+
+
+PROCEDURE Getnumber ( (*from input*)
+                (* updating *) VAR currchar, nextchar: charinfo;
+                (* returning*) VAR name   : keysymbol;
+                               VAR valu   : lstring;
+                               VAR lngth : integer );
+BEGIN
+  WHILE nextchar.name = digit DO
+    Storenextchar (lngth, currchar, nextchar, valu);
+  name := othersym
+END (*Getnumber*);
+
+
+PROCEDURE Getcharliteral ( (* from input *)
+                (* updating *) VAR currchar, nextchar: charinfo;
+                (* returning*) VAR name   : keysymbol;
+                               VAR valu   : lstring;
+                               VAR lngth : integer );
+BEGIN
+  WHILE nextchar.name = quote DO
+    BEGIN
+      Storenextchar (lngth, currchar, nextchar, valu);
+      WHILE NOT (nextchar.name IN [quote, endofline, filemark]) DO
+        Storenextchar (lngth, currchar, nextchar, valu);
+      IF nextchar.name = quote
+        THEN Storenextchar (lngth, currchar, nextchar, valu)
+    END;
+  name := othersym
+END (*getcharliteral*);
+
+
+FUNCTION Chartype (currchar, nextchar: charinfo): keysymbol;
+
+VAR  nexttwochars: specialchar;
+     hit:  boolean;
+     thischar:  keysymbol;
+     
+BEGIN
+  nexttwochars[1] := currchar.valu;
+  nexttwochars[2] := nextchar.valu;
+  thischar := becomes;
+  hit := false;
+  
+  (* Find out if chartype is ":=" or "(*" *)
+  WHILE NOT (hit or (thischar = closecomment)) DO
+    IF nexttwochars = dblchar [thischar]
+      THEN hit := true
+      ELSE thischar := succ(thischar);
+  
+  (* now is chartype ;, :, (, ), {, }, or .  *)
+  IF NOT hit
+    THEN BEGIN
+      thischar := semicolon;
+      WHILE NOT (hit OR (pred(thischar) = period)) DO
+        IF currchar.valu = sglchar[thischar]
+          THEN hit := true
+          ELSE thischar := succ(thischar)
+    END;
+  IF hit
+    THEN chartype := thischar
+    ELSE chartype := othersym
+END (*Chartype*);
+
+
+
+PROCEDURE Getspecialchar ( (* from input *)
+                (* updating *) VAR currchar, nextchar: charinfo;
+                (* returning*) VAR name   : keysymbol;
+                               VAR valu   : lstring;
+                               VAR lngth : integer );
+BEGIN
+  Storenextchar (lngth, currchar, nextchar, valu);
+  name := Chartype (currchar, nextchar);
+  IF name IN dblchars
+    THEN Storenextchar (lngth, currchar, nextchar, valu);
+END (* Getspecialchar *);
+
+
+PROCEDURE Getnextsymbol ( (* from input *)
+                (* updating *) VAR currchar, nextchar: charinfo;
+                (* returning*) VAR name   : keysymbol;
+                               VAR valu   : lstring;
+                               VAR lngth : integer );
+BEGIN
+  CASE nextchar.name OF
+    letter   : Getidentifier (currchar, nextchar, name, valu, lngth);
+    digit    : Getnumber     (currchar, nextchar, name, valu, lngth);
+    quote    : Getcharliteral(currchar, nextchar, name, valu, lngth);
+    otherchar: BEGIN
+                 Getspecialchar (currchar, nextchar, name, valu, lngth);
+                 IF (name = opencomment) OR (name = openbracket)
+                   THEN Getcomment (currchar, nextchar, name, valu, lngth)
+               END;
+    filemark : name := endoffile
+  END (* case *)
+END (* Getnextsymbol *);
+
+
+PROCEDURE Getsymbol ( (*from input*)
+        (* updating *) VAR nextsym: symbolinfo;
+        (* returning*) VAR currsym: symbolinfo);
+VAR  dummy: symbolinfo;
+BEGIN
+  dummy := currsym;
+  currsym := nextsym;
+  nextsym := dummy;
+  WITH nextsym^ DO
+    BEGIN
+      skipspaces (currchar, nextchar, spacesbefore, crsbefore);
+      lngth := 0;
+      IF currsym^.name = opencomment
+        THEN Getcomment    (currchar, nextchar, name, valu, lngth)
+        ELSE Getnextsymbol (currchar, nextchar, name, valu, lngth)
+    END
+END (* Getsymbol *);
+
+
+PROCEDURE Initfiles;
+BEGIN
+  WRITELN ('Welcome to the Pascal prettyprinter.  Please type the name of');
+  WRITE ('the textfile you wish as input --> ');
+  READLN (infilename);
+  RESET (infile, infilename);
+  WRITELN('Now the filename to which you want the output sent.');
+  WRITELN ('  (NOTE:  if you simply want to print it out,');
+  WRITE ('  type "PRINTER:")                                 -->');
+  READLN (outfilename);
+  REWRITE (outfile, outfilename);
+  Getchar (nextchar, currchar);
+  new (currsym);
+  new (nextsym);
+  Getsymbol (nextsym, currsym)
+END (*Initfiles*);
+
+  
+FUNCTION Stackempty: boolean;
+BEGIN
+  IF top = 0
+    THEN stackempty := true
+    ELSE stackempty := false
+END;
+
+
+FUNCTION Stackfull: boolean;
+BEGIN
+  IF top = maxstacksize
+    THEN stackfull  := true
+    ELSE stackfull  := false
+END;
+
+
+PROCEDURE Popstack ( (*returning*) VAR indentsymbol: keysymbol;
+                                   VAR prevmargin  : integer);
+BEGIN
+  IF NOT stackempty
+    THEN BEGIN
+      indentsymbol := stack[top].indentsymbol;
+      prevmargin   := stack[top].prevmargin;
+      top := top-1
+    END ELSE BEGIN
+      indentsymbol := othersym;
+      prevmargin   := 0
+    END
+END (*Popstack*);
+
+
+PROCEDURE Pushstack (indentsymbol: keysymbol; prevmargin: integer);
+BEGIN
+  top := top+1;
+  stack[top].indentsymbol := indentsymbol;
+  stack[top].prevmargin := prevmargin
+END;
+
+
+PROCEDURE Writecrs (numberofcrs: integer; VAR currlinepos: integer);
+VAR i: integer;
+BEGIN
+  IF numberofcrs > 0
+    THEN BEGIN
+      FOR I := 1 TO numberofcrs DO WRITELN (outfile);
+      currlinepos := 0
+    END
+END;
+
+
+PROCEDURE Insertcr (VAR currsym: symbolinfo);
+CONST  once = 1;
+BEGIN
+  IF currsym^.crsbefore = 0
+    THEN BEGIN
+      writecrs (once, currlinepos);
+      currsym^.spacesbefore := 0
+    END
+END;
+
+
+PROCEDURE Insertblankline (VAR currsym: symbolinfo);
+CONST once = 1; twice = 2;
+BEGIN
+  IF currsym^.crsbefore = 0
+    THEN
+      BEGIN
+        IF currlinepos = 0
+          THEN Writecrs (once, currlinepos)
+          ELSE Writecrs (twice, currlinepos);
+        currsym^.spacesbefore := 0
+      END
+    ELSE IF currsym^.crsbefore = 1
+      THEN IF currlinepos > 0 THEN Writecrs (once, currlinepos)
+END (*Insertblankline*);
+
+
+PROCEDURE Lshifton (dindentsymbols: keysymset);
+VAR  indentsymbol: keysymbol;
+     prevmargin  : integer;
+BEGIN
+  IF NOT stackempty
+    THEN
+      BEGIN
+        REPEAT
+          popstack (indentsymbol, prevmargin);
+          IF indentsymbol IN dindentsymbols THEN currmargin := prevmargin
+        UNTIL NOT (indentsymbol IN dindentsymbols) OR stackempty;
+        IF NOT (indentsymbol IN dindentsymbols)
+          THEN Pushstack (indentsymbol, prevmargin)
+      END
+END (*Lshifton*);
+
+
+PROCEDURE Lshift;
+VAR  indentsymbol: keysymbol; prevmargin: integer;
+BEGIN
+  IF NOT stackempty
+    THEN BEGIN
+      Popstack (indentsymbol, prevmargin);
+      currmargin := prevmargin
+    END
+END;
+
+
+PROCEDURE Insertspace (VAR symbol: symbolinfo);
+BEGIN
+  IF currlinepos < maxlinesize
+    THEN BEGIN
+      WRITE (outfile, space);
+      currlinepos := succ (currlinepos);
+      WITH symbol^ DO IF (crsbefore = 0) AND (spacesbefore > 0)
+        THEN spacesbefore := pred (spacesbefore)
+    END
+END (*Insertspace*);
+
+
+PROCEDURE Movelinepos ( (*to*) newlinepos: integer;
+                (*from*)  VAR currlinepos: integer);
+VAR  i: integer;
+BEGIN
+  FOR i := currlinepos+1 TO newlinepos DO
+    WRITE (outfile, space);
+  currlinepos := newlinepos
+END;
+
+
+PROCEDURE Printsymbol (currsym: symbolinfo; VAR currlinepos: integer);
+VAR i: integer;
+BEGIN
+  WITH currsym^ DO
+  BEGIN
+    FOR i := 1 TO lngth DO write (outfile, valu[i]);
+    startpos := currlinepos;
+    currlinepos := currlinepos + lngth
+  END
+END (*Printsymbol*);
+
+
+PROCEDURE Ppsymbol (currsym: symbolinfo);
+CONST once = 1;
+VAR newlinepos: integer;
+BEGIN
+  WITH currsym^ DO
+    BEGIN
+      Writecrs (crsbefore, currlinepos);
+      IF (currlinepos + spacesbefore > currmargin)
+        OR (name IN [opencomment, closecomment, openbracket, closebracket])
+        THEN newlinepos := currlinepos + spacesbefore
+        ELSE newlinepos := currmargin;
+      IF newlinepos + lngth > maxlinesize
+        THEN BEGIN
+          Writecrs (once, currlinepos);
+          IF currmargin + lngth <= maxlinesize
+            THEN newlinepos := currmargin
+            ELSE IF lngth < maxlinesize
+              THEN newlinepos := maxlinesize - lngth
+              ELSE newlinepos := 0
+        END;
+      Movelinepos (newlinepos, currlinepos);
+      Printsymbol (currsym, currlinepos)
+    END (*with*)
+END (*Ppsymbol*);
+
+PROCEDURE Rshifttoclp (currsym:keysymbol);
+  FORWARD;
+  
+  
+PROCEDURE Gobble ( (*up to*) terminators: keysymset;
+                   (*updating*) VAR currsym, nextsym: symbolinfo);
+BEGIN
+  Rshifttoclp (currsym^.name);
+  WHILE NOT (nextsym^.name IN (terminators + [endoffile])) DO
+    BEGIN
+      Getsymbol (nextsym, currsym);
+      Ppsymbol (currsym)
+    END;
+  Lshift
+END (*Gobble*);
+
+
+PROCEDURE Rshift (currsym: keysymbol);
+BEGIN
+  IF NOT stackfull THEN Pushstack (currsym, currmargin);
+  
+  (* If extra indentation was used,  update margin.*)
+  IF startpos > currmargin THEN currmargin := startpos;
+  IF currmargin < slofail1
+    THEN currmargin := currmargin + indent1
+    ELSE IF currmargin < slofail2 THEN currmargin := currmargin + indent2
+END (*Rshift*);
+
+
+PROCEDURE Rshifttoclp;
+BEGIN
+  IF NOT stackfull THEN Pushstack (currsym, currmargin);
+  currmargin := currlinepos
+END (*Rshifttoclp*);
+
+
+BEGIN (* main program, at last *);
+  Initvar1 (top, currlinepos, currmargin, keyword, dblchars, dblchar,
+            sglchar, recordseen, currchar, nextchar, currsym, nextsym);
+  Initvar2 (ppoption);
+  Initvar3 (ppoption);
+  Initfiles;
+  crpending := false;
+  WHILE (nextsym^.name <> endoffile) DO
+    BEGIN
+      Getsymbol (nextsym, currsym);
+      WITH ppoption [currsym^.name] DO
+        BEGIN
+          IF (crpending AND NOT (crsuppress IN optionsselected))
+            OR (crbefore IN optionsselected)
+            THEN BEGIN
+              Insertcr (currsym);
+              crpending := false
+            END;
+          IF blankliebefore IN optionsselected THEN
+            BEGIN
+              Insertblankline (currsym);
+              crpending := false
+            END;
+          IF dindentonkeys IN optionsselected
+            THEN Lshifton (dindentsymbols);
+          IF dindent IN optionsselected THEN Lshift;
+          IF spacebefore IN optionsselected THEN Insertspace (currsym);
+          Ppsymbol (currsym);
+          IF spaceafter IN optionsselected THEN Insertspace (nextsym);
+          IF indentbytab IN optionsselected THEN Rshift (currsym^.name);
+          IF indenttoclp IN optionsselected THEN Rshifttoclp (currsym^.name);
+          IF gobblesymbols IN optionsselected
+            THEN Gobble (gobbleterminators, currsym, nextsym);
+          IF crafter IN optionsselected THEN crpending := true
+        END (*with*)
+    END (*while*);
+  IF crpending THEN WRITELN (outfile);
+  CLOSE (outfile,lock)
+END.
+          
+        
+  

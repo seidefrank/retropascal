@@ -1,0 +1,149 @@
+PROGRAM AUTOPSY;    (*Version 1.0, 20 Oct 81*)
+
+USES (*$U screen.code*) SCREEN;
+
+CONST FILESIZE = 23;  (*23+1 blocks/file (22 of text)*)
+      checking = true;
+
+TYPE  FNAME = STRING[24];
+
+VAR   FIN, FOUT : FILE;
+      BLANK,BUFFER : PACKED ARRAY [0..511] OF CHAR;
+      BLKNO,BLKSXFERRED,I,J,TOTALBLKS,RSLT : INTEGER;
+      BADIO : BOOLEAN;
+      SFIN,SFOUT,STEMP : FNAME;
+      REPLY : CHAR;
+      ISTRG : STRING;
+      
+(*$I-*)
+  
+  PROCEDURE RSTFILE(VAR S : FNAME; X,Y : INTEGER);
+    BEGIN
+      REPEAT
+        READLN(S);
+        RESET(FIN,S);
+        RSLT := IORESULT;
+        IF (RSLT <> 0) THEN
+          BEGIN
+            IF (RSLT = 10) THEN
+              BEGIN
+                S := CONCAT(S,'.TEXT');
+                RESET(FIN,S);
+                RSLT := IORESULT
+              END;
+            IF (RSLT = 12) THEN
+              BEGIN
+                CLOSE(FIN,LOCK)
+              END;
+            IF (RSLT <> 0) THEN
+              BEGIN
+                GOTOXY(0,22);
+WRITE('IO error ',RSLT,'.  Correct and type <SP> to continue or Q(uit');
+                REPEAT READ(KEYBOARD,REPLY) UNTIL REPLY IN ['Q','q',' '];
+                CLEARSPACE(0,22,80);
+                IF (REPLY IN ['Q','q']) THEN EXIT(PROGRAM)
+                ELSE CLEARSPACE(X,Y,LENGTH(S))
+              END
+          END
+        UNTIL RSLT = 0
+      END;
+      
+  PROCEDURE RWRFILE;
+    BEGIN
+      REPEAT
+        REWRITE(FOUT,SFOUT);
+        RSLT := IORESULT;
+        IF (RSLT <> 0) THEN
+          BEGIN
+            GOTOXY(0,22);
+WRITE('Ouput file IO error ',RSLT,'. Correct and type <SP> to continue or Q(uit.');
+            REPEAT READ(KEYBOARD,REPLY) UNTIL REPLY IN [' ','Q','q'];
+            IF REPLY IN ['Q','q'] THEN
+              BEGIN
+                CLEARSCREEN;
+                EXIT(PROGRAM)
+              END
+            ELSE CLEARSPACE(0,23,80)
+        END
+      UNTIL (RSLT = 0)
+    END;
+    
+  Procedure checkit(inblock : boolean);
+    begin
+      if checking then
+        if inblock then
+          begin
+            badio := ((blksxferred < 1) or (ioresult > 0));
+            if badio then
+              writeln('Inblock ',BLKNO,' Ioresult = ',IORESULT,'.   Blksxferred = ',BLKSXFERRED);
+          end
+        else 
+          begin
+            badio := ((blksxferred < 1) or (ioresult > 0));
+            if badio then
+              writeln('Outblock ',BLKNO,' Ioresult = ',IORESULT,'.   Blksxferred = ',BLKSXFERRED);
+          end
+    end;
+    
+  BEGIN (*program*)
+    CLEARSCREEN;
+    BADIO := FALSE;
+    WRITE('Enter name of input file (file to be divided): ');
+    RSTFILE(SFIN,47,0);
+    WRITELN;
+    WRITE('Enter base name (VOL:XXXXXXXX (8 digits max) of output files: ');
+    REPEAT
+      READLN(STEMP);
+      IF (LENGTH(STEMP)-POS(':',STEMP) > 8) OR (LENGTH(STEMP) = 0) THEN
+        BEGIN
+          GOTOXY(0,22);
+          WRITE('Improper file name.  Type <SP> to continue, Q(uit.');
+          REPEAT READ(KEYBOARD,REPLY) UNTIL REPLY IN [' ','Q','q'];
+          IF REPLY IN ['Q','q'] THEN EXIT(PROGRAM);
+          CLEARSPACE(0,22,80);
+          CLEARSPACE(45,2,24);
+        END;
+      UNTIL (LENGTH(STEMP)-POS(':',STEMP) <= 8) AND (LENGTH(STEMP) > 0);
+    WRITELN;
+    FOR J := 0 TO 511 DO BLANK[J] := CHR(0);
+    I := 1;
+    BLKNO := 2;
+    REPEAT
+      STR(I,ISTRG);
+      SFOUT := CONCAT(STEMP,'.',ISTRG,'.TEXT');
+      RWRFILE;
+      TOTALBLKS := 0;
+      FOR J := 1 TO 2 DO
+        BEGIN
+          BLKSXFERRED := BLOCKWRITE(FOUT,BLANK,1,TOTALBLKS);
+          checkit(false);
+          TOTALBLKS := TOTALBLKS+1
+        END;
+      BLKSXFERRED := BLOCKREAD(FIN,BUFFER,1,BLKNO);
+      checkit(true);
+      WHILE NOT EOF(FIN) AND (TOTALBLKS<=FILESIZE) AND (IORESULT=0) AND
+       (NOT BADIO) AND (BLKSXFERRED=1) DO
+        BEGIN
+          BLKSXFERRED := BLOCKWRITE(FOUT,BUFFER,1,TOTALBLKS);
+          BADIO := ((BLKSXFERRED < 1) OR (IORESULT > 0));
+          if checking then
+              writeln('Outblock ',TOTALBLKS,' Ioresult = ',IORESULT,'.   Blksxferred = ',BLKSXFERRED);
+          BLKNO := BLKNO+1;
+          TOTALBLKS := TOTALBLKS+1;
+          IF (TOTALBLKS <= FILESIZE) THEN
+            BEGIN
+              BLKSXFERRED := BLOCKREAD(FIN,BUFFER,1,BLKNO);
+              checkit(true)
+            END;
+        END;
+      I := I+1;
+      IF EOF(FIN) THEN
+        BEGIN
+          BLKSXFERRED := BLOCKWRITE(FOUT,BUFFER,1,TOTALBLKS);
+          TOTALBLKS := TOTALBLKS +1;
+          checkit(false)
+        END;
+      CLOSE(FOUT,LOCK);
+    UNTIL EOF(FIN) OR (BADIO) OR (IORESULT <> 0);
+    WRITELN(BLKNO-1,' blocks transferred; ',I-1,' files created.');
+  END.

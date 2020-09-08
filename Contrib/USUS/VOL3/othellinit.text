@@ -1,0 +1,239 @@
+(* COPYRIGHT (C) 1979 Software Supply.  All rights reserved.  *)
+(* included file for OTHELLO *)
+
+PROCEDURE updatecrt(VAR oldstatus,newstatus: gamestatus);
+FORWARD;
+FUNCTION flipof(oldcolor: color): color;
+FORWARD;
+PROCEDURE makemove(VAR status: gamestatus; VAR move: movedesc; updateadjacent:
+                                                                BOOLEAN);
+FORWARD;
+
+SEGMENT PROCEDURE initgame;
+CONST
+   backspace = 8;
+VAR
+   x,y:         coordinate;
+   direc:       direction;
+   answer:      CHAR;
+   h,l,h0,l0:   INTEGER; (*for testing whether clock is on*)
+
+   PROCEDURE defineboard;
+   BEGIN
+   FOR x := 1 TO 8 DO  FOR y := 1 TO 8 DO  WITH board[x,y] DO BEGIN
+      border := (x IN [1,8]) OR (y IN [1,8]);
+      corner := (x IN [1,8]) AND (y IN [1,8]);
+      incenter4by4 := (x IN [3..6]) AND (y IN [3..6]);
+      diagnexttocorner := (x IN [2,7]) AND (y IN [2,7]);
+      FOR direc := north TO nw  DO WITH adjacentsq[direc] DO BEGIN 
+         CASE direc OF
+            north: onboard := x>1;
+            ne:    onboard := (x>1) AND (y<8);
+            east:  onboard := y<8;
+            se:    onboard := (x<8) AND (y<8);
+            south: onboard := x<8;
+            sw:    onboard := (x<8) AND (y>1);
+            west:  onboard := y>1;
+            nw:    onboard := (x>1) AND (y>1);
+            END; (*CASE*)
+         IF onboard THEN BEGIN
+            CASE direc OF
+               north,ne,nw: row := x-1;
+               east,west:   row := x;
+               south,se,sw: row := x+1;
+               END;
+            CASE direc OF
+               nw,west,sw:  col := y-1;
+               north,south: col := y;
+               ne,east,se:  col := y+1;
+               END;
+            END;
+         END; (*FOR direc...WITH adjacentsq...*)
+      specialbordersq := border AND (NOT corner) AND 
+                            ( (x IN [2,4,5,7]) OR (y IN [2,4,5,7]) );
+      IF specialbordersq THEN BEGIN
+         otherofpair.onboard := TRUE;
+         between.onboard := TRUE;
+         IF x IN [1,8] THEN BEGIN
+            otherofpair.row := x;
+            between.row := x;
+            IF y IN [2,5] THEN BEGIN
+               otherofpair.col := y+2;
+               between.col := y+1;
+               END
+            ELSE BEGIN
+               otherofpair.col := y-2;
+               between.col := y-1;
+               END;
+            END
+         ELSE BEGIN
+            otherofpair.col := y;
+            between.col := y;
+            IF x IN [2,5] THEN BEGIN
+               otherofpair.row := x+2;
+               between.row := x+1;
+               END
+            ELSE BEGIN
+               otherofpair.row := x-2;
+               between.row := x-1;
+               END;
+            END;
+         END; (*IF specialbordersq...*)
+      END; (*FOR x:= ... FOR y:= ... WITH board[x,y]...*)
+   END; (*defineboard*)
+    
+   PROCEDURE showemptyboard;
+   CONST
+      vertdivs = '|     |     |     |     |     |     |     |     |';
+      horzdivs = '|-----|-----|-----|-----|-----|-----|-----|-----|';
+      colnames = '   A     B     C     D     E     F     G     H   ';
+      blanks   = '                              ';
+   VAR
+      gamerow :    coordinate;
+   BEGIN
+   GOTOXY(0,0);
+   FOR gamerow := 1 TO 8 DO BEGIN
+      IF gamerow>1 THEN (* "IF" because no room for topmost border line *)
+         writeln(blanks,horzdivs);
+      writeln(blanks:29,gamerow,vertdivs);
+      writeln(blanks,vertdivs);
+      END;
+   write(blanks,colnames);
+   GOTOXY(4,0);
+   WRITELN('Score');
+   WRITELN('-----------');
+   WRITELN(CHR(whiteascii),'/White:');
+   WRITELN(CHR(blackascii),'/Black:');
+   END; (*showemptyboard*)
+  
+   PROCEDURE instructions;
+   VAR
+      i: INTEGER;
+   PROCEDURE page1;
+      BEGIN
+      WRITELN('A move consists of placing  ');
+      WRITELN('one of your pieces on an    ');
+      WRITELN('unoccupied square which is  ');
+      WRITELN('adjacent (vertically, hori- ');
+      WRITELN('zontally, or diagonally) to ');
+      WRITELN('a square occupied by your   ');
+      WRITELN('opponent so that a straight ');
+      WRITELN('line starting at your piece ');
+      WRITELN('and continuing in the direc-');
+      WRITELN('tion of the adjacent oppon- ');
+      WRITELN('ent hits one of your other  ');
+      WRITELN('pieces before hitting an un-');
+      WRITELN('occupied square.  All of the');
+      WRITELN('opponent''s pieces which that');
+      WRITELN('line crosses are converted  ');
+      WRITELN('to become your pieces.  Thus');
+      WRITELN('each move "flips" at least  ');
+      WRITELN('one opposing piece.         ');
+      WRITE  (' (Tap space bar for more...)');
+      END; (*page1*)
+   PROCEDURE page2;
+      BEGIN
+      WRITELN('Example:  a legal move for  ');
+      WRITELN('white on the first play     ');
+      WRITELN('would be 3E, 4F, 6D, or 5C. ');
+      WRITELN('To make a move at, e.g., 3E ');
+      WRITELN('you may type any of: 3E, 3e,');
+      WRITELN('E3, or e3.                  ');
+      WRITELN('If you have no legal move,  ');
+      WRITELN('you must pass.  The object  ');
+      WRITELN('of the game is to end up    ');
+      WRITELN('occupying more squares than ');
+      WRITELN('does your opponent.         ');
+      WRITELN('Hints on strategy:  Usually ');
+      WRITELN('the board position of a move');
+      WRITELN('is more important than the  ');
+      WRITELN('number of pieces it "flips".');
+      WRITELN('Try to occupy the borders   ');
+      WRITELN('(especially corners!) and   ');
+      WRITELN('avoid giving them to your   ');
+      WRITE  ('opponent. (Tap space bar...)');
+      END; (*page2*)
+   BEGIN (*instructions*)
+   GOTOXY(0,5);
+   WRITE('Want instructions? (y/n): ');
+   READ(answer);
+   IF NOT (answer IN ['N','n']) THEN BEGIN
+      GOTOXY(0,5);
+      page1;
+      READ(answer);
+      GOTOXY(0,5);
+      page2;
+      READ(answer);
+      GOTOXY(0,5);
+      FOR i := 5 TO 22 DO
+         WRITELN(spaces);
+      WRITE(spaces);
+      END
+   ELSE BEGIN
+      GOTOXY(0,5);
+      WRITE(spaces);
+      END;
+   END; (*instructions*)
+      
+BEGIN (*initgame*)
+lastchange := 0;
+TIME(h0,l0);
+defineboard;
+FOR direc := north TO NW DO
+   IF odd(ORD(direc)) THEN
+      opposdir[direc] := pred(direc)
+   ELSE
+      opposdir[direc] := succ(direc);
+TIME(h,l);
+IF (h=h0) AND (l=l0) THEN BEGIN
+   GOTOXY(20,11);
+   WRITE('Please turn on the clock.');
+   WHILE l=l0 DO
+      TIME(h,l);
+   END;
+showemptyboard;
+WITH status DO BEGIN
+   score[white] := 0;
+   score[black] := 0;
+   FOR x := 1 TO 8 DO  FOR y := 1 TO 8 DO WITH boardstatus[x,y] DO BEGIN
+      occupied := FALSE;
+      adjacentpieces[white] := [];
+      adjacentpieces[black] := [];
+      END;
+   END;
+crtstatus := status;
+move.dirsflipped := [];
+move.points := 0;
+WITH status DO BEGIN
+   FOR x := 4 TO 5 DO  FOR y := 4 TO 5 DO BEGIN
+      move.moveloc.row := x;
+      move.moveloc.col := y;
+      IF x=y THEN
+         nextmover := white
+      ELSE
+         nextmover := black;
+      makemove(status,move,TRUE);
+      updatecrt(crtstatus,status);
+      crtstatus := status;
+      END; (*FOR...FOR...*)
+   nextmover := white;
+   END; (*WITH status...*)
+instructions;
+GOTOXY(0,6);
+WRITELN('White goes first -- Which');
+WRITELN('color do you want to play:');
+REPEAT
+   GOTOXY(3,8);
+   WRITE('W)hite or B)lack?  ',CHR(backspace));
+   READ(answer);
+   UNTIL answer IN ['W','w','B','b'];
+IF answer IN ['W','w'] THEN
+   usercolor := white
+ELSE 
+   usercolor := black;
+GOTOXY (0,6);
+WRITELN(spaces); WRITELN(spaces); WRITELN(spaces);
+colorword[white] := 'white';
+colorword[black] := 'black';
+END; (*initgame*)
+

@@ -1,0 +1,62 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.STD.TEXT             revised 19 November 1981         *
+*                                                                       *
+************************************************************************}
+
+
+function READKEY(OKSET:SETOFCHAR):char;
+{************************************************************************
+*                                                                       *
+*  This procedure looks at each keypress and determines if the key      *
+*  pressed is valid, i.e. the "set of char which are valid may be       *
+*  varied with each call of this procedure.  If the key pressed is      *
+*  not in the valid or 'OKSET', then the bell sounds.  If the key       *
+*  pressed is valid the computer accepts the input and the program      *
+*  continues to run.                                                    *
+*                                                                       *
+************************************************************************}
+var   CH:char;
+      GOOD:boolean;
+begin
+  repeat
+    read(keyboard,CH);
+    if eoln(KEYBOARD) then CH:=chr(13);
+    GOOD:=CH in OKSET;
+    if not GOOD then write(chr(7))
+  until GOOD;
+  READKEY:=CH
+end;  {READKEY}
+
+function YES:boolean;
+begin
+  YES:=READKEY(['Y','N','y','n']) in ['y','Y']
+end; {YES}
+
+procedure PRINTAT(X,Y:integer;S:string);
+{************************************************************************
+*                                                                       *
+*  This procedure writes a string at a designated location on the CRT   *
+*                                                                       *
+************************************************************************}
+begin
+  gotoxy(X,Y);
+  write(S)
+end; {PRINTAT}
+
+procedure CLEARSCREEN;
+{************************************************************************
+*                                                                       *
+*  This procedure is for the TeleVideo only.  The TeleVideo and/or the  *
+*  MICROENGINE will not clear the screen with the standard              *
+*                         "page(output)".                               *
+*   Note: changed by gws to be compatable with H-19                     *
+************************************************************************}
+begin
+  gotoxy ( 0, 0 );
+  write(chr(27),chr(69));   {H-19 specific}
+end; {CLEARSCREEN}
+
+
+
+

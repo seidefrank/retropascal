@@ -1,0 +1,12 @@
+        .FUNC   PORTREAD,1      ;PARAM IS PORT NUMBER
+        POP     IX              ;RETURN ADDRESS
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        POP     IY              ;POP TWO WORDS OF ZEROS
+        POP     BC              ;PORT NUMBER
+        IN      E,(C)           ;READ PORT
+        LD      D,0
+        PUSH    DE
+        JP      (IX)
+        
+        .END
+

@@ -1,0 +1,11 @@
+.PROC   SET_BREAK
+; To set break bit in CR_BREAK
+; This external procedure is for use with the
+; procedure CR_BREAK in REMUNIT for LSI-11s
+; M. A. Ikezawa, 17 July 1981
+XCSR    .EQU    177524
+        BIS     #1,@#XCSR
+        MOV     (SP)+,R0
+        JMP     @R0
+        .END
+

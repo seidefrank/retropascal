@@ -1,0 +1,234 @@
+
+
+
+
+ ;************************************************;
+ ;*                                              *;
+ ;*    UCSD PASCAL INTERPRETER FOR PDP-11'S      *;
+ ;*                                              *;
+ ;*    WRITTEN BY ROGER T. SUMNER                *;
+ ;*    AND MARK OVERGAARD, 1977                  *;
+ ;*                                              *;
+ ;*    INSTITUTE FOR INFORMATION SYSTEMS         *;
+ ;*    UC SAN DIEGO, LA JOLLA, CA                *;
+ ;*                                              *;
+ ;*    KENNETH L. BOWLES, DIRECTOR               *;
+ ;*                                              *;
+ ;*    THIS SOFTWARE IS THE PROPERTY OF THE      *;
+ ;*  REGENTS OF THE UNIVERSITY OF CALIFORNIA.    *;
+ ;*                                              *;
+ ;************************************************;
+
+        .TITLE RX-11 FLOPPY DRIVER
+
+         .ASECT
+.=264
+         RX$INT         ; RX FLOPPY INTERRUPT HANDLER
+         240            ; MAX PRIORITY
+        
+         .CSECT  TABLES
+         .BLKW 128.     ; OPERATOR TRANSFER TABLES
+         .REPT 4
+         .BLKW 3
+         .ENDR
+         .WORD INBIT!OUTBIT,RXSTRT,RXABRT
+         .WORD INBIT!OUTBIT!10000,RXSTRT,RXABRT
+         .PAGE
+         .CSECT RXDRVR
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                         ;
+;                                                         ;
+;             rx - 11 floppy handler                      ;
+;                                                         ;
+;                                                         ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+RXUNIT:  .WORD   0       ; ADDRESS OF UNIT TABLE ENTRY FOR I/O
+RXBUFA:  .WORD   0       ; ADDRESS OF CURRENT BYTE BUCKET
+RXSECT:  .WORD   0       ; CURRENT LOGICAL SECTOR ON DISK
+RXTRYS:  .WORD   0       ; RETRY COUNT FOR CRC ERRORS
+RXLENG:  .WORD   0       ; NUMBER OF BYTE REMAINING TO BE MOVED
+
+RXCS     =  177170       ; ADDRESS OF RX CONTROL AND STATUS REG
+RXDB     =  RXCS+2       ; ADDRESS OF RX DATA REGISTER
+RXGO     =       1       ; GO BIT IN RXCS
+RXFILL   =  0*2          ; FILL BUFFER COMMAND
+RXMPTY   =  1*2          ; EMPTY BUFFER COMMAND
+RXRORW   =  2*2          ; COMMAND FOR READ OR WRITE, LOW BIT DETERMINES
+RXERRF   =  7*2          ; COMMAND FOR READ ERROR REGISTER
+RXINTS   =  100          ; INTERRUPTS OK BIT
+RXOFST   =   14          ; NUMBER OF WORDS OUR STACK DIFFERS
+                         ; FROM UNIT-IO STACK (CAUSE OF SAVED REGISTERS)
+RXSTRT: ;THIS IS THE ENTRY POINT OF THE ROUTINE TO START
+        ; I/O'S TO FLOPPIES.  THE CALLING SEQUENCE IS
+        ;       JSR     R3,RXSTRT
+        ;       .WORD   (1 FOR READ, 0 FOR WRITE)
+        ; WE ASSUME THAT R1 CONTAINS THE ADDRESS OF THE UNIT TABLE
+        ; ELEMENT AND THE FLOPPY IS NOT INTERRUPT ENABLED.  GP REGISTERS
+        ; ARE SAVED EXCEPT R3 WHICH WE ASSUME TO BE SCRATCH AT ENTRY.
+        ; ALL EXITS ARE DONE VIA INTRTN INSTRUCTIONS.
+
+        TST     RXUNIT          ; CAN'T DO TWO FLOPPY I/O'S AT ONCE
+        BNE     RXSTRT          ; WAIT UNITL WE CAN TST IO UNIT AGAIN
+        MOV     R1,RXUNIT       ; STASH UNIT TABLE ADDR, NOW BUSY
+        BIS     #BSYBIT,(R1)    ; MARK UNIT AS BUSY
+        CLR     (SP)            ; NEW PSW AT PR-0 WHEN WE RTI
+        TST     (R3)+           ; POINT R3 AT RETURN ADDR
+        MOV     R3,-(SP)        ; SET UP FOR AN RTI AFTER FIRST TRANSFER START
+        MOV     -(R3),R3        ; GRAB I/O CODE.. 1 READ.. 0 WRITE IN R3
+        MOV     R0,-(SP)        ; SAVE ALL REGISTERS FOR EXIT
+        MOV     R2,-(SP)
+        CLR     -(SP)           ; R3'S LOCATION.. CLEAR IT FOR NO REASON
+        MOV     R5,-(SP)        ; ALL SET TO START UP
+        MOV     #RXCS,R0        ; R0 HAS RXCS ADDRESS IN IT (CONVENTION)
+        ASL     R3              ; REFORMAT INTO FLOPPY OPERATION
+        BIS     #<RXGO+RXRORW>,R3
+        BISB    1(R1),R3        ; SET UNIT BIT FROM TABLE
+        BIC     #177740,R3      ; GET RID OF JUNK INFO
+        MOV     R3,RXFUNC       ; THE ACTUAL IO CONTROL WORD TO RXCS
+        MOV     <UBUFFR+RXOFST>(SP),RXBUFA      ; STASH BUFFER ADDRESS
+        MOV     <UBLOCK+RXOFST>(SP),R3   ; GRAB USER BLOCK # FROM STACK
+        ASL     R3              ; MULTIPLY IT BY 4 TO GET
+        ASL     R3              ; A LOGICAL SECTOR NUMBER
+        MOV     R3,RXSECT       ; AND SAVE IT FOR I/O LATER
+        MOV     <URLENG+RXOFST>(SP),R5  ; GRAB NUMBER OF BYTES
+        BEQ     RXQUIT          ; IF NO BYTES, FORGET IT
+RXNEXT: ; THIS IS WHERE WE START THE I/O'S FROM
+        MOV     #5,RXTRYS       ; RETRY CRC ERRS AT MOST 3 TIMES
+        BIT     #2,RXFUNC       ; SEE IF DOING A WRITE SO FILL BUFF
+        BNE     RXRTRY          ; SLIP OVER FILL IF READ.. START I/O
+        MOV     #<RXGO+RXFILL>,(R0)     ; SEND FILL BUFF COMMAND TO FLOPPY
+        JSR     R2,RXMOVE       ; TRANSFER IN 128 BYTES INTO RX BUFFER
+        MOVB    (R3)+,(R2)      ; PARAM 1..INSTRUC IF BYTES>0
+        CLRB    (R2)            ; PARAM 2..DO THIS IF BYTES <= 0
+RXRTRY: MOV     RXSECT,R3       ; NOW PERFORM MAGIC ALGOTITHM FOR
+        MOV     #8.,R2          ; LOOP COUNT
+1$:     CMP     #6400,R3        ; DOES 26 GO INTO DIVIDEND
+        BHI     2$              ; BRANCH IF NOT, C CLEAR
+        ADD     #171400,R3      ; SUBTRACT 26 FROM DIVIDEND, SETS C
+2$:     ROL     R3              ; SHIFT DIVIDEND AND QUOTIENT
+        DEC     R2              ; DEC BRANCH COUNT
+        BGT     1$              ; BRANCH TILL DIVIDE DONE
+        MOVB    R3,R2           ; COPY TRACK NUMBER
+        CLRB    R3              ; REMOVE TRACK NUMBER FROM REMAINDER
+        SWAB    R3              ; GET REMAINDER
+        CMP     #12.,R3         ; C=1 OF 13<=R3<=26, ELSE C=0
+        ROL     R3              ; DOUBLE FOR 2 TO 1 INTERLEAVE
+                                ; C-BIT COMES IN FOR SECTOR GROUP
+        ASL     R2              ; ADD TRACK TO TRACK SKEW TO SECTOR
+        ADD     R2,R3           ; SKEW BY 2* TRACK
+        ADD     R2,R3           ; SKEW BY 4* TRACK
+        ADD     R2,R3           ; SKEW BY 6* TRACK
+        ASR     R2              ; REFIX TRACK NUMBER
+        INC     R2              ; PUT TRACK # IN RANGE 1-76 TO HANDLE
+                                ; ANSI FLOPPY, TRACK 0 IS LEFT ALONE
+3$:     SUB     #26.,R3         ; MODULO SECTOR INTO RANGE -26, -1
+        BGE     3$              ; LOOP TILL REMAINDER GOES NEGATIVE
+        ADD     #27.,R3         ; PUT SECTOR IN RANGE 1,26
+        MOV     (PC)+,(R0)      ; SEND ACTUAL IO OP TO RX-11
+RXFUNC: .WORD   0               ; SET UP IN INITIALIZE
+1$:     TSTB    (R0)            ; NOW WAIT UNTIL TR FLAG
+        BEQ     1$              ; LOOP UNTIL FLOPPY ANSWERS
+        BPL     RXERR           ; WHOOPS..DONE BUT NOT TR
+        MOV     R3,@#RXDB       ; SEND SECTOR NUMBER
+2$:     TSTB    (R0)            ; NOW WAIT UNTIL SECOND TR
+        BEQ     2$              ; TO SEND TRACK #
+        BPL     RXERR           ; ANOTHER SCREW UP
+        MOV     R2,@#RXDB       ; NOW OPERATION BEGINS
+        BIS     #RXINTS,(R0)    ; ALLOW INTERRUPT AT COMPLETION
+RXEXIT: ; GO BACK TO USER NOW..RESTORE RETISTERS
+        MOV     R5,RXLENG       ; SAVE NUMBER OF BYTES FOR RE-ENTRY
+        MOV     (SP)+,R5
+        MOV     (SP)+,R3
+        MOV     (SP)+,R2
+        MOV     (SP)+,R0
+        JMP     INTRTN          ; RETURN NOW
+RXQUIT: BIC     #BSYBIT,@RXUNIT ; MARK UNIT AS NOT BUSY
+        CLR     RXUNIT          ; AND RX INTERFACE NOT BUSY EITHER
+        BR      RXEXIT          ; AND WE ARE DONE WITH IT
+        ; HERE IS THE RE-ENTRY POINT THAT IS PLACED IN THE TRAP
+        ; VECTOR FOR THE RX-11
+RX$INT: MOV     R0,-(SP)
+        MOV     R2,-(SP)
+        MOV     R3,-(SP)
+        MOV     R5,-(SP)
+        MOV     #RXCS,R0        ; SET UP STATE FOR CONTINUED OPERATION
+        MOV     RXLENG,R5       ; NOW SET TO GO ON
+        BIC     #RXINTS,(R0)    ; NO UNEXPECTED INTERRUPTS PLEASE
+        BMI     RXERR           ; HIGH BIT ON..GO TO ERROR THING
+        BIT     #2,RXFUNC       ; SEE IF A READ..IF SO THEN
+        BEQ     RXISWT          ; WE WANT TO EMPTY BUFFER
+        MOV     #<RXGO+RXMPTY>,(R0)    ; EMPTY COMMAND
+        JSR     R2,RXMOVE       ; ENTER SUBROUTINE WHICH DOES MOVES
+        MOVB    (R2),(R3)+      ; OP FOR NUMBYTES > 0
+        TSTB    (R2)            ; OP FOR NUMBYTES <= 0
+        TST     R5              ; IF READING AND NO MORE CHARS
+        BEQ     RXQUIT          ; THEN QUIT READING NOW
+RXISWT: MOV     RXSECT,R3       ; SET UP FOR NEXT LOGICAL SECTOR I/O
+        INC     R3
+        MOV     R3,RXSECT       ; FOR FUTURE REFERENCE
+        BIT     #3,R3           ; SEE IF AT BLOCK BOUNDERY
+        BNE     RXAHED          ; IF NOT AT BLOCK, I/O ANYWAY
+        TST     R5              ; IF A BLOCK THOUGH, SEE FI ANY MORE
+        BEQ     RXQUIT          ; BYTES..IF NOT, THEN TIME TO QUIT
+RXAHED: JMP     RXNEXT          ; NEXT SECTOR PLEASE
+
+RXERR:  ; WE END UP HERE IF NAY PROBLEMS CAME UP DURING
+        ; ANY OPERATION.  WE MAY CHOOSE TO RETRY, BUT MORE LIKELY
+        ; JUST QUIT AND RETURN THE ERROR
+        MOV     #<RXGO+RXERRF>,(R0)     ; ASK FOR DETAILED ERROR INFO
+1$:     TSTB    (R0)            ; HANG UNTIL DONE BIT
+        BEQ     1$
+        MOV     @#RXDB,R2       ; GET DETAIL ERROR INFO
+        CMP     #040,R2         ; SEE OF BAD TRACK ADDRESS
+        BEQ     4$
+        CMP     #120,R2         ; SEE OF DISK SURFACE INACCESIBLE
+        BEQ     4$
+        CMP     #210,R2         ; SEE IF PARITY ERROR
+        BEQ     4$              ; GIVE SAME ERROR AS CRC, NO RETRY
+        DEC     RXTRYS
+        BLE     4$
+        JMP     RXRTRY          ; GIVE IT ANOTHER SHOT
+4$:     MOV     #PARERR,R3
+RXSPLT: MOVB    R3,@RXUNIT
+        JMP     RXQUIT          ; FORGET IT, UNIT RAUNCHY
+
+RXMOVE: ; THIS SUBROUTINE TRANSFERS 128 BYTES TO OR FROM THE
+        ; RX-11 INTERFACE RXDB.  THE TWO WORD PARAMETERS
+        ; ARE THE INSTRUCTION I PERFORM FOR THE DATA MOVE ITSELF.
+        ; R2 AND R3 ARE SCRATCH (R2 IS LINKAGE REGISTER THOUGH)
+
+        MOV     (R2)+,RXDOIT    ; INSTRUCTION FOR BYTES > 0
+        MOV     (R2)+,RXDONT    ; INSTRUCTION FOR BYTES <=0
+        MOV     R2,(SP)         ; RETURN ADDRESS..RTS PC
+1$:     TSTB    (R0)            ; WAIT UNTIL TR IS UP
+        BEQ     1$              ; LOOP UNTIL RX ANSWERS
+        MOV     #RXDB,R2        ; OUR PARAMS EXPECT R2=#RXDB
+        MOV     RXBUFA,R3       ; AND R3=CURRENT BYTE BUFFER
+        TST     R5              ; IF ALREADY ZERO, DONT MOVE
+        BEQ     RXDONT          ; ANYTHING AT ALL
+RXDOIT: .WORD 0                 ; USER INSTRUCTION GOES HERE
+1$:     TSTB    (R0)            ; WAIT UNTIL TR OR DONE
+        BEQ     1$
+        BPL     RXDNMV          ; IF NOT TR, THEN MUST BE DONE
+        SOB     R5,RXDOIT       ; DEC AND BNE UNTIL ALL BYTES TRANSFERED
+RXDONT: .WORD 0                 ; USERS EAT CHAR INSTRUCTION
+1$:     TSTB    (R0)            ; WAIT UNTIL TR OR DONE
+        BEQ     1$              ; LOOP HERE UNTIL SOME RESULT
+        BMI     RXDONT          ; TR WAS STILL UP, EAT JUNK CHARS
+        INC     R5              ; TO FOOSET DEC DONE NEXT
+RXDNMV: DEC     R5              ; BE SURE TO COUNT THE LAST BYTE
+        TST     (R0)            ; SEE OF WE HAD AN ERROR INSIDE
+        BPL     1$              ; SKIP ERROR RETURN FO BIT 15 IS FOO
+        MOV     #RXERR,(SP)     ; NOW RTS WILL DUMP RIGHT INTO ERROR
+1$:     MOV     R3,RXBUFA       ; SAVE THE CURRENT BYTE BUCKET
+        RTS     PC              ; GO BACK TO NEXT I/O OR ERROR EXIT
+
+RXABRT: CLR     RXLENG
+1$:     TST     RXUNIT
+        BNE     1$
+        RTS     PC
+
+        .END
+

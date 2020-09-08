@@ -1,0 +1,31 @@
+ERCC UCSD p-System II.0-IV.0 SORT/MERGE Package Release 1.3 - 23-Aug-82
+
+     This disk contains the following TEXT files, comprising the source
+code (Pascal) and documentation of the ERCC SORT/MERGE Package.
+
+        SORT.DOC.TEXT    - Full user documentation of the Package, for use
+                           under versions II.0, II.1 and IV.0 of the UCSD
+                           p-System;
+
+        SORT.MERGE.TEXT  - Pascal source of the main program supporting the
+                           primary SORT, MERGE and CHECK procedures:
+                           configured for use under version IV.0, but with
+                           comments indicating modifications required for
+                           use under versions II.0 and II.1;
+
+        SORT.DUMUN.TEXT  - Pascal source of the minimal User-provided Unit
+                           required in addition to the main program, to the
+                           define file and record structures and key comparison
+                           specifications of the SORT, MERGE and CHECK
+                           procedures, and to define intialisation and
+                           termination procedures: suitable for TEXT or
+                           FILE OF STRING files, with comments indicating
+                           modifications required for other file types;
+
+        SORT.TXTUN.TEXT  - Pascal source of a more generalised User-provided
+                           Unit defining file structures and specifications for
+                           SORT, MERGE and CHECK operations for TEXT or FILE
+                           OF STRING files, for use under version II.0, II.1
+                           or IV.0;
+
+

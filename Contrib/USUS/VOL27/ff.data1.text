@@ -1,0 +1,242 @@
+SEGMENT PROCEDURE DATAIN;
+(*
+     The Segment structure for Datain is as follows:
+
+              |-- Help
+              |                |-- Setup
+              |                |          |-- Openoutputfile
+              |-- ListorZero --|-- List --|-- Closefile
+              |                |          |-- Listit --------|-- Headings
+     Datain --|                |                             |-- Dobottom
+              |                |-- Zeroit
+              |-- Math
+              |-- Init ----------- Openupdatafiles
+              |-- Update
+              |-- Anchor
+
+*)
+CONST
+     GAP = 2;       (* spacing between columns                   *)
+     TITLELINE = 1; (* line to display title on                  *)
+     DESCLINE = 2;  (* line to put col headings on               *)
+     MAXLINES = 63; (* Max num of lines and cols on a screen     *)
+     T_LENGTH = 59;
+     MAP_FORMAT = '#####';  (* Integer Format used for Map pages *)
+     
+TYPE
+     FORMATDESC = PACKED RECORD
+                    BEF: 0..L_CFORMAT;
+                    AFT: 0..L_CFORMAT
+                  END;
+
+     VIEWS      = (NOTSET, ROWCOL, PAGECOL, ROWPAGE);
+     
+     TYPE_CALC  = (NO_C, INIT_C, FINL_C);
+     
+     CALC_ARRAY = PACKED ARRAY[0..0] OF TYPE_CALC;
+     
+     BOOL_ARRAY = PACKED ARRAY[0..0] OF BOOLEAN;
+     
+VAR
+     BEFORE, AFTER: INTEGER;
+     MAP_PAGE, WORK_PAGE, DIDDLED, ERR: BOOLEAN;
+     ANUMBER: NUMBERTYPE;
+     LEGAL: PACKED ARRAY[0..MAXLINES] OF BOOLEAN;
+     CROSS_CALC: ^BOOL_ARRAY;
+     CALC_LIST:  ^CALC_ARRAY;
+     THEFORMAT: PACKED ARRAY[0..MAXLINES] OF FORMATDESC;
+     COL_POS: ARRAY[0..MAXCOL] OF INTEGER;
+     CALC_CASE, REAL_PAGE, CUR_PAGE, CUR_COL, CUR_ROW, ST_COL, LAST_COL,
+       ST_ROW, LAST_ROW, XOFFSET, YOFFSET, SIZE_CROSS_CALC, SIZE_CALC_LIST,
+         NUM_COLS, NUM_ROWS: INTEGER;
+     PLANE: VIEWS;
+     COMMAND: CHAR;
+     LISTCOL, LISTROW, FOOTING, TITLE1, TITLE2, TITLE3: STRING[T_LENGTH];
+     PAGE_TITLE: STRING[L_TITLE];
+     TRUE_DAT_FILE: AFILE;
+     
+PROCEDURE SET_WORK_PAGE;                                    FORWARD;
+PROCEDURE SAVEPAGE;                                         FORWARD;
+PROCEDURE SET_TITLE;                                        FORWARD;
+PROCEDURE GETPNUM( DEFAULT: INTEGER;  VAR ANS: INTEGER );   FORWARD;
+PROCEDURE GETCTLREC( COL: BOOLEAN;  REC: INTEGER );         FORWARD;
+PROCEDURE BEFOREAFTER( FORMAT: STRING );                    FORWARD;
+PROCEDURE CALLNUMBER( Z,Y,X: INTEGER;  WHAT: ACTIONTYPE );  FORWARD;
+PROCEDURE WRITENUM( ROW, COL: INTEGER );                    FORWARD;
+PROCEDURE DISPLAY( CLEARFIRST: BOOLEAN );                   FORWARD;
+
+SEGMENT PROCEDURE HELP;                                     FORWARD;
+SEGMENT PROCEDURE LISTORZERO;                               FORWARD;
+SEGMENT PROCEDURE MATH;                                     FORWARD;
+SEGMENT PROCEDURE INIT;                                     FORWARD;
+SEGMENT PROCEDURE UPDATE;                                   FORWARD;
+SEGMENT PROCEDURE ANCHOR;                                   FORWARD;
+
+SEGMENT PROCEDURE HELP;
+BEGIN  (* HELP *)
+  PROMPT('Help',MSG_LINE-1);
+  (*$B 40COL- *)
+  PRESSRETURN('A => Anchor:   Set screen display coordinates,',     MSG_LINE);
+  PRESSRETURN('U => Update:   Enter data into FORM,',               MSG_LINE);
+  PRESSRETURN('M => Math:     Perform prescribed calculations,',    MSG_LINE);
+  PRESSRETURN('Z => Zero:     Set selected FORM elements to Zero,', MSG_LINE);
+  PRESSRETURN('N => Nullify:  Set selected FORM elements to Null,', MSG_LINE);
+  PRESSRETURN('L => List:     List selected FORM elements,',        MSG_LINE);
+  PRESSRETURN('S => Save:     Save current page on diskette,',      MSG_LINE);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PRESSRETURN('Anchor:  Change Anchor,',   MSG_LINE);
+  PRESSRETURN('Update:  Enter data,',      MSG_LINE);
+  PRESSRETURN('Math:    Perform Math,',    MSG_LINE);
+  PRESSRETURN('Zero:    Zero FORM cells,', MSG_LINE);
+  PRESSRETURN('Nullify: Null FORM cells,', MSG_LINE);
+  PRESSRETURN('List:    List FORM cells,', MSG_LINE);
+  PRESSRETURN('Save:    Save page,',       MSG_LINE);
+  (*$E 40COL  *)
+END;   (* of help *)
+
+SEGMENT PROCEDURE LISTORZERO;
+TYPE
+     OUT_DESC = RECORD
+                  COL_NUMBER, COL_WIDTH: INTEGER
+                END;
+VAR
+     OUT_COL: ARRAY[1..MAXCOL] OF OUT_DESC;
+     WIDTH,PRINT_LINE,PAGE,I,J,ROW,ROW_CNT,COL_CNT: INTEGER;
+     WPFILE, TOPRINTER: BOOLEAN;
+     VOL: STRING[7];
+     FNAME: STRING[10];
+     THELIST: STRING[T_LENGTH];
+
+
+PROCEDURE LEAVE;                                                        FORWARD;
+PROCEDURE ONEPAIR( VAR PT, BEG, LAST: INTEGER );                        FORWARD;
+
+SEGMENT PROCEDURE SETUP( VAR CNT: INTEGER;  THEROWS: BOOLEAN;
+                            VAR PRINTLIST: STRING;  DOWHAT: STRING );   FORWARD;
+SEGMENT PROCEDURE LIST;                                                 FORWARD;
+SEGMENT PROCEDURE ZEROIT( DOWHAT: STRING;  TOZEROS: BOOLEAN );          FORWARD;
+
+
+SEGMENT PROCEDURE SETUP{ VAR CNT: INTEGER;  THEROWS: BOOLEAN;
+                            VAR PRINTLIST: STRING;  DOWHAT: STRING };
+VAR
+     MAX, HIGH, FIRST, START, NUM, INC, PT, BEG: INTEGER;
+     FIRSTONE, A_OK: BOOLEAN;
+     WHAT: STRING[7];
+     
+PROCEDURE SET_OUT(NUM: INTEGER);
+
+  PROCEDURE SHOWERR(ERRNUM: INTEGER);
+  BEGIN
+    A_OK := FALSE;
+    GOTOXY(PT-1,MSG_LINE+1);
+    WRITE(OUTPUT,' <- ');
+    DELETE(PRINTLIST,LENGTH(PRINTLIST),1);  (* Delete the inserted comma *)
+    FOR I := PT TO LENGTH(PRINTLIST) DO WRITE(OUTPUT,PRINTLIST[I]);
+    IS := '';
+    CASE ERRNUM OF
+      1: IF CNT <= 1 THEN  (* Additional check on CNT added  SDA 6/26/81 *)
+           (*$B 40COL- *)
+           IS := 'Line width is too small for ANY Columns to fit'
+           (*$E 40COL  *)
+           (*$B 40COL+ *)
+           IS := 'No Columns will fit'
+           (*$E 40COL  *)
+         ELSE
+           BEGIN           (* Change  SDA 5/7/81 *)
+             ENCODE(OUT_COL[ CNT-1 ].COL_NUMBER,IS);
+             (*$B 40COL- *)
+             IS := CONCAT('Can only fit thru ',WHAT,' ',IS,',')
+             (*$E 40COL  *)
+             (*$B 40COL+ *)
+             IS := CONCAT('Can fit thru ',WHAT,' ',IS,',')
+             (*$E 40COL  *)
+           END;
+      2: IS := 'Illegal value,'
+    END;
+    PRESSRETURN(IS,MSG_LINE+2);
+    ERASE(MSG_LINE+2);
+    ERASE(MSG_LINE+1)
+  END;
+
+BEGIN
+  CNT := CNT + 1;
+  (* MOD by SDA  9/22/81 *)
+  IF (CNT > MAXCOL) AND (NOT THEROWS) THEN SHOWERR(1)  ELSE
+  IF NOT (NUM IN [1..HIGH]) THEN SHOWERR(2)  ELSE
+  IF NOT THEROWS THEN
+    WITH OUT_COL[ CNT ] DO BEGIN
+      COL_NUMBER := NUM;
+      IF COMMAND = 'L' THEN (* Listing so checkout total width of line so far *)
+        BEGIN
+          COL_WIDTH := COL_POS[ NUM ] - COL_POS[ NUM - 1 ];
+          WIDTH := WIDTH + COL_WIDTH;
+          IF TOPRINTER AND (WIDTH >= CHARS_PER_LINE) THEN SHOWERR(1)
+        END
+    END
+END;
+
+BEGIN (* SETUP *)
+  WITH DIRECTORY^ DO
+    IF THEROWS THEN                (* Change SDA 5/5/81 *)
+      IF PLANE = PAGECOL THEN
+        BEGIN  WHAT := 'Page';    HIGH := NO_PAGES;  MAX := NO_PAGES   END
+      ELSE
+        BEGIN  WHAT := 'Row';     HIGH := NO_ROWS;   MAX := THEMAXROW  END
+    ELSE
+      IF PLANE = ROWPAGE THEN
+        BEGIN  WHAT := 'Page';    HIGH := NO_PAGES;  MAX := NO_PAGES   END
+      ELSE
+        BEGIN  WHAT := 'Column';  HIGH := NO_COLS;   MAX := THEMAXCOL  END;
+  
+  (*$B 40COL- *)
+  PROMPT(CONCAT('Enter sequences of ',WHAT,'s (XX-XX,YY-YY) to ',DOWHAT,
+                   ' below'),MSG_LINE);
+  WRITE(OUTPUT,' (there are ',HIGH,')');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PROMPT(CONCAT('Enter ',WHAT,'s to ',DOWHAT),MSG_LINE);
+  WRITE(OUTPUT,' (max ',HIGH,')');
+  (*$E 40COL  *)
+  REPEAT
+    CNT := 0;   PT := 1;
+    FIRSTONE := TRUE;   A_OK := TRUE;
+    WIDTH := COL_POS[0];
+    ACCEPTSTR(TRUE,T_LENGTH-1,0,MSG_LINE+1,PRINTLIST,IS);
+    IF IS = 'ESCAPE' THEN  LEAVE  ELSE  PRINTLIST := IS;
+    PRINTLIST := CONCAT(PRINTLIST,',');   (* comma stopper at end of string *)
+    REPEAT
+      WHILE NOT ( (PRINTLIST[PT] IN DIGITS) OR (PRINTLIST[PT]=',') ) DO
+        PT := PT + 1;
+      IF PRINTLIST[PT] = ',' THEN BEGIN  PT := PT + 1;  FIRSTONE := TRUE  END
+      ELSE  (* must be a number *)
+        BEGIN
+          START := PT;
+          WHILE PRINTLIST[PT] IN DIGITS DO PT := PT+1; (* find end of number *)
+          VALUE(TRUE,COPY(PRINTLIST,START,PT-START),FAKE,NUM);
+          IF FIRSTONE THEN
+            BEGIN  SET_OUT(NUM);  BEG := NUM;  FIRSTONE := FALSE  END
+          ELSE  (* second number so generate a sequence *)
+            BEGIN
+              IF THEROWS THEN  FIRST := BEG
+              ELSE (*thecols*) FIRST := OUT_COL[ CNT ].COL_NUMBER;
+              IF FIRST <> NUM THEN  (* legitimate sequence *)
+                BEGIN
+                  IF FIRST > NUM THEN INC := -1 ELSE INC := 1;
+                  REPEAT
+                    FIRST := FIRST + INC;
+                    SET_OUT(FIRST)
+                  UNTIL (NOT A_OK) OR (FIRST = NUM)
+                END;
+              FIRSTONE := TRUE
+            END
+        END
+    UNTIL (NOT A_OK) OR (PT >= LENGTH(PRINTLIST))
+  UNTIL A_OK;
+  DELETE(PRINTLIST,LENGTH(PRINTLIST),1);  (* get rid of added comma *)
+  IF CNT = 0 THEN LEAVE;                  (* Bug fix  SDA 3/4/81    *)
+  ERASE(MSG_LINE+1)
+END;  (* of setup *)
+
+

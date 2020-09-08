@@ -1,0 +1,305 @@
+{$P+}
+SEGMENT PROCEDURE CLOSELOG ;
+VAR
+  RESULT        : INTEGER ;
+BEGIN
+  IF LOGOPEN
+    THEN
+      BEGIN
+      WRITELN ;
+      IF BLOCKED
+        THEN
+          BEGIN
+          IF LOGINDEX > 0
+            THEN
+              FLUSHBLOCKED ;
+          WRITELN( 'Current logfile size is ',
+                   BLOCKS_WRITTEN,
+                   ' blocks.' ) ;
+          IF QUESTION( CONCAT( 'Save ', LOGFILENAME ) )
+            THEN
+              CLOSE( BLOCKFILE, LOCK )
+            ELSE
+              CLOSE( BLOCKFILE, PURGE ) ;
+          END
+        ELSE
+          CLOSE( LOGFILE, LOCK ) ;
+      RESULT := IORESULT ;
+      WRITELN ;
+      WRITE( LOGFILENAME ) ;
+      IF RESULT = 0
+        THEN
+          BEGIN
+          WRITELN(' HAS BEEN CLOSED.' ) ;
+          LOGOPEN := FALSE ;
+          END
+        ELSE
+          WRITELN(' FAILED TO CLOSE.  IORESULT = ', RESULT ) ;
+      END ;
+END ;
+
+
+{$P+}
+SEGMENT PROCEDURE SETLOGFILENAME ;
+VAR
+  LEN           : INTEGER ;
+  RESULT        : INTEGER ;
+  BLOCK         : PACKED ARRAY[0..1023] OF CHAR ;
+  
+PROCEDURE FOLD( VAR STR : STRING ) ;
+VAR
+  I     : INTEGER ;
+BEGIN
+  FOR I := 1 TO LENGTH( STR ) DO
+    IF STR[I] IN ['a'..'z']
+      THEN
+        STR[I] := CHR( ORD( STR[I] ) - 32 ) ;
+END ; { FOLD }
+
+BEGIN
+
+  WRITELN ;
+  CLOSELOG ;
+  
+(*$I-*)
+
+  REPEAT
+    WRITELN ;
+    WRITE  ( 'What is the new log filename? ') ;
+    READLN ( LOGFILENAME ) ;
+    LEN := LENGTH( LOGFILENAME ) ;
+    IF LEN = 0 
+      THEN
+        EXIT( SETLOGFILENAME ) ;
+    FOLD( LOGFILENAME ) ;
+    IF (LOGFILENAME = 'PRINTER:') OR 
+       (LOGFILENAME = '#6:'     ) OR
+       (LOGFILENAME = '#6'      ) OR
+       (LOGFILENAME = 'CONSOLE:') OR
+       (LOGFILENAME = '#1:'     ) OR
+       (LOGFILENAME = '#1'      )
+      THEN
+        BEGIN
+        RESULT := 1 ;
+        BLOCKED := FALSE ;
+        END
+      ELSE
+        BEGIN
+        ADD_TEXT( LOGFILENAME ) ;
+        BLOCKED := TRUE ;
+        RESET  ( LOGFILE, LOGFILENAME ) ;
+        RESULT := IORESULT ;
+        END ;
+    IF RESULT = 0
+      THEN
+        BEGIN
+        CLOSE( LOGFILE, LOCK ) ;
+        RESULT := 1 ;
+        WRITELN ;
+        WRITELN( LOGFILENAME, ' exists!  Try another name.' ) ;
+        END
+      ELSE
+        IF LENGTH( LOGFILENAME ) > 0
+          THEN
+            BEGIN
+            WRITE( 'OPEN OF ', LOGFILENAME, ' ' ) ;
+            IF BLOCKED
+              THEN
+                REWRITE( BLOCKFILE, LOGFILENAME )
+              ELSE
+                REWRITE( LOGFILE, LOGFILENAME ) ;
+            RESULT := IORESULT ;
+            LOGOPEN := RESULT = 0 ;
+            IF NOT LOGOPEN
+              THEN
+                WRITELN( ' FAILED.  REWRITE RESULT = ', RESULT )
+              ELSE
+                WRITELN( ' WAS SUCCESSFUL.' ) ;
+            END ;
+  UNTIL LOGOPEN ;
+  WRITELN ;
+
+  IF BLOCKED
+    THEN
+      BEGIN
+      FILLCHAR( BLOCK, SIZEOF(BLOCK), CHR( 0 ) ) ;
+      { Write two blocks of nulls as the first two blocks of
+        the ".TEXT" file.                       }
+      IF BLOCKWRITE( BLOCKFILE, BLOCK, 2, 0 ) <> 2
+        THEN
+          WRITELN( 'Error writing overhead blocks!' ) ;
+      BLOCKS_WRITTEN := 2 ;
+      END ;
+(*$I+*)
+
+END ;
+
+
+{$P+}
+SEGMENT PROCEDURE SAVELOG ;
+CONST
+  BLANK         = ' ' ;
+  RETURNCHAR    =  13 ;
+VAR
+  C             : CHAR ;
+  I             : 0 .. LOGLIMIT ;
+  LINECOUNT     : INTEGER ;
+  RESULT        : INTEGER ;
+  TILDE         : CHAR ;
+  TRASH         : CHAR ;
+  UNITSIZE      : INTEGER ;
+  WRITTEN       : BOOLEAN ;
+
+PROCEDURE DOTS ;
+BEGIN
+  IF LINECOUNT >= 50
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITE( ' ': 11 ) ;
+      LINECOUNT := 1 ;
+      END
+    ELSE
+      LINECOUNT := LINECOUNT + 1 ;
+  WRITE( '.' ) ;
+END ;
+
+
+PROCEDURE DO_BLOCKED ;
+VAR
+  BASE          : INTEGER ;
+  INDEX         : 0..1024 ;
+  BLK_BUFFER    : PACKED ARRAY[0..1023] OF CHAR ;
+BEGIN
+  RESULT := 0 ;
+  IF LOGINDEX < 1023
+    THEN
+      EXIT( DO_BLOCKED ) ;
+  BASE   := 0 ;
+  REPEAT
+    MOVELEFT( LOG_ARRAY[BASE], BLK_BUFFER[0], 1024 ) ;
+    INDEX := 1024 ;
+    REPEAT { Find last <return> in buffer }
+      INDEX := INDEX - 1 ;
+    UNTIL (INDEX = 0) OR (BLK_BUFFER[INDEX] = CHR(RETURNCHAR) );
+    IF INDEX < 1023
+      THEN
+        FILLCHAR( BLK_BUFFER[INDEX + 1], 1023 - INDEX, CHR( 0 ) ) ;
+    IF BLOCKWRITE( BLOCKFILE, BLK_BUFFER, 2 ) <> 2
+      THEN
+        BEGIN
+        WRITELN( 'Failure during logsave.  Logsave aborted.' ) ;
+        RESULT := 99 ;
+        END
+      ELSE
+        BLOCKS_WRITTEN := BLOCKS_WRITTEN + 2 ;
+    DOTS ;
+    BASE     := BASE + INDEX + 1 ;
+    LOGINDEX := LOGINDEX - (INDEX + 1) ;
+  UNTIL (LOGINDEX < 1023) OR (RESULT <> 0) ;
+  MOVELEFT( LOG_ARRAY[BASE], LOG_ARRAY[0], LOGINDEX ) ;
+  IF RESULT <> 0 
+    THEN
+      EXIT(SAVELOG) ;
+  WRITELN ;
+  WRITELN( 'Current logfile size is ', 
+           BLOCKS_WRITTEN,
+           ' blocks.' ) ;
+END ; { DO_BLOCKED }
+
+BEGIN
+  WRITELN ;
+  TILDE := '~' ;
+  IF NOT LOGOPEN
+    THEN
+      BEGIN
+      WRITELN( 'THE LOG FILE IS NOT OPEN!' ) ;
+      WRITELN ;
+      EXIT( SAVELOG ) ;
+      END ;
+  
+  IF LOGINDEX < 1
+    THEN
+      EXIT( SAVELOG ) ;
+      
+  { LOGINDEX points to the next available character 
+    position in the buffer.  Decrement LOGINDEX by one
+    so that it points to the last character entered.  }
+  LOGINDEX := LOGINDEX - 1 ;
+  WRITELN( 'There are ', LOGINDEX, ' characters in the log.');
+  
+  IF NOT BLOCKED
+    THEN
+      BEGIN
+      REPEAT
+        WRITELN( 'How many lines/page? ' ) ;
+{$I-}
+        READLN( UNITSIZE ) ;
+{$I+}
+      UNTIL UNITSIZE > 10 ;
+      PAGE( LOGFILE ) ;
+      WRITELN( 'Writing log to ', LOGFILENAME )
+      END
+    ELSE
+      BEGIN
+      WRITELN( 'WRITING LOG (', LOGFILENAME, ').' ) ;
+      WRITE  ( ' ':11 ) ;
+      END ;
+  
+  LINECOUNT     := 0 ;
+  
+  IF BLOCKED
+    THEN
+      DO_BLOCKED 
+    ELSE
+      BEGIN
+      FOR I := 0 TO LOGINDEX DO
+        BEGIN
+        C := LOGARRAY[ I ] ;
+        IF    (C >= BLANK)
+          AND (C <= TILDE)
+          THEN
+            BEGIN
+            WRITTEN := TRUE ;
+            WRITE( LOGFILE, C ) ;
+            END
+          ELSE
+            IF C = CHR( RETURNCHAR )
+              THEN
+                IF WRITTEN
+                  THEN
+                    BEGIN
+                    WRITELN( LOGFILE ) ;
+                    IF LINECOUNT >= UNITSIZE
+                      THEN
+                        BEGIN
+                        WRITE( 'PRESS ANY KEY TO CONTINUE' ) ;
+                        REPEAT
+                        UNTIL CR_KBSTAT ;
+                        TRASH := CR_GETKB ;
+                        LINECOUNT := 0 ;
+                        PAGE( LOGFILE ) ;
+                        END
+                      ELSE
+                        LINECOUNT := LINECOUNT + 1 ;
+                    END ;
+      CLEAR_LOG ;
+      END ;
+  
+    LOGINDEX := LOGINDEX + 1 ; { Point to next available position. }
+    RESULT := IORESULT ;
+    IF RESULT <> 0
+      THEN
+        BEGIN
+        WRITELN ;
+        WRITELN( 'BAD RETURN IN SAVELOG: ', RESULT ) ;
+        WRITELN( 'TERMINATING LOG SAVE' ) ;
+        WRITELN ;
+        EXIT( SAVELOG ) ;
+        END ;
+    END ; (* FOR *)
+  
+  WRITELN ;
+
+END ;
+

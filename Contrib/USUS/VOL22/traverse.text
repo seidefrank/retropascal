@@ -1,0 +1,736 @@
+{$L- TRAVERSE.LIST}
+
+{
+                                                  program by:  EDWARD J GRUNDLER
+
+     Changes made and comments by reviewer:
+        This program used REMOTE and was written to be used with
+          a DECWRITER (presumably an older model than the reviewer's
+          DECWRITER IV).  An attempt was made to substitute REMIN
+          and REMOUT for REMOTE, but this change was not tested.
+          The present program uses a rather crude, but presumably
+          effective, way of preventing the computer from outrunning
+          the printer. The hard copy output could be greatly simplified
+          by using PRINTER: or by providing assembly language drivers.
+        Reversed ranges on type SCREEN.
+        Replaced PAGE(OUTPUT) by CLEARSCREEN.
+        Removed definitions of CEOL,EOP,RLF.
+        Added line DEFINESTRINGS to main program.
+        Changed EOP to CEOP.
+        Provided missing unit PLOTTER.
+        Changed TTY to TTYIN AND TTYOUT (hopefully correctly).
+        Defined UP and DOWN (for use with PLOTTER).
+                 ---Henry E. Baumgarten
+}
+
+PROGRAM TRAVERSE;
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF, PLOTTER;
+CONST MAX_NO_OF_SIDES = 50;
+      F_TO_M = 0.3048;
+      R_TO_D = 57.29577951;
+      SQ_FT_TO_ACRES = 43560.0;
+      UP = 0;
+      DOWN = 1;
+TYPE SCREEN = PACKED ARRAY[0..239,0..319] OF BOOLEAN;
+     REAL_ARRAY = ARRAY[1..MAX_NO_OF_SIDES] OF REAL;
+     CHAR_ARRAY = ARRAY[1..MAX_NO_OF_SIDES] OF CHAR;
+VAR CLOSE_D,CLOSE_M,SIDES,I:INTEGER;
+    CLOSE_S,DX,DY,FT_SQ,M_SQ,ACRES,N_MIN,N_MAX,RNG,E_MIN,E_MAX:REAL;
+    REF_D,REF_M,REF_S,REF,PRECISION,PERIMETER,CLOSURE:REAL;
+    FEET:BOOLEAN;
+    L,LA,LB,CLOSE_L1,CLOSE_L2,ANSWER:CHAR;
+    TITLE:STRING;
+    SIDE,DIR,NORTH,EAST,X,Y,XC,YC,DEG,MIN,SEC,SLOPE:REAL_ARRAY;
+    L1,L2,L3:CHAR_ARRAY;
+
+PROCEDURE DRAWLINE(VAR R:INTEGER;
+                   VAR S:SCREEN; RW,XSTRT,YSTRT,DX,DY,INK:INTEGER);
+EXTERNAL;
+
+PROCEDURE DIS_TO_BEAR(X,Y:REAL; VAR D,M:INTEGER; VAR S:REAL; VAR L1,L2:CHAR);
+VAR DIST:REAL;
+BEGIN
+  DIST:=SQRT(SQR(Y)+SQR(X));
+  IF Y=0 THEN S:=90 ELSE S:=ABS(ATAN(X/Y))*R_TO_D;
+  D:=TRUNC(S);
+  S:=(S-D)*60;
+  M:=TRUNC(S);
+  S:=(S-M)*60;
+  IF Y<0 THEN L1:='S' ELSE L1:='N';
+  IF X<0 THEN L2:='W' ELSE L2:='E'
+END;
+
+PROCEDURE PLOT_PAPER;
+CONST SIZE = 1400;
+VAR INC:REAL;
+    J,XEND,YEND:INTEGER;
+BEGIN
+  INITPLOT;
+  INC:=RNG/SIZE;
+  XEND:=ROUND((EAST[1]-E_MIN)/INC);
+  YEND:=ROUND((NORTH[1]-N_MIN)/INC);
+  WRITELN('put PAPER in the PLOTTER and press RETURN to continue');
+  READLN;
+  WRITELN('the LOWER LEFT corner of the plot is location X = 0, Y = 0');
+  PLOT(UP,XEND,YEND);
+  XEND:=XEND+20;
+  PLOT(DOWN,XEND,YEND);
+  XEND:=XEND-40;
+  PLOT(DOWN,XEND,YEND);
+  XEND:=XEND+20;
+  PLOT(DOWN,XEND,YEND);
+  YEND:=YEND+20;
+  PLOT(DOWN,XEND,YEND);
+  YEND:=YEND-40;
+  PLOT(DOWN,XEND,YEND);
+  YEND:=YEND+20;
+  PLOT(DOWN,XEND,YEND);
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      J:=I MOD SIDES+1;
+      XEND:=ROUND((EAST[J]-E_MIN)/INC);
+      YEND:=ROUND((NORTH[J]-N_MIN)/INC);
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND+20;
+      YEND:=YEND+20;
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND-40;
+      YEND:=YEND-40;
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND+20;
+      YEND:=YEND+20;
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND+20;
+      YEND:=YEND-20;
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND-40;
+      YEND:=YEND+40;
+      PLOT(DOWN,XEND,YEND);
+      XEND:=XEND+20;
+      YEND:=YEND-20;
+      PLOT(DOWN,XEND,YEND)
+    END;
+  PLOT(UP,1700,1000);
+  PLOT(DOWN,1700,1200);
+  PLOT(DOWN,1660,1160);
+  PLOT(UP,1680,1220);
+  PLOT(DOWN,1680,1260);
+  PLOT(DOWN,1720,1220);
+  PLOT(DOWN,1720,1260);
+  PLOT(UP,0,0)
+END;
+
+PROCEDURE PLOT_SCREEN;
+CONST SIZE = 240;
+VAR MIN,MID,MAX,INC:REAL;
+    R,J,XSTRT,XSTP,YSTRT,YSTP:INTEGER;
+    S:SCREEN;
+BEGIN
+  CLEARSCREEN;
+  FILLCHAR(S,SIZEOF(S),CHR(0));
+  UNITWRITE(3,S,63);
+  N_MAX:=NORTH[1];
+  N_MIN:=NORTH[1];
+  E_MAX:=EAST[1];
+  E_MIN:=EAST[1];
+  FOR I:=2 TO SIDES DO
+    BEGIN
+      IF NORTH[I]>N_MAX THEN N_MAX:=NORTH[I]
+      ELSE IF NORTH[I]<N_MIN THEN N_MIN:=NORTH[I];
+      IF EAST[I]>E_MAX THEN E_MAX:=EAST[I]
+      ELSE IF EAST[I]<E_MIN THEN E_MIN:=EAST[I];
+    END;
+  IF (N_MAX-N_MIN)>(E_MAX-E_MIN) THEN
+    BEGIN
+      MAX:=N_MAX+(N_MAX-N_MIN)/18;
+      MIN:=N_MIN-(N_MAX-N_MIN)/18
+    END
+  ELSE
+    BEGIN
+      MAX:=E_MAX+(E_MAX-E_MIN)/18;
+      MIN:=E_MIN-(E_MAX-E_MIN)/18
+    END;
+  RNG:=MAX-MIN;
+  INC:=RNG/SIZE;
+  MID:=(N_MAX+N_MIN)/2;
+  N_MAX:=MID+INC*120;
+  N_MIN:=MID-INC*120;
+  MID:=(E_MAX+E_MIN)/2;
+  E_MAX:=MID+INC*120;
+  E_MIN:=MID-INC*120;
+  YSTRT:=ROUND((N_MAX-NORTH[1])/INC);
+  XSTRT:=279-ROUND((E_MAX-EAST[1])/INC);
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      J:=I MOD SIDES + 1;
+      YSTP:=ROUND((N_MAX-NORTH[J])/INC);
+      XSTP:=279-ROUND((E_MAX-EAST[J])/INC);
+      DRAWLINE(R,S,20,XSTRT,YSTRT,XSTP-XSTRT,YSTP-YSTRT,1);
+      XSTRT:=XSTP;
+      YSTRT:=YSTP
+    END;
+  WRITELN('press');
+  WRITELN('RETURN');
+  WRITELN('to');
+  WRITELN('continue');
+  READLN;
+  CLEARSCREEN;
+  UNITWRITE(3,S,7)
+END;
+
+FUNCTION INPUT_VALUE:REAL;
+
+{
+                                                 function by:  EDWARD J GRUNDLER
+}
+
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+      OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+          OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(RLF,'READ ERROR, TRY AGAIN ',CEOL)
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+        EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE PRINTOUT;
+VAR TTYOUT,TTYIN:INTERACTIVE;
+    BEAR_D,BEAR_M,J:INTEGER;
+    BEAR_S,DIST:REAL;
+    CR,LF,L1,L2:CHAR;
+  PROCEDURE DECWAIT; {TO PREVENT DATA OVERRUN AT 9600 BAUD}
+
+  {
+                                                procedure by:  EDWARD J GRUNDLER
+  }
+  
+  VAR HOLD:CHAR;
+      TTYIN:INTERACTIVE;
+  BEGIN {DECWAIT}
+    HOLD:=' ';
+    RESET(TTYIN,'REMIN:');
+    UNITREAD(7,HOLD,1,,1);
+    IF UNITBUSY(7) THEN UNITCLEAR(7)  (*???*)
+    ELSE
+      BEGIN
+        IF HOLD = CHR(19) THEN  {CTRL S}
+          REPEAT
+            READ(TTYIN,HOLD)
+          UNTIL HOLD = CHR(17)  {CTRL Q}
+      END;
+  END; {DECWAIT}
+  PROCEDURE PRIN_2;
+  BEGIN {PRIN_2}
+    WRITE(TTYOUT,PERIMETER:17:3,'                     ',DY:10:3,DX:10:3,CR);
+    DECWAIT;
+    FOR I:=1 TO 4 DO WRITE(TTYOUT,LF);
+    WRITE(TTYOUT,'ABOVE DATA ARE IN ');
+    IF FEET THEN WRITE(TTYOUT,'FEET',CR,LF,LF) ELSE WRITE(TTYOUT,'METERS',CR,LF,LF);
+    WRITE(TTYOUT,'TRAVERSE COMPUTATION AND ADJUSTMENT BY THE COMPASS RULE',CR);
+    FOR I:=1 TO 4 DO WRITE(TTYOUT,LF);
+    DECWAIT;
+    WRITE(TTYOUT,'CLOSURE = ');
+    IF FEET THEN
+      WRITE(TTYOUT,CLOSURE:6:4,' FT   = ',CLOSURE*F_TO_M:6:4,' M      ')
+    ELSE
+      WRITE(TTYOUT,CLOSURE/F_TO_M:6:4,' FT   = ',CLOSURE:6:4,' M      ');
+    WRITE(TTYOUT,'CLOSURE BEARING IS ',CLOSE_L1,CLOSE_D:2,CLOSE_M:3,CLOSE_S:5:1,
+          CLOSE_L2,CR,LF);
+    DECWAIT;
+    WRITE(TTYOUT,LF,'PRECISION = 1 IN ',PRECISION:8:3,CR,LF,LF);
+    DECWAIT;
+    WRITE(TTYOUT,'AREA = ',FT_SQ:8:3,' SQ. FT.   = ',M_SQ:8:3,' SQ. M.   = ',
+          ACRES:6:3,' ACRES',CR,LF);
+    PAGE(TTYOUT)
+  END; {PRIN_2}
+BEGIN {PRINTOUT}
+  CR:=CHR(13);
+  LF:=CHR(10);
+  REWRITE(TTYOUT,'REMOUT:');
+  RESET(TTYIN,'REMIN:');
+  CLEARSCREEN;
+  WRITELN('position PAPER to top of page and press RETURN on DECWRITER');
+  READLN(TTYIN);
+  {The following line contains commands to the printer, presumably to
+   set character widths on the dot matrix DECWRITER. One would guess that
+   TITLE is set in wide char and the text in smaller char.---heb}
+  WRITE(TTYOUT,CHR(27),CHR(91),CHR(53),CHR(119),TITLE,CR,LF,LF,CHR(27),CHR(91),
+        CHR(49),CHR(119));
+  FOR I:=1 TO 44 DO WRITE(TTYOUT,' ');
+  WRITE(TTYOUT,'UNBALANCED           BALANCED              ',
+        'CORRECTED                  COORDINATES',CR,LF,'COURSE    LENGTH     ',
+        'AZIMUTH     SLOPE     LAT       DEP       LAT       DEP     ',
+        'DISTANCE     BEARING     STA    NORTH     EAST',CR,LF,LF);
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      J:=I MOD SIDES+1;
+      DIS_TO_BEAR(XC[I],YC[I],BEAR_D,BEAR_M,BEAR_S,L1,L2);
+      DIST:=SQRT(SQR(XC[I])+SQR(YC[I]));
+      WRITE(TTYOUT,I:2,' -',J:2,SIDE[I]:11:3,ROUND(DEG[I]):5,ROUND(MIN[I]):3,
+            SEC[I]:5:1,SLOPE[I]:8:3,Y[I]:10:3,X[I]:10:3,YC[I]:10:3,XC[I]:10:3,
+            DIST:10:3,'   ',L1,BEAR_D:2,BEAR_M:3,BEAR_S:5:1,L2,' |',I:3,
+            NORTH[I]:13:3,EAST[I]:10:3,CR,LF);
+      DECWAIT
+    END;
+  PRIN_2
+END;
+
+PROCEDURE D_TO_DMS(I:INTEGER);
+BEGIN
+  SEC[I]:=DIR[I];
+  DEG[I]:=TRUNC(SEC[I]);
+  SEC[I]:=(SEC[I]-DEG[I])*60;
+  MIN[I]:=TRUNC(SEC[I]+0.00833333);
+  SEC[I]:=ABS((SEC[I]-MIN[I])*60)
+END;
+
+PROCEDURE QUERY(STR:STRING);
+BEGIN
+  WRITE(STR);
+  REPEAT READ(KEYBOARD,ANSWER) UNTIL ANSWER IN ['Y','y','N','n'];
+  WRITELN
+END;
+
+PROCEDURE DISPLAY;
+VAR J:INTEGER;
+  PROCEDURE DISP_2;
+  BEGIN {DISP_2}
+    WRITE('CLOSURE = ');
+    IF FEET THEN WRITE(CLOSURE:6:4,' FT   = ',CLOSURE*F_TO_M:6:4,' M      ')
+    ELSE WRITE(CLOSURE/F_TO_M:6:4,' FT   = ',CLOSURE:6:4,' M      ');
+    WRITELN('CLOSURE BEARING IS ',CLOSE_L1,CLOSE_D:2,CLOSE_M:3,CLOSE_S:5:1,
+            CLOSE_L2);
+    WRITELN;
+    WRITELN('PRECISION = 1 IN ',PRECISION:8:3);
+    WRITELN;
+    WRITELN('AREA = ',FT_SQ:6:1,' SQ. FT.   = ',M_SQ:6:1,' SQ. M.   = ',ACRES:6:3,
+            ' ACRES');
+    WRITELN;
+    WRITELN('press RETURN to continue');
+    READLN;
+    CLEARSCREEN
+  END; {DISP_2}
+BEGIN
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      IF (I MOD 18)=1 THEN
+        BEGIN
+          CLEARSCREEN;
+          WRITELN(TITLE);
+          WRITELN;
+          WRITELN('COURSE LENGTH  AZIMUTH     UNBALANCED         BALANCED',
+                  '           COORDINATES');
+          GOTOXY(27,3);
+          WRITELN('LAT      DEP      LAT      DEP   STA NORTH    EAST');
+          WRITELN
+        END;
+      J:=I MOD SIDES+1;
+      WRITELN(I:2,'-',J:2,SIDE[I]:8:3,TRUNC(DEG[I]):4,TRUNC(MIN[I]):3,
+              ROUND(SEC[I]):3,Y[I]:9:3,X[I]:9:3,YC[I]:9:3,XC[I]:9:3,I:3,
+              NORTH[I]:9:2,EAST[I]:9:2);
+      IF I=SIDES THEN WRITE('   ',PERIMETER:10:3,'          ',DY:9:3,DX:9:3);
+      IF ((I MOD 18)=0) OR (I=SIDES) THEN
+        BEGIN
+          GOTOXY(50,23);
+          WRITE('press RETURN to continue');
+          READLN;
+          CLEARSCREEN
+        END
+    END;
+  DISP_2
+END;
+
+PROCEDURE CALCULATE;
+VAR J:INTEGER;
+    TRUE,AREA:REAL;
+  PROCEDURE CALC_2;
+  BEGIN {CALC_2}
+    FOR I:=1 TO SIDES DO
+      BEGIN
+        TRUE:=SIDE[I]*COS(SLOPE[I]/R_TO_D);
+        X[I]:=TRUE*SIN(DIR[I]);
+        Y[I]:=TRUE*COS(DIR[I]);
+        DX:=DX+X[I];
+        DY:=DY+Y[I];
+        PERIMETER:=PERIMETER+TRUE
+      END;
+    CLOSURE:=SQRT(SQR(DX)+SQR(DY));
+    DIS_TO_BEAR(-DX,-DY,CLOSE_D,CLOSE_M,CLOSE_S,CLOSE_L1,CLOSE_L2);
+    IF CLOSURE=0 THEN PRECISION:=999999.0
+    ELSE PRECISION:=PERIMETER/CLOSURE;
+    FOR I:=1 TO SIDES DO
+      BEGIN
+        XC[I]:=X[I]-(SIDE[I]*DX)/PERIMETER;
+        YC[I]:=Y[I]-(SIDE[I]*DY)/PERIMETER;
+        IF NOT (I = SIDES) THEN
+          BEGIN
+            NORTH[I+1]:=NORTH[I]+YC[I];
+            EAST[I+1]:=EAST[I]+XC[I]
+          END
+      END;
+    FOR I:=1 TO SIDES DO
+      BEGIN
+        J:=I MOD SIDES+1;
+        AREA:=AREA+EAST[I]*NORTH[J]-EAST[J]*NORTH[I]
+      END;
+    AREA:=ABS(AREA)/2;
+    IF FEET THEN
+      BEGIN
+        FT_SQ:=AREA;
+        M_SQ:=FT_SQ*SQR(F_TO_M)
+      END
+    ELSE
+      BEGIN
+        M_SQ:=AREA;
+        FT_SQ:=M_SQ/SQR(F_TO_M)
+      END;
+    ACRES:=FT_SQ/SQ_FT_TO_ACRES
+  END; {CALC_2}
+BEGIN {CALCULATE}
+  IF L1[1] IN ['R','r','L','l','I','i','E','e'] THEN
+    BEGIN
+      REF:=180+REF_D+REF_M/60+REF_S/3600;
+      IF L IN ['B','b'] THEN
+        BEGIN
+          IF LA IN ['S','s'] THEN REF:=180-REF;
+          IF LB IN ['W','w'] THEN REF:=360-REF
+        END
+    END;
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      IF NOT(L1[I] IN ['A','a']) THEN DIR[I]:=DEG[I]+MIN[I]/60+SEC[I]/3600;
+      CASE L1[I] OF
+      'A','a','D','d':;
+      'B','b':
+        BEGIN
+          IF L2[I] IN ['S','s'] THEN DIR[I]:=180-DIR[I];
+          IF L3[I] IN ['W','w'] THEN DIR[I]:=360-DIR[I];
+        END;
+      'R','r':IF I=1 THEN DIR[1]:=REF+180+DIR[1]
+                     ELSE DIR[I]:=DIR[I-1]+180+DIR[I];
+      'L','l':IF I=1 THEN DIR[1]:=REF+180-DIR[1]
+                     ELSE DIR[I]:=DIR[I-1]+180-DIR[I];
+      'E','e':IF I=1 THEN DIR[1]:=REF-DIR[1] ELSE DIR[I]:=DIR[I-1]-DIR[1];
+      'I','i':IF I=1 THEN DIR[1]:=REF+DIR[1] ELSE DIR[I]:=DIR[I-1]+DIR[I];
+      END; {OF CASE}
+      REPEAT
+        IF DIR[I]>=360 THEN DIR[I]:=DIR[I]-360
+        ELSE IF DIR[I]<0 THEN DIR[I]:=DIR[I]+360
+      UNTIL (DIR[I]>=0) AND (DIR[I]<360)
+    END;
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      D_TO_DMS(I);
+      DIR[I]:=DIR[I]/R_TO_D
+    END;
+  DX:=0;
+  DY:=0;
+  PERIMETER:=0;
+  AREA:=0;
+  CALC_2
+END;
+
+PROCEDURE INITIALIZE;
+  PROCEDURE GET_REF;
+  BEGIN
+    WRITELN('IS REFERENCE A BEARING OR AN AZIMUTH? ');
+    REPEAT READ(KEYBOARD,L) UNTIL L IN ['B','b','A','a'];
+    IF L IN ['B','b'] THEN
+      BEGIN
+        WRITELN('ENTER QUADRANT');
+        REPEAT
+          READ(KEYBOARD,LA,LB)
+        UNTIL (LA IN ['N','n','S','s']) AND (LB IN ['E','e','W','w'])
+      END;
+    WRITE('ENTER DEGREES ');
+    REF_D:=INPUT_VALUE;
+    WRITE('ENTER MINUTES ');
+    REF_M:=INPUT_VALUE;
+    WRITE('ENTER SECONDS ');
+    REF_S:=INPUT_VALUE
+  END; {GET_REF}
+  PROCEDURE GET_ANGLE(J:INTEGER);
+  BEGIN
+    UNITWRITE(3,I,7);
+    WRITELN('WHICH OPTION FOR ANGLE ',J,'? ');
+    REPEAT
+      READ(KEYBOARD,L1[J])
+    UNTIL L1[J] IN ['B','b','R','r','L','l','I','i','E','e','D','d','A','a'];
+    IF (J=1) AND (L1[J] IN ['R','r','L','l','I','i','E','e']) THEN
+      BEGIN
+        WRITELN('CURRENT REFERENCE AZIMUTH IS:  ',TRUNC(REF_D):4,
+                TRUNC(REF_M):3,REF_S:5:1);
+        QUERY('IS THAT CORRECT? ');
+        IF ANSWER IN ['N','n'] THEN GET_REF
+      END;
+    IF L1[J] IN ['B','b'] THEN
+      BEGIN
+        WRITELN('ENTER QUADRANT');
+        REPEAT
+          READ(KEYBOARD,L2[J],L3[J])
+        UNTIL (L2[J] IN ['N','n','S','s']) AND (L3[J] IN ['E','e','W','w'])
+      END;
+    IF L1[J] IN ['A','a'] THEN
+      BEGIN
+        WRITE('ENTER DECIMAL DEGREES ');
+        DIR[J]:=INPUT_VALUE
+      END
+    ELSE
+      BEGIN
+        WRITE('ENTER DEGREES FOR ANGLE ',J,' ');
+        DEG[J]:=INPUT_VALUE;
+        WRITE('ENTER MINUTES ');
+        MIN[J]:=INPUT_VALUE;
+        WRITE('ENTER SECONDS ');
+        SEC[J]:=INPUT_VALUE
+      END;
+    UNITWRITE(3,I,3)
+  END; {GET_ANGLE}
+  PROCEDURE INIT_2;
+  VAR J:INTEGER;
+    PROCEDURE FIX_IT;
+    VAR J:INTEGER;
+        X:REAL;
+    BEGIN {FIX_IT}
+      QUERY('ARE ANY LENGTHS INCORRECT? ');
+      IF ANSWER IN ['Y','y'] THEN
+        BEGIN
+          REPEAT
+            REPEAT
+              WRITE(RLF,'WHICH SIDE IS IN ERROR? ',CEOL);
+              J:=ROUND(INPUT_VALUE)
+            UNTIL (J>((I-1) DIV 12*12)) AND (J<=I);
+            WRITE(RLF,'ENTER NEW VALUE ',CEOL);
+            SIDE[J]:=INPUT_VALUE;
+            GOTOXY(4,(J-1) MOD 12+10);
+            WRITE(SIDE[J]:10:3);
+            GOTOXY(0,I+10);
+            QUERY('ARE THERE ANY MORE LENGTHS THAT ARE INCORRECT? ');
+          UNTIL ANSWER IN ['N','n'];
+        END;
+      WRITE(RLF,CEOL);
+      QUERY('ARE ANY DIRECTIONS IN ERROR? ');
+      IF ANSWER IN ['Y','y'] THEN
+        BEGIN
+          REPEAT
+            REPEAT
+              WRITE(RLF,'WHICH SIDE IS IN ERROR? ',CEOL);
+              J:=ROUND(INPUT_VALUE)
+            UNTIL (J>((I-1) DIV 12*12)) AND (J<=I);
+            GET_ANGLE(J);
+            UNITWRITE(3,I,7);
+            GOTOXY(16,(J-1) MOD 12+10);
+            IF L1[J] IN ['A','a'] THEN WRITE('A   ',DIR[J]:10:4)
+            ELSE
+              BEGIN
+                IF L1[J] IN ['B','b'] THEN WRITE(L1[J],' ',L2[J],L3[J])
+                ELSE WRITE(L1[J],'   ');
+                WRITE(TRUNC(DEG[J]):4,TRUNC(MIN[J]):3,SEC[J]:5:1)
+              END;
+            GOTOXY(0,I+10);
+            QUERY('ARE THERE ANY MORE DIRECTIONS IN ERROR? ');
+            WRITE(CEOP)
+          UNTIL ANSWER IN ['N','n'];
+        WRITE(RLF,CEOL)
+      END
+    END; {FIX_IT}
+    PROCEDURE GET_SLOPES;
+    VAR J:INTEGER;
+        INP:REAL;
+    BEGIN {GET_SLOPES}
+      GOTOXY(34,8);
+      WRITE('SLOPE ANGLE');
+      GOTOXY(0,I+10);
+      REPEAT
+        REPEAT
+          WRITE('WHICH SIDE IS A SLOPE DISTANCE ',CEOL);
+          J:=ROUND(INPUT_VALUE);
+          WRITE(RLF);
+        UNTIL (J>((I-1) DIV 12*12)) AND (J<=I);
+        WRITE('ENTER SLOPE DEGREES ',CEOL);
+        SLOPE[J]:=INPUT_VALUE;
+        GOTOXY(34,(J-1) MOD 12+10);
+        WRITE(ROUND(SLOPE[J]):3);
+        GOTOXY(0,I+10);
+        WRITE('ENTER SLOPE MINUTES ',CEOL);
+        INP:=INPUT_VALUE;
+        GOTOXY(37,(J-1) MOD 12+10);
+        WRITE(ROUND(INP):3);
+        GOTOXY(0,I+10);
+        SLOPE[J]:=SLOPE[J]+INP/60;
+        WRITE('ENTER SLOPE SECONDS ',CEOL);
+        INP:=INPUT_VALUE;
+        GOTOXY(40,(J-1) MOD 12+10);
+        WRITE(INP:5:1);
+        GOTOXY(0,I+10);
+        SLOPE[J]:=(SLOPE[J]+INP/3600);
+        WRITE(CEOL);
+        QUERY('ARE ANY MORE LENGTHS ENTERED AS SLOPE DISTANCES? ')
+      UNTIL ANSWER IN ['N','n']
+    END;
+    PROCEDURE INIT_3;
+    BEGIN {INIT_3}
+      CLEARSCREEN;
+      REPEAT
+        WRITE('ENTER THE NORTH CO-ORDINATE OF STATION "1" ');
+        NORTH[1]:=INPUT_VALUE;
+        WRITE('NORTH CO-ORDINATE IS ',NORTH[1]:8:3);
+        QUERY(' IS THAT CORRECT? ')
+      UNTIL ANSWER IN ['Y','y'];
+      REPEAT
+        WRITE('ENTER THE EAST CO-ORDINATE OF STATION "1" ');
+        EAST[1]:=INPUT_VALUE;
+        WRITE('EAST CO-ORDINATE IS ',EAST[1]:8:3);
+        QUERY(' IS THAT CORRECT? ')
+      UNTIL ANSWER IN ['Y','y'];
+    END; {INIT_3}
+  BEGIN {INIT_2}
+    IF L1[1] IN ['R','r','L','l','I','i','E','e'] THEN
+      REPEAT
+        GOTOXY(0,8);
+        IF L IN ['A','a'] THEN
+          WRITELN('REFERENCE AZIMUTH IS',
+                  TRUNC(REF_D):4,TRUNC(REF_M):4,REF_S:5:1,CEOP)
+        ELSE WRITELN('REFERENCE BEARING IS ',
+                    LA,TRUNC(REF_D):2,TRUNC(REF_M):3,REF_S:5:1,LB,CEOP);
+        QUERY('IS THAT CORRECT? ');
+        IF ANSWER IN ['N','n'] THEN GET_REF
+      UNTIL ANSWER IN ['Y','y'];
+    FOR I:=1 TO SIDES DO
+      BEGIN
+        IF ((I MOD 12) = 1) THEN
+          BEGIN
+            UNITWRITE(3,I,7);
+            GOTOXY(0,8);
+            WRITELN(CEOP,'SIDE   LENGTH   CODE  DIRECTION');
+            WRITELN
+          END;
+        WRITE(I:4,SIDE[I]:10:3,'  ');
+        IF L1[I] IN ['A','a'] THEN WRITELN('A   ',DIR[I]:10:4)
+        ELSE
+          BEGIN
+            IF L1[I] IN ['B','b'] THEN WRITE(L1[I],' ',L2[I],L3[I])
+            ELSE WRITE(L1[I],'   ');
+            WRITELN(TRUNC(DEG[I]):4,TRUNC(MIN[I]):3,SEC[I]:5:1)
+          END;
+        IF ((I MOD 12)=0) OR (I=SIDES) THEN
+          BEGIN
+            QUERY('ARE ALL OF THE ABOVE DATA CORRECT? ');
+            WRITE(RLF,CEOL);
+            IF ANSWER IN ['N','n'] THEN FIX_IT;
+            FOR J:=1 TO SIDES DO SLOPE[J]:=0;
+            QUERY('WERE ANY LENGTHS ENTERED AS SLOPE DISTANCES? ');
+            IF ANSWER IN ['Y','y'] THEN GET_SLOPES;
+            WRITE(RLF,CEOL)
+          END
+      END;
+    INIT_3
+  END; {INIT_2}
+BEGIN {INITIALIZE}
+  DEFINESTRINGS;
+  CLEARSCREEN;
+  REF_D:=0;
+  REF_M:=0;
+  REF_S:=0;
+  REPEAT
+    WRITELN('ENTER THE TITLE OF THE TRAVERSE');
+    READLN(TITLE);
+    WRITELN(TITLE);
+    QUERY('--IS THAT CORRECT? ');
+  UNTIL ANSWER IN ['Y','y'];
+  REPEAT
+    REPEAT
+      WRITE('ENTER NUMBER OF SIDES ');
+      SIDES:=ROUND(INPUT_VALUE);
+      IF SIDES>MAX_NO_OF_SIDES THEN WRITE('MAXIMUM IS ',MAX_NO_OF_SIDES,' --');
+    UNTIL SIDES IN [3..MAX_NO_OF_SIDES];
+    WRITE('TRAVERSE HAS ',SIDES,' SIDES. ');
+    QUERY('IS THAT CORRECT? ')
+  UNTIL ANSWER IN ['Y','y'];
+  REPEAT
+    WRITELN('WILL LENGTHS BE ENTERED IN M(eters OR F(eet? ');
+    READ(KEYBOARD,ANSWER)
+  UNTIL ANSWER IN ['M','m','F','f'];
+  FEET:=ANSWER IN ['F','f'];
+  CLEARSCREEN;
+  UNITWRITE(3,I,3);
+  WRITELN('ENTRY OPTIONS ARE:');
+  WRITELN;
+  WRITELN('B(earing');
+  WRITELN('interior angles to the R(ight or L(eft');
+  WRITELN('deflection angles to the rI(ght or lE(ft');
+  WRITELN('azimuth in D(egrees, minutes and seconds');
+  WRITELN('A(zimuth in decimal degrees');
+  FOR I:=1 TO SIDES DO
+    BEGIN
+      GOTOXY(0,8);
+      WRITE(CEOP,'ENTER HORIZONTAL OR SLOPE LENGTH OF SIDE ',I,' ');
+      SIDE[I]:=INPUT_VALUE;
+      GET_ANGLE(I)
+    END;
+  INIT_2
+END;
+
+BEGIN {TRAVERSE}
+  REPEAT
+    INITIALIZE;
+    CALCULATE;
+    DISPLAY;
+    QUERY('DO YOU WANT A HARD COPY? ');
+    IF ANSWER IN ['Y','y'] THEN PRINTOUT;
+    PLOT_SCREEN;
+    QUERY('DO YOU WANT A HARD COPY? ');
+    IF ANSWER IN ['Y','y'] THEN PLOT_PAPER;
+    QUERY('IS THAT THE LAST TRAVERSE? ')
+  UNTIL ANSWER IN ['Y','y'];
+  CLEARSCREEN
+END {TRAVERSE}.

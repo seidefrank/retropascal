@@ -1,0 +1,89 @@
+
+                          DOCUMENTATION FOR THE FILES 
+                   ON THE UCSD PASCAL USERS' LIBRARY VOLUME 4
+
+1.  PROF. KEN BOWLES' DATABASE SEED
+
+     The major portion of the disk is taken up by Prof. Ken Bowles' database
+seed, which he donated to the users' library as a tutorial on how to build a
+data structure with records of variable size. Originally, it functioned as the
+starting point for student homework projects within a course at UCSD.  It is
+not intended as a commercial product, nor as a foundation for one, and is
+available to users explicitly for noncommercial purposes only.
+
+     This is not a database system; rather, it is a collection of routines 
+to represent and access data structured in various ways.  To get a real
+database management system, you would have to add a means of logically
+grouping and structuring your data, as well as a representation-independent
+user interface.  Many of the required utilities are suggested in the
+documentation as student projects.
+
+     The file KB.DATABASE.DOC is taken from the handout given to the students. 
+The handout also contained listings of the routines of the data system itself,
+all of which are present on the disk in source form.  Program listing page
+numbers referenced in the handout are not available, but program line numbers
+are also given; you should be able to figure out which portions of the
+programs are being referred to by Dr. Bowles.  Missing from the disk are three
+figures diagramming the heirarchical nature of the data structure, showing
+that fields and records can be declared recursively and referenced by links of
+pointers, all within a fixed, 4-kilobyte frame.
+
+     I have not personally tried out any of the routines, except to run the 
+demo program DBDEMO.TEXT, which must be given the database name "TESTDB" when 
+it asks for the name of the database file.  It is complex and fancy.  
+
+     However, I found the comments within the handout illuminating, and I 
+suspect that the many projects suggested by Prof. Bowles within the handout 
+would make fascinating exercises for experienced programmers seeking to learn 
+more about Pascal.  I doubt that the database holds more than an example of 
+good programming for beginners, although if you're good at learning on your 
+own and stick with it, you may get quite a bit out of it.
+
+     Note that the screen control unit KB.SCUNIT.TEXT must be reconfigured
+for your CRT terminal and then compiled before the rest of the programs will
+work properly.  I have taken care of breaking up DBUNIT.TEXT into smaller 
+chunks that will fit in memory for the E6 editor; remember to compensate for
+the $I compiler directives when calculating line numbers on the listing.  I 
+made no other changes.
+
+     
+2.  OTHER ITEMS ON THE DISK
+
+     INDEX.TEXT is a greatly expanded index (by section, alas not by page) to 
+Jensen and Wirth's PASCAL USER MANUAL AND REPORT.  It greatly aids looking up 
+those syntactical queries.
+
+     COMPARE.TEXT is from the Pascal User Group's PASCAL NEWS No. 12, pp. 20-
+23, June, 1978, and was written by James F. Miner, who retains copyright but 
+has released the program for non-profit use.  It does a very good job of 
+comparing similar textfiles and pointing out differences.  Notably, it is good 
+at discovering chunks of text that are present in one file but not in the 
+other, and then discovering where the files are the same again.  The printout 
+is pretty; the runtime is long.  It ran well on my system.  It is documented 
+further within the source text.
+
+     COMPRESS.TEXT was written and donated by Ted Beck.  It compresses spaces
+at the beginning of a line of text (changing them to the UCSD blank
+compression code, 16 [control P or DLE], followed by a byte representing the
+number of spaces plus 31) and removes blanks at the end of each line.  It is
+intended to shrink files transferred from other operating systems.  I found a
+curious bug when I tried to compile Ted's original program: my 2.0 compiler
+would die when it confronted a FILLCHAR, MOVELEFT, or MOVERIGHT intrinsic--
+everything just stopped.  So I altered the program to use more standard Pascal
+syntax, and it runs well.
+
+     DISK_COPY.TEXT is Ted Beck's version of MAPPER, the routine available 
+from Western Digital to translate the "standard" RT-11-like UCSD 8-inch disk 
+format to that used by the Microengine.  Unlike other versions I have heard 
+about, it will run ONLY on a Microengine, not on other systems (even if 
+recompiled).  Since Microengine users can't read this disk without a 
+functioning mapper program, the chief value of this program is that it is 
+available in source form.  Because I don't have a Microengine, I have not 
+tried out the program.
+
+     USUS.NEWS.TEXT tells you all about the new UCSD System Users' Society.
+
+     WUMPUS hardly needs documentation, and what is required is provided by 
+the program.  I thought the author implemented it well.  I removed the
+requirement for asynchronous i/o in order to initialize the random number
+generator (which ran until a key was pressed), without apparant difficulty.

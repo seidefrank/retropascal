@@ -1,0 +1,217 @@
+{$P+}
+{  ---------------------------------------------------------  }
+{               Control Procedures                            }
+{  ---------------------------------------------------------  }
+
+PROCEDURE CR_ANSWER ; { ** UNTESTED ** }
+VAR
+  C                     : CHAR ;
+  CONNECTED             : BOOLEAN ;
+  COUNT                 : INTEGER ;
+  RING                  : BOOLEAN ;
+  WAITING               : BOOLEAN ;
+BEGIN
+  IF NOT SM_ATTENTION
+    THEN
+      ; { null }
+  C := SM_EXECUTE_COMMAND( CONCAT( 'S0=', ANSWER_AFTER ), 
+                                               SM_SHORT_WAIT ) ;
+  WAITING := TRUE ;
+  WHILE WAITING DO
+    BEGIN
+    RING := CR_RINGING ;
+    WAITING := NOT RING ;
+    IF WAITING
+      THEN
+        IF CR_KBSTAT
+          THEN
+            WAITING := CR_GETKB <> CR_ATTENCHAR ;
+    END ;
+  IF RING
+    THEN
+      BEGIN
+      UNITCLEAR( REMIN_UNIT ) ;
+      UNITCLEAR( REMOUT_UNIT ) ;
+      WAITING := TRUE ;
+      CONNECTED := FALSE ;
+      COUNT := 32000 ;
+      REPEAT
+        COUNT := COUNT - 1 ;
+        IF CR_KBSTAT
+          THEN
+            WAITING := NOT (CR_GETKB = CR_ATTENCHAR)
+          ELSE
+            IF CR_REMSTAT
+              THEN
+                BEGIN
+                WAITING := NOT (CR_GETREM = SM_CONNECT) ;
+                CONNECTED := NOT WAITING ;
+                END
+              ELSE
+                WAITING := COUNT > 0 ;
+      UNTIL NOT WAITING ;
+      IF NOT CONNECTED
+        THEN
+          CR_HOOK( HUNG_UP ) ;
+      END ;
+END ; { CR_ANSWER }
+
+PROCEDURE CR_BREAK ;
+BEGIN
+END ;
+
+function  CR_CARRIER{: boolean};
+begin
+  CR_CARRIER  := UNIT_CARRIER ;
+  OFF_HOOK    := UNIT_CARRIER ;
+end ; { CR_CARRIER }
+
+FUNCTION  CR_CLEARTOSEND{ : BOOLEAN } ;
+BEGIN
+  CR_CLEARTOSEND := TRUE ;
+END ; { CR_CLEARTOSEND }
+
+
+procedure CR_DELAY{ TENTHS : integer } ;
+{ Purpose: delay 0.1 seconds for each tenth requested. }
+var
+  clock        : T_CLOCK ;
+  I            : integer ;
+  J            : integer ;
+begin
+  I := TENTHS ;
+  while i > 0 do
+    begin
+    I := I - 1 ;
+    J := TIMER ;
+    while j > 0 do
+      j := j - 1 ;
+    end ;
+end ; { CR_DELAY }
+
+
+PROCEDURE CR_DIAL{ NUMBER       : STRING ;
+                   WAITCHAR     : CHAR ;
+               VAR RESULT       : CR_DIAL_RESULT } ;
+{ This routine will cause the Smartmodem to dial the number 
+  passed. }
+  
+VAR
+  I             : INTEGER ;
+  CMD           : STRING ;
+  VALID_SET     : SET OF CHAR ;
+BEGIN
+  { Initialize valid character set }
+  VALID_SET := [ 'P', 'T', '*', '#', ';', WAITCHAR,
+            '0', '1', '2', '3', '4', '5','6', '7', '8', '9' ] ;
+  
+  RESULT := CR_DIALERROR ; { Assume an error }
+
+  { Get Smartmodem's attention. }
+  IF NOT SM_ATTENTION
+    THEN
+      EXIT( CR_DIAL ) ;
+
+  CR_HOOK( HUNG_UP ) ; { Be sure we know where we are. }
+
+  { Start the dial command with the dial prologue.  (See the
+    Implementation Constant list.) }
+  CMD := SM_DIAL_PROLOGUE ;
+  FOR I := 1 TO LENGTH( NUMBER ) DO
+    IF NUMBER[I] IN VALID_SET { Include only valid characters }
+      THEN                    { in the passed number.         }
+         CMD := CONCAT( CMD, COPY( NUMBER, I, 1 ) ) ;
+  { Execute the dial command and be patient about the response.}
+  IF SM_EXECUTE_COMMAND( CMD, SM_LONG_WAIT ) = SM_CONNECT
+    THEN
+      BEGIN                     { We got an answer & carrier. }
+      RESULT := CR_OFF_HOOK ;
+      UNIT_CARRIER := TRUE ;
+      END
+    ELSE                        { No carrier.  We may have an  }
+      UNIT_CARRIER := FALSE ;   { answer.  We'll never know.   }
+END ; { CR_DIAL }
+
+FUNCTION  CR_DIALTONE ;
+BEGIN
+  CR_DIALTONE := TRUE ;
+END ;
+
+PROCEDURE CR_HOOK{ ON_HOOK      : BOOLEAN } ;
+BEGIN
+  IF ON_HOOK            { If we want to go on-hook, }
+    THEN
+      BEGIN
+      IF NOT SM_ATTENTION { . . . get the modem's attention. }
+        THEN
+          IF NOT SM_ATTENTION
+            THEN
+              ;
+      { Send the "hang up" command. }
+      OFF_HOOK := NOT 
+           (SM_EXECUTE_COMMAND( 'H0', SM_SHORT_WAIT ) = SM_OK)
+      END
+    ELSE
+      OFF_HOOK := TRUE ;
+  UNIT_CARRIER := OFF_HOOK ; { The simulated carrier follows
+                               the status of the reciever.   }
+END ; { CR_HOOK }
+
+FUNCTION  CR_RINGING { : BOOLEAN } ; { ** UNTESTED ** }
+BEGIN
+  IF CR_REMSTAT
+    THEN
+      CR_RINGING := SM_RING = CR_GETREM
+    ELSE
+      CR_RINGING := FALSE ;
+END ;
+{$P+}
+{  ---------------------------------------------------------  }
+{               Status Procedures                             }
+{  ---------------------------------------------------------  }
+
+FUNCTION  CR_KBSTAT{ : BOOLEAN } ;
+VAR
+  A     : TRICK ;
+BEGIN
+  UNITSTATUS( KB_UNIT, A, 1 ) ;
+  CR_KBSTAT := A.I > 0 ;
+END ; { CR_KBSTAT }
+
+FUNCTION  CR_REMSTAT{ : BOOLEAN } ;
+VAR
+  A     : TRICK ;
+BEGIN
+  UNITSTATUS( REMIN_UNIT, A, 1 ) ;
+  CR_REMSTAT := A.I > 0 ;
+END ; { CR_REMSTAT }
+{$P+}
+{  ---------------------------------------------------------  }
+{               Input/Output Procdures                        }
+{  ---------------------------------------------------------  }
+
+FUNCTION  CR_GETKB{ : CHAR } ;
+VAR
+  ARAY                  : TRICK ;
+BEGIN
+  UNITREAD( KB_UNIT, ARAY.A, 1,, 12 ) ;
+  CR_GETKB := ARAY.A[0] ;
+END ; { CR_GETKB }
+
+FUNCTION  CR_GETREM{ : CHAR } ;
+VAR
+  ARAY                  : TRICK ;
+BEGIN
+  UNITREAD( REMIN_UNIT, ARAY.A, 1,, CONTROL ) ;
+  CR_GETREM := ARAY.A[0] ;
+END ; { CR_GETREM }
+
+PROCEDURE CR_PUTREM{ C : CHAR } ;
+VAR
+  P                     : TRICK ;
+BEGIN
+  P.A[0] := C ;
+  UNITWRITE( REMOUT_UNIT, P.A, 1, 0, CONTROL ) ;
+END ; { CR_PUTREM }
+
+

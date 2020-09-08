@@ -1,0 +1,581 @@
+procedure printaplstatement;
+begin
+  writeln(outfile, aplstatement)
+end; {printaplstatement}
+
+procedure serror(errorindex: integer);
+var
+  msgcol: integer;
+begin
+tokenerror := true;
+writeln(outfile, errormsgs[errorindex]);
+printaplstatement; (* echo statement to user *)
+for msgcol := 1 to (position - 1) do
+  write(outfile, ' ');
+writeln(outfile, character[uparrow]) (* print pointer to user error *)
+end; {serror}
+
+procedure skipspaces;
+begin
+while (aplstatement[position] = character[space])
+      and (position <= linelength) do
+  position := position + 1
+end; {skipspaces}
+
+procedure getaplstatement;
+var
+  inputchars: string;
+begin
+  (* blank out line *)
+fillchar(aplstatement, sizeof(aplstatement), character[space]);
+linelength := 0;
+position := 1;
+linetoolong := false;
+aplstatement[inputarraysize] := character[omega];
+aplstatement[inputarraysize - 1] := character[space]; (* set end-of-line *)
+repeat
+  begin
+    write(outfile, character[quadrangle]);
+    if funcmode
+    then write(outfile, character[leftbracket], funcstatements + 1: 2,
+               character[rightbracket], character[space])
+    else write(outfile, '    ', character[space]);
+    readln(infile, inputchars);
+    while (linelength < length(inputchars)) and (not linetoolong) do
+      if linelength < maxinputline
+      then
+        begin
+          linelength := linelength + 1;
+          aplstatement[linelength] := inputchars[linelength]
+        end
+      else linetoolong := true
+  end
+until linelength <> 0; (* reject null lines *)
+if linetoolong then serror(71)
+end; {getaplstatement}
+
+function itsadigit(testchar: char): boolean;
+var
+  digitindex: aplcharset;
+begin (* test to see if input character is a digit *)
+itsadigit := true;
+for digitindex := onesymbol to zerosymbol do
+  if testchar = character[digitindex] then exit(itsadigit);
+itsadigit := false
+end; {itsadigit}
+
+function itsaletter(testchar: char): boolean;
+var
+  letterindex: aplcharset;
+begin (* test to see if input character is a letter *)
+itsaletter := true;
+for letterindex := asymbol to zsymbol do
+  if testchar = character[letterindex] then exit(itsaletter);
+itsaletter := false
+end; {itsaletter}
+
+function chartonum(testchar: char): integer;
+var
+  digitindex: aplcharset;
+begin (* change a character to a number *)
+for digitindex := onesymbol to zerosymbol do
+  if testchar = character[digitindex]
+  then
+    begin
+      chartonum := digits[digitindex];
+      exit(chartonum)
+    end
+end; {chartonum}
+
+function namesmatch{nameone, nametwo: packedstring): boolean};
+begin (* see if two names (identifiers) are the same *)
+namesmatch := nameone = nametwo
+end; {namesmatch}
+
+procedure tablelookup(testchar: char; tablelength: integer; table: optable;
+                      var tableindex: integer);
+var
+  index: integer;
+begin (* check for membership in a given table *)
+tableindex := 0;
+for index := 1 to tablelength do
+  if testchar = table[index].opsymbol
+  then
+    begin
+      tableindex := index;
+      exit(tablelookup)
+    end
+end; {tablelookup}
+
+procedure identifier(var name: packedstring; var itsanidentifier: boolean);
+var
+  namelength: integer;
+  nametoolong: boolean;
+begin
+itsanidentifier := false;
+skipspaces;
+if itsaletter(aplstatement[position])
+then
+  begin
+    nametoolong := false;
+    itsanidentifier := true;
+    for namelength := 1 to maxvarnamelength do (* blank out name *)
+      name[namelength] := character[space];
+    namelength := 0;
+    while (itsaletter(aplstatement[position])) or
+          (itsadigit(aplstatement[position])) do
+      begin (* build identifier *)
+        namelength := namelength + 1;
+        if namelength <= maxvarnamelength
+        then name[namelength] := aplstatement[position]
+        else nametoolong := true;
+        position := position + 1
+      end;
+    if nametoolong
+    then serror(70) (* name greater than maxlength *)
+  end
+end; {identifier}
+
+procedure makeanumber{var realnumber: real; var itsanumber: boolean};
+var
+  sign, digitcount: integer;
+begin (* convert character input string to numerical representation *)
+itsanumber := false;
+skipspaces;
+sign := 1;
+digitcount := 0;
+realnumber := 0.0;
+if (aplstatement[position] = character[negative]) or
+   (itsadigit(aplstatement[position]))
+then
+  begin
+    itsanumber := true;
+    if aplstatement[position] = character[negative]
+    then
+      begin
+        sign := -1;
+        position := position + 1
+      end;
+    if not itsadigit(aplstatement[position])
+    then
+      begin
+        serror(1); (* digit must follow a minus sign *)
+        itsanumber := false
+      end
+    else
+      begin (* form whole number portion *)
+        while itsadigit(aplstatement[position]) do
+          begin
+            realnumber := 10.0*realnumber + chartonum(aplstatement[position]);
+            position := position + 1
+          end;
+        if aplstatement[position] = character[period]
+        then
+          begin
+            position := position + 1;
+            while itsadigit(aplstatement[position]) do
+              begin (* form fractional portion *)
+                realnumber := realnumber +
+                              (chartonum(aplstatement[position]) /
+                              pwroften(digitcount + 1));
+                digitcount := digitcount + 1;
+                position := position + 1
+              end;
+            if digitcount = 0
+            then
+              begin
+                serror(2); (* digits must follow a decimal point *)
+                itsanumber := false
+              end
+          end;
+        realnumber := realnumber * sign
+      end
+  end
+end; {makeanumber}
+
+function monadicreference: boolean;
+var
+  subposition, tableindex: integer;
+begin (* see if operator is monadic within context of input line *)
+monadicreference := false;
+if newtokenptr^.nextoken^.noun = statend
+then monadicreference := true
+else
+  begin
+    subposition := position - 1;
+    while (subposition > 0) and
+          (aplstatement[subposition] = character[space]) do
+      subposition := subposition - 1; (* get last non-blank *)
+    if subposition <> 0
+    then tablelookup(aplstatement[subposition],
+                     spectablength, spectab, tableindex);
+    if (tableindex <> 0) or (subposition = 0)
+    then monadicreference := true
+    else
+      if (newtokenptr^.nextoken^.noun <> formres) and
+         (newtokenptr^.nextoken^.noun <> formarg) and
+         (newtokenptr^.nextoken^.noun <> globvar) and
+         (newtokenptr^.nextoken^.noun <> constant) and
+         (aplstatement[subposition] <> character[period]) and
+         (aplstatement[subposition] <> character[rightparen]) and
+         (aplstatement[subposition] <> character[rightbracket])
+      then monadicreference := true
+  end
+end; {monadicreference}
+
+procedure dyadicopcheck;
+var
+  tableindex: integer;
+begin
+tablelookup(aplstatement[position], doptablength, doptab, tableindex);
+if tableindex = 0
+then
+  begin
+    tablelookup(aplstatement[position], chartablength, chartab, tableindex);
+    if tableindex = 0
+    then
+      if aplstatement[position] = character[southcap]
+      then
+        begin
+          oldtokenptr := savetokenptr;
+          ridtoken(newtokenptr);
+          newtokenptr := savetokenptr;
+          position := linelength + 1
+        end (* this was a comment - ignore remainder of line *)
+      else serror(4) (* invalid character encountered *)
+    else
+      begin (* special character encountered *)
+        newtokenptr^.noun := specoper;
+        newtokenptr^.charindx := tableindex
+      end
+  end
+else
+  if monadicreference
+  then serror(74) (* monadic reference to dyadic operator *)
+  else
+    begin (* operator is dyadic *)
+      newtokenptr^.noun := dyadoper;
+      newtokenptr^.dopindx := tableindex
+    end
+end; {dyadicopcheck}
+
+procedure checkothertables;
+var
+  tableindex: integer;
+  chkindex: integer;
+function nextnonblank: char;
+  begin
+  chkindex := position + 1;
+  while (chkindex < linelength) and
+        (aplstatement[chkindex] = character[space]) do
+    chkindex := chkindex + 1;
+  nextnonblank := aplstatement[chkindex]
+  end; {nextnonblank}
+begin
+if nextnonblank = character[forwardslash]
+then
+  begin
+    tablelookup(aplstatement[position], redtablength, redtab, tableindex);
+    if tableindex = 0
+    then serror(72) (* invalid reduction operator *)
+    else
+      if not monadicreference
+      then serror(73) (* dyadic reduction reference *)
+      else
+        begin (* operator is valid reduction operator *)
+          newtokenptr^.noun := reductoper;
+          newtokenptr^.redindx := tableindex
+        end;
+    position := chkindex + 1
+  end
+else
+  begin
+    tablelookup(aplstatement[position], moptablength, moptab, tableindex);
+    if tableindex = 0
+    then dyadicopcheck
+    else
+      if not monadicreference
+      then dyadicopcheck
+      else
+        begin (* operator is monadic *)
+          newtokenptr^.noun := monadoper;
+          newtokenptr^.monindx := tableindex
+        end;
+    position := position + 1
+  end
+end; {checkothertables}
+
+procedure trytogetanumber;
+var
+  numbercount: integer;
+  realnumber: real;
+  itsanumber: boolean;
+begin
+numbercount := 0;
+makeanumber(realnumber, itsanumber);
+if not itsanumber
+then checkothertables
+else
+  begin (* store values in value table *)
+    getvalt(newvaltablink);
+    newvaltablink^.nextvaltablink := oldvaltablink;
+    oldvaltablink := newvaltablink;
+    newvaltablink^.forwardorder := true;
+    if funcmode
+    then newvaltablink^.intermedresult := false
+    else newvaltablink^.intermedresult := true;
+    switch := true;
+    while itsanumber do
+      begin
+        numbercount := numbercount + 1;
+        getvalu(newvalues);
+        if switch = true
+        then
+          begin
+            switch := false;
+            newvaltablink^.firstvalue := newvalues
+          end
+        else newvalptr^.nextvalue := newvalues;
+        newvalues^.realval := realnumber;
+        newvalptr := newvalues;
+        makeanumber(realnumber, itsanumber)
+      end;
+    newvalues^.nextvalue := nil;
+    if numbercount > 1
+    then
+      begin
+        newvaltablink^.dimensions := 1; (* number is a vector *)
+        getdim(newdim);
+        newvaltablink^.firstdimen := newdim;
+        newdim^.dimenlength := numbercount;
+        newdim^.nextdimen := nil
+      end
+    else
+      begin
+        newvaltablink^.dimensions := 0;
+        newvaltablink^.firstdimen := nil
+      end;
+    newtokenptr^.noun := constant;
+    newtokenptr^.valtabptr := newvaltablink
+  end
+end; {trytogetanumber}
+
+function nameinvartable{name: packedstring;
+                        var varpointer: vartabptrtype;
+                        testfuncptr: ptrfunctab): boolean};
+var
+  found: boolean;
+begin
+found := false;
+varpointer := oldvartabptr;
+while (varpointer <> nil) and (found = false) do
+  begin
+    if (namesmatch(name, varpointer^.varname)) and
+       (varpointer^.functabptr = testfuncptr) (* test for global var *)
+    then found := true
+    else varpointer := varpointer^.nextvartabptr
+  end;
+nameinvartable := found
+end; {nameinvartable}
+
+procedure addnametovartable(name: packedstring);
+begin (* new variable name encountered *)
+getvarr(newvartabptr);
+newvartabptr^.nextvartabptr := oldvartabptr;
+oldvartabptr := newvartabptr;
+newvartabptr^.varname := name;
+newvartabptr^.valtabptr := nil;
+if newtokenptr <> nil
+then
+  if (newtokenptr^.noun = formres) or (newtokenptr^.noun = formarg)
+  then newvartabptr^.functabptr := newfunctabptr
+  else newvartabptr^.functabptr := nil
+end; {addnametovartable}
+
+function funcalreadydefined{var newfuname: packedstring;
+                            var funcindex: ptrfunctab): boolean};
+var
+  found: boolean;
+begin
+found := false;
+funcindex := oldfunctabptr;
+while (funcindex <> nil) and (found = false) and (newfunctabptr <> nil) do
+  if namesmatch(funcindex^.funcname, newfuname)
+  then found := true
+  else funcindex := funcindex^.nextfunctabptr;
+funcalreadydefined := found
+end; {funcalreadydefined}
+
+procedure maketokenlink;
+begin
+gettoken(newtokenptr);
+newtokenptr^.nextoken := oldtokenptr;
+savetokenptr := oldtokenptr;
+oldtokenptr := newtokenptr
+end; {maketokenlink}
+
+procedure processfunctionheader;
+var
+  dummyptr: ^functab;
+  name1, name2, name3: packedstring;
+  itsanidentifier: boolean;
+  funcheaderror: boolean;
+  arityindex: integer;
+begin
+funcheaderror := false;
+funcmode := true;
+funcstatements := -1;
+if firstfunction
+then
+  begin
+    funcstatements := 0;
+    firstfunction := false
+  end;
+arityindex := 1;
+position := position + 1;
+identifier(name1, itsanidentifier);
+if not itsanidentifier
+then
+  begin
+    serror(7); (* unrecognizable function/argument name *)
+    funcmode := false; (* exit function mode *)
+    funcheaderror := true
+  end
+else
+  begin
+    getfunc(newfunctabptr);
+    skipspaces;
+    if aplstatement[position] = character[leftarrow]
+    then
+      begin
+        newfunctabptr^.result := true; (* explicit result *)
+        newfunctabptr^.resultname := name1;
+        position := position + 1;
+        identifier(name1, itsanidentifier);
+        if not itsanidentifier
+        then
+          begin
+            serror(6); (* unrecognizable name to right of explicit result *)
+            funcheaderror := true
+          end
+      end
+    else newfunctabptr^.result := false; (* no explicit result *)
+    skipspaces;
+    if (position <= linelength) and (not funcheaderror)
+    then
+      begin
+        identifier(name2, itsanidentifier);
+        if not itsanidentifier
+        then
+          begin
+            serror(7); (* invalid function/argument name *)
+            funcheaderror := true
+          end
+        else arityindex := 2
+      end;
+    skipspaces;
+    if (position <= linelength) and (not funcheaderror)
+    then
+      begin
+        identifier(name3, itsanidentifier);
+        if not itsanidentifier
+        then
+          begin
+            serror(9); (* invalid function right argument name *)
+            funcheaderror := true
+          end
+        else arityindex := 3
+      end;
+    skipspaces;
+    if (position <= linelength) and (not funcheaderror)
+    then
+      begin
+        serror(3); (* extraneous characters to right of function header *)
+        funcheaderror := true
+      end;
+    case arityindex of
+      1: begin
+           newfunctabptr^.arity := niladic;
+           newfunctabptr^.funcname := name1
+         end;
+      2: begin
+           newfunctabptr^.arity := monadic;
+           newfunctabptr^.funcname := name1;
+           newfunctabptr^.rightarg := name2;
+           addnametovartable(name2);
+           newvartabptr^.functabptr := newfunctabptr
+         end;
+      3: begin
+           newfunctabptr^.arity := dyadic;
+           newfunctabptr^.leftarg := name1;
+           newfunctabptr^.funcname := name2;
+           newfunctabptr^.rightarg := name3;
+           addnametovartable(name1);
+           newvartabptr^.functabptr := newfunctabptr;
+           addnametovartable(name3);
+           newvartabptr^.functabptr := newfunctabptr
+         end;
+    end; {case}
+    if funcalreadydefined(newfunctabptr^.funcname, dummyptr)
+    then
+      begin
+        serror(5); (* function already defined *)
+        funcheaderror := true
+      end;
+    if funcheaderror
+    then
+      begin
+        ridfunc(newfunctabptr); (* header no good *)
+        funcmode := false; (* exit function mode *)
+        newfunctabptr := oldfunctabptr
+      end
+  end
+end; {processfunctionheader}
+
+procedure destroystatement;
+var
+  dumtokenptr: ^tokentable;
+  auxsubrtabptr: ^subrtab;
+begin
+if subrtabptr <> nil
+then
+  begin
+    while subrtabptr^.lastsubrptr <> nil do
+      begin
+        auxsubrtabptr := subrtabptr;
+        subrtabptr := subrtabptr^.lastsubrptr;
+        ridsubr(auxsubrtabptr)
+      end;
+    ridsubr(subrtabptr)
+  end;
+dumtokenptr := oldtokenptr;
+while dumtokenptr <> holdtokenptr do
+  begin
+    oldtokenptr := oldtokenptr^.nextoken;
+    ridtoken(dumtokenptr);
+    dumtokenptr := oldtokenptr
+  end;
+newtokenptr := holdtokenptr;
+oldtokenptr := holdtokenptr (* return pointer to end of last good line *)
+end; {destroystatement}
+
+procedure reverselinklist{var argptr: typevaltabptr};
+var
+  hold, temptr: ^values;
+begin
+valptr := argptr^.firstvalue;
+temptr := valptr^.nextvalue;
+while temptr <> nil do
+  begin
+    hold := temptr^.nextvalue;
+    temptr^.nextvalue := valptr;
+    valptr := temptr;
+    temptr := hold
+  end;
+argptr^.firstvalue^.nextvalue := nil;
+argptr^.firstvalue := valptr;
+if argptr^.forwardorder = true
+then argptr^.forwardorder := false
+else argptr^.forwardorder := true (* toggle list order switch *)
+end; {reverselinklist}
+

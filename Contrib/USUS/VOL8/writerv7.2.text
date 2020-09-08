@@ -1,0 +1,659 @@
+{$R-}
+{$S+}
+{$I-}
+PROGRAM WRITER;
+  
+  USES (*$U SCREENUNIT.CODE*)SCREENUNIT,
+       (*$U FILEUNIT.CODE*)FILEUNIT,
+       (*$U PRINTRUNIT.CODE*) PRINTERUNIT;
+  
+  CONST VERSION = 'WRITER     version 7.2   18-Jul-81';
+
+     {Program Writer will print your files in a pretty format among other
+things. (See WRITER.DOC.TEXT for details)
+
+     This version was modified from the Version 1.0 distributed by USUS.
+Version 2.0 was done by Sandy Schreyer.  All subsequent versions were done by
+George Schreyer.
+ 
+     This program containes printer dependant code (for a TI 820 printer)
+which can be found in procedures INITWRTPAGE, BANNER and WRAP_UP_WRTPAGE.  
+ 
+     The procedures GETCRTINFO and CRT (from the USUS library, Volume 5) are
+used to allow terminal independance, however the program assumes a 24 line by
+80 column display so modifications will be necessary in various places for
+smaller displays to prevent wrap-around or undesired scrolling.  The
+procedures are found in the unit SCREENUNIT.
+
+     The unit FILEUNIT is used to aid in the error-free opening and reading of
+files.  I believe that the program is klutz-proof, and I dare you to make it
+generate a run time error.
+
+     This version containes machine dependant code, found only in PRINTRUNIT,
+to sense the condition of the printer. The code was necessary because this
+version of writer runs so fast that it overfills the buffer of my printer. The
+earlier versions with READLN and WRITELN statements run at about 92 cps on an
+LSI-11.  The new version runs at about 370 cps, a speed improvement of about a
+factor of four. The extra speed makes this kludge is necessary to interface
+the UCSD operating system to a serial printer.  If you don't have an pdp-11
+type computer this patch won't work, just delete all references to PRINTRUNIT
+and cross your fingers. If you have a parallel printer then this code is
+totally unnecessary anyway.}
+           
+          
+  
+  TYPE BLOCK = FILE;
+  
+  VAR
+    INP : FILE; {main file}
+    INC : FILE;  {include files}
+    FILENAME : STRING ; 
+    Q:INTEGER;
+    FORM_CHANGE : BOOLEAN;
+    IO_OK: BOOLEAN;
+    INP_NEXT_BLOCK : INTEGER;
+    INC_NEXT_BLOCK : INTEGER;
+    INLINE : CHAR;
+    PR:TEXT;
+    DISKA:TEXT;
+    DATE : STRING ; 
+    COPIES:INTEGER; 
+    DOUBLESPACE : CHAR ;
+    PAPERSIZE : INTEGER ;
+    SEQUENCE:CHAR;
+    LEFTMARGIN : INTEGER ;
+    TOPMARGIN : INTEGER ;
+    ENDLINES : INTEGER ;
+    EXPANDED_PRINT : CHAR;
+    NOTES : STRING;
+    DISK_DATA : BOOLEAN;
+    DATE_CHANGE : BOOLEAN;
+    WRITERDATA : STRING;
+    LPI : INTEGER;
+    FILE_DATE : STRING;
+    
+{ * * * * * * * * * * }
+
+PROCEDURE GETDATA;
+ 
+ VAR REPLY :CHAR;
+     COMMAND : CHAR;
+
+PROCEDURE SHIFT_UP (VAR CH : CHAR);
+BEGIN
+  IF CH IN ['a'..'z'] THEN CH := CHR(ORD(CH)-32);
+END;
+
+PROCEDURE CARRYOUT ;
+  
+  VAR
+    NEWDATE:STRING ;
+    TEMP : INTEGER;
+           
+
+PROCEDURE SETMARGIN(VAR MARGIN:INTEGER);
+   VAR TEMP:INTEGER;
+   BEGIN
+      TEMP:=MARGIN;
+      READLN(MARGIN);
+      IF (MARGIN < 1) OR (MARGIN > PAPERSIZE)  THEN MARGIN:=TEMP;
+   END {setmargin};
+     
+
+  BEGIN    {carryout}
+    CASE COMMAND OF
+      'D' : BEGIN 
+               WRITE ('date today? ' ) ; 
+               READLN ( NEWDATE ) ; 
+               IF NEWDATE <> '' THEN DATE := NEWDATE ;
+               DATE_CHANGE:=TRUE;
+            END ;
+      'F' : BEGIN
+               CLOSE(INP);
+               OPNDSKREAD(INP,'file to write? - - >  ',FILENAME,5,15);
+               CLOSE(INP);
+               GET_FILE_DATE(FILENAME,FILE_DATE);
+               IF (FILE_DATE = '') OR (LENGTH(FILENAME)=POS(':',FILENAME)) 
+                  THEN FILENAME:='';
+            END;
+      'C' : BEGIN
+               REPEAT
+                  WRITE('# of copies? ');
+                  READLN(COPIES);
+                  IF COPIES < 1 THEN COPIES:=1;
+               UNTIL IORESULT=0;
+            END;
+      'M' : BEGIN
+              WRITELN('Banner message? (63 characters maximum)');
+              READLN(NOTES);
+              IF LENGTH(NOTES)>63 THEN
+                BEGIN
+                  DELETE(NOTES,64,(LENGTH(NOTES)-63));
+                END;
+            END;
+      'L' : BEGIN
+              WRITE('Left margin? ');
+              SETMARGIN(LEFTMARGIN);
+              IF LEFTMARGIN < 2 THEN LEFTMARGIN:=2;
+              FORM_CHANGE:=TRUE;
+            END;
+      'Q' : EXIT(WRITER);
+      'I' : BEGIN
+              REPEAT
+                WRITE('do you wish include files printed in-line? (Y/N) ');
+                READ(INLINE);
+                SHIFT_UP(INLINE);
+                GOTOXY(0,0);
+                CRT(ERASEOS);
+              UNTIL INLINE IN ['Y','N'];
+              FORM_CHANGE:=TRUE;
+            END;
+      'W' : BEGIN
+              REPEAT
+                 WRITE('Do you want E)xpanded, N)ormal or'
+                       ,' C)ompressed print ? ');
+                 READ(EXPANDED_PRINT);
+                 SHIFT_UP(EXPANDED_PRINT);
+                 GOTOXY(0,0);
+                 CRT(ERASEOS);
+              UNTIL EXPANDED_PRINT IN ['E','N','C'];
+              FORM_CHANGE:=TRUE;
+            END;
+      'T' : BEGIN
+               WRITE('Top margin? ');
+               SETMARGIN(TOPMARGIN);
+               FORM_CHANGE:=TRUE;
+            END;
+      'B' : BEGIN
+              WRITE('Bottom margin? ');
+              SETMARGIN(ENDLINES);
+              FORM_CHANGE:=TRUE;
+            END;
+      'P' : BEGIN
+              TEMP:=PAPERSIZE;
+                 REPEAT
+                    WRITE ( 'what is your papersize? ' ) ;
+                    READLN (PAPERSIZE ) ; 
+                 UNTIL IORESULT=0;
+              FORM_CHANGE:=TRUE;
+              IF (PAPERSIZE<1) OR (PAPERSIZE>66) THEN PAPERSIZE:=TEMP;
+            END;
+      'S' : BEGIN
+              REPEAT
+                 WRITE('do you want doublespaces (Y or N)? ');
+                 READ(DOUBLESPACE);
+                 SHIFT_UP(DOUBLESPACE);
+              UNTIL DOUBLESPACE IN ['Y','N'];
+              REPEAT
+                 GOTOXY(0,0);
+                 CRT(ERASEOS);
+                 WRITE('do you want S)ix or E)ight lines per inch?');
+                 READ(REPLY);
+                 SHIFT_UP(REPLY);
+              UNTIL REPLY IN ['S','E'];
+              IF REPLY='E' THEN LPI:=8 ELSE LPI:=6;
+              FORM_CHANGE:=TRUE;
+            END;
+      'N' : REPEAT
+              WRITE('do you want line numbers (Y or N)? ');
+              READ(SEQUENCE);
+              SHIFT_UP(SEQUENCE);
+              FORM_CHANGE:=TRUE;
+            UNTIL (SEQUENCE='Y') OR (SEQUENCE='N');
+    END { CASE } ;
+  END { CARRYOUT } ;
+     
+PROCEDURE MENU;
+   BEGIN
+      WRITELN('WRITER: D(ate, F(ilename, C(opies, L(eft margin, T(op ',
+                      'margin, B(ottom margin,');
+      WRITELN('        P(apersize, S(pacing, print W(idth,', 
+                      ' N(umbers, Q(uit, G(o,');
+      WRITELN('        I(nclude files, banner M(essage');
+      WRITELN;
+      WRITELN('date: ',DATE); 
+      WRITELN('left margin: ',LEFTMARGIN);
+      WRITELN('top margin: ',TOPMARGIN);
+      WRITELN('bottom margin: ',ENDLINES);
+      WRITE('doublespaces: ');
+      IF DOUBLESPACE = 'Y' THEN WRITELN('yes') ELSE WRITELN('no');
+      WRITE('numbers: ');
+      IF SEQUENCE = 'Y' THEN WRITELN('yes') ELSE WRITELN('no');
+      WRITELN('papersize: ',PAPERSIZE);
+      WRITELN('copies: ',COPIES);
+      WRITE('print width: ');
+      CASE EXPANDED_PRINT OF
+        'n','N' : WRITELN('normal');
+        'e','E' : WRITELN('expanded');
+        'c','C' : WRITELN('compressed');
+      END;
+      WRITELN('lines per inch: ',LPI);
+      WRITE('include files: ');
+      IF INLINE = 'Y' THEN WRITELN('yes') ELSE WRITELN('no');
+      WRITELN('banner message: ',NOTES);
+      WRITE('filename: ',FILENAME);
+      IF FILENAME <> '' THEN WRITELN(' dated ',FILE_DATE) ELSE WRITELN;
+   END;  {menu}
+      
+ BEGIN   {getdata}
+    RESET(INP,FILENAME);
+    IF IORESULT <> 0 THEN OPNDSKREAD(INP,'file to write? - - - > '
+          ,FILENAME,0,15);
+    CLOSE(INP);
+    IF FILENAME = '' THEN EXIT(PROGRAM);
+    GET_FILE_DATE(FILENAME,FILE_DATE);
+    IF (FILE_DATE = '') OR (LENGTH(FILENAME)=POS(':',FILENAME)) THEN 
+    FILENAME :='';
+    GOTOXY(0,0);
+    CRT(ERASEOS);
+    REPEAT
+      IF FILENAME = '' THEN WRITELN(CHR(7),'No file') ELSE WRITELN;
+      WRITELN;
+      MENU;
+      WRITELN;
+      WRITE('Command ? ');
+      READ(COMMAND);
+      SHIFT_UP(COMMAND);
+      GOTOXY(0,0);
+      CRT(ERASEOS);
+      CARRYOUT;
+      GOTOXY(0,0);
+      CRT(ERASEOS);
+    UNTIL (COMMAND IN ['G','g']) AND (FILENAME <> '');
+    IF DISK_DATA THEN
+       BEGIN
+          IF FORM_CHANGE THEN
+             BEGIN
+                GOTOXY(0,0);
+                CRT(ERASEOS);
+                GOTOXY(0,12);
+                WRITE('Do you wish to make form changes permanent? (Y/N)');
+                READ(REPLY);
+                GOTOXY(0,0);
+                CRT(ERASEOS);
+                IF REPLY <> 'Y' THEN FORM_CHANGE:=FALSE;
+             END;
+       END;
+   CLOSE(INP);
+END {getdata};
+
+{ * * * * * * * * * * }
+
+PROCEDURE INITIALIZE ;
+  VAR T1:INTEGER; 
+     
+PROCEDURE SETVARS ;
+  VAR STAR : STRING;
+  
+  BEGIN  {setvars}
+    STAR:='*';
+    LPI:=6;
+    DATE:=' ';
+    LEFTMARGIN := 10 ;
+    TOPMARGIN:=4;
+    ENDLINES:=4;
+    DOUBLESPACE:='N';
+    SEQUENCE:='Y';
+    PAPERSIZE:=51;
+    COPIES:=1;
+    INLINE:='N';
+    EXPANDED_PRINT:='N';
+    FILENAME:='*SYSTEM.WRK.TEXT';
+    IF DISK_DATA THEN
+       BEGIN
+          RESET(DISKA,WRITERDATA);
+          IF IORESULT=0 THEN
+             BEGIN
+                READLN(DISKA,DATE);
+                READLN(DISKA,LEFTMARGIN);
+                READLN(DISKA,EXPANDED_PRINT);
+                READLN(DISKA,LPI);
+                READLN(DISKA,TOPMARGIN);
+                READLN(DISKA,ENDLINES);
+                READLN(DISKA,PAPERSIZE);
+                READLN(DISKA,DOUBLESPACE);
+                READLN(DISKA,INLINE);
+                READLN(DISKA,SEQUENCE);
+             END;
+           CLOSE(DISKA);
+        END;
+    GET_FILE_DATE(STAR,DATE);
+END {SETVARS};
+  
+  
+  BEGIN   {initialize}
+    GETCRTINFO;
+    DISK_DATA:=TRUE;
+    FILE_DATE:='';
+    WRITERDATA:='*WRITERDATA';
+    DATE_CHANGE:=FALSE;
+    NOTES:='';
+    FORM_CHANGE:=FALSE;
+    GOTOXY(0,0);
+    CRT(ERASEOS);
+    WRITELN;
+    FOR T1:=1 TO 79 DO WRITE('*');
+    WRITELN ;
+    WRITELN ;
+    WRITELN ( '                  WELCOME TO ',VERSION  ) ;
+    WRITELN ;
+    FOR T1:=1 TO 79 DO WRITE('*');
+    WRITELN;
+    VER_SCREENUNIT;
+    VER_FILEUNIT;
+    VER_PRTUNIT;
+    UNITCLEAR(6);
+    IF IORESULT <> 0 THEN 
+       BEGIN
+          WRITELN;
+          WRITE('printer not on-line at port #6');
+          EXIT(PROGRAM);
+       END;
+    REWRITE(PR,'PRINTER:');
+    INITPT;
+    WAIT_FOR_DC1;
+    SETVARS;
+ END    {initialize};
+        
+PROCEDURE WRITE_DATA;
+
+   VAR TEMP_STR : STRING;
+   
+   BEGIN
+      IF DISK_DATA THEN
+        BEGIN
+           TEMP_STR:=DATE;
+           IF NOT FORM_CHANGE THEN
+              BEGIN
+                 RESET(DISKA,WRITERDATA);
+                 IF IORESULT=0 THEN 
+                    BEGIN
+                         READLN(DISKA,DATE);
+                         READLN(DISKA,LEFTMARGIN);
+                         READLN(DISKA,EXPANDED_PRINT);
+                         READLN(DISKA,LPI);
+                         READLN(DISKA,TOPMARGIN);
+                         READLN(DISKA,ENDLINES);
+                         READLN(DISKA,PAPERSIZE);
+                         READLN(DISKA,DOUBLESPACE);
+                         READLN(DISKA,INLINE);
+                         READLN(DISKA,SEQUENCE);
+                      END;
+                  CLOSE(DISKA);
+              END;
+           DATE:=TEMP_STR;
+           IF DATE_CHANGE OR FORM_CHANGE THEN
+              BEGIN
+                  REWRITE(DISKA,WRITERDATA);
+                  IF IORESULT = 0 THEN
+                     BEGIN
+                       WRITELN(DISKA,DATE);
+                       WRITELN(DISKA,LEFTMARGIN);
+                       WRITELN(DISKA,EXPANDED_PRINT);
+                       WRITELN(DISKA,LPI);
+                       WRITELN(DISKA,TOPMARGIN);
+                       WRITELN(DISKA,ENDLINES);
+                       WRITELN(DISKA,PAPERSIZE);
+                       WRITELN(DISKA,DOUBLESPACE);
+                       WRITELN(DISKA,INLINE);
+                       WRITELN(DISKA,SEQUENCE);
+                     END;
+               END;
+            CLOSE(DISKA,LOCK);
+       END;
+END;   {write_data}
+
+PROCEDURE WRTPAGE;
+   
+VAR
+    LINE:PACKED ARRAY[0..132] OF CHAR;
+    DATAI,DATA: PACKED ARRAY[0..511] OF CHAR;
+    S,PAGE_SIZE : INTEGER;
+    K,N,J,MARGINLINES : INTEGER ;
+    LINECNT:INTEGER;
+    PAGENUMBER : INTEGER ;
+    INC_NAME : STRING;
+    MARGINSPACES : INTEGER ;
+    LINESLEFT : INTEGER;
+    INCLUDE : BOOLEAN;
+    BLANK_STRING : STRING;
+   
+
+PROCEDURE INITWRTPAGE;
+
+PROCEDURE BANNER;
+   
+   VAR I : INTEGER;
+   
+   BEGIN
+      BLANK_STRING:='                                       ';
+      WRITE(PR,CHR(27),'PA\');  {sets 6 lpi}
+      PAGE(PR);
+      WRITE(PR,CHR(27),'PI',CHR(27),'\');  {set 5 cpi}
+      FOR I:= 1 TO 5 DO WRITE(PR,CHR(10));
+      WRITELN(PR,BLANK_STRING:10,FILENAME);
+      WRITELN(PR);
+      WRITELN(PR,BLANK_STRING:10,'listing date is ',DATE);
+      WRITELN(PR);
+      WRITELN(PR,BLANK_STRING:10,'last updated on ',FILE_DATE);
+      WRITELN(PR);
+      IF LENGTH(NOTES)>44 THEN 
+           WRITELN(PR,CHR(27),'PD\',BLANK_STRING:33,CHR(27),
+              'PJ',CHR(27),'\',NOTES)
+             {sets 16.5 cpi, moves 33 spaces, then sets 8.25 cpi}
+      ELSE WRITELN(PR,BLANK_STRING:10,NOTES);
+      WRITE(PR,CHR(27),'PC\');  {sets 10 cpi}
+   END;   {banner}
+
+BEGIN   {initwtrpage}
+   INCLUDE:=FALSE;
+   PAGE_SIZE:=PAPERSIZE-ENDLINES-TOPMARGIN-2;
+   IF LPI=8 THEN PAGE_SIZE:=(4*PAGE_SIZE) DIV 3;
+   IF DOUBLE_SPACE = 'Y' THEN PAGE_SIZE:=PAGE_SIZE DIV 2;
+   WRITELN;
+   WRITE ( 'printing ... ',FILENAME ) ;
+   WRITE(PR,CHR(27),CHR(91),CHR(49),CHR(59),PAPERSIZE,CHR(114));
+      {this mess sets the top margin a line 1 if it isn't there already}
+      {and sets bottom margin to papersize}
+   BANNER;
+   CASE EXPANDED_PRINT OF
+      'E' : WRITE(PR,CHR(27),'PJ',CHR(27),'\'); {sets 8.5 cpi}
+      'N' : WRITE(PR,CHR(27),'PC\');            {sets 10 cpi}
+      'C' : WRITE(PR,CHR(27),'PD\')             {sets 16.5 cpi}
+      END;
+   IF LPI=8 THEN WRITE(PR,CHR(27),'PH',CHR(27),'\'); {sets 8 lpi}
+   WRITELN;
+END;    {initwrtpage}
+  
+PROCEDURE SKIP_HEADER(VAR SOURCE     : BLOCK;
+                          FILENAME   : STRING;
+                      VAR NEXT_BLOCK : INTEGER);
+  BEGIN
+     IF POS('.TEXT',FILENAME) <> 0 THEN NEXT_BLOCK:=2 
+     ELSE NEXT_BLOCK:=0; 
+  END;  {skip_header}
+        
+        
+PROCEDURE WRAP_UP_WRTPAGE;
+BEGIN
+    CLOSE(INP);
+    WRITE(PR,CHR(27),'PA\');  {sets 6 lpi}
+    WRITE(PR,CHR(27),'PC\');  {resets printer to 10 cpi}
+    WRITE(PR,CHR(27),CHR(91),CHR(52),CHR(59),PAPERSIZE-4,CHR(114));
+   {resets margins to top=4, bottom=papersize-4 in case Writer isn't used next}
+END;   {wrap_up_wrtpage}
+
+PROCEDURE NUMBERS;
+
+VAR SPACE : PACKED ARRAY[0..1] OF CHAR;
+        Z : INTEGER;
+
+
+   BEGIN
+     SPACE[0]:=CHR(32);
+     Z:=LEFTMARGIN+4;
+     IF SEQUENCE = 'Y' THEN
+        BEGIN
+           Z:=Z-4;
+           LINECNT:=LINECNT+1;
+           WRITE(PR,LINECNT:4);
+           IF INCLUDE AND (INLINE='Y') THEN 
+              BEGIN
+                 Z:=Z-1;
+                 WRITE(PR,'+');
+              END;
+        END;
+     FOR K:=1 TO Z DO UNITWRITE(6,SPACE[0],1,,1);
+   END;   {numbers}
+
+PROCEDURE NEWPAGE;
+   BEGIN
+     LINESLEFT := PAGE_SIZE;
+     WAIT_FOR_DC1;
+     PAGE(PR);
+     PAGENUMBER := PAGENUMBER + 1 ;
+     FOR MARGINLINES:=1 TO TOPMARGIN DO WRITELN(PR);
+     WRITELN(PR,FILENAME:25,'-':3,PAGENUMBER,'-   listing date '
+             ,DATE,'   last updated ',FILE_DATE);
+     WRITELN(PR);
+  END;   {newpage}
+            
+PROCEDURE PRINT_A_LINE ;
+
+VAR Q : INTEGER;
+
+PROCEDURE GET_INCLUDE;
+
+VAR NAME : PACKED ARRAY[0..24] OF CHAR;
+    X,R : INTEGER;
+    GOTFILE:BOOLEAN;
+    IORESLT : INTEGER;
+    STR : STRING;
+    INC_DATE : STRING;
+    
+BEGIN
+   R:=0;
+   STR:=' ';
+   INC_NAME:='';
+   REPEAT
+      NAME[R]:=LINE[Q+5+R];
+      R:=SUCC(R);
+   UNTIL NAME[R-1] = '*';
+   FOR X:=0 TO R-2 DO
+      BEGIN
+         STR[1]:=NAME[X];
+         INC_NAME:=CONCAT(INC_NAME,STR);
+      END;
+   REPEAT
+      CLOSE(INC);
+      RESET_DISK(INC,INC_NAME,IORESLT);
+      BAD_IO(INC,INC_NAME,IORESLT,TRUE,IO_OK);
+   UNTIL IO_OK;
+   SKIP_HEADER(INC,INC_NAME,INC_NEXT_BLOCK);
+   INCLUDE:=TRUE;
+   WRITELN;
+   WRITELN('printing ... ',INC_NAME);
+   GET_FILE_DATE(INC_NAME,INC_DATE);
+   WAIT_FOR_DC1;
+   IF DOUBLE_SPACE = 'Y' THEN WRITELN(PR);
+   WRITELN(PR,BLANK_STRING:LEFTMARGIN+4,INC_NAME,
+           ' last updated on ',INC_DATE);
+   LINESLEFT:=LINESLEFT-1;
+END;   {get_include}
+            
+BEGIN   {print_a_line} 
+   WAIT_FOR_DC1;
+   NUMBERS;
+   FOR Q:=0 TO S-1 DO IF LINE[Q] <> CHR(12) THEN UNITWRITE(6,LINE[Q],1,,1);
+   S:=0;
+   FOR Q:=0 TO 3 DO
+      BEGIN
+         IF (LINE[Q+0] = '(') AND
+            (LINE[Q+1] = '*') AND
+            (LINE[Q+2] = '$') THEN
+               BEGIN
+                  IF (LINE[Q+3] = 'I') AND
+                     (LINE[Q+4] <> '-') AND
+                     (LINE[Q+4] <> '+') 
+                  THEN IF (NOT INCLUDE) AND (INLINE = 'Y') THEN GET_INCLUDE;
+                  IF LINE[Q+3] = 'P' THEN NEWPAGE;
+               END
+       END;
+   IF LINESLEFT = 1 THEN NEWPAGE
+   ELSE
+      BEGIN 
+         IF DOUBLESPACE = 'Y' THEN WRITELN (PR) ;
+         LINESLEFT := LINESLEFT - 1 ;
+      END;
+END;    {print_a_line}
+      
+  
+BEGIN   {wrtpage}
+  INITWRTPAGE;
+     REPEAT
+        RESET(INP,FILENAME);
+        BAD_IO(INP,FILENAME,IORESULT,FALSE,IO_OK);
+     UNTIL IO_OK;
+  SKIP_HEADER(INP,FILENAME,INP_NEXT_BLOCK);
+  PAGENUMBER := 0 ;
+  LINECNT:=0;
+  S:=0;
+  NEWPAGE;
+  WHILE NOT EOF (INP) DO
+     BEGIN
+        J:=0;
+           REPEAT
+              K:=BLOCKREAD(INP,DATA,1,INP_NEXT_BLOCK);
+              BAD_IO(INP,FILENAME,IORESULT,FALSE,IO_OK);
+           UNTIL IO_OK;
+        INP_NEXT_BLOCK:=SUCC(INP_NEXT_BLOCK);
+        WHILE J < 512 DO
+           BEGIN 
+              IF NOT INCLUDE THEN 
+                 BEGIN
+                    IF DATA[J] <> CHR(0) THEN
+                       BEGIN
+                          LINE[S]:=DATA[J];
+                          S:=SUCC(S);
+                       END;
+                    IF DATA[J] = CHR(13) THEN PRINT_A_LINE;
+                    J:=SUCC(J);
+                 END
+              ELSE
+                 BEGIN
+                    WHILE NOT EOF(INC) DO
+                       BEGIN
+                          N:=0;
+                          REPEAT
+                             K:=BLOCKREAD(INC,DATAI,1,INC_NEXT_BLOCK);
+                             BAD_IO(INC,INC_NAME,IORESULT,FALSE,IO_OK);
+                          UNTIL IO_OK;
+                          INC_NEXT_BLOCK := SUCC(INC_NEXT_BLOCK);
+                          WHILE N < 512 DO 
+                             BEGIN
+                                IF DATAI[N] <> CHR(0) THEN
+                                   BEGIN
+                                      LINE[S]:=DATAI[N];
+                                      S:=SUCC(S);
+                                   END;
+                                IF DATAI[N] = CHR(13) THEN PRINT_A_LINE;
+                                N:=SUCC(N);
+                             END;
+                       END;
+                    CLOSE(INC);
+                    INCLUDE:=FALSE;
+                    WRITELN;
+                    WRITELN('printing ... ',FILENAME);
+                 END;
+            END;
+      END;
+   WRAP_UP_WRTPAGE;
+END; { wrtpage } 
+
+BEGIN   {writer}
+  INITIALIZE;
+  GETDATA;
+  FOR Q:=1 TO COPIES DO WRTPAGE;  
+  WRITE_DATA; 
+END.
+

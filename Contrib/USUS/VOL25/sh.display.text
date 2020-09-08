@@ -1,0 +1,84 @@
+Procedure DISPLAY_SCREEN; (* var SHOW_SCREEN: SCREEN_ARR;
+                             ROW_OFFSET,COL_OFFSET,
+                             START_ROW,END_ROW:Integer *)
+ var INDEX,I:Integer;
+     ERRORFLAG: Boolean;
+
+ begin {DISPLAY_SCREEN}
+  for INDEX:=1 to SCREEN_FIELDS do
+   with SHOW_SCREEN[INDEX] do
+    if S_ROW=END_SCREEN then exit(DISPLAY_SCREEN)
+     else 
+      if (S_ROW+ROW_OFFSET in[0..MAX_ROW]) and
+         (S_ROW in[START_ROW..END_ROW]) and
+         (S_COL+COL_OFFSET in[0..MAX_COL]) then
+        begin
+          gotoxy(S_COL+COL_OFFSET,S_ROW+ROW_OFFSET);
+          EATSPR(S_DEF);   EATSPR(S_FLD);
+          if (length(S_FLD)=0) and (length(S_DEF)>0) and (S_TYP<>'C')
+            then if (S_DEF[1]='[') and (S_DEF[length(S_DEF)]=']')
+                   then if FIND(copy(S_DEF,2,length(S_DEF)-2),SHOW_SCREEN)>0
+                     then S_FLD:=SHOW_SCREEN[FIND(copy(S_DEF,2,length(S_DEF)-2)
+                                                 ,SHOW_SCREEN)].S_FLD
+                     else S_FLD:=S_DEF
+                   else S_FLD:=S_DEF;
+          S_FLD:=copy(concat(S_FLD,UNDERLINE),1,S_LEN);
+          for I:=1 to length(S_FLD) do
+            if S_FLD[I]=' ' then S_FLD[I]:=ULINE;
+          write(S_FLD);
+         end;
+  end;  {DISPLAY_SCREEN}
+          
+ Procedure DISPLAY_PROMPTS; (* var P_ARRAY: PROMPT_ARR;
+                              ROW_OFFSET,COL_OFFSET,
+                              START_ROW,END_ROW:Integer *)
+  var INDEX: Integer;
+  
+  begin {DISPLAY_PROMPTS}
+   for INDEX:=1 to PROMPT_FIELDS do
+    with P_ARRAY[INDEX] do
+      if (P_ROW+ROW_OFFSET in[0..MAX_ROW]) and 
+         (P_ROW in[START_ROW..END_ROW]) and
+         (P_COL+COL_OFFSET in[0..MAX_COL]) then 
+           begin
+             gotoxy(P_COL+COL_OFFSET,P_ROW+ROW_OFFSET);
+             write(P_FLD); 
+            end
+        else if P_ROW=END_SCREEN then exit(DISPLAY_PROMPTS);
+  end; {DISPLAY_PROMPTS}
+           
+ Procedure ERASE_SCREEN; (* var E_SCREEN:SCREEN_ARR;
+                            ROW_OFFSET,COL_OFFSET,
+                            START_ROW,END_ROW:Integer *)
+  var INDEX,LEN:Integer;
+    
+  begin {ERASE_SCREEN}
+   for INDEX:=1 to SCREEN_FIELDS do
+    with E_SCREEN[INDEX] do
+      if (S_ROW+ROW_OFFSET in[0..MAX_ROW]) and
+         (S_ROW in[START_ROW..END_ROW]) and
+         (S_COL+COL_OFFSET in [0..MAX_COL]) then
+        begin
+         gotoxy(S_COL+COL_OFFSET,S_ROW+ROW_OFFSET);
+         for LEN:=1 to S_LEN do write(' ');
+        end
+       else if S_ROW=END_SCREEN then exit(ERASE_SCREEN);
+  end; {ERASE_SCREEN}
+    
+ Procedure ERASE_PROMPTS; (* var P_ARRAY:PROMPT_ARR;
+                            ERASE_OFFSET,START_ROW,END_ROW:Integer *)
+  var INDEX,LEN: Integer;
+    
+  begin {ERASE_PROMPTS}
+   for INDEX:=1 to PROMPT_FIELDS do
+    with P_ARRAY[INDEX] do
+      if (P_ROW+ROW_OFFSET in[0..MAX_ROW]) and
+         (P_ROW in[START_ROW..END_ROW]) and
+         (P_COL+COL_OFFSET in [0..MAX_COL]) then 
+           begin
+             gotoxy(P_COL+COL_OFFSET,P_ROW+ROW_OFFSET);
+             for LEN:=1 to length(P_FLD) do write(' ');
+           end
+       else if P_ROW=END_SCREEN then exit(ERASE_PROMPTS);
+  end; {ERASE_PROMPTS}
+

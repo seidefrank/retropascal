@@ -1,0 +1,18 @@
+        .FUNC   MRECSTAT,0
+        .PRIVATE RETADDR
+TPORT   .EQU    0C0H
+RECRDY  .EQU    2H
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;CORRECT STACK
+        POP     HL
+        LD      HL,1            ;TRUE 
+        IN      A,(TPORT)       ;READ STATUS
+        AND     RECRDY          ;CHECK READ STATUS
+        JP      NZ,DONE         ;REC NOT RDY
+        LD      HL,0            ;FALSE
+DONE    PUSH    HL
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

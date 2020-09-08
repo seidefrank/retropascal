@@ -1,0 +1,189 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTRE.FIND1.TEXT          revised 31-May-82                  *
+*                                                                       *
+************************************************************************}
+
+
+procedure SEARCH(INPUTKEY:FNAME;
+                      A:integer;
+                      var V:PERSON;
+                      var FOUND,WRONG:boolean);
+{************************************************************************
+*                                                                       *
+*  Search the b-tree for the key INPUTKEY starting at the root record   *
+*  number A.  If it is found then print out the tree.  Otherwise in-    *
+*  sert a new record with the key INPUTKEY and then print out the       *
+*  b-tree.  If an item emerges to be passed to a lower level, then      *
+*  assign it to V.  (In this case the tree must grow vertically and     *
+*  NEW_HEIGHT is set to true.)                                          *
+*                                                                       *
+************************************************************************}
+{label 1;} {can't have unused labels in IV.0 ! }
+var   U:PERSON;                 {used to transfer a person record to INSERT}
+      NEW_NODE,Z:PERSON_NODE;   {temporary/new PERSON_NODE}
+      TEMP_KEY:FNAME;           {temporary key}
+      A1,J,K,R,L,Q:integer;     {loop control variables}
+      NEXT_NODE:integer;        {pointer to location of next "empty" node}
+
+procedure INSERT;
+{************************************************************************
+*                                                                       *
+*  This procedure actually does the inserting including splitting the   *
+*  node if an overflow condition occurs.                                *
+*                                                                       *
+************************************************************************}
+var  I:integer; {loop control variable}
+begin   {insert U to the right of RECNUM DATA[R]}
+  with PERSONS^ do begin
+    if NODESIZE<MAX_NODE_SIZE then begin
+      SPLIT:=false;             {node is not full}
+      NODESIZE:=NODESIZE+1;     {we are adding a person to the node}
+      NEW_HEIGHT:=false;        {b-tree is not gowing vertically}
+      if DUPLICATE then begin   {insert a duplicate key}
+        DUPLICATE:=false;
+        DATA[NODESIZE]:=U
+      end  {if DUPLICATE}
+      else begin
+        for I:=NODESIZE downto R+2 do DATA[I]:=DATA[I-1];
+                                  {make room for new person}
+        DATA[R+1]:=U              {insert new person into node}
+      end  {else begin}
+    end  {if PERSONS^.NODESIZE<MAX_NODE_SIZE}
+    else begin
+{************************************************************************
+*                                                                       *
+*  The node is already full and it must be split and the emerging       *
+*  person assigned to V.  In order to accomplish this, different nodes  *
+*  will have to be found and brought into memory, so the boolean        *
+*  variable SPLIT is set to true as a "reminder" to get the current     *
+*  PERSON_NODE/record later for additional operations on or with it.    *
+*                                                                       *
+************************************************************************}
+      SPLIT:=true;              {will require new node}
+      NEXT_NODE:=FILE_LEN.PERSON_AVAIL;
+        {FILE_LEN.PERSON_AVAIL always points to the next "empty"
+         PERSON_NODE in the file.}
+      if not DUPLICATE then begin       {enter a unique key}
+        if R<=MIN_NODE_SIZE then begin {insert U in "new" left node}
+          if R=MIN_NODE_SIZE then V:=U
+            {new person is being inserted in the middle of the node to be split}
+          else begin
+           {move old persons around so "new" nodes will not be <MIN_NODE_SIZE}
+            V:=DATA[MIN_NODE_SIZE];
+            for I:=MIN_NODE_SIZE downto R+2 do DATA[I]:=DATA[I-1];
+            DATA[R+1]:=U
+          end; {else begin}
+          for I:=1 to MIN_NODE_SIZE do {copy person data to the new node}
+            NEW_NODE.DATA[I]:=PERSONS^.DATA[I+MIN_NODE_SIZE]
+        end  {if R<=MIN_NODE_SIZE}
+        else  begin  {insert U in right "new" node}
+          R:=R-MIN_NODE_SIZE;
+          V:=DATA[MIN_NODE_SIZE+1];
+          for I:=1 to R-1 do {move old persons around so new nodes will not be
+                              smaller than MIN_NODE_SIZE}
+            NEW_NODE.DATA[I]:=PERSONS^.DATA[I+MIN_NODE_SIZE+1];
+          NEW_NODE.DATA[R]:=U;    {insert new person}
+          for I:=R+1 to MIN_NODE_SIZE do  {copy person data to the new node}
+            NEW_NODE.DATA[I]:=PERSONS^.DATA[I+MIN_NODE_SIZE]
+        end; {else begin}
+        NODESIZE:=MIN_NODE_SIZE; {original node size reduced}
+        NEW_NODE.NODESIZE:=MIN_NODE_SIZE;
+        NEW_NODE.P0:=V.SUCC_NODE; {set correct pointer to <successor node}
+        V.SUCC_NODE:=NEXT_NODE;   {set correct pointer to >successor node}
+      end  {if not DUPLICATE}
+      else begin {node is full of duplicate keys so must start filling a
+                  new node and link the full node to it}
+        NEW_HEIGHT:=false;      {prevent action in procedure SEARCH}
+        DUPLICATE:=false;       {reset flag/control variable}
+        P0:=NEXT_NODE;          {link to latest node in linked list}
+        NEW_NODE.DATA[1]:=U;    {fill first slot of empty node}
+        NEW_NODE.P0:=-1;        {no additional duplicate key nodes (yet!)}
+        NEW_NODE.NODESIZE:=1    {set correct node size}
+      end  {else begin}
+    end; {else begin}
+  end; {with PERSONS^}
+{************************************************************************
+*                                                                       *
+*  Although it seems sensible that a simple "put(PERSONS)" would work   *
+*  correctly all by itself, unless all four lines below are used, only  *
+*  the very first item added to the original root node is saved.        *
+*  A "get" statement advances the file pointer to the next record       *
+*  location.                                                            *
+*                                                                       *
+*************************************************************************}
+  Z:=PERSONS^;                  {assign node to temp while seeking}
+  seek(PERSONS,A);              {set window on node/record number A}
+  write('.');                   {show user something is happending}
+  PERSONS^:=Z;                  {"dispose" of temp}
+  put(PERSONS);                 {write PERSON_NODE to disk}
+  if SPLIT then begin   {find place to put NEW_NODE}
+    seek(PERSONS,NEXT_NODE);    {set window to "empty" node location}
+    write('.');                 {show user something is happending}
+    get(PERSONS);               {fill file buffer}
+    FILE_LEN.PERSON_AVAIL:=PERSONS^.P0;
+      {remove node from linked list of available nodes and reset pointer
+       to new head of the list}
+    FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED-1;
+      {correct number of empty or unused nodes}
+    seek(PERSONS,NEXT_NODE);    {reset window to "empty" node location}
+    write('.');                 {show user something is happending}
+    PERSONS^:=NEW_NODE;         {assign NEW_NODE to "disk variable"}
+    put(PERSONS);               {write NEW_NODE to disk}
+  end; {if SPLIT}
+end; {INSERT}
+
+function PERSON_FOUND(U:PERSON;K:integer):boolean;
+{************************************************************************
+*                                                                       *
+*  Check to see if the correct person found.                            *
+*                                                                       *
+************************************************************************}
+var   TEMP_KEY:FNAME;   {hold key if data is changed}
+begin
+  if FOUND then begin
+    PERSON_FOUND:=false;
+    exit(PERSON_FOUND)
+  end; {if FOUND}
+  PRINT_PERSON(U);      {display record in question}
+  writeln;
+  writeln;
+  write('IS THIS THE CORRECT PERSON?  (y/n)  ');
+  if YES then begin
+    FOUND:=true;        {global found the correct person}
+    PERSON_FOUND:=true;
+    NEW_HEIGHT:=false;  {B-tree not growing}
+    DUPLICATE:=false;   {reset flag/control variable}
+    LEAVE:=true;        {we've found it so set exit flag}
+    WRONG:=false;       {the inputed and inverted key wasn't wrong}
+    V:=U;               {pass record back to original call of SEARCH}
+    writeln;
+    writeln;
+    write('Is the customer data correct?');     {verify data}
+    if not YES then begin       {data incorrect}
+      TEMP_KEY:=V.KEY;          {save for comparing}
+      PERSON_CHANGE(V);         {change it}
+      if TEMP_KEY<>V.KEY then begin
+          {key has changed so node must be moved to correct location}
+        CLEARSCREEN;            {clear CRT}
+        PRINTAT(0,8,'You changed the key so...');
+        PERSONPTR:=U;           {save old node for deletion comparison}
+        CHANGED:=true;          {set flag for deletion}
+        WRONG:=true             {set flag for reinsertion}
+      end  {if TEMP_KEY<>V.KEY}
+      else if U<>V then begin
+        PERSONS^.DATA[K]:=V;    {put corrected data into node}
+        Z:=PERSONS^;            {hold node while seeking}
+        seek(PERSONS,A);        {reset file window to location of node A}
+        write('.');             {show user something is happending}
+        PERSONS^:=Z;            {put corrected node into file buffer}
+        put(PERSONS)            {write correct node onto disk}
+      end  {else if U<>V}
+    end  {if not YES}
+  end  {if YES}
+  else PERSON_FOUND:=false      {did not find person}
+end; {PERSON_FOUND}
+
+
+
+

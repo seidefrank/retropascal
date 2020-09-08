@@ -1,0 +1,492 @@
+{$L-  LEVEL_CURVES.LIST}
+
+{
+                        program by:  KEN GAAL (9-21-79)
+                                     EDWARD J GRUNDLER (AUG 79)
+                                     
+     Changes made by reviewer:
+        The ranges in SCREENTYPE were correct in this one!!!!!
+        Changed boolean CLEAR_SCREEN to CLR_SCRN (to avoid conflict
+          with procedure CLEARSCREEN).
+        Replaced CHR(31) by RLF.
+        Replaced CHR(29) by CEOL.
+        Replaced PAGE(OUTPUT) by CLEARSCREEN.
+        Added line DEFINESTRINGS to main program.
+                 ---Henry E. Baumgarten
+}
+
+PROGRAM LEVEL_CURVES;
+
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF, POST_ENTRY_OF_FUNCTION;
+
+TYPE SCREENTYPE = PACKED ARRAY[0..239,0..319] OF BOOLEAN;
+
+VAR NEW_FUNCTION,NEW_LIMITS,CLR_SCRN,CONTOUR,SCAN_AGAIN:BOOLEAN;
+    ANS,CH,DIR:CHAR;
+    R,I,XAXIS,YAXIS,ERROR_COUNT,J:INTEGER;
+    X,XL,XR,YL,YU,XRNG,YRNG,XINC,YINC,Y,ZV,XSEARCH,YSEARCH,XPLOT,YPLOT:REAL;
+    ST:SCREENTYPE;
+
+
+PROCEDURE DRAWLINE(VAR R:INTEGER;
+                   VAR ST:SCREENTYPE; RW,XSTART,YSTART,DX,DY,INK:INTEGER);
+EXTERNAL;
+
+FUNCTION INPUT_VALUE:REAL;
+
+{
+                                                 function by:  EDWARD J GRUNDLER
+}
+
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+      OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+          OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(RLF,'READ ERROR, TRY AGAIN ',CEOL)
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+        EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE HELP;
+BEGIN
+  CLEARSCREEN;
+  WRITELN('THIS PROGRAM PLOTS THE ENTERED FUNCTION');
+  WRITELN;
+  WRITELN('THE OPERATOR IS ASKED FOR THE FOLLOWING INPUTS:');
+  WRITELN;
+  WRITELN('F(X,Y) = ');
+  WRITELN('THE X,Y LIMITS FOR THE SCREEN DISPLAY');
+  WRITELN('THE Z VALUE FOR THE LEVEL CURVE');
+  WRITELN;
+  WRITELN('press RETURN to continue');
+  READLN;
+  CLEARSCREEN
+END;
+
+PROCEDURE INITIALIZE;
+BEGIN
+  ERROR_COUNT:=0;
+  GOTOXY(0,0);
+  WRITE(CEOL,CHR(10),CEOL,CHR(10),CEOL,CHR(10));
+  GOTOXY(0,0);
+  IF NOT NEW_FUNCTION THEN
+    BEGIN
+      WRITE('DO YOU WANT TO ENTER A NEW FUNCTION? ');
+      READ(KEYBOARD,ANS);
+      NEW_FUNCTION:=ANS IN ['Y','y'];
+      WRITELN
+    END;
+  IF NEW_FUNCTION THEN
+    REPEAT
+      WRITE(RLF,'F(X,Y) = ',CEOL);
+      GET_FUNCTION;
+      WRITE(CEOL);
+      IF ERROR THEN
+        CASE ERROR_CODE OF
+        1:WRITELN('UNBALANCED PARENTHESES',RLF);
+        2:WRITELN('UNRECOGNIZED SYMBOL',RLF);
+        3:WRITELN('MULTIPLE DECIMAL POINTS IN A CONSTANT',RLF)
+        END; {OF CASE}
+      NEW_FUNCTION:=FALSE
+    UNTIL NOT ERROR;
+  IF NOT NEW_LIMITS THEN
+    BEGIN
+      WRITE(RLF,'DO YOU WANT NEW LIMITS ON THE DISPLAY? ',CEOL);
+      READ(KEYBOARD,ANS);
+      NEW_LIMITS:=ANS IN ['Y','y'];
+      WRITELN
+    END;
+  IF NEW_LIMITS THEN
+    BEGIN
+      CLR_SCRN:=TRUE;
+      FILLCHAR(ST,SIZEOF(ST),CHR(0));
+      REPEAT
+        CLEARSCREEN;
+        WRITE('ENTER THE LOWER VALUE OF "X" ');
+        XL:=INPUT_VALUE;
+        WRITE('ENTER THE UPPER VALUE OF "X" ');
+        XR:=INPUT_VALUE
+      UNTIL XL<XR;
+      REPEAT
+        CLEARSCREEN;
+        WRITE('ENTER THE LOWER VALUE OF "Y" ');
+        YL:=INPUT_VALUE;
+        WRITE('ENTER THE UPPER VALUE OF "Y" ');
+        YU:=INPUT_VALUE
+      UNTIL YL<YU
+    END;
+  IF NOT CLR_SCRN THEN 
+    BEGIN
+      WRITE(RLF,'DO YOU WANT THE SCREEN CLEARED? ',CEOL);
+      READ(KEYBOARD,ANS);
+      CLR_SCRN:=ANS IN ['Y','y']
+    END
+END;
+
+PROCEDURE SET_SCREEN;
+BEGIN
+  IF CLR_SCRN THEN
+    BEGIN
+      FILLCHAR(ST,SIZEOF(ST),CHR(0));
+      DRAWLINE(R,ST,20,59,30,201,0,1);
+      DRAWLINE(R,ST,20,60,230,200,0,1);
+      DRAWLINE(R,ST,20,60,30,0,200,1);
+      DRAWLINE(R,ST,20,260,30,0,200,1);
+      FOR I:=0 TO 10 DO DRAWLINE(R,ST,20,60,30+I*20,-3,0,1);
+      FOR I:=0 TO 10 DO DRAWLINE(R,ST,20,60+I*20,230,0,3,1);
+      CLR_SCRN:=FALSE
+    END;
+  IF NEW_LIMITS THEN
+    BEGIN
+      NEW_LIMITS:=FALSE;
+      CLEARSCREEN;
+      XRNG:=XR-XL;
+      YRNG:=YU-YL;
+      FOR I:=0 TO 10 DO
+        BEGIN
+          GOTOXY(4,3+2*I);
+          WRITE(YU-I*YRNG/10:2:2)
+        END;
+      FOR I:=0 TO 5 DO
+        BEGIN
+          GOTOXY(11+10*I,23);
+          WRITE(XL+I*XRNG/5:7:2);
+        END
+    END;
+  GOTOXY(0,0); WRITE(' ':80);
+  GOTOXY(15,0);
+  WRITELN('Z = F(X.Y) = ',ENTERED_FUNCTION,CEOL)
+END;
+
+PROCEDURE SCAN;
+VAR SEARCH: BOOLEAN;
+    X1,Y1,X2,Y2,DX,DY,F1,F2: REAL;
+BEGIN { procedure SCAN }
+  REPEAT
+    GOTOXY(20,1);
+    WRITE('enter (X,Y) and direction (Up,Down,Right,Left) for search');
+    GOTOXY(20,2); WRITE('X = '); XSEARCH:=INPUT_VALUE;
+    GOTOXY(20,2); WRITE(' ':60);
+    GOTOXY(20,2); WRITE('Y = '); YSEARCH:=INPUT_VALUE;
+    GOTOXY(20,2); WRITE(' ':60);
+    F1:=F(XSEARCH,YSEARCH,0);
+    GOTOXY(20,1); WRITE(' ':60);
+    GOTOXY(30,1);
+    WRITELN('X = ',XSEARCH:8:3,'  Y= ',YSEARCH:8:3,'  F(X,Y) = ',F1:9:5);
+    GOTOXY(20,2);
+    WRITE('enter S for Search or N for New (X.Y) values');
+    READ(KEYBOARD,CH); SEARCH:=CH IN ['S','s'];
+    GOTOXY(20,2); WRITE(' ':60);
+  UNTIL SEARCH;
+  REPEAT
+    GOTOXY(0,2); WRITE(' ':80);
+    GOTOXY(20,2); WRITE('enter direction (U,D,R,L)');
+    READ(KEYBOARD,DIR);
+  UNTIL DIR IN ['U','D','R','L','u','d','r','l'];
+  GOTOXY(20,1); WRITELN(' ':60);
+  GOTOXY(0,2);  WRITELN(' ':80);
+  CASE DIR OF
+    'U','u': begin DX:=0; DY:=YINC end;
+    'D','d': begin DX:=0; DY:=-YINC end;
+    'R','r': begin DX:=XINC; DY:=0 end;
+    'L','l': begin DX:=-XINC; DY:=0 end;
+    END; { case }
+  X1:=XSEARCH; Y1:=YSEARCH;
+  F1:=F1-ZV;
+  GOTOXY(20,1); WRITE('**Searching**');
+  REPEAT
+    X2:=X1+DX; Y2:=Y1+DY; F2:=F(X2,Y2,0)-ZV;
+    GOTOXY(35,1);
+    WRITE('X = ',X2:8:3,'  Y = ',Y2:8:3,'  F(X,Y) = ',F2+ZV:9:5);
+    CONTOUR:= F1*F2 <= 0;
+    IF NOT CONTOUR THEN begin F1:=F2; X1:=X2; Y1:=Y2 end
+  UNTIL (CONTOUR or (X1<XL) or (X1>XR) or (Y1<YL) or (Y1>YU));
+  IF CONTOUR THEN
+    IF ABS(F1) < ABS(F2) THEN begin XPLOT:=X1; YPLOT:=Y1 end
+                         ELSE begin XPLOT:=X2; YPLOT:=Y2 end;
+END; { procedure SCAN }
+  
+PROCEDURE PLOT;
+TYPE COMPASS = (E,NE,N,NW,W,SW,S,SE);
+VAR XBEG,YBEG,XNEW,YNEW,PATH,NFXY,NPTS: INTEGER;
+    FNEW,XTAN,YTAN,RTD,MAXERR: REAL;
+    BOARDER,BEG,BLOWUP: BOOLEAN;
+    CH: CHAR;
+    FUN: ARRAY[COMPASS] OF REAL;
+    KNOWN: SET OF COMPASS;
+
+  FUNCTION FXY(X,Y:INTEGER):REAL;
+  BEGIN
+    NFXY:=NFXY+1;
+    FXY:=F(XL+(X-60)*XINC,YU-(Y-30)*YINC,0) - ZV
+  END;
+    
+  FUNCTION HEADING(X,Y:REAL):COMPASS;
+  VAR ANG: REAL;
+      DHEAD: INTEGER;
+  BEGIN
+    IF (X=0)  AND (Y>0) THEN
+      begin HEADING:=N; EXIT(HEADING) end;
+    IF (X=0)  AND (Y<0) THEN
+      begin HEADING:=S; EXIT(HEADING) end;
+    IF (X=0) AND (Y=0) THEN
+      begin IF PATH=1 THEN HEADING:=N ELSE HEADING:=S;
+            EXIT(HEADING)
+      end;
+    ANG:=ATAN(Y/X)*RTD;
+    IF X<0 THEN ANG:=ANG+180;
+    IF ANG<0 THEN ANG:=ANG+360;
+    DHEAD:=TRUNC(ANG/45) MOD 8;
+    
+    (*
+    GOTOXY(9,6); WRITELN('ANG,DHEAD= ',ANG:8:3,DHEAD:5);
+    GOTOXY(9,7); WRITELN('XTAN,YTAN= ',X:8:3,Y:8:3);
+    GOTOXY(9,8); WRITELN('FNEW=F(X,Y)-Z= ',FNEW:8:5);
+    GOTOXY(9,9); WRITELN('XNEW,YNEW ',XNEW:5,YNEW:5);
+    *)
+    
+    CASE DHEAD OF
+      0: HEADING:=E;
+      1: HEADING:=NE;
+      2: HEADING:=N;
+      3: HEADING:=NW;
+      4: HEADING:=W;
+      5: HEADING:=SW;
+      6: HEADING:=S;
+      7: HEADING:=SE;
+      END;
+  END; { of function HEADING }
+    
+  PROCEDURE INCLUDE(DIR:COMPASS);
+  VAR X,Y: INTEGER;
+  BEGIN
+    CASE DIR OF
+      NE,E,SE:  X:=XNEW+1;
+      N,S:      X:=XNEW;
+      NW,W,SW:  X:=XNEW-1;
+      END;
+    CASE DIR OF
+      NW,N,NE: Y:=YNEW-1;
+      W,E:     Y:=YNEW;
+      SW,S,SE: Y:=YNEW+1;
+      END;
+    FUN[DIR]:=FXY(X,Y); KNOWN:=KNOWN+[DIR]
+  END; { procedure INCLUDE }
+  
+  PROCEDURE TANGENT(VAR XT,YT: REAL);
+  VAR DFDX,DFDY: REAL;
+  BEGIN { procedure TANGENT }
+    { compute partial derivatives }
+    IF NOT (E IN KNOWN) THEN INCLUDE(E);
+    IF NOT (N IN KNOWN) THEN INCLUDE(N);
+    IF NOT (W IN KNOWN) THEN INCLUDE(W);
+    IF NOT (S IN KNOWN) THEN INCLUDE(S);
+    DFDX:=(FUN[E]-FUN[W])/(2*XINC);
+    DFDY:=(FUN[N]-FUN[S])/(2*YINC);
+    CASE PATH OF
+      1: begin XT:=-DFDY; YT:=DFDX end;
+      2: begin XT:=DFDY; YT:=-DFDX end;
+      END;
+    XT:=XT/XINC; YT:=YT/YINC
+  END; { procedure TANGENT }
+  
+  PROCEDURE NEXT_PT(DIR: COMPASS);
+  VAR ALT: COMPASS;
+  
+    PROCEDURE NEXT(D:COMPASS);
+    VAR UPDATE: SET OF COMPASS;
+    
+      PROCEDURE NEWNEW(FROM,TOWARD:COMPASS);
+      BEGIN
+        FUN[FROM]:=FNEW; FNEW:=FUN[TOWARD];
+        UPDATE:=[FROM]
+      END;
+      
+      PROCEDURE SHIFT(DOLD,DNEW:COMPASS);
+      BEGIN
+        IF DOLD IN KNOWN THEN
+          begin
+            FUN[DNEW]:=FUN[DOLD]; UPDATE:=UPDATE + [DNEW]
+          end
+      END;
+            
+      
+    BEGIN { procedure NEXT }
+    UPDATE:=[ ];
+    CASE D OF
+      E:  begin NEWNEW(W,E); XNEW:=XNEW+1;
+                SHIFT(S,SW); SHIFT(SE,S); SHIFT(N,NW); SHIFT(NE,N) end;
+      NE: begin NEWNEW(SW,NE); XNEW:=XNEW+1; YNEW:=YNEW-1;
+                SHIFT(N,W); SHIFT(E,S) end;
+      N:  begin NEWNEW(S,N);               YNEW:=YNEW-1;
+                SHIFT(W,SW); SHIFT(NW,W); SHIFT(E,SE); SHIFT(NE,E) end;
+      NW: begin NEWNEW(SE,NW); XNEW:=XNEW-1; YNEW:=YNEW-1;
+                SHIFT(W,S); SHIFT(N,E) end;
+      W:  begin NEWNEW(E,W); XNEW:=XNEW-1; 
+                SHIFT(N,NE); SHIFT(NW,N); SHIFT(S,SE); SHIFT(SW,S) end;
+      SW: begin NEWNEW(NE,SW); XNEW:=XNEW-1; YNEW:=YNEW+1;
+                SHIFT(W,N); SHIFT(S,E) end;
+      S:  begin NEWNEW(N,S);               YNEW:=YNEW+1;
+                SHIFT(W,NW); SHIFT(SW,W); SHIFT(E,NE); SHIFT(SE,E) end;
+      SE: begin NEWNEW(NW,SE); XNEW:=XNEW+1; YNEW:=YNEW+1;
+                SHIFT(S,W); SHIFT(E,N) end;
+      END; { case }
+    KNOWN:=UPDATE
+    END; { procedure NEXT }
+    
+    
+  BEGIN { procedure NEXT_PT }
+    { make two candidates for next pt available }
+    IF NOT (DIR IN KNOWN) THEN INCLUDE(DIR);
+    IF DIR=SE THEN ALT:=E ELSE ALT:=SUCC(DIR);
+    IF NOT (ALT IN KNOWN) THEN INCLUDE(ALT);
+    { now select the better of the two candidates }
+    IF ABS(FUN[ALT])<ABS(FUN[DIR]) THEN NEXT(ALT) ELSE NEXT(DIR);
+  END; { procedure NEXT_PT }
+  
+BEGIN { procedure PLOT }
+  CH:='A';
+  NFXY:=0; NPTS:=1;
+  RTD:=45/ATAN(1.0);
+  MAXERR:=SQRT(SQR(XRNG)+SQR(YRNG))/10;
+  GOTOXY(20,1); WRITE(' ':60);
+  GOTOXY(20,1); WRITE('**Plotting**');
+  PATH:=1;
+  XBEG:=60+ROUND((XPLOT-XL)/XINC);
+  YBEG:=30+ROUND((YU-YPLOT)/YINC);
+  ST[YBEG,XBEG]:=TRUE;
+  XNEW:=XBEG; YNEW:=YBEG;
+  FNEW:=FXY(XNEW,YNEW);
+  KNOWN:=[ ];
+  REPEAT
+    UNITREAD(2,CH,1,,1);
+    IF UNITBUSY(2) THEN UNITCLEAR(2)
+                   ELSE IF CH=CHR(27) THEN
+                     begin
+                       (*
+                       GOTOXY(10,10);
+                       WRITELN('NFXY,NPTS,NFXY/NPTS ',NFXY:6,NPTS:6,NFXY/NPTS:8:5);
+                       *)
+                       EXIT(PLOT)
+                     end;
+    TANGENT(XTAN,YTAN); { compute vector tangent to contour }
+    NEXT_PT(HEADING(XTAN,YTAN)); { compute next pt to be plotted }
+    BOARDER:=((XNEW<60) or (XNEW>260) or (YNEW<30) or (YNEW>230));
+    BEG:=(XNEW=XBEG) AND (YNEW=YBEG);
+    BLOWUP:=ABS(FNEW) >= MAXERR;
+    IF BEG or ((PATH=2) and (BOARDER or BLOWUP)) THEN
+      begin
+        (*
+        GOTOXY(10,10);
+        WRITELN('NFXY,NPTS,NFXY/NPTS ',NFXY:6,NPTS:6,NFXY/NPTS:8:5);
+        *)
+        EXIT(PLOT)
+      end;
+    IF NOT (BOARDER OR BLOWUP) THEN
+      begin ST[YNEW,XNEW]:=TRUE; NPTS:=NPTS+1 end;  {plot pt.}
+    IF (PATH=1) AND (BOARDER or BLOWUP) THEN
+      begin
+        PATH:=2; KNOWN:=[ ];
+        XNEW:=XBEG; YNEW:=YBEG
+      end;
+  UNTIL FALSE;
+END; { procedure PLOT }
+          
+BEGIN {MAIN PROGRAM}
+  DEFINESTRINGS;
+  FILLCHAR(ST,SIZEOF(ST),CHR(0));
+  UNITWRITE(3,ST,63);
+  NEW_FUNCTION:=TRUE;
+  NEW_LIMITS:=TRUE;
+  CLR_SCRN:=TRUE;
+  CLEARSCREEN;
+  WRITELN('HELP IS AVAILABLE BY PRESSING "H" OR "?"');
+  WRITELN;
+  WRITELN('press SPACE to continue');
+  READ(KEYBOARD,CH);
+  IF CH IN ['H','h','/','?'] THEN HELP;
+  REPEAT
+    INITIALIZE;
+    SET_SCREEN;
+    XINC:=XRNG/200;
+    YINC:=YRNG/200;
+    IF XL*XR <= 0 THEN   { DRAW Y AXIS }
+       begin
+         YAXIS:=ROUND(60-XL/XINC);
+         DRAWLINE(R,ST,20,YAXIS,30,0,200,1)
+       end;
+    IF YL*YU <= 0 THEN   { DRAW X AXIS }
+       begin
+         XAXIS:=ROUND(30+YU/YINC);
+         DRAWLINE(R,ST,20,60,XAXIS,200,0,1)
+       end;
+    GOTOXY(15,1);
+    WRITE('ENTER Z VALUE FOR LEVEL CURVE  ');
+    ZV:=INPUT_VALUE;
+    GOTOXY(0,1); WRITELN(' ':80);
+    GOTOXY(3,1); WRITE('Z = ',ZV:8:3);
+    SCAN_AGAIN:=TRUE;
+    REPEAT
+       SCAN;
+       IF CONTOUR THEN PLOT;
+       GOTOXY(15,2);
+       WRITE('SEARCH FOR ANOTHER CONTOUR WITH Z = ',ZV:8:3,' (Y/N)');
+       READ(KEYBOARD,CH); SCAN_AGAIN:=CH IN ['Y','y'];
+       GOTOXY(15,2); WRITE(' ':65);
+    UNTIL NOT SCAN_AGAIN;
+    GOTOXY(30,2);
+    WRITE('press RETURN to CONTINUE or "Q" RETURN to QUIT');
+    READLN(KEYBOARD,CH);
+  UNTIL CH IN ['Q','q'];
+  UNITWRITE(3,ST,7);
+  CLEARSCREEN
+END.

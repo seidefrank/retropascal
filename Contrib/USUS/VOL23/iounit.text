@@ -1,0 +1,310 @@
+UNIT IOUNIT;
+
+{     (c) Copyright 1983 by Charles Rockwell.  All rights reserved. }
+{ Permission is granted only for not-for-profit use by USUS members.}
+{ Author:  Charles Rockwell, Microlog, Box 116, Guilford CT, 06437. }
+
+INTERFACE
+
+TYPE 
+     LONGSTR = STRING[255];
+     FILNAME = STRING[20];
+
+VAR 
+     EOLNFLAG,
+     EOFFLAG: BOOLEAN;
+
+  PROCEDURE READLINE(VAR ST:LONGSTR);
+  
+  PROCEDURE READCHAR(VAR C:CHAR);
+  
+  FUNCTION RESETFILE(VAR FNAME:FILNAME): BOOLEAN;
+  
+  PROCEDURE CLOSEINFILE;
+  
+  PROCEDURE WRITELINE(ST:LONGSTR);
+  
+  PROCEDURE WRITECHAR(C:CHAR);
+  
+  FUNCTION REWRITEFILE(VAR GNAME:FILNAME): BOOLEAN;
+  
+  PROCEDURE CLOSEOUTFILE;
+  
+IMPLEMENTATION
+
+CONST 
+      NULL = 0;
+      CR = 13;
+      DLE = 16;
+      SP = 32;
+
+VAR 
+
+(* VARIABLES FOR READCHAR *)
+    INFILE: FILE;                             (* BLOCKREAD FILE *)
+    INDISKBUF: PACKED ARRAY[0..1025] OF CHAR; (* BLOCKREAD BUFFER +2 *)
+    INDISKPTR: INTEGER;                       (* BUFFER POINTER *)
+    INLINEBUF: LONGSTR;                       (* INPUT STRING BUFFER *)
+    INLINEPTR: INTEGER;                       (* INPUT STRING POINTER *)
+    INLINELEN: INTEGER;                       (* INPUT STRING LENGTH *)
+
+(* VARIABLES FOR WRITECHAR *)
+    OUTFILE: FILE;                            (* BLOCKWRITE FILE *)
+    OUTDISKBUF: PACKED ARRAY[0..1025] OF CHAR;(* BLOCKWRITE BUFFER +2 *)
+    OUTDISKPTR: INTEGER;                      (* BUFFER POINTER *)
+    OUTLINEBUF: LONGSTR;                      (* OUTPUT STRING BUFFER *)
+    OUTLINEPTR: INTEGER;                      (* OUTPUT STRING POINTER *)
+
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE READBUF; (* BLOCKREAD THE DISK FILE *)
+
+VAR 
+    R: INTEGER;
+BEGIN (* READBUF *)
+  IF EOF(INFILE)
+    THEN
+      BEGIN
+        EOFFLAG := TRUE;
+        CLOSE(INFILE,LOCK);
+        EXIT(READBUF)
+      END
+    ELSE
+      EOFFLAG := FALSE;
+  R := BLOCKREAD(INFILE, INDISKBUF, 2);
+  IF R<>2
+    THEN
+      BEGIN
+        WRITELN;
+        WRITELN('Error reading file');
+        CLOSE(INFILE,LOCK);
+        EXIT(PROGRAM)
+      END;
+  INDISKPTR := 0
+END; (* READBUF *)
+
+PROCEDURE READLINE(* VAR ST:LONGSTR *);
+(* ST := INLINEBUF; INLINEBUF := NEXT LINE FROM DISKBUF *)
+
+VAR 
+    J,K,L: INTEGER;
+BEGIN (* READLINE *)
+  IF EOLNFLAG
+    THEN (* INLINEBUF IS PRESUMED EMPTY *)
+      ST := ''
+    ELSE (* ST:=INLINEBUF *)
+      BEGIN
+        L := INLINELEN-INLINEPTR+1;
+      (*$R- *)
+        MOVELEFT(INLINEBUF[INLINEPTR],ST[1],L);
+        ST[0] := CHR(L)
+      (*$R+ *)
+      END;
+  IF ((INDISKPTR > 1023) OR (INDISKBUF[INDISKPTR] = CHR(NULL)))
+    THEN (* INDISKBUF IS PRESUMED EMPTY *)
+      BEGIN
+        READBUF;
+        IF EOFFLAG
+          THEN
+            EXIT(READLINE)
+      END;
+  IF INDISKBUF[INDISKPTR]=CHR(DLE)
+    THEN (* GET BLANK COUNT *)
+      BEGIN
+        J := ORD(INDISKBUF[INDISKPTR+1])-32;
+        INDISKPTR := INDISKPTR+2;
+        IF (J>0) AND (J<127) THEN
+            begin
+               FILLCHAR(INLINEBUF,J+1,CHR(32)) ;
+               fillchar ( inlinebuf, 1, chr ( j ) );
+            end
+       ELSE J:=0
+     END
+    ELSE (* BLANK COUNT IS ZERO *)
+      J := 0;
+  (* FIND LENTH OF NEXT LINE IN INDISKBUF *)
+  K := SCAN(1024-INDISKPTR, =CHR(CR), INDISKBUF[INDISKPTR]);
+(* INSERT NEXT LINE INTO INLINEBUF STARTING AT BLANK COUNT SPACES *)
+  (*$R-  range checking off to allow moveleft into arbitrary length string-gws*)
+  MOVELEFT(INDISKBUF[INDISKPTR],INLINEBUF[J+1],K);
+  (*$R+*)
+  FILLCHAR ( INLINEBUF, 1, CHR ( J + K ) );  {set length byte - gws}
+  INLINELEN := J+K;
+  INLINEPTR := 1;
+  INDISKPTR := INDISKPTR+K+1;
+  EOLNFLAG := (INLINEPTR>INLINELEN)
+END; (* READLINE *)
+
+PROCEDURE READCHAR(* VAR C:CHAR *);
+(* GET NEXT CHARACTER FROM INPUT STRING *)
+BEGIN (* READCHAR *)
+  (*$R- *)
+  C := INLINEBUF[INLINEPTR];
+  (*$R+ *)
+  INLINEPTR := INLINEPTR+1;
+  EOLNFLAG := (INLINEPTR>INLINELEN)
+END; (* READCHAR *)
+
+FUNCTION RESETFILE(* VAR FNAME:FILNAME ) :BOOLEAN *);
+
+VAR 
+    R: INTEGER;
+    TRASH: LONGSTR;
+
+BEGIN (* RESETFILE *)
+(*$I- *)
+  REPEAT
+    IF FNAME=''
+      THEN
+        BEGIN
+          RESETFILE := FALSE;
+          EXIT(RESETFILE)
+        END
+      ELSE
+        RESETFILE := TRUE;
+    IF ((POS('.',FNAME)=0)
+       AND (POS(':',FNAME) <> LENGTH(FNAME)))
+      THEN
+        FNAME := CONCAT(FNAME,'.TEXT');
+    RESET(INFILE,FNAME);
+    R := IORESULT;
+    IF R<>0
+      THEN
+        BEGIN
+          WRITELN  ('Cannot open      ',FNAME);
+          WRITELN;
+          WRITE    ('Filename:        ');
+          READLN(FNAME)
+        END
+  UNTIL R=0;
+(*$I+ *)
+  READBUF;  (* READ TEXT FILE HEADER *)
+  INDISKPTR := 1024; (* FORCE NEXT READBUF *)
+  EOLNFLAG := TRUE;
+  READLINE(TRASH)
+END; (* RESETFILE *)
+
+PROCEDURE CLOSEINFILE;
+  BEGIN
+    CLOSE(INFILE,LOCK)
+  END;
+
+(*---------------------------------------------------------------------*)
+
+PROCEDURE WRITEBUF; (* BLOCKWRITE THE DISK FILE *)
+
+VAR 
+    E: INTEGER;
+BEGIN (* WRITEBUF *)
+  E := BLOCKWRITE(OUTFILE,OUTDISKBUF,2);
+  IF E<>2
+    THEN
+      BEGIN
+        WRITELN('Error writing file');
+        CLOSE(OUTFILE,LOCK);
+        EXIT(PROGRAM)
+      END;
+  OUTDISKPTR:=0
+END; (* WRITEBUF *)
+
+PROCEDURE WRITELINE(* ST:LONGSTR *);
+(* OUTLINEBUF := CONCAT OUTLINEBUF,ST; OUTDISKBUF := OUTLINEBUF *)
+VAR 
+    BLANKS,CHARS,STLEN: INTEGER;
+BEGIN (* WRITELINE *)
+  CHARS := LENGTH(ST);
+  (*$R-*)
+  IF CHARS>0
+    THEN (* CONCAT OUTLINEBUF,ST *)
+      MOVELEFT(ST[1],OUTLINEBUF[OUTLINEPTR+1],CHARS);
+  (* CONCAT OUTLINEBUF,CHR(CR) *)
+  CHARS := CHARS+OUTLINEPTR+1;
+  OUTLINEBUF[CHARS] := CHR(CR);
+  BLANKS := SCAN(CHARS,<>CHR(SP),OUTLINEBUF[1]);
+  (*$R+*)
+  STLEN:=CHARS-BLANKS;
+  IF (OUTDISKPTR + STLEN) >1020
+    THEN (* WRITE BLOCK *)
+      BEGIN
+        FILLCHAR(OUTDISKBUF[OUTDISKPTR],1024-OUTDISKPTR,CHR(NULL));
+        WRITEBUF
+      END;
+  IF BLANKS>0
+    THEN (* INSERT DLE COUNT *)
+      BEGIN
+        OUTDISKBUF[OUTDISKPTR] := CHR(DLE);
+        OUTDISKBUF[OUTDISKPTR+1] := CHR(BLANKS+32);
+        OUTDISKPTR := OUTDISKPTR+2
+      END;
+(*$R-*)
+  (* COPY OUTLINEBUF TO OUTDISKBUF *)
+  MOVELEFT(OUTLINEBUF[BLANKS+1],OUTDISKBUF[OUTDISKPTR],STLEN);
+  OUTLINEPTR := 0;
+(*$R+*)
+  OUTDISKPTR := OUTDISKPTR+STLEN
+END; (* WRITELINE *)
+
+PROCEDURE WRITECHAR(* C:CHAR *);
+(* OUTLINEBUF := CONCAT OUTLINEBUF,CH *)
+BEGIN (* WRITECHAR *)
+  OUTLINEPTR := OUTLINEPTR+1;
+  (*$R- *)
+  OUTLINEBUF[OUTLINEPTR] := C
+  (*$R+ *)
+END; (* WRITECHAR *)
+
+FUNCTION REWRITEFILE(* VAR GNAME:FILNAME *) (* :BOOLEAN *);
+
+VAR 
+    E,R: INTEGER;
+BEGIN (* REWRITEFILE *)
+(*$I- *)
+  REPEAT
+    IF GNAME=''
+      THEN
+        BEGIN
+          REWRITEFILE := FALSE;
+          EXIT(REWRITEFILE)
+        END
+      ELSE
+        REWRITEFILE := TRUE;
+    IF ((POS('.',GNAME)=0)
+       AND (POS(':',GNAME) <> LENGTH(GNAME)))
+      THEN
+          GNAME := CONCAT(GNAME,'.TEXT');
+    REWRITE(OUTFILE,GNAME);
+    R := IORESULT;
+    IF R<>0
+      THEN
+        BEGIN
+          WRITELN  ('Cannot open      ',GNAME);
+          WRITELN;
+          WRITE    ('Filename:        ');
+          READLN(GNAME)
+        END
+  UNTIL R=0;
+(*$I+ *)
+  IF (POS(':',GNAME)<>LENGTH(GNAME))
+    THEN (* DESTINATION IS PRESUMED TO BE A DISK FILE *)
+      BEGIN
+        FILLCHAR(OUTDISKBUF,SIZEOF(OUTDISKBUF),CHR(NULL));
+        WRITEBUF
+      END;
+  OUTDISKPTR:=0;
+  OUTLINEPTR := 0
+END; (* REWRITEFILE *)
+
+PROCEDURE CLOSEOUTFILE;
+
+BEGIN (* CLOSEOUTFILE *)
+  IF OUTDISKPTR>0
+    THEN (* WRITE OUT LAST BLOCK *)
+      BEGIN
+        FILLCHAR(OUTDISKBUF[OUTDISKPTR],1024-OUTDISKPTR,CHR(NULL));
+        WRITEBUF
+      END;
+  CLOSE(OUTFILE,LOCK)
+END (* CLOSEOUTFILE *)
+
+END. (* IOUNIT *)

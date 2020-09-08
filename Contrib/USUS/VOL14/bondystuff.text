@@ -1,0 +1,83 @@
+     This is a note from Jon bondy which describes his submissions. -gws
+     
+     The COPVOL and COPFILE programs should be easy to understand: they ask
+for source and destination volumes/files and perform a copy by reading the
+source into one buffer, writing that buffer to the destination, reading the
+destination into a second buffer, and then comparing the buffers. In COPVER,
+if the file *SYSTEM.PDP11 does not exist, it is assumed that the program is
+running on an 8080 or a Z-80 and the COPVER.ASM 8080 assembly routines are
+executed to copy the booter tracks using CP/M BIOS routines: I know this will
+not work for everyone, but it is better than nothing at all, and there is no
+sector read mode in I.5.
+
+     The COMPFILE program reads the two files and compares them bit for bit: if
+there are discrepancies, the block and byte number is calculated and displayed.
+The other compare program in the library is probably much better for TEXT
+files, but to compare binary/data files, this program is useful.
+
+     The disk SCANNER program allows you to scan an entire volume rapidly
+searching for the occurance of one of a number of character strings.  If the
+strings are found anywhere, the directory is searched to see in what file the
+string was located.  Then the file name and the string found, along with the
+context in which it was found, is displayed on the screen.  This program is
+useful if you have a number of disks with similar data and you want to find a
+particular file but don't know the name: I use it to locate TeleMail files on
+my archive disks.  The program looks for SCAN.DATA.TEXT for the list of search
+strings.
+
+     The GAME program is a simple game with demons and a maze.  The screen is
+used as a playing field, with "-", "|", and "+" used as maze obstacles: the
+player is a 'P' and the "demons" which try to kill him/her are 'D's.  A player
+can kill a demon by landing on top of him; demons do the same for the player. 
+This results in a 50/50 chance of success if a player makes a head-long rush
+towards a demon: more subtle approaches are required to insure winning (like
+sneaking up on him from behind).  One feature of the game is the board edit
+mode, in which the player can create his/her own maze. 
+
+     At the top level, one has the choice of changing the demon M(ode, starting
+to P(lay a game, changing the L(evel of difficulty of play, and entering S(etup
+(the game board editor).  All commands are single key strokes, with both upper
+and lower case characters accepted.
+
+     The Demons operate in one of two "modes": Inertial mode or Heat-Seeking
+mode.  In Inertial mode, they chose a random direction and go in that
+direction until they hit an obstacle (or kill a Player!): they then make a
+random decision and continue in a new direction until they hit something else.
+In Heat-Seeking mode, they know the direction of the Player, and they try to get
+to him/her, although they do not know enough to go around walls.  Typing "M" at
+the top level or during game play toggles the mode.
+     
+     In Heat-Seeking mode, the Player hasn't got a chance to win on a 2 MHz 
+Z-80, so I added the playing difficulty levels, from 0 to 9: at level 0, the
+game runs so fast you can't keep up, while at level 9 it is fairly easy to win
+once you have some experience.
+
+     During game play you can move the player up, down, left, or right (they
+keys for these actions are defined in the program), entering Hyper-Space by
+typing an "H" (puts you in a random position on the board), toggling the Demon
+Mode by typing an "M", changing the levels by typing the numeric digits from
+"0" to "9", or quiting. 
+
+      Setup mode allows the player to G(et or P(ut a game board (maze), alter
+the N(umber of demons at the start of the game from 1 to 9, or E(dit the game
+board.  G(etting a non-existant game board will have the side-effect of
+clearing the game board, allowing easy generation of a new one in E(dit mode.
+The Edit mode allows the creation or deletion of all walls/corridors in the
+maze.  The default direction is specified by pressing any of the up, down, t
+left, or right keys: thereafter the other keys ("+", "-", "|") will be inserted
+in the game board in the same direction.  This allows easy creation of vertical
+walls.
+
+     A few things must be set up by the user before the Game program will work.
+The first is to create a "key_hit" routine which returns "true" when there is a
+character ready from the keyboard.  I have done this in my program by using a
+"port_read" routine which reads the keyboard status register and detects the
+ready bit (I include this routine for the 8080/Z-80 as GAME.ASSEM.TEXT).  The
+user must also modify the "eeoln" routine to provide the correct erase-to-end-
+of-line sequence for his/her terminal.  (Reviewer' note : I did these 
+modifications for the H-89 and they are included also. - gws) Finally, if the
+user wants to use different cursor control keys than I have (I use the "star"
+shaped cluster of "f", "g", "v", and "t"), s/he must modify the CONST part of
+the program where indicated.
+
+                                   Jon Bondy

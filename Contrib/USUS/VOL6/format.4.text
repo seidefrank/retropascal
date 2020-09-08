@@ -1,0 +1,303 @@
+PROCEDURE ReadSymbol;
+
+CONST  ReadNextCh = true;
+       DontReadNextCh = false;
+TYPE  CmtDelmtrs = (Brace, PrnAstrsk);
+VAR  TestSymbol: Alfa;
+     CharNumber, I: Width;
+     CmntDelimitr: CmtDelmtrs;
+
+
+PROCEDURE CompilerDirectives;
+VAR  Lngth: Width;
+     DoInclude: boolean;
+     str: string[25];
+
+
+PROCEDURE WriteString (st:String);
+TYPE  futz = RECORD
+               CASE boolean OF
+                 TRUE: (s: string); 
+                FALSE: (n: PACKED ARRAY[0..160] OF 0..255)
+             END;
+VAR  i: integer;
+     x: futz;
+BEGIN x.s := st;  FOR i := 1 TO x.n[0] DO WriteA (x.s[i]) END;
+
+
+BEGIN
+  DoInclude := false;  str := '';  ReadACharacter;
+  IF ReadIncludeFiles AND (Character IN ['I', 'i']) {INCLUDE compiler directive}
+    THEN BEGIN
+      REPEAT ReadACharacter UNTIL Character <> ' ';
+      IF Character IN ['+', '-'] {"I" is also I/O-checking directive}
+        THEN str := 'I'
+        ELSE BEGIN
+          IF InIncludeFile
+            THEN BEGIN
+              str := 'I';
+              Writeln 
+    ('**ERROR**--INCLUDE directives not allowed within INCLUDED files.')
+            END
+            ELSE BEGIN
+              Lngth := 0;
+              REPEAT
+                Lngth := Lngth + 1;  INSERT (' ', str, Lngth);
+                str [Lngth] := Character;  ReadACharacter
+              UNTIL (Character IN [' ', '[', '*', '}']) OR (Lngth >= 23);
+              {$I+}
+              Reset (IncludeFile, str);
+              IF IORESULT > 0 THEN Reset (IncludeFile, CONCAT ('#4:', str));
+              IF IORESULT > 0 THEN Reset (IncludeFile, CONCAT ('#5:', str));
+              {$I-}
+              IF IORESULT = 0
+                THEN BEGIN
+                  DoInclude := true;  InIncludeFile := true;
+                  WriteString (CONCAT ('Now INCLUDING ', str, '.'));
+                  Writeln ('Now INCLUDING ', str, '.')
+                END
+                ELSE Writeln 
+          ('*ERROR* - could not open INCLUDE file ', str, '; will skip it.')
+            END {else}
+        END {else}
+    END {if};
+  IF NOT DoInclude THEN WriteString (CONCAT ('$', str));
+  WHILE NOT (Character IN ['[', '*', '}']) DO CopyACharacter
+END;
+
+
+PROCEDURE DoComment;
+VAR I, Length: OptionSize;
+    FoundEnd, LoopDone: boolean;
+    ComText: PACKED ARRAY [Width] OF char;
+
+
+FUNCTION LineTooLong (LookingFor: char): boolean;
+VAR EndLength, WordEndLength: width;  TooLong: boolean;
+BEGIN
+  EndLength := WriteRightCol - WriteColumn - 1 {room for comment close};
+  IF CmntDelimitr = PrnAstrsk THEN EndLength := EndLength - 1;
+  IF EndLength < 7 THEN WordEndLength := 0
+                   ELSE WordEndLength := EndLength - 7;
+  TooLong := (Length > EndLength) 
+      OR ((Character = ' ') AND (Length <= WordEndLength));
+  WHILE NOT (TooLong OR (Character = LookingFor))
+    DO BEGIN
+      ComText [Length] := Character;
+      Length := Length + 1;
+      ReadACharacter;
+      TooLong := (Length > EndLength) OR ChIsEOL
+        OR ((Character = ' ') AND (Length > WordEndLength));
+    END;
+  LineTooLong := TooLong;
+END;
+
+
+PROCEDURE NewCommentLine;
+BEGIN
+  LeftMargin := 0;  StartNewLineAndIndent;
+  LeftMargin := ActualLeftMargin
+END;
+
+
+PROCEDURE CopyCommentChar;
+BEGIN
+  If DisplayIsOn
+    THEN BEGIN
+      IF (WriteColumn > WriteRightCol) 
+           OR ((Character = ' ') AND (WriteColumn + 7 > WriteRightCol))
+        THEN BEGIN
+          WHILE Character = ' ' DO ReadACharacter;
+          NewCommentLine;
+        END;
+      IF ChIsEOL  {skip over blanks at beginning of next line}
+        THEN WHILE Character = ' ' DO ReadACharacter;
+      WriteA(Character);
+    END;
+  ReadACharacter;
+END;
+
+    
+BEGIN {DoComment}
+  FoundEnd := false;
+  IF (LastSymbol = Comment) OR (ReadRightCol < 3) OR (Character IN ['$','['])
+    THEN BEGIN
+      NewCommentLine;
+      WriteSymbol;
+      If Character = '$' THEN CompilerDirectives;
+      IF Character = '[' THEN DoFormatterDirectives;
+    END
+    ELSE BEGIN
+      Length := 1;
+      IF CmntDelimitr = Brace
+        THEN IF LineTooLong ('}') THEN NewCommentLine ELSE FoundEnd := true
+        ELSE REPEAT IF LineTooLong ('*')
+          THEN BEGIN LoopDone := true;  NewCommentLine END
+          ELSE BEGIN
+            ComText [Length] := Character;
+            Length := Length + 1;
+            ReadACharacter;
+            LoopDone := Character = ')';
+            FoundEnd := Character = ')';
+          END
+        UNTIL LoopDone;
+      WriteSymbol;
+      FOR I := 1 TO Length - 1 DO WriteA (ComText[I]);
+    END;
+  IF NOT FoundEnd THEN IF CmntDelimitr = Brace
+    THEN WHILE Character <> '}' DO CopyCommentChar
+    ELSE REPEAT WHILE Character <> '*' DO CopyCommentChar;  CopyCommentChar
+         UNTIL Character = ')';
+  CopyCommentChar;  LastSymbol := Comment;  ReadSymbol
+END {DoComment};
+
+
+PROCEDURE SkipComment;
+{Now won't dump compiler directives;  handles brace-type comments. JLG}
+VAR NeedsClosure: boolean;
+BEGIN
+  IF Character = '$'
+    THEN BEGIN WriteSymbol;  CompilerDirectives;  NeedsClosure := true END
+    ELSE NeedsClosure := false;
+  IF CmntDelimitr = Brace
+    THEN BEGIN
+      WHILE Character <> '}' DO ReadACharacter;
+      IF NeedsClosure THEN WriteA ('}')
+    END
+    ELSE BEGIN
+      REPEAT WHILE Character <> '*' DO ReadACharacter;  ReadACharacter
+         UNTIL Character = ')';
+      IF NeedsClosure THEN BEGIN WriteA ('*');  WriteA (')') END
+    END;
+  ReadACharacter; LastSymbol := comment; ReadSymbol
+END;
+
+
+PROCEDURE CheckFor (SecondChar: char; TwoCharSymbol: Symbols;
+  ReadAllowed: Boolean);
+BEGIN
+  IF ReadAllowed
+    THEN BEGIN
+      Length := 1;  Symbol[1] := Character;
+      SymbolName := NameOf [Character];  ReadACharacter
+    END;
+  IF Character = SecondChar
+    THEN BEGIN
+      Symbol [2] := Character;  Length := 2;
+      SymbolName := TwoCharSymbol;  ReadACharacter;
+      IF (NOT PackerIsOff) AND (SymbolName = Comment) THEN Length := 0
+    END
+END {CheckFor};
+
+
+BEGIN {ReadSymbol}
+  IF LastSymWasRange   {added - JLG}
+    THEN BEGIN
+      Symbol[1] := '.';  Symbol[2] := '.';  SymbolName := Range;
+      Length := 2;  LastSymWasRange := false
+    END
+  ELSE IF (Character IN Letters)  {evaluation order revised - JLG}
+    THEN BEGIN
+      CharNumber := 1;  SymbolIsNumber := false;
+      REPEAT
+        Symbol [CharNumber] := Character;  ReadACharacter;
+        CharNumber := CharNumber + 1
+      UNTIL NOT (Character IN LettersAndDigits);
+      Length := CharNumber - 1;
+      FOR CharNumber := CharNumber TO AlfaLeng DO
+        Symbol [CharNumber] := ' ';
+        { PACK (Symbol, 1, TestSymbol); } 
+        {EQUIVALENT (WITH ADDED UPPER/LOWER CASE TRANSPARENCY):  }
+        FOR I := 1 TO AlfaLeng DO
+          BEGIN
+            TestSymbol [I] := Symbol [I];
+            IF (TestSymbol [I] IN ['a'..'z']) {lower --> upper case JLG}
+              THEN TestSymbol [I] := CHR (ORD (TestSymbol [I]) + ORD ('A') -
+                ORD ('a'))
+          END;
+      I := 1;
+      PascalSymbol [LastPascSymbol] := TestSymbol;
+      WHILE PascalSymbol [I] <> TestSymbol DO I := I + 1;
+      SymbolName := PascSymbolName [I]
+    END {letters}
+  ELSE IF (Character IN ['0'..'9', ' ', '(', '{', '.', ':', '''', '<', '>'])
+    THEN CASE Character OF
+      '{':  BEGIN  {brace added - JLG}
+              SymbolName := Comment;  CmntDelimitr := Brace; 
+              ReadACharacter;  Length := 1;  Symbol[1] := '{';
+              IF PackerIsOff OR (EndCommentsWanted AND ProcNamesWanted)
+                 THEN DoComment ELSE SkipComment
+            END;
+      '(':  BEGIN  {Revised -- JLG}
+              CheckFor ('*', Comment, ReadNextCh);
+              IF SymbolName = Comment
+                THEN BEGIN
+                  CmntDelimitr := PrnAstrsk;
+                  IF PackerIsOff OR (EndCommentsWanted AND ProcNamesWanted)
+                    THEN DoComment ELSE SkipComment
+                END
+            END;
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+            BEGIN
+              SymbolIsNumber := true;  CharNumber := 1;
+              REPEAT
+                REPEAT
+                  Symbol [CharNumber] := Character;  ReadACharacter;
+                  CharNumber := CharNumber + 1
+                UNTIL NOT (Character IN Digits);
+                IF Character = '.'
+                  THEN BEGIN
+                    Symbol [CharNumber] := Character;  ReadACharacter;
+                    CharNumber := CharNumber + 1
+                  END
+              UNTIL NOT (Character IN Digits);
+              IF (Character = '.') AND (Symbol [CharNumber-1] = '.')
+                THEN BEGIN  { stmt added - JLG}
+                  LastSymWasRange := true;  ReadACharacter;
+                  CharNumber := CharNumber - 1
+                END;
+              IF (Character IN ['B', 'E']) AND NOT LastSymWasRange
+                THEN BEGIN
+                  Symbol [CharNumber] := Character;  ReadACharacter;
+                  CharNumber := CharNumber + 1;
+                  IF Character IN Digits + ['+', '-']
+                    THEN REPEAT
+                      Symbol [CharNumber] := Character;  ReadACharacter;
+                      CharNumber := CharNumber + 1
+                    UNTIL NOT (Character IN Digits)
+                END;
+              Length := CharNumber - 1;  SymbolName := Identifier;
+            END {numbers};
+      ' ':  BEGIN
+              REPEAT ReadACharacter UNTIL Character <> ' ';  ReadSymbol
+            END;
+      '>', ':':
+            CheckFor ('=', OtherSymbol, ReadNextCh);
+      '<':  BEGIN
+              CheckFor ('=', OtherSymbol, ReadNextCh);
+              IF SymbolName <> OtherSymbol 
+                THEN CheckFor ('>', OtherSymbol, DontReadNextCh)
+            END;
+      '.':  IF LastSymbol <> EndSymbol
+              THEN CheckFor ('.', Range, ReadNextCh)
+              ELSE SymbolName := PeriodSymbol;
+      '''': BEGIN
+              CharNumber := 1;
+              REPEAT
+                REPEAT
+                  Symbol [CharNumber] := Character;
+                  CharNumber := CharNumber + 1;  ReadACharacter
+                UNTIL Character = '''';
+                Symbol [CharNumber] := Character;
+                CharNumber := CharNumber + 1;  ReadACharacter
+              UNTIL Character <> '''';
+              Length := CharNumber - 1;  SymbolName := OtherSymbol;
+            END {string}
+    END {then case}
+    ELSE BEGIN
+      Symbol [1] := Character;  SymbolName := NameOf [Character];
+      Length := 1;  ReadACharacter
+    END
+END {ReadSymbol};
+
+

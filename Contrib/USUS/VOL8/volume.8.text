@@ -1,0 +1,300 @@
+                   DOCUMENTATION FOR VOLUME 8 -- USUS LIBRARY
+                                 26 July 1981
+
+     Here, at last, is a collection of software tools that I've been receiving
+over the last year, since the inception of USUS.  These programs look good to
+me, by and large, but I have by no means had the time to try them all.  So
+this volume is a sort of "review volume" released to the membership at large. 
+Please send bug reports to me AND to Keith Schillington, the Newsletter
+editor, so that they can be published.  Simple bugs will be both published and
+repaired on future disks--look at the date of a file if you have learned of a
+bug and want to know if we've already fixed it.
+              
+     Note that some of the files have changed from those listed in the 
+Newsletter, since I've rearranged things to accommodate George Schreyer's
+latest versions of things.
+
+     I'm including documentation from several sources below; my comments are
+in brackets.
+
+     Jim Gagne, Chairman, USUS Library
+     Datamed Research, Inc.
+     1433 Roscomare Road
+     Los Angeles, CA 90024
+
+
+                        SUBMISSIONS FROM GEORGE SCHREYER
+
+LINECOUNT.....This a very fast linecounter.  It runs at about 600 lines per 
+              second on my LSI-11. [George's wife Sandy uses LINECOUNT to 
+              measure productivity in lines of code per day, by counting lines 
+              on each file in a directory list stored in a textfile.  BUG: 
+              don't allow LINECOUNT to clear the screen until you've had a 
+              chance to read the answer.]
+     
+COPYBLOCKS....This copys a region on a disk to a file to allow for the recovery
+              of a lost program.  I wrote it to recover a file which my wife
+              lost by overwriting it with the version II editor.
+
+RECOVER.......Recover searches each block of a volume to look for lost programs.
+              It identifies each location where the lost program might still
+              exist.  Copyblocks is then used to transfer those blocks to a
+              file.
+              [This is a very simple program that looks for the word "PROGRAM",
+              all in caps, in the first block.  Suggestion: At least make it
+              case-insensitive; you might also have it look for the structure
+              of the segment tables in the first block of code files.]
+
+CRMBLEV1.2....This one will break a file that is too large for the editor into
+              smaller pieces.  I use it to processes programs which I have
+              taken from other computers via INHALE.  It is slow but
+              effective.
+
+WRITERV7.2....A substantially reworked version of the original.  It uses
+              blockreads and unitwrites and runs much faster.  I believe that
+              this version is bullet-proof; try and see if you can make it blow
+              up.
+
+              The original version was found in the USUS library.  It will
+              list your files with a banner page, which makes a listing easier
+              to find in a pile of listings (and they do seem to pile up).  It
+              will also list include files in-line if desired and number
+              lines and pages.  It can optionally maintain a data file on your
+              root volume with the latest date and a set of standard form
+              parameters.  Version 7.2 will get the date from your system disk
+              automatically.  If you choose to maintain a data file of form
+              parameters the program will initialize one for you at the end of
+              the first run.  Built in (but changable at run-time) defaults
+              will be used for the first run.  The program has been tested
+              with version IV.0 and it works fine, however because version IV
+              does the actual unit linking at run-time, the time overhead of
+              the system getting all the units together is excessive (as much
+              as 15 secs with "high-performance" floppies and about 5 secs
+              with a hard disk).
+
+PERUSEV4.4....A faster version of peruse.  It will allow you to back up 44 lines
+              at a time if you want.  It is also bullet-proof.
+
+MODEMV2.2.....Basically the same as before but a little cleaner.  NOTE: this
+              program depends upon UNITBUSY and thus runs only on the PDP-11
+              systems.
+              
+UNITS.DOC.....Documentation for FILEUNIT.
+
+FILEUNIT......This is a unit I wrote to allow error-free handling of files and
+              general I/O.  It works very well and it is used in most of the
+              other programs on this disk.  I believe that this does the same
+              function as GETFILE in UNIT.GOOD [USUS Library, Volume 5 --see
+              alse CRTINPUT in the save volume], but it is more general and
+              does error checking and recovery for general I/O also.  This unit
+              also containes reworked versions of DIR.TEXT and GETDATE.  DIR
+              can be called from a user program and displays the filenames only
+              in four columns.  GET_FILE_DATE can get the date from the system
+              disk or the date of the last update of any file on any disk.  It
+              also prefixes the filename with the actual volume id even if the
+              id name is not supplied.
+
+SCREENUNIT....This is just the procedures GETCRTINFO and CRT from UNIT.GOOD.
+              
+PRINTRUNIT....[I omitted this file to save room; it is called by some of
+              George's other programs but does nothing but prevent his
+              buffer from overflowing and is specific to PDP-11's.  Delete any
+              references to the following procedures:
+              
+                   PROCEDURE VER_PRTUNIT;       {write a note of which version}
+                   PROCEDURE INITPT;            {initialize the unit}
+                   PROCEDURE WAIT_FOR_DC1;      {called when you've dumped some
+                                                 text & are worried your buffer
+                                                 may overflow}]
+
+ERROR.DATA....This is a data file for Fileunit.  Its use is optional.
+
+              I hope that you find these programs interesting. 
+              
+              Sincerely, 
+              George W. Schreyer
+     
+P.S.  I received Version IV.0 and all of these programs have been tested with
+              it.  Everything works as before, except much slower.  I have
+              mixed feelings about the new version.  It is much easier to
+              update programs which use units, but the run-time overhead is a
+              killer.  I would hate to be strictly floppy bound.  It takes as
+              much as 15 seconds to simply eX)ecute a program which uses a few
+              units.  Further there doesn't seem to be any way to permanantly
+              link in a unit to avoid the time lag.  Also, with all the system
+              swapping, just using the system involves a lot of waiting, even
+              with a hard disk!  Even the compiler runs about 30% slower.
+              
+              Also the system seems to die mysterious deaths after some
+              segment errors and won't work properly until after a real hard
+              boot.  I am sticking with version II until things improve
+              considerably.
+
+           
+[NOTE: we discussed this on the phone; George's problem is that he's using 4
+              units, each in a different file, causing a dozen file and
+              directory accesses each time he runs just to find out where the
+              units are he wants to load.  Solution: use the SYSTEM.LIBRARY
+              for frequently used routines.]
+              
+           
+                          PROGRAMS FROM STUART LYNN
+
+ARCHIVER......this program will store a disk image in a file. This allows you
+              to set up an Archive disk with several disk images, for backup
+              purposes. It is most useful on large disks ( > 1000 blocks) when
+              your directory space is used up before the data space. Before
+              archiving a disk remove all extraneous files and krunch. To
+              restore an archived disk image use the filer to transfer the file
+              to a blank disk. ie.
+
+                          T
+                          Archive:Backup.dsk #4:
+          
+              where Archive is the name of the archive disk, and Backup was the
+              name of the original disk.  [This program appears to have 
+              something left out and won't compile as is, though I believe 
+              what's missing is not essential.  Try it without the offending 
+              statement and see; meanwhile watch the Newsletter.]
+
+CHAIN.........this procedure will tell the operating system to start up
+              another program when the currently running program is finished.
+              See Chain.1 and Chain.2 for example of use.(Note: you have to
+              have the source for the system globals for archiver,chainer and
+              fast.seek/z80.seek)
+
+FAST SEEK,
+Z80.SEEK......these procedures are the same as the original UCSD intrinsics
+              but are substantially faster. 
+              
+MULDIV.Z80....Z80 code for Z80.SEEK
+
+
+                          PROGRAMS FROM DAVID MUNDIE
+
+MAILER........is a substitute I propose for Frank's mailing list program.  It
+              is along the same basic lines, but I think it is an improvement.
+              For one thing, you don't have to worry about leaving space free
+              after the file--I had a hard time making a disk-file to contain
+              the output on Frank's program; the two files kept growing
+              together.  It also allows selecting certain fields to be
+              printed, eliminates the need for the key field, etc. etc.--I had
+              already made most of the suggestions to you.  See MAILER.DOC.
+              
+LISP..........I am including even though I don't think it is fully debugged,
+              just 'cause you mentioned it.  I haven't put the comments back
+              in, so it wouldn't be very easy to follow without the NTIS
+              listing.
+
+DISKSORT......is my best effort at a reasonable sort program.  The QUICKSORT
+              program on volume 5 disappointed me somewhat, since it is not a
+              "disk" sort at all, at least as I understand the term.  Mine is
+              based on Arbib and Alagic's algorithm (in The Design of Well-
+              structured and Correct Programs, or whatever the name of their
+              book is), and is, I think, a four-way balanced merge sort.  It
+              expects a user-supplied file "raw.data", consisting of
+              string[10]'s, up to 120 blocks' worth.  But the program is
+              intended as a model only, and would be easy to change to handle
+              other data structures and larger files.  I'm not an expert on
+              disk sorts; if you get a better program, let me know.
+              
+
+                         SUBMISSIONS FROM BOB PETERSON
+            Chairman, Communications SIG and the new USUS president
+              
+REM.UNIT......This is an implementation of the draft proposed standard UCSD
+              system remote unit, of January 1981 (which was recently revised
+              slightly and accepted by the Communications SIG as the standard
+              interface for communications equipment).  Its purpose is to put
+              all hardware-dependent features of interprocessor communications
+              in one spot, and then to provide a standard interface to each
+              system, so that communications software will work with any
+              system.  See the newsletter for details on the relatively minor
+              changes required to bring REM.UNIT up to the new standard.
+              
+REM.TERM......This is Bob's implementation of Teletalker; others are available
+              from Volition Systems and Bowles' TeleSoftware.  Bob's program
+              is hardware independent, because it relies on the REM.UNIT
+              above.  It allows the UCSD system to act as a "dumb" remote
+              terminal, as well as saving a part or all of a session in a text
+              file, or sending a previously created text file.  Several
+              options are noted in the text of the program.
+              
+              One issue never really resolved by any of the Teletalkers I've
+              seen is that if you transmit many characters nonstop on
+              Telemail, on occasion it hangs up briefly, and if you then keep
+              sending characters, it dies.  This is especially a problem
+              during system purge time (1AM to 6AM Eastern time), though it
+              rarely happens at 300 baud.  The Bowles program counteracts the
+              problem some by checking for echo character by character, and
+              stopping the transmission if echo ceases.  This helps, but
+              transmission rate suffers and the problem is still not solved.
+
+
+                        MY ONE ADDITION TO THE LIBRARY
+              
+D.............Several people have sent in "updates" or "corrections" to DIR,
+              the directory-listing program I wrote that was contained on
+              Volume 5.  Frankly, I liked the original better than any of the
+              modifications.  DIR did have several problems: the UNITREAD read
+              in too many bytes (2048 rather than 2024, the actual size of the
+              directory), causing this disk access to write over the program
+              and crash or act weirdly.  Also, the simple sort I used takes up
+              to six seconds to alphabetize the directory if it contains 77
+              entries.  The way I listed files that did not fit on the first
+              screenful was lousy, and I found that listing unused blocks on
+              the bottom was not useful.  Finally, several people with Apples
+              reformatted the prompts so that they would fit on their screens.
+              
+              D now addresses most of the above issues:  a) not only was the
+              UNITREAD corrected, but (to allow BLOCKREAD, if you wish to read
+              a directory by Volume ID) I extended the size of the buffer,
+              which now holds four full blocks; b) D now uses a quicksort
+              contributed by George Schreyer; c) files that do not fit on the
+              screen are written cleanly at the bottom, separated from the
+              previous page by a blank line, so that the maximum amount of
+              material still appears on the screen; and d) I've improved the
+              prompts somewhat for those with Apples with 40-column screens.
+              An additional feature is that you can list files two ways:
+              alphabetically (in 3 columns; Apple users convert to 4 if you
+              wish), for searching for a file name, or in physical order on the
+              disk, noting unused blocks in the areas where they appear, for
+              disk space management.
+
+
+                                   MISCELLANY
+              
+GLOBAL.II0
+GLOBAL.III....II.0 and III.0 Globals, donated to the Library by SofTech
+              Microsystems and both SofTech and Western Digital, respectively.
+              For those who do not know the significance of GLOBALS, here is a
+              brief note (though an article in the Newsletter is really
+              required...any takers?):
+              
+              GLOBALS is the file included in the compilation of any UCSD
+              system software, and is not a program but the declarations
+              of the global operating system data types, variables, and
+              procedures.  It allows you to access these features of the
+              operating system directly.  So, for instance, if you know how,
+              you can access memory-resident features such as terminal-driver
+              characters, the system date, the name of the root and prefix
+              volumes, the workfile, etc.
+              
+              However, there are many pitfalls in the use of GLOBALS.  First,
+              they are subtly different in several UCSD releases (particularly
+              II.1, III.0, and the variations of the UCSD system implemented
+              by IBS, among others).  IV.0, in particular, bears NO
+              relationship with the files here.  So programs that depend
+              heavily upon GLOBALS are likely to perform poorly on various
+              systems, unless they are recompiled with the correct version of
+              GLOBALS.  Second, and more important to most of us, as a rule one
+              must compile with the {$U-} compiler option set.  Again, one
+              needs several pages of documentation to understand the many
+              otherwise nondocumented exceptions to normal compiler operation
+              that are called into force by compiling with {$U-}.
+              
+SCREEN........This is the Western Digital screen control unit, which may work 
+              without modification on most other UCSD p-systems.  Don't fiddle 
+              with it except to change the include file calls to just 
+              GLOBAL.III, reflecting my condensation of the three files.
+              

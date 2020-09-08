@@ -1,0 +1,105 @@
+This is a file of examples for the L)etter command of the program        
+mail. The fields available for insertion anywhere in the letter are:
+
+~ prefix to the name   :  (*PR*)
+~ first name           :  (*FN*)
+~ middle initial       :  (*MN*)
+~ last name            :  (*LN*)
+~ suffix to the name   :  (*SU*)
+~ title                :  (*TI*)
+~ company name         :  (*CN*)
+~ phone number         :  (*PN*)
+~ street address       :  (*AD*)
+~ city                 :  (*CI*)
+~ state                :  (*ST*)
+~ country              :  (*CO*)
+~ zip                  :  (*ZI*)
+~ whole misc field     :  (*MI*)
+~ misc sub-fields      :  (*M0*), (*M1*), (*M2*), (*M3*), (*M4*),
+~                         (*M5*), (*M6*), (*M7*), (*M8*), (*M9*)
+
+In addition to these other fixed fields there is one variable 
+field called the 'Greeting' (in this case : (*GR*)).    
+This field can be set up to a predetermined subset of the whole name
+by using the 5 STANDARD FLAGS (44-48), or will default to an     
+appropriate greeting (ie Mr. Smith  if possible or Bob or etc...)
+
+~These fields may be left justified:  
+~(*GR*)
+~(* right justified::60*)  
+~(* GR:60*)
+~(* or centered::60 *) 
+~(* GR:60 *)
+~in any number of spaces.
+
+The fields may be combined with or without regular text 
+into larger tokens and these tokens may  
+be left, right, or center justified just as individual tokens:
+~(* (*PR*) (*FN*) (*MN*) (*LN*) (*SU*):60 *)
+
+The right justification is automatic and
+text
+is 
+taken
+from
+succsesive 
+lines 
+as
+necessary
+to 
+make
+up 
+paragraphs.
+In
+fact,
+the 
+text
+for
+this
+paragraph
+is 
+stored
+as
+consecutive
+lines
+of
+single
+words.
+This is important when introducing tokens can upset the length of the line.
+Lines can be input upto 255 characters in length with complete integrity
+upon output. 
+
+{%30/Flagged paragraphs are structures which allow individual records     
+or groups of record to include specifed words, sentences, or paragraphs        
+in text. 
+Flags may be nested any number deep but tokens may only be nested one
+level deep.
+{%31/This sentence has the flag 31 tied to it. %}{%32/33/   
+This sentence has the flags 32 and 33 tied to it. %}{%-32/You can 
+specify sentences or paragraphs to be added if certain flags are NOT
+set. %} In fact you can specify any number of flags to be set or
+NOT set, and you can also determine if ALL specified flags (or NOT flags)
+are necessary to include the
+ paragraph or only ONE of the specified flags is needed.
+
+%} 
+
+[:l20:][:r20:]Spacing and Margin commands may be included in the text which will  
+[:s3:]affect the output at the first opportunity and will last until a  
+[:s2:][:r30:]new paragraph is started. At the beginning of each and every paragraph 
+[:s1:][:l30:]the spacing and margins  are assigned to their default values.  
+This is an example of these spacing and margin commands which
+can be used for various purposes.
+
+Within the program the records can be processed in a sequential manner.
+Records can be selected for output to mailing labels or letters singly, or
+by wildcard from any field, or to match a flag 
+mask, or any combination therof.
+The records may also be sorted by any field within the record.
+
+The program has been made fail-safe by allowing one to Abort or
+Update upon leaving or to individually Restore any record
+changed. The program is self-initializing if the files are already
+present. If not it allows one to specify the file upon which it
+will act, and the disk upon which the output format data file 
+will go. %}

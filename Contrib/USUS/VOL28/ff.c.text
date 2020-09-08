@@ -1,0 +1,163 @@
+*** Do you want automatic month descriptions? (Y/N)  N 
+ 
+allows the program to assign the standard month abbreviations either for rows
+or columns in the Form.  If this option is selected, additional prompts will
+ask if the headings are for rows or for columns and for the starting month
+number. 
+ 
+*** How many Calculation constants? __  (max. 200) 
+ 
+allows the user to preset the constants which will be required in the
+calculations.  Input the number of constants required; the program then asks
+for the values to be assigned. 
+ 
+*** CHECKPOINT ***  
+ 
+     At this point, the user may elect to make corrections or change any or all
+of the previous control data, terminate definition of this Form, or continue. 
+First the user is prompted 
+ 
+*** Anything to change? (Y/N)  N 
+ 
+     If the response is <Y> the program returns to the number of pages prompt. 
+If the response is <N>, the program continues gathering form parameters.  It
+then asks  
+ 
+*** How many columns might ever be in the FORM ? __  (max. 101) 
+*** How many rows might ever be in the FORM ? __  (max. XXXX) 
+ 
+The response to these prompts are critical to the definition of the FORM.  
+These responses set limits to the size that the FORM will ever be able to
+obtain.  The FORM may be altered later to contain fewer columns or rows but no
+more. It is suggested to select maximums that are equal to the final number
+desired currently plus enough for any additions to the FORM.  There is one way
+to expand a FORM beyond these maximums and that is by using the Copy command
+(see 1.6.3) 
+ 
+*<Note> A FORM may contain no more than 32,704 numbers per page, therefore the 
+maximum number of rows allowed will be a function of the maximum number of 
+columns. 
+ 
+     After the maximums have been set, the number of rows and columns that are 
+actually going to be in the FORM at the present time are gathered.  The
+maximum responses allowed here are determined by the answers just gathered. 
+ 
+*** How many rows? __  (max. XXXX) 
+*** How many columns? __  (max. XXX) 
+ 
+These prompts accept only numeric values >=1  and <=max. specified. 
+ 
+*** Are the dimensions ok as specified? (Y/N)  Y 
+ 
+If the response is N, the maximum number of rows and columns and the actual
+number of rows and columns prompts are repeated. 
+ 
+The program will then update the FREEFORM directory file on the user diskette
+and create the necessary control files. 
+ 
+*** Enter Title for Page (60 char. max.)_______________ 
+ 
+Each page of the Form may have its own unique title which will be displayed
+when viewing and printed when listing.  This title may be up to 60 characters
+max. and consist of most alphanumeric characters.  Invalid characters will not
+be accepted from the keyboard. 
+ 
+*** CHECKPOINT *** 
+***Is Title Correct? (Y/N)  Y 
+ 
+allows repeat of title entry until correct. 
+ 
+ 
+1.2.2 Row and Column Parameter Definition 
+ 
+     There are three parameters which must be defined for both rows and columns
+of a Form:  description, type and cross calculation. 
+ 
+     The description is a user-defined label which will be displayed and 
+printed when using FREEFORM. 
+ 
+     Type refers to one of the following valid types:  D-data, I-initial
+calculations, F-final calculations, and H-heading.  Data type indicates the
+values assigned to a row or column will be input by the user and are variable.
+Calculated types indicate the values will be computed based on instructions
+input by the user.  The precedence of calculations will vary according to one
+of several cases which is determined by the mix of operations to be performed.
+Initial calculations will be done before Final calculations.  For example, in a
+Form formatted by rows, calculations will proceed as follows:  Initial
+calculated rows, Initial calculated columns, Final calculated rows, and Final
+calculated columns.  In a Form formatted by columns calculations will be
+performed in the following order:  Initial calculated columns, Initial
+calculated rows, Final calculated columns and Final calculated rows.  Heading
+type is only a valid option for a row.  A row that is of Heading type will
+not contain any data. 
+ 
+     The third parameter refers to whether or not a cross-calculation can be 
+done.  When defining a row, the question "O.K. to set values from Column
+Calculations?" will be asked.  Type <N> if none of the data items in the row
+being defined are allowed to be the direct result of a column calculation,
+otherwise press <return>.  When defining a column, the question "O.K. to set
+values from Row calculations?" will be asked.  Type <N> if none of the data
+items in the column being defined are allowed to be the direct result of a row
+calculation, otherwise press <return>. 
+ 
+     A fourth parameter, Calculate string, will be prompted if the type of a 
+row, or column, is specified as I or F.  Simple arithmetic relationships may
+be expressed using the algebraic operators, + - / * ^  (^ is exponentiation),
+row or column numbers, parenthesis to force the precedence of operators and any
+constants if needed as explained earlier.  The exponentiation operator has the 
+highest precedence, then multiplication and division and then addition and 
+subtraction.  Sequences of operators of the same precedence are executed from 
+left to right. 
+ 
+Calculate examples: 
+ 
+1.  Row 3 is to be the sum of rows 1 and 2.  Row 3 is declared to be type I and
+the calculate string is entered as simply 1 + 2. 
+ 
+2.  Column 1 is to be divided by column 8 and added to column 5 giving column 
+12.  Column 12 must be declared as type I (or type F) and the calculate string 
+is 1 / 8 + 5.  Other possibilities that will give the same results are 
+( 1 / 8 ) + 5 and 5 + 1 / 8. 
+ 
+3. Row 4 is the product of row 1 and row 2 divided by 1000 and minus row 3. A 
+constant must have been pre-defined as 1000.  Assume it is the only constant 
+for this Form, therefore it is constant (1).  Row 4 is declared type I and the 
+calculate string ((1 * 2) / C1) - 3. 
+ 
+*<Note> If automatic month headings for either rows or columns are specified, 
+the parameters are preset, and all prompts are skipped. 
+ 
+*<Note> If checkpoint prompts are suppressed, the user is not given the
+opportunity to change any of the row or column parameters during Form 
+definition. 
+ 
+     Upon completion of the row and column parameter definition sequences,
+the program will update the Form control file and create a data file 
+initialized with no values. 
+ 
+     A fifth parameter, Editing Format, must be specified for either rows or 
+columns in accordance with the formatting option chosen earlier in the Form
+definition process.  One may specify the print format to be used to display or
+print Form data.  Each numeric field will hold thirteen characters and no more
+than eleven may be to the right of the decimal point. 
+ 
+Example: 1234.567        Editing Format      Result 
+                                 
+                                 ###            ***
+                                ####           1235 
+                              ####.#         1234.6 
+                            ####.###       1234.567 
+ 
+*<Note> If a number will not fit in its specified field, asterisks will be
+displayed. 
+*<Note> Rounding is done only on the display of the number and not on the
+number's internal representation. 
+ 
+If formatting is specified by rows, no prompts for editing columns will appear,
+and the reverse is true if formatting is specified by columns. 
+ 
+The Form is now stored and ready for use, and the user is returned to the main
+menu. 
+ 
+
+

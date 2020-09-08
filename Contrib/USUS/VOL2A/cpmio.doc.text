@@ -1,0 +1,158 @@
+
+
+     INSTRUCTIONS FOR CHANGING CPMIO.TEXT TO WORK WITH NEW PBIOS
+
+     If copyright laws would allow, I would simply send you the new file.  
+Alas, you'll have to do it yourself.
+
+     CPMIO.TEXT has changed little since its first version with release 1.4.  
+So the instructions to follow work with any version.  I assume you have
+printed out CPMIO.TEXT for reference.  Also, note that many of the following
+jump instructions are of the "JR" form, which produces Z-80 code.  If you have 
+an 8080, you'll have to change them all to "JP".
+
+     1)  First, add the following to the main file to be assembled (variously 
+known as INCLUDE.TEXT, NOINCLUDE.TEXT, CPMINC.TEXT, and similar names), which 
+you can identify because it is short and contains mostly a list of secondary 
+files to be .INCLUDE'd or not, as well as some global variables.  Put it near
+the beginning:
+
+TIO     .EQU    0040H   ;or wherever in the first page you want to put it...
+                        ; This table is the primary means of communication
+                        ; between CPMIO and your BIOS, so make sure they both
+                        ; look for it in the same place.
+BIOS    .EQU    TIO     ;holds pointer to PBIOS in memory
+
+
+     2) Next, edit the file CPMIO.TEXT to make the following changes:
+a)      Change MAXU to equal 15, not 8.
+b)      Add the following to the end of UNITBL:
+
+        .WORD   ALLBIT          ; Unit 9: drive 2
+        .WORD   DR2DRVR
+        .WORD   ALLBIT          ; Unit 10: drive 3
+        .WORD   DR3DRVR
+        .WORD   0               ; Unit 11: RESERVED FOR ADDED DISK DRV
+        .WORD   0
+        .WORD   0               ; Unit 12: REVERVED FOR ADDED DISK DRV
+        .WORD   0
+        .WORD   INBIT|OUTBIT    ; Unit 13: PORT I/O
+        .WORD   PORTDRVR
+        .WORD   0               ; Unit 14: RESERVED
+        .WORD   0
+        .WORD   INBIT|OUTBIT    ; Unit 15: MEMORY I/O (PEEK AND POKE)
+        .WORD   MEMDRVR
+
+        
+c)      Change the statement "UPTR  .EQU  TIO" to "UPTR  .EQU  BIOS".
+Add after "URTN .EQU UASY+2": ERRFLG .EQU URTN+2 ;PBIOS IO error flag.
+
+d)      Leave IOC and IOR unchanged.  Add the following line to GETU
+just ahead of the third line, POP HL:
+        LD      (ERRFLG),A      ;zero PBIOS error flag also.
+
+e)      Leave BDIR, BLUN, and BOMIT unchanged.  Substitite the following
+for the three lines at UBUSY:
+
+UBUSY   POP     HL              ;POP OFF RETURN ADDR
+        EX      (SP),HL         ;GET UNIT NO
+        LD      A,L
+        CP      03H
+        JR      NC,$20
+        LD      A,0CH           ;BIOS OFFSET FOR CONSOLE READY
+        CALL    GOBIOS
+        LD      L,A             ;TRUE OR FALSE TO L
+        PUSH    HL
+        JR      UOUT
+$20     LD      HL,0
+        PUSH    HL
+UOUT    JP      BACK1
+        
+        
+e)      The next part is unchanged through IOXIT.
+
+f)      The rest of CPMIO.TEXT (the disk drivers, character drivers, BIOS
+calling routines, and IOINIT) is deleted.  Save the disk drivers and character
+drivers, since you will have to insert them where called for in PBIOS, first
+translating to 8080 memnomics (although if you have the Microsoft assembler,
+you can switch to Zilog memnomics in midstream with the ".Z80" pseudoop).
+Replace the deleted text with the following:
+
+;------------ Disk driver's ---------------
+
+DR0DRVR LD      C,00H   ;select drive
+        JR      DSK0
+DR1DRVR LD      C,01H
+        JR      DSK0
+DR2DRVR LD      C,02H
+        JR      DSK0
+DR3DRVR LD      C,03H
+DSK0    XOR     A               ;reg A=0  offset into bios
+        CALL    GOBIOS
+        LD      A,(ERRFLG)      ;check for error's from pbios
+        LD      (IORSLT),A      ;if no error then ERRFLG and IORSLT =0
+XIT     JP      IOXIT           ;done with disk IO
+
+;---------- PORT I/O DRIVER --------------------
+
+PORTDRVR
+        LD      A,(UBLK)        ;LOW ORDER BYTE OF BLOCK NO IS THE PORT
+        LD      HL,(UBUF)       ;POINTS TO MEMORY
+        LD      C,A             ;MOVE PORT NO TO REG C
+        LD      A,(UREQ)        ;INPUT OR OUTPUT ?
+        CP      INBIT
+        JR      NZ,$10
+        INI                     ;Z-80 I/0 IS SO NICE
+        JR      XIT             ;BYE
+$10     OUTI                    ;DO OUTPUT
+        JR      XIT             ;BYE
+        
+
+;---------- MEMORY I/O DRIVER ------------------
+
+MEMDRVR
+        LD      HL,(UBLK)       ;BLOCK NO IS MEMORY ADDR
+        LD      BC,(UBUF)       ;POINTS TO MEMORY
+        LD      A,(UREQ)        ;PEEK OR POKE ?
+        CP      INBIT
+        JR      NZ,$10
+        LD      A,(HL)          ;PEEK
+        LD      (BC),A
+        JR      XIT             ;BYE
+$10     LD      A,(BC)          ;POKE
+        LD      (HL),A
+        JR      XIT             ;BYE
+        
+;-------- BIOS linker ---------
+
+GOBIOS  LD      HL,(BIOS)
+        LD      D,0
+        LD      E,A
+        ADD     HL,DE           ;ADD OFFSET TO BIOS ADDR
+        JP      (HL)
+;
+;---------- Character driver's -----------------
+
+REMIN   LD      A,6
+        JR      CHARIO
+REMOUT  LD      A,9
+        JR      CHARIO
+CHDRVR  LD      A,3
+CHARIO  CALL    GOBIOS
+        JP      IOXIT
+;-----------------------------------------------
+        
+; Booter stuff
+        .ALIGN  2               ; must start on word boundary
+INTEND
+        
+IOINIT
+        LD      HL,(BIOS)
+        LD      DE,-10 
+        ADD     HL,DE
+        LD      (MEMTOP),HL
+        RET
+
+        
+
+@

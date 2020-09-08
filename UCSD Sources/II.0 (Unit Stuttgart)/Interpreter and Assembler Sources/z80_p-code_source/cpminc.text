@@ -1,0 +1,53 @@
+        .PROC   INTERP
+
+OFF     .EQU    0              ; definitions for conditionals
+ON      .EQU    ~OFF
+
+ROM     .EQU    100H            ; address definition for interpreter code
+MAXADR  .EQU    0D7FEH          ; highest possible memory byte
+RAM     .EQU    0               ; address of interpreter variables (Not
+                                ; yet meaningful
+IOSIZE  .EQU    20.
+
+Z80     .EQU    ON             ; CPU type and particular model
+CPM     .EQU    ON 
+DDT     .EQU    OFF
+TEK     .EQU    OFF
+CML     .EQU    OFF
+NMS     .EQU    OFF
+
+; Listing controls
+
+LSTINT  .EQU    ON       ; Interpreter main root section
+LSTVARS .EQU    OFF      ; Variable loading, storing, moving, indexing
+LSTARIT .EQU    OFF      ; Simple top-of-stack arithmetic and comparisons
+LSTSET  .EQU    OFF      ; Set arithmetic and comparisons
+LSTFP   .EQU    OFF      ; Basic floating point stuff
+LSTFPT  .EQU    OFF      ; Transendental floating point routines
+LSTPROC .EQU    OFF      ; Procedure calling, returning, segment loading,
+                         ;   unloading, relocation, and jumps
+LSTSTP  .EQU    OFF      ; Standard procedure caller and misc. standard procs.
+LSTIO   .EQU    OFF      ; Unit io and BIOS callers
+LSTBOOT .EQU    OFF      ; Pascal-level bootstrap
+
+	.INCLUDE        INTERP.TEXT
+	.INCLUDE        VARS.TEXT
+	.INCLUDE        ARITH.TEXT
+	.INCLUDE        SET1.TEXT
+	.INCLUDE        SET2.TEXT
+
+	.INCLUDE        FPL.TEXT
+	.INCLUDE        FPI.TEXT
+	;.INLCUDE       NOFPI.TEXT
+
+	;.INCLUDE       FPT.TEXT
+	.INCLUDE        NOFPT.TEXT
+
+	.INCLUDE        PROC1.TEXT
+	.INCLUDE        PROC2.TEXT
+	.INCLUDE        STP.TEXT
+	.INCLUDE        CPMIO.TEXT
+	.INCLUDE        BOOT.TEXT
+
+	.END
+

@@ -1,0 +1,443 @@
+{  Provided in this unit are the necessary routines to drive both the graphics
+ for the "TERAK" CONSOLE: and the "HOUSTON INSTRUMENT DIGITAL PLOTTER".
+   
+   The user of these routines needn't worry about how to lay out a SCREEN
+ ARRAY or how to talk directly to the PLOTTER.
+   
+   To use this graphical unit the user must call PROCEDURE SETUP(DEVICE);
+ where device is one of the following: SCREEN,BOTH, or PLOTTER.  This is
+ necessary since this routine initializes variables only accessable to this
+ unit.
+
+   PROCEDURE NEXT_FRAME(DEVICE,CLEARSCREEN,GRAFICS,TXT,FINISHED); is the
+ procedure to use whenever you have finished the last plot and you wish to 
+ make another plot.  The DEVICE is the same as called for by PROCEDURE 
+ SETUP.  CLEARSCREEN is a BOOLEAN variable which allows the user to specify
+ that the screen is to be cleared if it was used; or if the plotter was
+ used it indicates that a new sheet of paper has been inserted.  The user
+ may use CLEAR or NO_CLEAR if desired.  GRAFICS and TXT are parameters that
+ specify which sections of the screen are to be devoted to either GRAPHICS
+ or TEXT (* above you will find the options under: SECTIONS_OF_SCREEN*)
+   
+   The SCREEN can be turned on in the following modes:
+              0: OFF (all three sections);
+              1: BOTTOM (only the bottom section on);
+              2: MIDDLE (only the middle section on);
+              3: LOW (the bottom and middle sections on);
+              4: TOP (only the top section on);
+              5: SPLIT (the top and bottom sections on);
+              6: HIGH (the top and middle sections on);
+              7: ALL (all three sections on);
+ 
+    FINISHED is a BOOLEAN variable indicating that the user has finished 
+  with the plotting.  This unit then turns the graphics off if used and it
+  also returns the PLOTTER'S pen to the lower left corner.  The user may
+  choose to use DONE and NOT_DONE as the parameter value.
+  
+  
+    PROCEDURE PICTURE(XSTART,YSTART,DX,DY,PEN); is the routine to use if 
+  one wants to specify the beginning coordinate and the change in each of
+  the X and Y directions.  The pen can take on the values 0 through 4.  
+  The top two rows of constants can be used as the parameter for the pen.
+  If PEN=4 nothing will be drawn on either the screen or the PLOTTER; 
+  however, if the SCREEN was being used the unit will return the distance
+  to the nearest line along the path that would have been drawn.  If PEN=3
+  the PLOTTER will draw dashed lines while the screen will draw white dots
+  where blacks ones existed and visa-versa.
+  
+    PROCEDURE DRAW(XEND,YEND,PEN); provides all of the same functions as
+  PROCEDURE PICTURE; the major difference lies in the fact that the old
+  ending location is used as the starting point and the line is drawn to
+  the user specified location.
+  
+    The present graphic's cursor is always available to the user as the
+  point(XLOC,YLOC). (*this is immune to changes to these variables*)
+ 
+   If the user presses the ESCape key during the plot the ESCAPE_PLOT variable
+ will be set to TRUE.  If this happens the user must set it to false or call
+ PROCEDURE SETUP again; otherwise, nothing will be plotted.
+ 
+   PSCALE is a variable that is used to adjust the size of the plot on the
+ plotter.  The default value is 6.  6 is the number which gives you a full size
+ plot using the same numbers as you would for the screen.
+ 
+   QUIET is a BOOLEAN variable that is used to tell the UNIT GRAPHICS that it
+ is not to output messages (*supposedly the user doesn't want any messages or
+ they are writing there own*).
+ 
+   SET_PEN is a BOOLEAN variable that indicates that the user should print a
+ message indicating that the plotter's pen should be positioned.
+ 
+  Changes made in editing: The array bounds for SCREENTYPE were reversed.  The
+                           current Terak DRAWLINE intrinsic expects to receive
+                           its screen array in the form, SCREEN[Y,X].
+                           
+                           Revised the procedure DRAW to make PSCALE operate
+                           properly.
+                            
+                           Note that it should be possible to use these
+                           routines with any computer and a dumb Hiplot plotter
+                           by the following procedures.
+                           
+                             Comment out all UNITWRITE's to UNIT 3 (Terak
+                               screen).
+                             Convert PROCEDURE DRAWLINE from an external
+                               to a dummy procedure of the form
+                                  BEGIN
+                                  END;
+                             Replace the external PROCEDURE THROTTLE with
+                               any procedure that will produce a delay for
+                               pen changes (from up to down and vice versa).
+                               This could involve a software loop or a line-
+                               time clock routine where this is possible.
+                               See the THROTTLE procedure in the units
+                               PLOTTER and REVIEW for a example that works
+                               with LSI-11's.
+                             
+                             Note that REMINOUT is used for the Hiplot.  This
+                               could be easily changed, if desired.  See
+                               PLOTTER and REVIEW.
+                              
+                                      ---Henry E. Baumgarten
+                                         Clifford L. Bettis
+}
+{$S+}
+{$L-GRAPHICS.LIST}
+UNIT GRAPHICS;
+
+INTERFACE
+
+{
+                                                     unit by:  DENNIS E GRUNDLER
+                        based primarily upon UNIT PLOTTER by:  EDWARD J GRUNDLER
+}
+
+CONST UP=0; DOWN=1; NEW_COLOR=2; DASHES=3; NO_COLOR=4;
+      NONE=0; WHITE=1; BLACK=2; REVERSE=3; RADAR=4;
+      CLEAR=TRUE; NO_CLEAR=FALSE; DONE=TRUE; NOT_DONE=FALSE;
+
+TYPE SECTION_OF_SCREEN = (OFF,BOTTOM,MIDDLE,LOW,TOP,SPLIT,HIGH,ALL);
+     UNITTYPE = (SCREEN,BOTH,PLOTTER);
+     PENTYPE = 0..4;
+     
+VAR ESCAPE_PLOT,QUIET,SET_PEN:BOOLEAN;
+    RANGE,XLOC,YLOC:INTEGER;
+    PSCALE:REAL;
+    PEN:PENTYPE;
+
+PROCEDURE PICTURE(XSTART,YSTART,DX,DY:INTEGER; PEN:PENTYPE);
+PROCEDURE DRAW(XEND,YEND:INTEGER; PEN:PENTYPE);
+PROCEDURE SETUP(DEVICE:UNITTYPE);
+PROCEDURE NEXT_FRAME(DEVICE:UNITTYPE; CLEARSCREEN:BOOLEAN; GRAFICS,TXT:
+  SECTION_OF_SCREEN; FINISHED:BOOLEAN);
+
+IMPLEMENTATION
+
+TYPE SCREENTYPE = PACKED ARRAY [0..239,0..319] OF BOOLEAN;
+
+VAR PLOT_XLOC,PLOT_YLOC,PLOT_XSTRT,PLOT_YSTRT:INTEGER;
+    OLDPEN:PENTYPE;
+    S:SCREENTYPE;
+    CURRENT_DEVICE:UNITTYPE;
+
+PROCEDURE THROTTLE(TICKS:INTEGER);
+EXTERNAL;
+PROCEDURE DRAWLINE(VAR RANGE:INTEGER; VAR S:SCREENTYPE; ROWWIDTH,
+  XSTART,YSTART,DELTAX,DELTAY:INTEGER; INKPEN:PENTYPE);
+EXTERNAL;
+
+PROCEDURE SETUP;
+
+VAR OUT:STRING[3];
+
+BEGIN
+  ESCAPE_PLOT:=FALSE;
+  OLDPEN:=UP;
+  OUT:='y  ';{ lift pen }
+  UNITWRITE(8,OUT,3,,1);
+  FILLCHAR(S,SIZEOF(S),0);
+  IF DEVICE IN [SCREEN,BOTH] THEN UNITWRITE(3,S,63);
+  PLOT_XLOC:=0;
+  PLOT_YLOC:=0;
+  SET_PEN:=(DEVICE IN [PLOTTER,BOTH])AND QUIET;
+  IF (DEVICE IN [PLOTTER,BOTH]) AND NOT(QUIET) THEN
+    BEGIN
+      GOTOXY(0,1);
+      WRITE('Position PLOTTER''S pen to the LOWER LEFT CORNER!!',
+        '  press RETURN to continue.');
+      READLN;
+    END;
+  PSCALE:=6.0;
+  CURRENT_DEVICE:=DEVICE;
+END;
+
+PROCEDURE PLOT(PEN:PENTYPE;PLOT_XEND,PLOT_YEND:INTEGER);FORWARD;
+
+PROCEDURE NEXT_FRAME;
+
+
+BEGIN
+  IF CURRENT_DEVICE=SCREEN THEN
+    BEGIN
+      XLOC:=0;
+      YLOC:=239;
+      PLOT_XLOC:=0;
+      PLOT_YLOC:=0
+    END;
+  IF FINISHED THEN 
+    BEGIN
+      IF CLEARSCREEN THEN
+        BEGIN
+          FILLCHAR(S,SIZEOF(S),0);
+          UNITWRITE(3,S,7);
+        END;
+      IF CURRENT_DEVICE IN [PLOTTER,BOTH] THEN PLOT(UP,0,0);
+      EXIT(NEXT_FRAME);
+    END;
+  IF DEVICE IN [SCREEN,BOTH] THEN
+    BEGIN
+      UNITWRITE(3,S,8*ORD(GRAFICS)+ORD(TXT));
+      IF CLEARSCREEN THEN FILLCHAR(S,SIZEOF(S),0);
+    END;
+  SET_PEN:=(CURRENT_DEVICE=SCREEN) AND (DEVICE IN [PLOTTER,BOTH]) AND QUIET;
+  IF DEVICE IN [PLOTTER,BOTH] THEN
+    BEGIN
+      IF CURRENT_DEVICE=SCREEN THEN 
+        IF NOT(QUIET) THEN
+          BEGIN
+            GOTOXY(0,0);
+            WRITELN('Position the PLOTTER''S pen to the lower left corner!');
+            WRITE('press RETURN to continue');
+            READLN;
+          END
+                            ELSE    ELSE PLOT(UP,0,0);
+    END;
+  CURRENT_DEVICE:=DEVICE;
+END;
+
+PROCEDURE PLOT;
+
+CONST X_SCALE = 32767;  {PLOTTER S/N 7919-9}
+      Y_SCALE =   100;  {PLOTTER S/N 7919-9}
+VAR XINC,YINC1,YINC3,MOVE,DX,DY,X_CORR,Y_CORR:INTEGER;
+    OUT:ARRAY[1..3] OF CHAR;
+    UP_DOWN:BOOLEAN;
+    SAVE_PEN:PENTYPE;
+    CH:CHAR;
+
+PROCEDURE HANDLE_KEYBOARD;
+
+BEGIN
+  IF ESCAPE_PLOT THEN EXIT(HANDLE_KEYBOARD);
+  IF CH = CHR(27{ESCape}) THEN
+    BEGIN
+      ESCAPE_PLOT:=TRUE;
+      NEXT_FRAME(CURRENT_DEVICE,NO_CLEAR,OFF,ALL,DONE);
+      EXIT(PICTURE);
+    END;
+  UNITREAD(2,CH,1,,1);
+END;
+
+PROCEDURE CHECK_PEN;
+
+BEGIN
+  IF ((PEN=DOWN) AND (OLDPEN=UP)) OR ((PEN=UP) AND (OLDPEN=DOWN)) THEN
+    BEGIN
+      OLDPEN:=PEN;
+      IF PEN = DOWN THEN OUT[1]:='z' ELSE OUT[1]:='y';
+      UNITWRITE(8,OUT,3,,1);
+      SAVE_PEN:=PEN;
+      IF UP_DOWN THEN PEN:=SAVE_PEN;
+      THROTTLE(10);
+    END
+END;
+
+PROCEDURE PLOTPOINT;
+  
+  BEGIN
+    CASE MOVE OF
+    -4: OUT[1]:='u';
+    -3: OUT[1]:='t';
+    -2: OUT[1]:='s';
+    -1: OUT[1]:='v';
+     1: OUT[1]:='r';
+     2: OUT[1]:='w';
+     3: OUT[1]:='p';
+     4: OUT[1]:='q';
+    END{OF CASE};
+    UNITWRITE(8,OUT,3,,1)
+  END;
+  
+PROCEDURE DO_FOR_X;   {MORE HORIZONTAL}
+  
+  VAR ERROR,I:INTEGER;
+  BEGIN
+    IF DX=0 THEN EXIT(PLOT);
+    ERROR:=DX DIV 2;
+    I:=DX;
+    REPEAT
+      IF NOT(UNITBUSY(2)) THEN HANDLE_KEYBOARD;
+      MOVE:=XINC;
+      ERROR:=ERROR+DY;
+      IF ERROR>=DX THEN
+        BEGIN
+          ERROR:=ERROR-DX;
+          PLOT_YLOC:=PLOT_YLOC+YINC1;
+          MOVE:=MOVE+YINC3
+        END;
+      PLOT_XLOC:=PLOT_XLOC+XINC;
+      PLOTPOINT;
+      I:=I-1;
+      IF (I MOD 8 = 0) AND UP_DOWN THEN CHECK_PEN;
+    UNTIL I=0
+  END;
+  
+PROCEDURE DO_FOR_Y;   {MORE VERTICAL}
+  
+  VAR ERROR,I:INTEGER;
+  BEGIN
+    ERROR:=DY DIV 2;
+    I:=DY;
+    REPEAT
+      IF NOT(UNITBUSY(2)) THEN HANDLE_KEYBOARD;
+      MOVE:=YINC3;
+      ERROR:=ERROR+DX;
+      IF ERROR>=DY THEN
+        BEGIN
+          ERROR:=ERROR-DY;
+          MOVE:=MOVE+XINC;
+          PLOT_XLOC:=PLOT_XLOC+XINC
+        END;
+      PLOT_YLOC:=PLOT_YLOC+YINC1;
+      PLOTPOINT;
+      I:=I-1;
+      IF (I MOD 8 = 0) AND UP_DOWN THEN CHECK_PEN;
+    UNTIL I=0
+  END;
+
+BEGIN {PLOT}
+  IF PEN = NO_COLOR THEN EXIT(PICTURE);
+  UP_DOWN:=PEN = DASHES;
+  IF UP_DOWN THEN PEN:=DOWN;
+  UNITREAD(2,CH,1,,1);
+  OUT[2]:=' ';
+  OUT[3]:=' ';
+  CHECK_PEN;
+  X_CORR:=(PLOT_XLOC-PLOT_XSTRT) DIV X_SCALE;     {CORRECTION}
+  PLOT_XLOC:=PLOT_XLOC+X_CORR;                    {FOR       }
+  X_CORR:=(PLOT_XEND-PLOT_XSTRT) DIV X_SCALE;     {STEPPER   }
+  PLOT_XEND:=PLOT_XEND+X_CORR;                    {MOTOR     }
+  Y_CORR:=(PLOT_YLOC-PLOT_YSTRT) DIV Y_SCALE;     {SCALING   }
+  PLOT_YLOC:=PLOT_YLOC+Y_CORR;
+  Y_CORR:=(PLOT_YEND-PLOT_YSTRT) DIV Y_SCALE;
+  PLOT_YEND:=PLOT_YEND+Y_CORR;
+  WHILE NOT ((PLOT_XLOC=PLOT_XEND) AND (PLOT_YLOC=PLOT_YEND)) DO
+    BEGIN
+      DX:=PLOT_XEND-PLOT_XLOC;
+      DY:=PLOT_YEND-PLOT_YLOC;
+      IF DX<0 THEN
+        BEGIN
+          XINC:=-1;
+          DX:=-DX
+        END
+      ELSE XINC:=1;
+      IF DY<0 THEN
+        BEGIN
+          YINC1:=-1;
+          YINC3:=-3;
+          DY:=-DY
+        END
+      ELSE
+        BEGIN
+          YINC1:=1;
+          YINC3:=3
+        END;
+      IF DX>=DY THEN DO_FOR_X ELSE DO_FOR_Y;
+    END;
+  PLOT_XEND:=PLOT_XEND-X_CORR;        {REMOVE THE CORRECTIONS}
+  PLOT_XLOC:=PLOT_XEND;
+  XLOC:=ROUND(PLOT_XLOC/PSCALE);
+  PLOT_YEND:=PLOT_YEND-Y_CORR;
+  PLOT_YLOC:=PLOT_YEND;
+  YLOC:=239-ROUND(PLOT_YLOC/PSCALE);
+  UNITCLEAR(2);
+END {PLOT};
+
+
+PROCEDURE PICTURE;
+
+VAR XSTRT,YSTRT:INTEGER;
+    CH:CHAR;
+
+FUNCTION BOUNDS(VALUE,LIMIT:INTEGER):INTEGER;
+
+VAR TEMP:INTEGER;
+
+BEGIN 
+  TEMP:=VALUE;
+  IF VALUE>LIMIT THEN TEMP:=LIMIT;
+  IF VALUE<0 THEN TEMP:=0;
+  BOUNDS:=TEMP;
+END;
+
+FUNCTION DELTA(VALUE,LIMIT:INTEGER):INTEGER;
+
+VAR TEMP,TEMP1:INTEGER;
+    FLAG:BOOLEAN;
+    
+BEGIN
+  FLAG:= LIMIT = 319;
+  IF FLAG THEN TEMP:=VALUE+BOUNDS(XSTART,319) ELSE 
+    TEMP:=VALUE+BOUNDS(YSTART,239);
+  TEMP1:=BOUNDS(TEMP,LIMIT);
+  DELTA:=TEMP1-TEMP+VALUE;
+END;
+
+BEGIN {PICTURE}
+  IF ESCAPE_PLOT THEN EXIT(PICTURE);
+  UNITREAD(2,CH,1,,1);
+  IF CURRENT_DEVICE IN [SCREEN,BOTH] THEN 
+    BEGIN
+      DRAWLINE(RANGE,S,20,BOUNDS(XSTART,319),BOUNDS(YSTART,239),
+        DELTA(DX,319),DELTA(DY,239),PEN);
+      IF CURRENT_DEVICE=SCREEN THEN
+        BEGIN
+          XLOC:=BOUNDS(XSTART,319)+DELTA(DX,319);
+          YLOC:=BOUNDS(YSTART,239)+DELTA(DY,239);
+          PLOT_XLOC:=ROUND(XLOC*PSCALE);
+          PLOT_YLOC:=ROUND((239-YLOC)*PSCALE)
+        END
+    END;
+  IF NOT(UNITBUSY(2)) THEN ESCAPE_PLOT:= CH = CHR(27);
+  UNITCLEAR(2);
+  IF ESCAPE_PLOT THEN EXIT(PICTURE);
+  IF CURRENT_DEVICE IN [PLOTTER,BOTH] THEN 
+    BEGIN
+      IF PEN=NEW_COLOR THEN
+        BEGIN
+          IF NOT(QUIET) THEN
+            BEGIN
+              GOTOXY(0,1);
+              WRITE('You may change colors now!  press RETURN to continue');
+            END;
+          PLOT(UP,PLOT_XLOC,PLOT_YLOC);
+          READLN;
+          PEN:=DOWN;
+        END;
+      XSTRT:=ROUND(PSCALE*BOUNDS(XSTART,ROUND(1914/PSCALE)));
+      YSTRT:=ROUND(1434-PSCALE*BOUNDS(YSTART,ROUND(1434/PSCALE)));
+      IF NOT(XSTRT = PLOT_XLOC) OR NOT(YSTRT = PLOT_YLOC) THEN
+        PLOT(UP,XSTRT,YSTRT);
+      IF NOT((DX=0) AND (DY=0)) THEN
+        PLOT(PEN,ROUND(PSCALE*BOUNDS(XSTART+DX,ROUND(1914/PSCALE))),
+          ROUND(1434-PSCALE*BOUNDS(YSTART+DY,ROUND(1434/PSCALE))));
+    END;
+END {PICTURE};
+
+PROCEDURE DRAW;
+
+BEGIN
+  PICTURE(ROUND(PLOT_XLOC/PSCALE),ROUND((1434-PLOT_YLOC)/PSCALE),XEND-
+    ROUND(PLOT_XLOC/PSCALE),YEND-ROUND((1434-PLOT_YLOC)/PSCALE),PEN);
+END;
+END. {END OF UNIT GRAPHICS}

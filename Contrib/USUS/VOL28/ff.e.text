@@ -1,0 +1,160 @@
+1.3.4 The Keyboard 
+ 
+     The use of the keyboard is restricted during the update mode.  There are 
+only a few special keys, other than the numbers, that can be utilized during up
+date.  Move directly to a data element on the screen by using one of the 
+following combination of keys. 
+ 
+<Cursor-Left>  moves the cursor left one element position.  If the cursor is in
+the leftmost element position of a row, it will move to the rightmost element 
+position of the next row. 
+ 
+<Cursor-Down>  moves the cursor down one data element position.  If the cursor
+is in the bottom element position of a column, it will move to the top element 
+position of the next column. 
+ 
+<Cursor-Up>  moves the cursor up one data element position.  If the cursor is 
+in the top element position of a column, it will move to the bottom element 
+position of the next column. 
+ 
+<Cursor-Right>  moves the cursor right one element position.  If the cursor is 
+in the rightmost element position of a row, it will move to the leftmost 
+element position of the next row. 
+ 
+<enter>  exits update mode and returns to the command line. 
+ 
+<home>  moves the cursor to the top, leftmost element position on the screen. 
+ 
+<A>  automatically resets the anchor position to the coordinates specified by 
+the cursor position.  The screen will clear and the Form will be redisplayed at
+the new anchor. 
+ 
+*<Note> The <return>, <space>, <tab>, <home>, <cursor right>, <cursor left>, 
+<cursor up>, <cursor down>, and <A> keys terminate a numeric field for 
+transmittal to the data entry program. 
+ 
+*<Note> the program prevents the user from moving the cursor to an element that
+is in a row of type heading. 
+ 
+*<Note> The commands U and A, described above, only affect that portion of the 
+Form which is currently displayed on the screen.  The following commands affect
+the currently anchored page. 
+ 
+1.3.5 M - Math 
+ 
+     From the command line, press <M> and the computer performs all the 
+prescribed calculations which have been defined for the rows and/or columns of 
+the page.  The number and complexity of stored calculations, and the number of 
+rows and columns defined in the Form will effect the speed at which the
+calculations are performed.  In any case, it is many times faster than manually
+keying the data into a calculator. 
+ 
+1.3.6 S - Save 
+ 
+     The Save command only works if a workfile is being used.  To save the 
+current page, type <S> from the command line and the information in the 
+workfile will be transferred to the Form data file.  Upon completion, the
+command line will be redisplayed and the user may continue. 
+ 
+1.3.7 Z - Zero 
+ 
+     This command sets specified elements of the current plane to zero.  The 
+specific data items to set to zero are determined by first giving a sequence
+or sequences of rows (or pages) to zero and then a sequence or sequences of
+columns (or pages) to zero.  If access is by Pages, or Columns, Freeform will
+first prompt 
+ 
+*** Enter sequences of Rows (XX-XX,YY-YY) to Zero below (there are XX) 
+*** ____________________________________ 
+ 
+The number shown in 'there are XX' tells how many rows the Form contains.  For
+example to set all of row two to zeros enter 2 and press <return>.  Next,
+Freeform prompts for sequences of columns, or pages to Zero.  Enter 1| followed
+by a dash followed by the number of columns, or pages, in the Form, then press
+<return>. 
+ 
+1.3.8 N - Nullify 
+ 
+     This command sets specified elements of the current plane to null.  The 
+specific data items to be nullified are denoted in the same manner as in the 
+Zero command (see 1.3.7). 
+ 
+1.3.9 L - List 
+ 
+     The listing command allows for the printing of reports for use in
+presentations. The response to the L command by FREEFORM is: 
+ 
+*** Is there a Control file to use ? (Y/N) N 
+ 
+FREEFORM allows the listing controls (page, row and column specifications, 
+titles, and footing gathered at List time) to be saved in a text file which is
+referred to as a Control file.  To use a Control file, type <Y>.  FREEFORM will
+prompt for the file name of the Control file.  If <esc> is pressed the Data 
+Entry command line is redisplayed.  If the file name entered is not available, 
+the program will prompt for the file name again.  When a Control file is used 
+FREEFORM will use the values read as default values when the listing controls 
+are gathered. 
+ 
+*** Enter sequences of Rows (XX-XX,YY-YY) to List below (there are XX) 
+*** ____________________________________ 
+ 
+For example, to list rows one through ten, row thirteen, and rows 25 through 20
+enter 
+ 
+1-10, 13, 25-20 
+ 
+     Next a prompt to obtain sequences of columns will appear.  An error
+message will be displayed if an invalid page, row or column is selected, more
+than the maximum number of pages, rows or columns in a Form are selected to be
+listed, or more columns of data are selected than will fit in the specified
+line size.  If access is by Pages, the rows and columns to list will be
+gathered, otherwise if access is by Columns, the rows and pages to list will be
+gathered, or if access is by Rows, the pages and columns to list will be
+gathered. 
+ 
+     The user is then prompted for three title lines and a footing.  The three 
+additional title lines are provided in addition to the stored page title and 
+column headings.  If entered, all titles will be automatically centered above 
+the body of the Form.  The page footing will be flush left at the bottom of the
+page.  The page footing feature is optional and must be entered each time the 
+report is to be printed. 
+ 
+    FREEFORM then prompts 
+ 
+*** Save this information in a Control file (Y/N) N 
+ 
+To save the listing controls specified, type <Y>, otherwise press
+<return>. 
+ 
+    The following prompt then appears 
+ 
+*** List to the printer ? (Y/N) Y 
+ 
+     If <return> is pressed then the user is asked how many characters will fit 
+on one line and how many lines will fit per page and is then advised to set the
+printer alignment and press <return>.  After printing, the page will eject and 
+control will return to the command line. 
+ 
+     If <N> is pressed, FREEFORM assumes that the user wishes to send the
+output to a disk file.  A file title consisting of a Volume name and a File
+name (a type of TEXT is used automatically) are prompted for until FREEFORM can
+'open up' the file specified for output or <esc> is pressed.  If a file is
+'opened' successfully, the user is asked if the output is to be for Word
+Processing.  The user should type <N> since the Word Processor package is not
+available at this time.  
+ 
+     When the Listing is complete FREEFORM will redisplay the Data Entry 
+command line. 
+ 
+1.3.10 H - Help 
+ 
+     This command will display a brief explanation of valid FREEFORM data entry
+commands, one line at a time. 
+ 
+1.3.11 <esc> - Escape 
+ 
+     The command line services the <esc> key in the usual manner.  When 
+pressed, FREEFORM will return to the main menu. 
+
+
+

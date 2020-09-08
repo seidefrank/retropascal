@@ -1,0 +1,79 @@
+PROGRAM RANDOM4;{Non-Recursive quicksort as sort method}
+CONST MAXSIZE=500;
+TYPE INDEX=0..MAXSIZE;
+VAR SEED:REAL;
+DIDSWAP:BOOLEAN;
+TIMEDIFF,HITIME,LO1TIME,LO2TIME,X,Y:INTEGER;
+SCALAR:ARRAY[1..MAXSIZE] OF INTEGER;
+
+PROCEDURE QUICKSORT;
+CONST M=12;
+VAR I,J,L,R:INDEX;
+    X,W:INTEGER;
+    S:0..M;
+    STACK:ARRAY [1..M] OF
+       RECORD 
+          L,R:INDEX
+       END;
+BEGIN
+S:=1;
+STACK[1].L:=1;
+STACK[1].R:=MAXSIZE;
+   REPEAT{take top request from stack}
+   L:=STACK[S].L;
+   R:=STACK[S].R;
+   S:=S-1;
+      REPEAT {split SCALAR[L] . . . SCALAR[R]}
+      I:=L;
+      J:=R;
+      X:=SCALAR[(L+R) DIV 2];
+         REPEAT
+         WHILE SCALAR[I]<X DO
+            I:=I+1;
+         WHILE X<SCALAR[J] DO
+            J:=J-1;
+         IF I<=J THEN
+         BEGIN
+            W:=SCALAR[I];
+            SCALAR[I]:=SCALAR[J];
+            SCALAR[J]:=W;
+            I:=I+1;
+            J:=J-1;
+         END;
+         UNTIL I>J;
+      IF I<R THEN
+      BEGIN{stack request to sort right partition}
+         S:=S+1;
+         STACK[S].L:=I;
+         STACK[S].R:=R;
+      END;
+      R:=J;
+   UNTIL L>=R;
+UNTIL S=0;
+END;{quicksort}
+      
+FUNCTION RANDOM:INTEGER;
+BEGIN
+SEED:=SEED*27.182813+31.415917;
+SEED:=SEED-TRUNC(SEED);
+IF SEED<0 THEN
+   SEED:=-SEED;
+RANDOM:=TRUNC(SEED*50+1);
+END;
+
+BEGIN
+TIME(HITIME,LO1TIME);
+SEED:=1.23456789;
+FOR X:=1 TO MAXSIZE DO
+   SCALAR[X]:=RANDOM;
+FOR Y:=1 TO MAXSIZE DO
+   WRITE(SCALAR[Y]:4);
+QUICKSORT; 
+FOR Y:=1 TO MAXSIZE DO
+   WRITE(SCALAR[Y]:4);
+TIME(HITIME,LO2TIME);
+TIMEDIFF:=LO2TIME-LO1TIME;
+IF TIMEDIFF<0 THEN
+   TIMEDIFF:=TIMEDIFF+32767;
+WRITELN(TIMEDIFF DIV 60,'.',(100*(TIMEDIFF MOD 60) DIV 60),' seconds');
+END.

@@ -1,0 +1,584 @@
+PROCEDURE NAMEANDPW;     FORWARD;
+FUNCTION GETSCORE(SCORECMD : BOOLEAN ) : INTEGER;   FORWARD;
+FUNCTION TOTING(OBJECT : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION AT(OBJECT : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION MIN(I, J : INTEGER) : INTEGER;  FORWARD;
+FUNCTION MAX(I, J : INTEGER) : INTEGER;  FORWARD;
+FUNCTION RAN(NUM : INTEGER) : INTEGER;  FORWARD;
+FUNCTION PERCENT(I : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION HERE(OBJECT : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION DARK : BOOLEAN;  FORWARD;
+FUNCTION FORCED(LOC : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION BITSET(I, J : INTEGER) : BOOLEAN;  FORWARD;
+FUNCTION LIQ2(PBOTL : INTEGER) : INTEGER;  FORWARD;
+FUNCTION LIQ : INTEGER;  FORWARD;
+FUNCTION LIQLOC(LOC : INTEGER) : INTEGER;  FORWARD;
+FUNCTION VOCAB(WORD : STRING;WHAT : INTEGER) : INTEGER;  FORWARD;
+PROCEDURE CARRY(OBJECT, WHERE : INTEGER);  FORWARD;
+PROCEDURE DROP(OBJECT, WHERE : INTEGER);  FORWARD;
+PROCEDURE MOVE(OBJECT, WHERE : INTEGER);  FORWARD;
+PROCEDURE JUGGLE(OBJECT : INTEGER);  FORWARD;
+PROCEDURE DESTROY(OBJECT : INTEGER);  FORWARD;
+FUNCTION PUT(OBJECT, WHERE, PVAL : INTEGER) : INTEGER;  FORWARD;
+PROCEDURE SPEAK(MSG : INTEGER);  FORWARD;
+PROCEDURE PSPEAK(MSG, SKIP : INTEGER);  FORWARD;
+FUNCTION YES(MSG, SPKYES, SPKNO : INTEGER) : BOOLEAN;  FORWARD;
+PROCEDURE ERRORHALT(I : INTEGER);  FORWARD;
+PROCEDURE TESTCLOSE;  FORWARD;
+{ SUBROUTINES FOR ADVENTURE } 
+
+SEGMENT PROCEDURE SET_NEW_LOC;
+
+VAR
+  T1, T2, T3 : BOOLEAN;
+
+
+  PROCEDURE PLOVERALCOVE;
+
+  BEGIN
+    NEWLOC := 199 - VBL^.LOC; 
+    IF (VBL^.HLDING = 0) OR ((VBL^.HLDING = 1) AND TOTING(EMERALD)) THEN
+    ELSE
+      BEGIN
+        NEWLOC := VBL^.LOC;
+        SPEAK(ARY^.RTEXT[117])
+      END;
+    EXIT(SET_NEW_LOC)
+  END;  { PLOVERALCOVE }
+
+
+  PROCEDURE TROLLBRIDGE;
+
+  BEGIN
+    IF VARY^.PROP[TROLL] = 1 THEN
+      BEGIN
+        PSPEAK(TROLL, 1);
+        VARY^.PROP[TROLL] := 0;
+        MOVE(TROLL2, 0);
+        MOVE(TROLL2 + 100, 0);
+        MOVE(TROLL, ARY^.PLAC[TROLL]);
+        MOVE(TROLL + 100, ARY^.FIXD[TROLL]);
+        JUGGLE(CHASM);
+        NEWLOC := VBL^.LOC
+      END
+    ELSE
+      BEGIN
+        NEWLOC := ARY^.PLAC[TROLL] + ARY^.FIXD[TROLL] - VBL^.LOC;
+        IF VARY^.PROP[TROLL] = 0 THEN VARY^.PROP[TROLL] := 1;
+        IF TOTING(BEAR) THEN
+          BEGIN
+            SPEAK(ARY^.RTEXT[162]);
+            VARY^.PROP[CHASM] := 1;
+            VARY^.PROP[TROLL] := 2;
+            DROP(BEAR, NEWLOC);
+            VARY^.FIXED[BEAR] := -1;
+            VARY^.PROP[BEAR] := 3;
+            IF VARY^.PROP[SPICES] < 0 THEN VBL^.TALLY2 := VBL^.TALLY2 + 1;
+            VBL^.OLDLC2 := NEWLOC;
+            HE_DIED := TRUE
+          END
+      END;
+    EXIT(SET_NEW_LOC)
+  END;  { TROLLBRIDGE }
+
+
+BEGIN { SET_NEW_LOC }
+  KK := ARY^.KEY[VBL^.LOC]; 
+  IF KK = 0 THEN ERRORHALT(26);
+  NEWLOC := VBL^.LOC;
+  IF K = NULL THEN EXIT(SET_NEW_LOC);
+  SKIPIT := FALSE;
+  IF K = BACK THEN
+    BEGIN
+      SKIPIT := TRUE;
+      IF FORCED(K) THEN
+        K := VBL^.OLDLC2
+      ELSE
+        K := VBL^.OLDLOC;
+      VBL^.OLDLC2 := VBL^.OLDLOC;
+      VBL^.OLDLOC := VBL^.LOC;
+      K2 := 0;
+      IF K = VBL^.LOC THEN
+        BEGIN
+          SPEAK(ARY^.RTEXT[91]);
+          EXIT(SET_NEW_LOC)
+        END;
+      OK := FALSE;
+      KK := KK - 1;
+      REPEAT
+        KK := KK + 1;
+        IF K = ARY^.TRAVEL2[KK] THEN
+          BEGIN
+            K := ABS(ARY^.TRAVEL[KK]);
+            KK := ARY^.KEY[VBL^.LOC];
+            OK := TRUE
+          END
+        ELSE
+          BEGIN
+            IF ARY^.TRAVEL2[KK] <= 300 THEN
+              BEGIN
+                J := ARY^.KEY[ARY^.TRAVEL2[KK]];
+                IF FORCED(ARY^.TRAVEL2[KK]) AND (ARY^.TRAVEL2[J] = K) THEN
+                  K2 := KK
+              END;
+            IF ARY^.TRAVEL[KK] < 0 THEN
+              BEGIN
+                KK := K2;
+                IF KK = 0 THEN
+                  BEGIN
+                    SPEAK(ARY^.RTEXT[140]);
+                    EXIT(SET_NEW_LOC)
+                  END;
+                K := ABS(ARY^.TRAVEL[KK]);
+                KK := ARY^.KEY[VBL^.LOC];
+                OK := TRUE
+              END
+          END
+      UNTIL OK OR (ARY^.TRAVEL2[KK] = K)
+    END;  { BACK }
+  IF K = LOOK THEN
+    BEGIN
+      IF VBL^.DETAIL < 3 THEN SPEAK(ARY^.RTEXT[15]);
+      VBL^.DETAIL := VBL^.DETAIL + 1;
+      VBL^.WZDARK := FALSE;
+      VARY^.ABB[VBL^.LOC] := 0
+    END
+  ELSE
+    IF K = CAVE THEN
+      BEGIN
+        IF VBL^.LOC < 8 THEN
+          SPEAK(ARY^.RTEXT[57])
+        ELSE
+          SPEAK(ARY^.RTEXT[58])
+      END
+    ELSE
+      BEGIN { NOT SPECIAL }
+        IF NOT SKIPIT THEN
+          BEGIN
+            VBL^.OLDLC2 := VBL^.OLDLOC;
+            VBL^.OLDLOC := VBL^.LOC
+          END;
+        { TRAVEL  = VERB               }
+        { TRAVEL2 = WHERE TO GO        }
+        { TRAVEL3 = CONDITION (IF ANY) }
+        KK := KK - 1;
+        REPEAT
+          KK := KK + 1;
+          OK := (ABS(ARY^.TRAVEL[KK]) = 1) OR (ABS(ARY^.TRAVEL[KK]) = K)
+        UNTIL OK OR (ARY^.TRAVEL[KK] < 0);
+        IF NOT OK THEN
+          BEGIN
+            SPK := 12;
+            CASE K OF
+              43, 44, 45, 46, 47, 48, 49, 50, 29, 30 : SPK := 9;
+              7, 36, 37 : SPK := 10;
+              11, 19 : SPK := 11;
+              62, 65 : SPK := 42;
+              17 : SPK := 80
+            END;
+            IF (VBL^.VERB = FIND) OR (VBL^.VERB = INVENTORY) THEN SPK := 59;
+            SPEAK(ARY^.RTEXT[SPK]);
+            EXIT(SET_NEW_LOC)
+          END;
+        REPEAT
+          NEWLOC := ARY^.TRAVEL2[KK];
+          TVCOND := ARY^.TRAVEL3[KK];
+          K := TVCOND MOD 100;
+          IF K = 0 THEN
+            BEGIN
+              T1 := FALSE;
+              T2 := FALSE;
+              T3 := FALSE
+            END
+          ELSE
+            BEGIN
+              T1 := TOTING(K);
+              T2 := AT(K);
+              T3 := VARY^.PROP[K] <> (TVCOND DIV 100 - 3)
+            END;
+          IF ((TVCOND <= 100) AND ((TVCOND = 0) OR PERCENT(TVCOND))) OR
+            ((TVCOND > 100) AND (TVCOND <= 300) AND
+            (T1 OR ((TVCOND > 200) AND T2))) OR ((TVCOND > 300) AND T3) THEN
+            BEGIN
+              IF NEWLOC <= 300 THEN
+                EXIT(SET_NEW_LOC);
+              IF NEWLOC <= 500 THEN
+                BEGIN
+                  NEWLOC := NEWLOC - 300;
+                  IF NEWLOC = 1 THEN
+                    PLOVERALCOVE
+                  ELSE
+                    IF NEWLOC = 2 THEN
+                      DROP(EMERALD, VBL^.LOC)
+                    ELSE
+                      IF NEWLOC = 3 THEN
+                        TROLLBRIDGE
+                      ELSE
+                        ERRORHALT(20)
+                END
+              ELSE
+                BEGIN
+                  SPEAK(ARY^.RTEXT[NEWLOC - 500]);
+                  NEWLOC := VBL^.LOC;
+                  EXIT(SET_NEW_LOC)
+                END
+            END;
+          REPEAT
+            IF ARY^.TRAVEL[KK] < 0 THEN
+              ERRORHALT(25);
+            KK := KK + 1
+          UNTIL (TVCOND <> ARY^.TRAVEL3[KK]) AND (NEWLOC <> ARY^.TRAVEL2[KK])
+        UNTIL FALSE  { EXIT IS BY EXIT PROC }
+      END  { NOT SPECIAL }
+END;  { SET_NEW_LOC }
+
+
+SEGMENT PROCEDURE DWARFSTUFF;
+
+VAR
+  LASTLOC : INTEGER;
+  TBITSET, TFORCED : BOOLEAN;
+
+
+  PROCEDURE PIRATESTUFF;
+
+  BEGIN { PIRATESTUFF }
+    K := 0;
+    STEAL := FALSE;
+    FOR J := 50 TO MAXTRS DO
+      BEGIN
+        IF (J = PYRAMID) AND ((VBL^.LOC = ARY^.PLAC[PYRAMID]) OR
+          (VBL^.LOC = ARY^.PLAC[EMERALD])) THEN
+            { NOTHING }
+        ELSE
+          BEGIN
+            STEAL := STEAL OR TOTING(J);
+            IF VARY^.PLACE[J] = VBL^.LOC THEN K := 1
+          END
+      END;
+    IF STEAL THEN
+      BEGIN
+        SPEAK(ARY^.RTEXT[128]);
+        IF VARY^.PLACE[MESSAGE] = 0 THEN MOVE(CHEST, VBL^.CHLOC);
+        MOVE(MESSAGE, VBL^.CHLOC2);
+        FOR J := 50 TO MAXTRS DO
+          BEGIN
+            IF (J = PYRAMID) AND ((VBL^.LOC = ARY^.PLAC[PYRAMID]) OR
+              (VBL^.LOC = ARY^.PLAC[EMERALD])) THEN
+                { NOTHING }
+            ELSE
+              BEGIN
+                IF (VARY^.PLACE[J] = VBL^.LOC) AND (VARY^.FIXED[J] = 0) THEN
+                  CARRY(J, VBL^.LOC);
+                IF TOTING(J) THEN DROP(J, VBL^.CHLOC)
+              END
+          END;
+        VARY^.DLOC[6] := VBL^.CHLOC;
+        VARY^.ODLOC[6] := VBL^.CHLOC;
+        VARY^.DSEEN[6] := FALSE
+      END
+    ELSE
+      BEGIN
+        IF (VBL^.TALLY = (VBL^.TALLY2 + 1)) AND (K = 0) AND HERE(LAMP) AND
+          (VARY^.PLACE[CHEST] = 0) AND (VARY^.PROP[LAMP] = 1) THEN
+          BEGIN
+            SPEAK(ARY^.RTEXT[186]);
+            MOVE(CHEST, VBL^.CHLOC);
+            MOVE(MESSAGE, VBL^.CHLOC2);
+            VARY^.DLOC[6] := VBL^.CHLOC;
+            VARY^.ODLOC[6] := VBL^.CHLOC;
+            VARY^.DSEEN[6] := FALSE
+          END
+        ELSE
+          IF (VARY^.ODLOC[6] <> VARY^.DLOC[6]) AND PERCENT(20) THEN
+            SPEAK(ARY^.RTEXT[127])
+      END
+  END;  { PIRATESTUFF }
+
+
+BEGIN { DWARFSTUFF }
+  IF VBL^.DFLAG = 1 THEN 
+    IF (VBL^.LOC >= 15) AND PERCENT(95) THEN
+      BEGIN
+        VBL^.DFLAG := 2;
+        FOR I := 1 TO 2 DO
+          IF PERCENT(50) THEN VARY^.DLOC[1 + RAN(5)] := 0;
+        FOR I := 1 TO 5 DO
+          BEGIN
+            IF VARY^.DLOC[I] = VBL^.LOC THEN VARY^.DLOC[I] := DALTLC;
+            VARY^.ODLOC[I] := VARY^.DLOC[I]
+          END;
+        SPEAK(ARY^.RTEXT[3]);
+        DROP(AXE, VBL^.LOC)
+      END
+    ELSE
+  ELSE
+    BEGIN
+      VBL^.DTOTAL := 0;
+      ATTACK := 0;
+      STICK := 0;
+      FOR I := 1 TO 6 DO
+        IF VARY^.DLOC[I] <> 0 THEN
+          BEGIN
+            J := 1;
+            KK := ARY^.KEY[VARY^.DLOC[I]];
+            IF KK <> 0 THEN
+              REPEAT
+                NEWLOC := ARY^.TRAVEL2[KK];
+                IF (J > 1) AND (J <= 21) THEN LASTLOC := VARY^.TK[J - 1];
+                IF NEWLOC <= locsiz THEN
+                  BEGIN
+                    TBITSET := BITSET(NEWLOC, 3);
+                    TFORCED := FORCED(NEWLOC)
+                  END
+                ELSE
+                  BEGIN
+                    TBITSET := FALSE;
+                    TFORCED := FALSE
+                  END;
+                IF (NEWLOC > 300) OR (NEWLOC = VARY^.ODLOC[I]) OR
+                  (NEWLOC < 15) OR ((J > 1) AND (NEWLOC = LASTLOC)) OR
+                  (NEWLOC = VARY^.DLOC[I]) OR ((I = 6) AND TBITSET) OR
+                  (ARY^.TRAVEL3[KK] = 100) OR TFORCED OR (J >= 20) THEN
+                    { nothing } 
+                ELSE
+                  BEGIN
+                    VARY^.TK[J] := NEWLOC;
+                    J := J + 1
+                  END;
+                KK := KK + 1
+              UNTIL ARY^.TRAVEL[KK - 1] < 0;
+            VARY^.TK[J] := VARY^.ODLOC[I];
+            IF J >= 2 THEN J := J - 1;
+            J := 1 + RAN(J);
+            VARY^.ODLOC[I] := VARY^.DLOC[I];
+            VARY^.DLOC[I] := VARY^.TK[J];
+            VARY^.DSEEN[I] := (VARY^.DSEEN[I] AND (VBL^.LOC >= 15)) OR
+              (VARY^.DLOC[I] = VBL^.LOC) OR (VARY^.ODLOC[I] = VBL^.LOC);
+            IF VARY^.DSEEN[I] THEN
+              BEGIN
+                VARY^.DLOC[I] := VBL^.LOC;
+                IF I = 6 THEN
+                  IF (VBL^.LOC <> VBL^.CHLOC) AND (VARY^.PROP[CHEST] < 0) THEN
+                    PIRATESTUFF
+                  ELSE
+                ELSE
+                  BEGIN
+                    VBL^.DTOTAL := VBL^.DTOTAL + 1;
+                    IF VARY^.ODLOC[I] = VARY^.DLOC[I] THEN
+                      BEGIN
+                        ATTACK := ATTACK + 1;
+                        IF VBL^.KNFLOC >= 0 THEN VBL^.KNFLOC := VBL^.LOC;
+                        IF RAN(1000) < (95 * (VBL^.DFLAG - 2)) THEN
+                          STICK := STICK + 1
+                      END
+                  END
+              END
+          END
+      END;
+  IF VBL^.DTOTAL <> 0 THEN
+    BEGIN
+      IF VBL^.DTOTAL = 1 THEN
+        SPEAK(ARY^.RTEXT[4])
+      ELSE
+        BEGIN
+          WRITE('There are ', VBL^.DTOTAL, ' threatening ');
+          WRITELN('little dwarves in the room with you.') 
+        END;
+      IF ATTACK <> 0 THEN
+        BEGIN
+          IF VBL^.DFLAG = 2 THEN VBL^.DFLAG := 3;
+          IF ATTACK = 1 THEN
+            BEGIN
+              SPEAK(ARY^.RTEXT[5]);
+              K := 52
+            END
+          ELSE
+            BEGIN
+              K := 6;
+              WRITEln(ATTACK, ' of them throw knives at you.')
+            END;
+          IF STICK > 1 THEN
+            WRITELN(STICK, ' of them get you!')
+          ELSE
+            SPEAK(ARY^.RTEXT[K + STICK]);
+          IF STICK <> 0 THEN
+            BEGIN
+              VBL^.OLDLC2 := VBL^.LOC;
+              HE_DIED := TRUE
+            END
+        END
+    END
+END;  { DWARFSTUFF }
+
+
+segment PROCEDURE DESCRIBE_CURRENT_LOCATION;
+
+BEGIN
+  IF VBL^.LOC = 0 THEN
+    BEGIN
+      HE_DIED := TRUE;
+      EXIT(DESCRIBE_CURRENT_LOCATION)
+    END;
+  KK := ARY^.STEXT[VBL^.LOC];
+  IF ((VARY^.ABB[VBL^.LOC] MOD VBL^.ABBNUM) = 0) OR (KK = 0) THEN
+    KK := ARY^.LTEXT[VBL^.LOC];
+  IF (NOT FORCED(VBL^.LOC)) AND DARK THEN
+    BEGIN
+      IF VBL^.WZDARK AND PERCENT(35) THEN
+        BEGIN
+          HE_DIED := TRUE;
+          PIT := TRUE;
+          EXIT(DESCRIBE_CURRENT_LOCATION)
+        END;
+      KK := ARY^.RTEXT[16]
+    END;
+  IF TOTING(BEAR) THEN SPEAK(ARY^.RTEXT[141]);
+  SPEAK(KK);
+  K := 1;
+  IF FORCED(VBL^.LOC) THEN
+    BEGIN
+      SET_NEW_LOC;
+      NEWLOCSET := TRUE;
+      EXIT(DESCRIBE_CURRENT_LOCATION)
+    END;
+  IF (VBL^.LOC = 33) AND PERCENT(25) AND NOT VBL^.CLOSING THEN
+    SPEAK(ARY^.RTEXT[8]);
+  if (vbl^.loc = 36) and percent(30) and (vbl^.stflag = 0) then
+    begin
+      speak(ary^.rtext[90]);
+      vbl^.stflag := 1
+    end;
+  IF NOT DARK THEN
+    BEGIN
+      VARY^.ABB[VBL^.LOC] := VARY^.ABB[VBL^.LOC] + 1;
+      I := VARY^.ATLOC[VBL^.LOC];
+      WHILE I <> 0 DO
+        BEGIN
+          VBL^.OBJ := I;
+          IF VBL^.OBJ > 100 THEN VBL^.OBJ := VBL^.OBJ - 100;
+          IF (VBL^.OBJ <> STEPS) OR (NOT TOTING(NUGGET)) THEN
+            BEGIN
+              IF VARY^.PROP[VBL^.OBJ] < 0 THEN
+                IF NOT VBL^.CLOSED THEN
+                  BEGIN
+                    VARY^.PROP[VBL^.OBJ] := 0;
+                    IF (VBL^.OBJ = RUG) OR (VBL^.OBJ = CHAIN) THEN
+                      VARY^.PROP[VBL^.OBJ] := 1;
+                    VBL^.TALLY := VBL^.TALLY - 1;
+                    IF (VBL^.TALLY = VBL^.TALLY2) AND (VBL^.TALLY <> 0) THEN
+                      VBL^.LIMIT := MIN(35, VBL^.LIMIT)
+                  END;
+              IF NOT VBL^.CLOSED THEN
+                BEGIN
+                  KK := VARY^.PROP[VBL^.OBJ];
+                  IF (VBL^.OBJ = STEPS) AND
+                    (VBL^.LOC = VARY^.FIXED[STEPS]) THEN 
+                    KK := 1;
+                  PSPEAK(VBL^.OBJ, KK)
+                END
+            END;
+          I := VARY^.LINK[I]
+        END  { WHILE I <> 0 DO }
+    END
+END; { DESCRIBE_CURRENT_LOCATION }
+
+
+segment PROCEDURE CHECKHINTS;
+
+
+  PROCEDURE GIVEHINT;
+
+  BEGIN
+    VARY^.HINTLC[HINT] := 0;
+    IF YES(ARY^.HINTS[HINT, 3], 0, 54) THEN
+      BEGIN
+        WRITE('I am prepared to give you a hint,  but ');
+        WRITELN(' it will cost you ', ARY^.HINTS[HINT, 2], ' points.');
+        VARY^.HINTED[HINT] := YES(175, ARY^.HINTS[HINT, 4], 54);
+        IF VARY^.HINTED[HINT] AND (VBL^.LIMIT > 30) THEN
+          VBL^.LIMIT := VBL^.LIMIT + 30 * ARY^.HINTS[HINT, 2]
+      END
+  END;  { GIVEHINT }
+
+
+  PROCEDURE CAVEHINT;
+
+  BEGIN
+    IF (VARY^.PROP[GRATE] = 0) AND NOT HERE(KEYS) THEN
+      GIVEHINT
+    ELSE
+      VARY^.HINTLC[HINT] := 0
+  END;  { CAVEHINT }
+
+
+  PROCEDURE BIRDHINT;
+
+  BEGIN
+    IF HERE(BIRD) AND TOTING(ROD) AND (VBL^.OBJ = BIRD) THEN GIVEHINT
+  END;  { BIRDHINT }
+
+
+  PROCEDURE SNAKEHINT;
+
+  BEGIN
+    IF HERE(SNAKE) AND NOT HERE(BIRD) THEN
+      GIVEHINT
+    ELSE
+      VARY^.HINTLC[HINT] := 0
+  END;  { SNAKEHINT } 
+
+
+  PROCEDURE MAZEHINT;
+
+  BEGIN
+    IF (VARY^.ATLOC[VBL^.LOC] = 0) AND (VARY^.ATLOC[VBL^.OLDLOC] = 0) AND
+      (VARY^.ATLOC[VBL^.OLDLC2] = 0) AND (VBL^.HLDING > 1) THEN
+      GIVEHINT
+    ELSE
+      VARY^.HINTLC[HINT] := 0
+  END;  { MAZEHINT }
+
+
+  PROCEDURE DARKHINT;
+
+  BEGIN
+    IF (VARY^.PROP[EMERALD] <> -1) AND (VARY^.PROP[PYRAMID] = -1) THEN
+      GIVEHINT
+    ELSE
+      VARY^.HINTLC[HINT] := 0
+  END;  { DARKHINT }
+
+
+  PROCEDURE WITTHINT;
+
+  BEGIN
+    GIVEHINT
+  END;  { WITTHINT }
+
+
+BEGIN { CHECKHINTS }
+  FOR HINT := 4 TO HNTSIZ DO
+    BEGIN
+      IF NOT VARY^.HINTED[HINT] THEN
+        BEGIN
+          IF BITSET(VBL^.LOC, HINT) THEN
+            VARY^.HINTLC[HINT] := VARY^.HINTLC[HINT] + 1
+          ELSE
+            VARY^.HINTLC[HINT] := 0;
+          IF VARY^.HINTLC[HINT] >= ARY^.HINTS[HINT, 1] THEN
+            CASE HINT OF
+              4 : CAVEHINT;
+              5 : BIRDHINT;
+              6 : SNAKEHINT;
+              7 : MAZEHINT;
+              8 : DARKHINT;
+              9 : WITTHINT
+            END  { CASE OF HINT }
+        END
+    END
+END;  { CHECKHINTS }
+
+
+
+

@@ -1,0 +1,584 @@
+
+(* --- SYSSEGS.B  --- *)
+
+    (******************************************************************)
+    (*                                                                *)
+    (*  Copyright (c) 1978 Regents of the University of California.   *)
+    (*  Permission to copy or distribute this software or documen-    *)
+    (*  tation in hard or soft copy granted only by written license   *) 
+    (*  obtained from the Institute for Information Systems.          *)
+    (*                                                                *)
+    (******************************************************************)
+    
+
+{.fs} { cram all in one segment since we have unlimited code-space }
+{.fs# SEGMENT } FUNCTION GETCMD(LASTST: CMDSTATE): CMDSTATE;
+  CONST ASSEMONLY = LINKANDGO;
+  TYPE  STATUS_ASSOCIATE = (FOUND_OK,FOUND_BAD,NOT_FOUND);
+  VAR CH: CHAR; BADCMD: BOOLEAN;
+      DONT_CARE : STATUS_ASSOCIATE;
+
+  PROCEDURE RUNWORKFILE(OKTOLINK, RUNONLY: BOOLEAN);
+    FORWARD;
+
+  FUNCTION SYS_ASSOCIATE(SYS_NAME:SYSFILE):BOOLEAN;
+    FORWARD;
+
+  FUNCTION ASSOCIATE(TITLE: STRING; OKTOLINK, RUNONLY,ERROR_OK: BOOLEAN; 
+		     VAR ASS_STATUS : STATUS_ASSOCIATE): BOOLEAN;
+    LABEL 1;
+    VAR RSLT: IORSLTWD; LSEG: SEGRANGE;
+{.fs}   RSEG: 0..255;  { resident segment index }
+	SEGTBL: RECORD
+	          DISKINFO: ARRAY [SEGRANGE] OF SEGDESC;
+	          SEGNAME: ARRAY [SEGRANGE] OF 
+	                     PACKED ARRAY [0..7] OF CHAR;
+	          SEGKIND: ARRAY [SEGRANGE] OF
+	                     (LINKED,HOSTSEG,SEGPROC,UNITSEG,SEPRTSEG);
+{.fs#	          FILLER: ARRAY [0..143] OF INTEGER } { Apple .CODE files uses this }
+{.fs}             TEXTADDR: ARRAY [SEGRANGE] OF INTEGER;    { cf. LIBRARY.TEXT }
+{.fs}             SEGINFO: PACKED ARRAY [SEGRANGE] OF PACKED RECORD
+{.fs}                        SEGNUM: 0..255;                { actual seg no }
+{.fs}                        MTYPE: 0..15;                  { 2=p-code l.-end }
+{.fs}                        UNUSED: BOOLEAN;
+{.fs}                        VERSION: 0..7;                 { 2, 3: Apple ][, /// }
+{.fs}                      END;
+{.fs}             INTRINS_SEGS: PACKED ARRAY [0..63] OF BOOLEAN;    { per Apple doc }
+{.fs}             FILLER: ARRAY [1..68] OF INTEGER;
+{.fs}             NOTICE: STRING[79]
+	        END { SEGTBL } ;
+  BEGIN 
+    ASS_STATUS := NOT_FOUND;
+    ASSOCIATE := FALSE;
+    FOPEN(USERINFO.CODEFIBP^,TITLE,TRUE,NIL);
+    RSLT := SYSCOM^.IORSLT;
+    IF RSLT <> INOERROR THEN
+      BEGIN
+	IF ERROR_OK THEN
+          IF RSLT = IBADTITLE THEN
+            WRITE(OUTPUT,'Illegal file name')
+          ELSE
+            WRITE(OUTPUT,'No file ',TITLE);
+        GOTO 1
+      END;
+    ASS_STATUS := FOUND_BAD; {until shown otherwise}
+    WITH USERINFO,SYSCOM^ DO
+      IF CODEFIBP^.FHEADER.DFKIND <> CODEFILE THEN
+	BEGIN
+	  WRITE(OUTPUT,TITLE,' not code');
+	  GOTO 1
+	END
+      ELSE
+	BEGIN
+	  UNITREAD(CODEFIBP^.FUNIT,SEGTBL,SIZEOF(SEGTBL),
+	                CODEFIBP^.FHEADER.DFIRSTBLK);
+	  IF IORESULT <> ORD(INOERROR) THEN
+	    BEGIN
+	      WRITE(OUTPUT,'Bad block #0');
+	      GOTO 1
+	    END;
+{.fs#     // This is no longer needed:                                   }
+{.fs#	  WITH SEGTBL DO                                                 }
+{.fs#	    FOR LSEG := 0 TO MAXSEG DO                                   }
+{.fs#         IF (SEGKIND[LSEG]<LINKED) OR (SEGKIND[LSEG]>SEPRTSEG) THEN }
+{.fs#	        BEGIN } { PRE I.5 CODE...FIX UP! }
+{.fs#	          FILLCHAR(SEGKIND, SIZEOF(SEGKIND), ORD(LINKED));       }
+{.fs#	          FILLCHAR(FILLER, SIZEOF(FILLER), 0);                   }
+{.fs#	          UNITWRITE(CODEFIBP^.FUNIT, SEGTBL, SIZEOF(SEGTBL),     }
+{.fs#	                        CODEFIBP^.FHEADER.DFIRSTBLK)             }
+{.fs#	        END;                                                     }
+	  WITH SEGTBL DO
+	    FOR LSEG := 0 TO MAXSEG DO
+	      IF SEGKIND[LSEG] <> LINKED THEN
+	      BEGIN
+	        IF OKTOLINK THEN
+	          BEGIN WRITELN(OUTPUT,'Linking...');
+	            FCLOSE(CODEFIBP^, CNORMAL);
+	            IF SYS_ASSOCIATE(LINKER) THEN
+	              BEGIN
+	                IF RUNONLY THEN GETCMD := LINKANDGO
+	                ELSE GETCMD := LINKDEBUG;
+	                EXIT(GETCMD)
+	              END
+	          END
+	        ELSE
+	          IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+                    WRITE(OUTPUT,'Must L(ink first');
+	        GOTO 1
+	      END;
+
+{.fs#	  FOR LSEG := 0 TO MAXSEG DO }
+{.fs#       { original code cannot handle Apple disks' seg redirections }
+{.fs#	    IF (LSEG = 1) OR (LSEG >= 7) THEN              }
+{.fs#	      WITH SEGTABLE[LSEG],SEGTBL.DISKINFO[LSEG] DO }
+
+{.fs}     { apply seg mapping as used in Apple .CODE files }
+{.fs}	  FOR RSEG := 0 TO MAX_RSEG DO              { clear out resident seg table }
+{.fs}	    IF (RSEG > 0) THEN                      { protect SYSTEM segment #0 }
+{.fs} 	      WITH SEGTABLE[RSEG] DO BEGIN
+{.fs}	        CODEUNIT := 0; CODEDESC.CODELENG := 0; CODEDESC.DISKADDR := 0
+{.fs}	      END;
+{.fs}	  FOR LSEG := 0 TO MAXSEG DO                { set up new CODE-file segments }
+{.fs}       IF SEGTBL.DISKINFO[LSEG].CODELENG > 0 THEN BEGIN
+{.fs}         RSEG := SEGTBL.SEGINFO[LSEG].SEGNUM;  { map to resident seg no }
+{.fs}         IF RSEG = 0 THEN RSEG := LSEG;        { 0 means old file }
+{.fs}	      IF (RSEG > 0) THEN                    { protect SYSTEM segment #0 }
+{.fs} 	        WITH SEGTABLE[RSEG],SEGTBL.DISKINFO[LSEG] DO
+	        BEGIN CODEUNIT := CODEFIBP^.FUNIT;
+	          CODEDESC.CODELENG := CODELENG;
+	          CODEDESC.DISKADDR := DISKADDR+
+	                                CODEFIBP^.FHEADER.DFIRSTBLK
+	        END
+{.fs}	    END
+{.fs}       { TODO: Apple system also sets up instrinsic segments here }
+	END;
+    ASS_STATUS := FOUND_OK;
+    ASSOCIATE := TRUE;
+1:  FCLOSE(USERINFO.CODEFIBP^,CNORMAL)
+  END (*ASSOCIATE*) ;
+
+  FUNCTION SYS_ASSOCIATE{(SYS_NAME:SYSFILE):BOOLEAN};
+  VAR  VOL : VID;
+       TITLE : TID;
+       SEGS : INTEGER;
+       KIND : FILEKIND;
+       LUNIT : UNITNUM;
+       LTITLE : FULL_ID;
+       ASS_STATUS : STATUS_ASSOCIATE;
+  BEGIN
+    SYS_ASSOCIATE := ASSOCIATE(FILENAME[SYS_NAME],FALSE,FALSE,FALSE,ASS_STATUS);
+    IF ASS_STATUS = NOT_FOUND THEN
+      IF SCANTITLE(FILENAME[SYS_NAME],VOL,TITLE,SEGS,KIND) THEN
+	BEGIN
+	  LUNIT := 0;
+	  REPEAT
+	    LUNIT := LUNIT + 1;
+	    WITH UNITABLE[LUNIT] DO
+	      IF UISBLKD THEN
+		BEGIN
+		  UVID := '';
+		  IF FETCHDIR(LUNIT) THEN
+		    BEGIN
+		      UVID := SYSCOM^.GDIRP^[0].DVID;
+		      LTITLE := CONCAT(UVID,':',TITLE);
+		      IF LTITLE <> FILENAME[SYS_NAME] THEN
+			IF ASSOCIATE(LTITLE,FALSE,FALSE,FALSE,ASS_STATUS) THEN 
+			  FILENAME[SYS_NAME] := LTITLE;
+		      END;
+		  END; { of IF ISBLOCKED ...}
+	    UNTIL (LUNIT = MAXUNIT) OR (ASS_STATUS IN [FOUND_OK,FOUND_BAD]);
+	  SYS_ASSOCIATE := ASS_STATUS = FOUND_OK;
+	  IF ASS_STATUS = NOT_FOUND THEN
+	    IF ASSOCIATE(FILENAME[SYS_NAME],FALSE,FALSE,TRUE,ASS_STATUS) THEN;
+			{just to get the appropriate error}
+	  END; {of IF SCANTITLE...}
+    END;  {of SYS_ASSOCIATE}
+
+{.fs} { append an extension to a file name if it is not there }
+{.fs} { based on EDITOR source }
+{.fs} { This is a straight copy from RETROSTUFF so we don't need an extra segment. }
+{.fs} PROCEDURE APPENDEXTENSION(VAR FILENAME: STRING; EXT: STRING);
+{.fs}   VAR I, XLEN: INTEGER;
+{.fs}   FUNCTION UCLC(CH:CHAR):CHAR; (* Map Lower Case to Upper Case *)
+{.fs}   BEGIN { from EDITOR source }
+{.fs}     IF CH IN ['a'..'z'] THEN UCLC:=CHR(ORD(CH)-32) ELSE UCLC:=CH
+{.fs}   END;
+{.fs}   FUNCTION ENDSWITH(S, SUFFIX: STRING): BOOLEAN;
+{.fs}     VAR I: INTEGER;
+{.fs}   BEGIN
+{.fs}     I:=POS(SUFFIX,S)-1;
+{.fs}     ENDSWITH:=(I>0) AND (I=LENGTH(S)-LENGTH(SUFFIX));
+{.fs}   END;
+{.fs} BEGIN
+{.fs}   IF FILENAME='' THEN EXIT(APPENDEXTENSION);
+{.fs}   FOR I:=1 TO LENGTH(FILENAME) DO FILENAME[I]:=UCLC(FILENAME[I]); { up-case }
+{.fs}   IF (ENDSWITH(FILENAME,'.LIBRARY')) AND (EXT='.CODE') THEN
+{.fs}     EXIT(APPENDEXTENSION);    { .LIBRARY files are also code }
+{.fs}   XLEN:=LENGTH(EXT)-1;
+{.fs}   IF (NOT ENDSWITH(FILENAME,EXT)) AND                 { tail is not ext }
+{.fs}      (FILENAME[LENGTH(FILENAME)]<>'.') AND            { final . inhibits }
+{.fs}      (FILENAME[LENGTH(FILENAME)]<>':') THEN           { volume name }
+{.fs}     FILENAME:=CONCAT(FILENAME,EXT);
+{.fs}   IF FILENAME[LENGTH(FILENAME)]='.' THEN              { remove inhibitor }
+{.fs}     DELETE(FILENAME,LENGTH(FILENAME),1);
+{.fs} END;
+
+PROCEDURE STARTCOMPILE(NEXTST: CMDSTATE);
+    LABEL 1;
+    VAR TEXT_TITLE,TITLE: STRING[40];   
+	I : INTEGER;
+	CODE_NAME : FULL_ID;
+	SYS_TYPE : SYSFILE;
+  BEGIN
+    IF NEXTST = ASSEMONLY THEN
+      WRITE(OUTPUT,'Assembling')
+    ELSE
+      WRITE(OUTPUT,'Compiling');
+    WRITELN(OUTPUT,'...');
+    IF NEXTST = ASSEMONLY THEN
+      SYS_TYPE := ASSMBLER
+    ELSE
+      SYS_TYPE := COMPILER;
+    IF SYS_ASSOCIATE(SYS_TYPE) THEN
+      WITH USERINFO DO
+        BEGIN
+{.fs}     TEXT_TITLE := '';     { used for $ expansion }
+	  IF GOTSYM THEN
+	    TITLE := CONCAT(SYMVID,':',SYMTID)
+	  ELSE
+	    BEGIN
+	      IF NEXTST = ASSEMONLY THEN
+		WRITE(OUTPUT, 'Assemble')
+	      ELSE
+		WRITE(OUTPUT, 'Compile');
+	      WRITE(OUTPUT,' what text? ');
+{.fs}         TEXT_TITLE := '..TEXT'; TEXT_TITLE[1] := CHR(3); { path completion }
+	      READLN(INPUT, TEXT_TITLE);
+	      IF TEXT_TITLE = '' THEN GOTO 1;
+{.fs#	      TITLE := CONCAT(TEXT_TITLE,'.TEXT'); } { concat ext only if not there }
+{.fs}	      APPENDEXTENSION(TEXT_TITLE,'.TEXT');
+{.fs}	      TITLE := TEXT_TITLE;
+{.fs}         I := POS('.TEXT',TEXT_TITLE);     { remove extension if any because }
+{.fs}         IF I=LENGTH(TEXT_TITLE)-4 THEN    { TEXT_TITLE used for $ expansion }
+{.fs}           DELETE(TEXT_TITLE,I,5);
+	    END;
+	  FOPEN(SYMFIBP^,TITLE,TRUE,NIL);
+	  IF IORESULT <> ORD(INOERROR) THEN
+	    BEGIN 
+	      WRITE(OUTPUT,'Can''t find ', TITLE);
+	      GOTSYM := FALSE; GOTO 1
+	    END;
+	  TITLE := CONCAT(COPY(FILENAME[SYS_TYPE],1,
+			  POS(':',FILENAME[SYS_TYPE])),'SYSTEM.SWAPDISK');
+	  FOPEN(SWAPFIB^,TITLE,TRUE,NIL);
+	  CODE_NAME := '*SYSTEM.WRK.CODE[*]';
+	  IF NOT GOTSYM THEN
+	    BEGIN
+	      WRITE(OUTPUT, 'To what codefile? ');
+{.fs}         TITLE := '..CODE,$'; TITLE[1] := CHR(3); { $ for subst }
+	      READLN(INPUT, TITLE);
+	      IF TITLE <> '' THEN
+		IF TITLE[1] = SYSCOM^.CRTINFO.ALTMODE THEN
+		  GOTO 1  ELSE
+		  BEGIN       {Treat '$' as a wildcard}
+		    I := POS('$',TITLE);
+		    WHILE I <> 0 DO
+		      BEGIN
+			DELETE(TITLE,I,1);
+			INSERT(COPY(TEXT_TITLE,1,LENGTH(TEXT_TITLE)),
+			       TITLE,I);
+			I := POS('$',TITLE);
+			END;
+		    IF TITLE[LENGTH(TITLE)] <> ']' THEN
+{.fs#		      CODE_NAME := CONCAT(TITLE,'.CODE[*]')  ELSE  } { do consistently }
+{.fs}                 BEGIN
+{.fs}		        CODE_NAME := TITLE;
+{.fs}                   APPENDEXTENSION(CODE_NAME,'.CODE'); { concat if not there }
+{.fs}	                INSERT('[*]',CODE_NAME,LENGTH(CODE_NAME)+1);
+{.fs}                 END ELSE
+		        CODE_NAME := TITLE;     
+		  END;
+	    END;
+	  FOPEN(CODEFIBP^,CODE_NAME,FALSE,NIL);
+	  IF IORESULT <> ORD(INOERROR) THEN
+	    BEGIN 
+	      WRITE(OUTPUT,'Can''t open ',CODE_NAME);
+	      GOTO 1
+	    END;
+	  ERRNUM := 0; ERRBLK := 0; ERRSYM := 0;
+	  IF NEXTST = ASSEMONLY THEN
+	    NEXTST := COMPONLY;
+	  GETCMD := NEXTST; EXIT(GETCMD);
+	1:
+	  FCLOSE(SYMFIBP^,CNORMAL);
+	  FCLOSE(SWAPFIB^,CNORMAL);
+        END;
+  END (*STARTCOMPILE*) ;
+
+  PROCEDURE FINISHCOMPILE;
+  VAR  RESULT : INTEGER;
+  BEGIN
+    FCLOSE(USERINFO.SYMFIBP^,CNORMAL);
+    FCLOSE(SWAPFIB^,CNORMAL);
+    IF SYSCOM^.MISCINFO.HAS8510A THEN
+      UNITCLEAR(3);
+    WITH USERINFO DO
+      IF ERRNUM > 0 THEN
+	BEGIN GOTCODE := FALSE;
+	  FCLOSE(CODEFIBP^,CPURGE);
+	  IF ERRBLK > 0 THEN
+	    BEGIN CLEARSCREEN; WRITELN(OUTPUT);
+	      IF SYS_ASSOCIATE(EDITOR) THEN
+	        BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+	    END
+	END
+      ELSE
+	BEGIN 
+	  IF CODETID <> 'SYSTEM.WRK.CODE' THEN
+	    BEGIN
+	      CODEVID := CODEFIBP^.FVID;
+	      CODETID := CODEFIBP^.FHEADER.DTID;
+	      IF CODETID <> 'SYSTEM.WRK.CODE' THEN
+		BEGIN
+		  WORKVID := CODEVID;
+		  IF LENGTH(CODETID) > 5 THEN
+		    IF COPY(CODETID,LENGTH(CODETID)-4,5) = '.CODE' THEN
+		      WORKTID := COPY(CODETID,1,LENGTH(CODETID)-5);
+		  END;
+	      END;
+	  GOTCODE := TRUE;
+	  {FIB for codefile was closed in COMMAND}
+	  IF LASTST IN [COMPANDGO,COMPDEBUG] THEN
+	    RUNWORKFILE(TRUE, LASTST = COMPANDGO)
+	END
+  END (*FINISHCOMPILE*) ;
+
+  PROCEDURE EXECUTE;
+    VAR TITLE: STRING[255];
+  BEGIN
+    WRITE(OUTPUT,'Execute');
+    IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+      WRITE(OUTPUT,' what file');
+{.fs} TITLE:='..CODE'; TITLE[1]:=CHR(3); { filename completion for CODE }
+    WRITE(OUTPUT,'? '); READLN(TITLE);
+    IF LENGTH(TITLE) > 0 THEN
+      BEGIN
+{.fs#	IF TITLE[LENGTH(TITLE)] = '.' THEN       } { handle this consistently }
+{.fs#	  DELETE(TITLE,LENGTH(TITLE),1)          }
+{.fs#	ELSE                                     }
+{.fs#	  INSERT('.CODE',TITLE,LENGTH(TITLE)+1); }
+{.fs}   APPENDEXTENSION(TITLE,'.CODE');
+	IF ASSOCIATE(TITLE, FALSE, FALSE, TRUE, DONT_CARE) THEN
+	  BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+      END
+  END (*EXECUTE*) ;
+
+{.fs} PROCEDURE SIMKEYS;
+{.fs}   VAR TITLE: STRING[255];
+{.fs}       BUF: PACKED ARRAY [0..1023] OF CHAR;
+{.fs}       F: FILE;
+{.fs}       BLK: INTEGER;
+{.fs} BEGIN
+{.fs}   WRITE(OUTPUT,'Simulate key presses from what file? ');
+{.fs}   TITLE:='..TEXT'; TITLE[1]:=CHR(3); { filename completion for TEXT }
+{.fs}   READLN(TITLE);
+{.fs}   IF LENGTH(TITLE) > 0 THEN
+{.fs}     BEGIN
+{.fs}       APPENDEXTENSION(TITLE,'.TEXT');
+{.fs}       OPENOLD(F,TITLE);
+{.fs}       IF IORESULT<>0 THEN WRITE('Error opening file')
+{.fs}       ELSE BEGIN
+{.fs}         BLK:=2;
+{.fs}         WHILE BLOCKREAD(F,BUF,2,BLK)=2 DO BEGIN
+{.fs}           { write to SYSTERM: with special mode that tells it to inject }
+{.fs}           { characters into input FIFO }
+{.fs}           UNITWRITE(2{SYSTERM},BUF,1024,0,201{AUTOMATIONIMPLPUSH});
+{.fs}           BLK:=BLK+2
+{.fs}         END;
+{.fs}         CLOSE(F)
+{.fs}       END
+{.fs}     END
+{.fs} END (*EXECUTE*) ;
+
+  PROCEDURE RUNWORKFILE;
+  BEGIN
+    WITH USERINFO DO
+    IF GOTCODE THEN
+      BEGIN 
+	CLEARSCREEN;
+	WRITELN(OUTPUT);
+	IF ASSOCIATE(CONCAT(CODEVID,':',CODETID), OKTOLINK, RUNONLY, TRUE, 
+		     DONT_CARE) THEN
+	  BEGIN
+	    WRITELN(OUTPUT,'Running...');
+	    IF RUNONLY THEN
+	        GETCMD := SYSPROG
+	    ELSE
+	        GETCMD := DEBUGCALL;
+	    EXIT(GETCMD)
+	  END;
+	IF NOT (LASTST IN [LINKANDGO, LINKDEBUG]) THEN
+          GOTCODE := FALSE
+      END
+    ELSE
+      IF RUNONLY THEN
+	STARTCOMPILE(COMPANDGO)
+      ELSE
+	STARTCOMPILE(COMPDEBUG)
+  END { RUNWORKFILE } ;
+
+BEGIN (*GETCMD*)
+  INPUTFIB^.FEOF := FALSE;
+  OUTPUTFIB^.FEOF := FALSE;
+  SYSTERM^.FEOF := FALSE;
+  GFILES[0] := INPUTFIB; GFILES[1] := OUTPUTFIB;
+  IF LASTST = HALTINIT THEN
+    IF ASSOCIATE('*SYSTEM.STARTUP',FALSE,FALSE,FALSE,DONT_CARE) THEN
+      BEGIN CLEARSCREEN;
+        GETCMD := SYSPROG; EXIT(GETCMD)
+      END;
+  IF LASTST IN [COMPONLY,COMPANDGO,COMPDEBUG] THEN
+    FINISHCOMPILE;
+  IF LASTST IN [LINKANDGO,LINKDEBUG] THEN
+    RUNWORKFILE(FALSE, LASTST = LINKANDGO);
+  IF SYSCOM^.MISCINFO.USERKIND = AQUIZ THEN
+    IF LASTST = HALTINIT THEN
+      BEGIN LASTST := COMPANDGO; RUNWORKFILE(TRUE, TRUE) END
+    ELSE
+      BEGIN
+        EMPTYHEAP := NIL;
+        GETCMD := HALTINIT;
+        EXIT(GETCMD)
+      END;
+  WITH USERINFO DO
+    BEGIN ERRNUM := 0; ERRBLK := 0; ERRSYM := 0 END;
+  BADCMD := FALSE;
+  REPEAT
+    PL :=
+{.fs# 'Command: E(dit, R(un, F(ile, C(omp, L(ink, X(ecute, A(ssem, D(ebug,? [II.0]'; }
+{.fs} 'Command: E(dit, R(un, F(ile, C(ompile, L(ink, X(ecute, G(et-started, H(elp, ? ';
+{.fs} {01234567890123456789012345678901234567890123456789012345678901234567890123456789}
+    PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN;
+    IF CH = '?' THEN
+{.fs# BEGIN PL := 'Command: U(ser restart, I(nitialize, H(alt'; }
+      BEGIN PL := 'Command: U(ser restart, I(nitialize, V(iew file, K(eypress simulation ? ';
+        PROMPT; CH := GETCHAR(BADCMD); CLEARSCREEN
+      END;
+{.fs# BADCMD := NOT (CH IN ['E','R','F','C','L','X','A','D','U','I','H','?']); }
+{.fs} BADCMD := NOT (CH IN ['E','R','F','C','L','X','U','I','H','G','V','K','?',' ']);
+    IF NOT BADCMD THEN
+      CASE CH OF
+{.fs}   'H':  BEGIN WRITELN; WRITELN;
+{.fs}                     {01234567890123456789012345678901234567890123456789012345678901234567890123456789}
+{.fs}             WRITELN('=== Main Command Prompt Help ===                         [Build Version II.802]');
+{.fs}             WRITELN;
+{.fs}             WRITELN('Welcome to 1979... and your new Retro Pascal system!');
+{.fs}             WRITELN;
+{.fs}             WRITELN('A text based user interface:');
+{.fs}             WRITELN(' - In this system, actions are executed by typing letters. The command bar at');
+{.fs}             WRITELN('   the top shows the available commands. E.g., E(dit means typing E invokes the');
+{.fs}             WRITELN('   Editor. No worries: Once you get used to it, it''ll be quick and convenient.');
+{.fs}             WRITELN(' - You can also touch a command or click on it with a mouse.');
+{.fs}             WRITELN(' - Type G(et-started for an intro to writing your first Pascal program.');
+{.fs}             WRITELN;
+{.fs}             WRITELN('Writing and running Pascal programs:');
+{.fs}             WRITELN(' - E(dit enters text editor in which you enter and modify your program.');
+{.fs}             WRITELN(' - R(un runs it, i.e. it invokes the compiler, the linker, and executes it.');
+{.fs}             WRITELN(' - Use the F(ile manager to copy files and manage your workfile.');
+{.fs}             WRITELN;
+{.fs}             WRITELN('You can invoke the steps of R(un individually:');
+{.fs}             WRITELN(' - C(ompile compiles a Pascal source file.');
+{.fs}             WRITELN(' - L(ink invokes the linker to combine separately compiled units of code.');
+{.fs}             WRITELN(' - Use X(ecute to execute a given code file.');
+{.fs}             WRITELN;
+{.fs}             WRITELN('Tip: Back up your workfile often, using F(ile S(ave.')
+{.fs}         END;
+{.fs}   'G':  BEGIN WRITELN; WRITELN;
+{.fs}                     {01234567890123456789012345678901234567890123456789012345678901234567890123456789}
+{.fs}             WRITELN('=== Getting Started ===                                  [Build Version II.802]');
+{.fs}             WRITELN;
+{.fs}             WRITELN('Writing Pascal programs consists of a repeated cycle (the "build cycle").');
+{.fs}             WRITELN('You write your program in a text editor, and save it to storage. To run the');
+{.fs}             WRITELN('program, it must be "compiled" first. Compilation happens automatically when');
+{.fs}             WRITELN('you try to run the program.');
+{.fs}             WRITELN;
+{.fs}             WRITELN('Build cycle walkthrough:');
+{.fs}             WRITELN(' - Type E to enter the text E(ditor. You use it to write or change your code.');
+{.fs}             WRITELN('   Note that the editor works differently from Windows. When you enter it for');
+{.fs}             WRITELN('   the first time, it will load an example program that comes pre-loaded with');
+{.fs}             WRITELN('   Retro Pascal. It contains an introduction on how to use the editor. The');
+{.fs}             WRITELN('   commands you will use the most are I to I(nsert text and D to D(elete text.');
+{.fs}             WRITELN(' - Leave the editor using Q(uit U(pdate). This will save your program as your');
+{.fs}             WRITELN('   workfile and get you back to the main command prompt.');
+{.fs}             WRITELN(' - Now type R to R(un the program. This will automatically invoke the compiler');
+{.fs}             WRITELN('   and, if neeeded, the linker. If the compiler detects errors in your');
+{.fs}             WRITELN('   program, respond E to get back into the editor and to see the error message.');
+{.fs}             WRITELN(' - When done with a program, use F(ile S(ave to save it under a filename.');
+{.fs}             WRITELN(' - To start a new program, use F(ile N(ew (type FN).');
+{.fs}         END;
+	'E':  BEGIN WRITELN(OUTPUT);
+	        IF SYS_ASSOCIATE(EDITOR) THEN
+	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+	      END;
+	'F':  BEGIN WRITELN(OUTPUT);
+	        IF SYS_ASSOCIATE(FILER) THEN
+	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+	      END;
+	'L':  BEGIN WRITELN(OUTPUT,'Linking...');
+	        IF SYS_ASSOCIATE(LINKER) THEN
+	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+	      END;
+	'X':  EXECUTE;
+	'C':  STARTCOMPILE(COMPONLY);
+{.fs#	'A':  STARTCOMPILE(ASSEMONLY); }
+        'U':  IF LASTST <> UPROGNOU THEN
+	        BEGIN
+	          WRITELN(OUTPUT,'Restarting...');
+	          GETCMD := SYSPROG; EXIT(GETCMD)
+	        END
+	      ELSE
+	        BEGIN WRITELN(OUTPUT); WRITE(OUTPUT,'U not allowed') END;
+{.fs# 'R','D':  RUNWORKFILE(TRUE, CH = 'R'); } { Debugger not supported }
+{.fs}   'R':  RUNWORKFILE(TRUE, CH = 'R');
+{.fs# 'I','H':  BEGIN }
+{.fs}	'V':  BEGIN WRITELN(OUTPUT);
+{.fs}	        IF SYS_ASSOCIATE(VIEWFILE) THEN
+{.fs}	          BEGIN GETCMD := SYSPROG; EXIT(GETCMD) END
+{.fs}	      END;
+{.fs}	'K':  SIMKEYS;      { inject text file into input buffer, for automation }
+{.fs}   'I':  BEGIN     { H is H(elp; HALT not needed for an emulator anyway }
+	        GETCMD := HALTINIT;
+	        IF CH = 'H' THEN
+	          EMPTYHEAP := NIL;
+	        EXIT(GETCMD)
+	      END
+      END
+  UNTIL FALSE
+END (*GETCMD*) ;
+
+(* MAIN DRIVER OF SYSTEM *)
+
+PROCEDURE COMMAND;
+  VAR T: INTEGER;
+BEGIN STATE := HALTINIT;
+  REPEAT
+    RELEASE(EMPTYHEAP);
+    WHILE UNITABLE[SYSCOM^.SYSUNIT].UVID <> SYVID DO
+      BEGIN
+	PL := 'Put in :';
+	INSERT(SYVID,PL,8);
+	PROMPT; T := 4000;
+	REPEAT T := T-1
+	UNTIL T = 0;
+	IF FETCHDIR(SYSCOM^.SYSUNIT) THEN
+      END;
+    STATE := GETCMD(STATE);
+    CASE STATE OF
+      UPROGNOU,UPROGUOK,SYSPROG,
+      COMPONLY,COMPANDGO,COMPDEBUG,
+      LINKANDGO,LINKDEBUG:
+        USERPROGRAM(NIL,NIL);
+      DEBUGCALL:
+	DEBUGGER
+    END;
+    IF STATE IN [COMPONLY,COMPANDGO,COMPDEBUG] THEN
+      IF USERINFO.ERRNUM = 0 THEN
+	BEGIN    {this is continued in FINISHCOMP}
+	  FCLOSE(USERINFO.CODEFIBP^,CLOCK);
+	  IF ORD(IORESULT) <> ORD(INOERROR) THEN
+	    BEGIN
+	      T := IORESULT;
+	      WRITELN(OUTPUT);
+	      CLEARLINE;
+	      PRINTERROR(10{IOERROR},T);
+	      END;
+	  END;
+    IF STATE IN [UPROGNOU,UPROGUOK] THEN
+      BEGIN
+	FCLOSE(GFILES[0]^,CNORMAL);
+	FCLOSE(GFILES[1]^,CLOCK)
+      END;
+    IF UNITBUSY(1) OR UNITBUSY(2) THEN
+      UNITCLEAR(1)
+  UNTIL STATE = HALTINIT
+END (*COMMAND*) ;

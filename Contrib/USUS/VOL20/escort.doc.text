@@ -1,0 +1,47 @@
+
+     This disk contains the files necessary to construct and install an
+SBIOS for the Jonos Escort portable computer.  This SBIOS is suitable
+for use with SofTech MicroSystems UCSD Pascal, Version IV.1 (UCSD
+Pascal and p-System are registered trademarks of the Regents of the
+University of California).  In addition to the basic SBIOS files, it
+contains the text of a program to format the SONY 3.5" single sided
+disks which the Escort uses, and one side of a file transfer program
+which can be used to exchange Pascal files through one of the serial
+ports at up to 9600 bits per second.
+
+     The accompanying program material material is copyrighted.
+Permission is hereby granted for the free private use and modification
+of the programs on this disk by any members of USUS or their associates
+for any non-commercial use only.
+
+     The disk contains text files for the SBIOS, the installation
+program (bootmaker), the disk formatting program (formatter), the serial
+port transfer program (trans-mgr), and miscellaneous supporting programs
+and units which these programs need to operate.  In addition, it
+contains assembled versions of the bootstrap and SBIOS code, suitable
+for installation on a disk as described below.
+
+     Each program on this disk can be assembled and/or compiled using an
+appropriate redirection file.  The names of all redirection files end in
+'-genr.text'.
+
+     The suite of programs is sufficient to install the p-System on an
+Escort once a working system disk is available for that machine;
+however, it does not contain a method for transferring the files from a
+p-System to the Escort to begin with.  A simple serial port transfer can
+be constructed under CP/M (which comes with the Escort) (CP/M is a
+registered trademark of Digital Research) to get the load files
+installed on track 0 to begin with.  I suggest that the bootstrap (file
+'E.LOAD.BOOT' on this disk) be installed in sector 1, the secondary
+bootstrap (which you must extract from your SMS distribution disk) be
+installed in sectors 2-5, and the SBIOS itself (file 'E.LOAD.BIOS' on
+this disk) be installed in sectors 6-9.
+
+     The code may be well enough documented internally so that it is
+clear to an experienced Z80 assembly language programmer with access to
+the SofTech Adaptable System "Installation Guide" and the IV.1
+supplementary documentation.  I simply do not have time to write a more
+thorough explanation of the code, or how to use it.
+
+     Good luck with your installation!
+

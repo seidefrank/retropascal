@@ -1,0 +1,525 @@
+{Mail2B - Letter part 2}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+PROCEDURE Getstoken(VAR s : bstring);            
+ VAR tmpstr : STRING[90];
+ BEGIN 
+  temp1 := POS('(*',s);
+  sposinline := temp1;    
+  stoken := '';  
+  stoken := COPY(s, temp1+2 , POS('*)',s)-temp1-2);          
+  DELETE(s,POS('(*',s),POS('*)',s)-POS('(*',s)+2);                        
+  seqpart := '';         
+  IF temp1 <= LENGTH(s) THEN       
+   BEGIN
+    IF s[temp1]='=' THEN             
+     BEGIN
+      tmpstr := COPY(s,temp1,LENGTH(s)-temp1+1);    
+      DELETE(tmpstr,1,1); 
+      IF POS('=',tmpstr)>1 THEN   
+        seqpart := COPY(tmpstr,1,POS('=',tmpstr)-1);  
+      IF LENGTH(tmpstr)=0 THEN temp2 := 1        
+      ELSE IF POS('=',tmpstr)=0 THEN temp2 := LENGTH(tmpstr)+1
+      ELSE temp2 := POS('=',tmpstr)+1;        
+      IF temp2 <> 0 THEN DELETE(s,temp1,temp2);          
+     END;     
+   END;
+ rflg := FALSE;           
+ lflg := FALSE;    
+ IF POS(' ',stoken)=1 THEN         
+  BEGIN
+   DELETE(stoken,1,1);
+   lflg := TRUE;
+  END;
+ IF LENGTH(stoken)<>0 THEN
+  IF stoken[LENGTH(stoken)] = ' ' THEN
+   BEGIN
+    DELETE(stoken,LENGTH(stoken),1);
+    rflg := TRUE;
+   END;
+ IF lflg AND rflg THEN sjustify := center        
+  ELSE IF lflg THEN sjustify := right 
+   ELSE sjustify := left;    
+ sfsize := 0;     
+ IF POS(':',stoken)<>0 THEN     
+  IF POS(':',stoken)<> LENGTH(stoken) THEN         
+   BEGIN    
+    tmpstr := COPY(stoken,                  
+                   POS(':',stoken)+1,      
+                   LENGTH(stoken)-POS(':',stoken));      
+    sfsize := 30;  
+    sfsize := Val(tmpstr);  
+    DELETE(stoken,POS(':',stoken),
+           LENGTH(stoken)-POS(':',stoken)+1);          
+   END
+  ELSE DELETE(stoken,LENGTH(stoken),1);    
+ END;   
+               
+FUNCTION Hastoken(VAR s : bstring) : BOOLEAN;
+ VAR intb : BOOLEAN;      
+ BEGIN (* Hastoken *)     
+  intb := FALSE;    
+  WHILE (POS('*)',s)<>0) AND    
+        ((POS('(*',s)=0) OR     
+         (POS('(*',s)>POS('*)',s))) DO                                  
+   DELETE(s,POS('*)',s),2);
+  IF ((POS('(*',s)<>0) AND (POS('*)',s)<>0)) AND                  
+     (POS('(*',s)<POS('*)',s)) THEN
+   BEGIN
+    intb := TRUE;    
+    Getstoken(s);   
+   END;   
+  Hastoken := intb;
+ END;
+     
+   
+PROCEDURE Getltoken;
+ VAR level : INTEGER;      
+ BEGIN 
+  ltoken := '';
+  level := 1;  
+  WHILE (lposinline<=LENGTH(line)) AND (level>0) DO           
+   BEGIN
+    ltoken := CONCAT(ltoken,COPY(line,lposinline,1));       
+    IF LENGTH(ltoken)>1 THEN   
+     BEGIN
+      IF (ltoken[LENGTH(ltoken)]=')') AND           
+         (ltoken[LENGTH(ltoken)-1]='*') THEN           
+       level := level - 1; 
+      IF (ltoken[LENGTH(ltoken)]='*') AND
+         (ltoken[LENGTH(ltoken)-1]='(') THEN  
+       level := level + 1;
+     END;
+    DELETE(line,lposinline,1);    
+   END;  
+  IF (ltoken[LENGTH(ltoken)]=')') AND (LENGTH(ltoken)>1)                     
+   THEN IF (ltoken[LENGTH(ltoken)-1]='*') THEN  
+   DELETE(ltoken,LENGTH(ltoken)-1,2);  
+   IF ltoken[LENGTH(ltoken)]=' ' THEN         
+    BEGIN
+     DELETE(ltoken,LENGTH(ltoken),1);    
+     rflg := TRUE;            
+    END;
+   IF lflg AND rflg THEN ljustify := center        
+    ELSE IF lflg THEN ljustify := right
+     ELSE ljustify := left;
+    lfsize := 0; 
+    temp1 := SCAN(-LENGTH(ltoken),=':',ltoken[LENGTH(ltoken)]);     
+    IF temp1<>-LENGTH(ltoken) THEN  
+     BEGIN
+      lfsize := Val(COPY(ltoken,LENGTH(ltoken)+temp1+1,-temp1));
+      DELETE(ltoken,LENGTH(ltoken)+temp1,-temp1+1);      
+     END;
+    leqpart := '';   
+    IF lposinline<LENGTH(line) THEN         
+     IF line[lposinline]='=' THEN 
+      BEGIN    
+       DELETE(line,lposinline,1);      
+       WHILE (lposinline<=LENGTH(line)) AND (line[lposinline]<>'=') DO
+        BEGIN
+         leqpart := CONCAT(leqpart,COPY(line,lposinline,1));         
+         DELETE(line,lposinline,1);    
+        END;
+       IF leqpart[LENGTH(leqpart)]='=' THEN                            
+        DELETE(line,lposinline,1);             
+       IF leqpart[LENGTH(leqpart)]='=' THEN    
+        DELETE(leqpart,LENGTH(leqpart),1);            
+      END;   
+ END (* Getltoken *);    
+   
+FUNCTION Hasltoken: BOOLEAN;     
+ VAR intb : BOOLEAN;  
+ BEGIN 
+  intb := FALSE;
+  WHILE (POS('*)',line)<>0) AND           
+        ((POS('(*',line)=0) OR 
+         (POS('(*',line)>POS('*)',line))) DO 
+   DELETE(line,POS('*)',line),2);  
+  lposinline :=  POS('(*',line);  
+  DELETE(line,lposinline,2);   
+  lflg := FALSE;
+  rflg := FALSE;
+  IF line[lposinline] =' ' THEN     
+   BEGIN
+    DELETE(line,lposinline,1);      
+    lflg := TRUE;
+   END;      
+  IF (POS(COPY(line,lposinline,1),legalfchrs)=0) OR                             
+     (POS(COPY(line,lposinline+1,1),legal2chrs)=0) OR  
+     (line[lposinline+2] IN ['A'..'Z','a'..'z']) OR     
+     (NOT (line[lposinline+2] IN [':',' ','*'])) THEN
+   BEGIN
+    intb := TRUE;
+    Getltoken;        
+   END
+  ELSE
+   BEGIN  
+    IF lflg THEN INSERT(' ',line,lposinline);          
+    INSERT('(*',line,lposinline); 
+   END;  
+  Hasltoken := intb;   
+ END;   
+    
+ BEGIN (* Chgtokens *)    
+  legalfchrs := 'gpfmlstcacszpcmGPFMLSTCACSZPCM';         
+  legal2chrs := 'rrnnnuinditinoiRRNNNUINDITINOI0123456789';       
+  REPEAT  
+   IF POS('(*',line)<>0 THEN   
+    BEGIN              
+     IF Hasltoken THEN           
+      BEGIN
+       WHILE (POS('(*',ltoken)<>0) AND
+             Hastoken(ltoken) DO Chg1(ltoken);            
+       IF LENGTH(ltoken)<>0 THEN
+        INSERT(leqpart,line,lposinline);          
+       Putone(ljustify,ltoken,lfsize,lposinline,line);    
+      END
+     ELSE IF Hastoken(line) THEN Chg1(line);             
+    END;  
+  UNTIL POS('(*',line)=0;                     
+ END;       
+         
+  PROCEDURE Getnext;            
+   VAR eqflg : BOOLEAN;    
+       chsonline:integer;
+       {temp count of chs put on the line for comma decisions}
+   BEGIN    
+    REPEAT  
+     READLN(infile,line);    
+     Prflgs;       
+     IF LENGTH(line)>0 THEN Chgtokens;                      
+     eqflg := FALSE;  
+     IF POS('^',line)=1 THEN
+      BEGIN
+       DELETE(line,1,1);
+       pgflg := TRUE;       
+      END;
+     IF POS('=',line)=1 THEN     
+      BEGIN
+       DELETE(line,1,1);
+       eqflg := TRUE;
+      END;
+     IF POS(DirStr,line)=0 THEN                               
+      WHILE POS(' ',line)=1 DO DELETE(line,1,1)    
+     ELSE  
+      IF eqflg THEN
+       BEGIN          
+        tline := line;      
+        WHILE POS(DirStr,tline)<>0 DO DELETE(tline,POS(DirStr,tline),1);
+        WHILE POS(' ',tline)=1 DO DELETE(tline,1,1);    
+        IF LENGTH(tline)=0 THEN line := '';        
+       END;
+    UNTIL EOF(infile) OR (NOT eqflg) OR ((LENGTH(line)<>0) AND eqflg);     
+   IF POS('\\',line)=1 THEN WITH disk^ DO {insert mailing label in letter}
+    BEGIN 
+     {linat alters in here by 2 to 4 - ignored if poption FALSE}
+     Outline;
+     WRITE(odisk,lmarg);
+     IF LENGTH(prefx)<>0 THEN WRITE(odisk,prefx,' ');
+     WRITE(odisk,fname,' ');
+     IF LENGTH(minit)<>0 THEN WRITE(odisk,minit,' ');
+     WRITE(odisk,lname);
+     IF LENGTH(suffx)<>0 THEN WRITE(odisk,', ',suffx);    
+     WRITELN(odisk);
+     Linat:=linat+1;
+     IF (LENGTH(title)<>0) OR (LENGTH(coname)<>0) THEN    
+      BEGIN
+       WRITE(odisk,lmarg,title);
+       IF (LENGTH(title)<>0) AND (LENGTH(coname)<>0)
+        THEN WRITE(odisk,', ');     
+       WRITELN(odisk,coname);                
+       linat := linat + 1;
+      END;
+     WRITELN(odisk,lmarg,address);   
+     linat:=linat+1;
+     WRITE(odisk,lmarg,city);     
+     chsonline:=length(city);
+     IF (chsonline<>0) and (length(state)<>0)  THEN WRITE(odisk,', ');
+     IF (LENGTH(state)<>0) THEN WRITE(odisk,state,'.');
+     chsonline:=chsonline+length(state); {approx length only}
+     if length(country)+length(zip)<>0 then
+       begin
+         if chsonline<>0 then write(odisk,', ');
+         write(odisk,country);
+         chsonline:=chsonline+length(country); {approx only}
+         IF (chsonline<>0) and (length(zip)<>0) THEN WRITE(odisk,', ');
+         WRITELN(odisk,zip);
+         linat:=linat+1;
+       end;
+     Getnext; 
+    END; 
+   END;   
+  
+  procedure LInitParams;
+   BEGIN
+    with format^ do begin
+      lmgin := llmgin;         
+      pmgin := lpin;
+      SetPLMargins(pmgin,lmgin);
+      lsize := (lchar-llmgin)-lrmgin;                
+      spc   := spacing;
+      {set up temporaries - these are reset within a line with [: :] barckets}
+      tlmgin := lmgin;
+      tpmgin := pmgin; 
+      tlsize := lsize; 
+     end;
+   END;  
+
+  PROCEDURE Getline;   
+   BEGIN  
+    IF NOT EOF(infile) THEN      
+     REPEAT
+      Getnext;   
+      IF POS(DirStr,line)=0 THEN     
+       WHILE POS(' ',line)=1 DO DELETE(line,1,1);        
+      epar := (LENGTH(line)=0); {blank line encountered ends para}
+      {flush last line if its contains something}
+      IF (epar OR (POS(DirStr,line)<>0)) AND (oline<>'') THEN Outline;       
+      IF epar THEN
+        begin
+          LInitParams;
+          epar := FALSE;  
+        end;
+      WHILE (NOT(FileEnd)) AND   
+           ((LENGTH(line)=0) OR (POS(DirStr,Line)<>0)) DO 
+       BEGIN  
+        IF LENGTH(line)=0 THEN newpar := TRUE;      
+        IF POS(DirStr,line)<>0 THEN newpar := FALSE;    
+        WHILE POS(DirStr,line)<>0 DO           
+         DELETE(line,POS(DirStr,line),1);              
+        
+        WRITE(odisk,lmarg,line);                     
+        FOR temp4 := 1 TO ORD(spc) DO WRITELN(odisk);      
+        
+        if EOF(infile) then
+          begin
+            FileEnd:=true;
+            line:='';
+          end;
+        IF format^.poption THEN Chkpage;                 
+        if NOT(FileEnd) then
+          begin
+            Getnext; 
+            IF POS(DirStr,line)=0 THEN 
+               WHILE POS(' ',line)=1 DO DELETE(line,1,1);  
+          end;
+       END;      
+    UNTIL EOF(infile) OR (POS('\\',line)<>1);   
+   END;         
+   
+  PROCEDURE Getoken;            
+   BEGIN  
+    token := '';           
+    REPEAT
+     IF POS(' ',line)<>0 THEN             
+       BEGIN    
+        token := COPY(line,1,POS(' ',line)-1);        
+        DELETE(line,1,POS(' ',line))        
+       END     
+      ELSE   
+       BEGIN
+        token := line;     
+        line := '';      
+       END;
+      WHILE Hasmgin DO Getmgin;    
+      WHILE POS(' ',token)=1 DO DELETE(token,1,1);   
+      IF (LENGTH(token)=0) AND (LENGTH(line)=0) THEN Getline;
+    UNTIL (LENGTH(token)<>0) OR EOF(infile);                                    
+   END;       
+   
+  FUNCTION Addable : BOOLEAN;
+   BEGIN
+    temp := lsize;
+    IF newpar THEN temp := temp - pmgin; 
+     Addable := NOT(LENGTH(token)=0) AND (LENGTH(token)+LENGTH(oline)+1<temp);
+   END; 
+  
+  PROCEDURE Addit;      
+   BEGIN
+    IF LENGTH(oline)<>0 THEN oline := CONCAT(oline,' ',token)     
+     ELSE oline := token;      
+   END;   
+  
+  PROCEDURE Oletter;   
+   BEGIN             
+    {$I-}
+    RESET(infile,LetterName);    
+    IF IORESULT<>0 THEN
+      Reporterr('Cannot open input file ',LetterName,IORESULT)
+    else
+      begin
+        SC_Clr_Screen;
+        IF format^.ofilename <> '#2:' THEN WRITE('Processing a letter');
+        LInitParams;
+        pageat := format^.lspage;                               
+        newpar := TRUE;         
+        pgflg  := FALSE; 
+        epar   := FALSE;        
+        oline  := '';      
+        token  := '';   
+        FileEnd:=false;
+        LastPageWritten:=false;
+        PutTopMargin;
+        Getgreet;
+        WHILE NOT EOF(infile) DO                                     
+         BEGIN            
+          Getline;      
+          WHILE LENGTH(line)>0 DO           
+           BEGIN
+            Getoken;  
+            IF LENGTH(oline)<tlsize THEN
+              BEGIN
+                lsize:=tlsize;
+                lmgin:=tlmgin;
+              END;
+            IF Addable THEN Addit 
+                       ELSE Outline;    
+           END;  
+         END;  
+         FileEnd:=true;
+         if oline<>'' then Outline; {force out remainder of line}
+        CLOSE(infile);  
+      end;
+     {$I+}
+     if format^.ofilename<>'#2:' then
+       begin
+         writeln;
+         writeln('Finished with this letter.');
+       end;
+  END;   
+    
+ PROCEDURE Wparta;
+ var ch2:char;
+  BEGIN  
+   repeat
+     SC_Clr_Line(1);
+     SC_Clr_Line(0);        
+     WRITELN('Wildcard: P)refix, F)name, mi(N)it, L)name, s(U)ffix, T)itle, C)mpny, ');
+     WRITE('         #)ph, A)dd, c(I)ty, S)tate, cntr(Y), Z)ip, M)isc, Q)uit:');
+     READ(KEYBOARD,ch2);
+   until (ch2 IN ['P','p','F','f','N','n','L','l','U','u','T','t','M','m',     
+            'C','c','#','A','a','I','i','S','s','Y','y','Z','z','Q','q']);
+   if (ch2 in ['Q','q']) then EXIT(Letter);    
+   SC_Clr_Line(1);
+   SC_Clr_Line(0);
+   Wild1(ch2);        
+   increment:=1;
+   FOR recnumber := recnumber TO numrecs DO   
+    BEGIN
+     SEEK(disk,recnumber);    
+     GET(disk);   
+     Wild2;
+     IF (disk^.code='Perm  ') OR (disk^.code='Add   ') 
+      OR (disk^.code='Change') THEN
+      IF Wildok THEN    
+     BEGIN
+      Oletter;  
+      if NOT(format^.poption) then Chkorquit;
+     END;
+    END;     
+   END;  
+ 
+ procedure GetLetterName;
+ var ch:char; ok,newname:boolean;
+ begin
+   Lettername:=format^.infilename;
+   SC_Clr_Line(1);
+   SC_Clr_Line(0);
+   Write('Do you wish to use the letter in ',LetterName,' (Y/N):');
+   repeat
+     read(KEYBOARD,ch);
+   until ch in ['Y','y','N','n'];
+   write(ch);
+   newname:=((ch='N') or (ch='n'));
+   ok:=false;
+   repeat
+     if newname then
+       begin
+         SC_Clr_Line(1);
+         write('Give file holding the letter ',
+               '(<esc><cr> to quit):');
+         readln(LetterName);
+         if length(LetterName)>0 then
+            if Lettername[1]=CHR(27) then Exit(Letter);
+         UpperCase(LetterName);
+         if (Length(LetterName)<=5) or
+            (POS('.TEXT',LetterName)<>(Length(LetterName)-4))
+         then LetterName:=CONCAT(LetterName,'.TEXT');
+       end;
+     newname:=true; {in case check fails}
+     if chkfiles(LetterName) then ok:=true
+     else
+       begin
+         SC_Clr_Line(0);
+         write('Cannot open input file ',LetterName);
+       end;
+   until ok;
+ end;
+ 
+ BEGIN (* Letter *)           
+  GetLettername;
+  SC_Clr_Line(1);
+  SC_Clr_Line(0);   
+  WRITE('Letter: A)ll, S)ingle, W)ildcard, Q)uit:');
+  repeat
+    READ(KEYBOARD,ch); 
+  until ch in ['A','a','S','s','W','w','Q','q'];
+  write(ch);
+  if not(ch in ['Q','q']) then
+    begin
+      tempch:=format^.LDirCh;
+      if NOT (tempch IN ['!','#','$','%','&','@','|','~']) then tempch:='~';
+      DirStr:=' ';
+      DirStr[1]:=tempch;
+      {$I-}
+      REWRITE(odisk,format^.ofilename);         
+      IF IORESULT<>0 THEN
+        Reporterr('Cannot open output file ',format^.ofilename,IORESULT)
+      else
+        begin
+          CASE ch OF
+           'W','w' : Wparta;     
+           'A','a' : begin
+                     increment:=1;
+                     FOR recnumber := recnumber TO numrecs DO               
+                      BEGIN 
+                       SEEK(disk,recnumber);    
+                       GET(disk);      
+                       IF (disk^.code='Perm  ') OR (disk^.code='Add   ')  
+                        OR (disk^.code='Change') THEN  
+                         IF Chkflgs THEN 
+                          BEGIN
+                           Oletter;       
+                           if NOT(format^.poption) then Chkorquit;  
+                          END; 
+                      END;       
+                     end;
+           'S','s' : BEGIN 
+                      SEEK(disk,recnumber);  
+                      GET(disk);
+                      Oletter;       
+                     END;
+          END; 
+          CLOSE(odisk,lock);   
+          IF IORESULT<>0 THEN
+            Reporterr('Cannot close output file ',format^.ofilename,IORESULT);
+        end;
+      {$I+}
+    end;
+END;   
+        
+        
+
+

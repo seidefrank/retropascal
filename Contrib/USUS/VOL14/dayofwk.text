@@ -1,0 +1,103 @@
+{Program Author:   Walter Hess
+                   1460 Seven Pines Rd.
+                   Schaumberg, IL 60193
+                   
+Assumes H19 CRT}
+
+PROGRAM DAYOFWK;
+{Version "A"  W.I.H.  1/30/80}
+
+CONST
+  {The Gregorian Calendar was adopted in the U.S. in 1752}
+  STARTYR = 1753;
+  STARTDAY = 1;
+
+TYPE
+  SHINT = 0..255;
+
+VAR
+  MONTH,DATE : SHINT;
+  DAY,YEAR,J : INTEGER;
+
+PROCEDURE CALCDAY;
+
+BEGIN
+  DAY := STARTDAY;
+  FOR J := STARTYR TO YEAR - 1 DO
+    IF ((J MOD 4 = 0) AND (J MOD 100 <> 0)) OR (J MOD 400 = 0)
+      THEN DAY := DAY + 2
+      ELSE DAY := DAY + 1;
+  CASE MONTH OF
+    1: ;
+    2: DAY := DAY + 31;
+    3: DAY := DAY + 59;
+    4: DAY := DAY + 90;
+    5: DAY := DAY + 120;
+    6: DAY := DAY + 151;
+    7: DAY := DAY + 181;
+    8: DAY := DAY + 212;
+    9: DAY := DAY + 243;
+    10: DAY := DAY + 273;
+    11: DAY := DAY + 304;
+    12: DAY := DAY + 334;
+  END; {Case}
+  IF (MONTH > 2) AND (((YEAR MOD 4 = 0) AND (YEAR MOD 100 <> 0)) 
+                                                      OR (YEAR MOD 400 = 0))
+    THEN DAY := DAY + 1;
+  DAY := DAY + DATE - 1;
+  DAY := DAY MOD 7;
+END; {Calcday}
+
+BEGIN {Dayofwk}
+  WRITELN('PROGRAM WILL CALCULATE THE DAY OF THE WEEK ANY DATE FALLS ON');
+  WRITELN('FROM JANUARY 1, 1800 ON. ENTER "0" FOR YEAR TO TERMINATE.');
+  WRITELN('ENTER MONTH AS 1 TO 12 FOR JANUARY TO DECEMBER');
+  WRITELN;
+  WRITE(CHR(27),'u');
+  REPEAT
+    WRITE('ENTER YEAR    ');
+    READLN(YEAR);
+    IF YEAR >= STARTYR 
+      THEN
+        BEGIN
+          REPEAT
+            WRITE('ENTER MONTH   ');
+            READLN(MONTH);
+          UNTIL (MONTH > 0 ) AND (MONTH < 13);
+          REPEAT
+            WRITE('ENTER DATE    ');
+            READLN(DATE);
+          UNTIL (DATE > 0) AND (DATE < 32);
+          CALCDAY;
+          WRITELN;
+          WRITE('  IN ',YEAR);
+          CASE MONTH OF
+            1: WRITE(' JANUARY ');
+            2: WRITE(' FEBRUARY ');
+            3: WRITE(' MARCH ');
+            4: WRITE(' APRIL ');
+            5: WRITE(' MAY ');
+            6: WRITE(' JUNE ');
+            7: WRITE(' JULY ');
+            8: WRITE(' AUGUST ');
+            9: WRITE(' SEPTEMBER ');
+            10: WRITE(' OCTOBER ');
+            11: WRITE(' NOVEMBER ');
+            12: WRITE(' DECEMBER ');
+          END; {Case}
+          WRITE(DATE,' IS A ');
+          CASE DAY OF
+            0: WRITELN('SUNDAY');
+            1: WRITELN('MONDAY');
+            2: WRITELN('TUESDAY');
+            3: WRITELN('WEDNESDAY');
+            4: WRITELN('THURSDAY');
+            5: WRITELN('FRIDAY');
+            6: WRITELN('SATURDAY');
+          END; {Case}
+          WRITELN;
+        END;
+  UNTIL YEAR = 0;
+  WRITE(CHR(27),'z');
+END. {Dayofwk}
+          

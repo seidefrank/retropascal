@@ -1,0 +1,308 @@
+
+       
+{*******************************************************************}
+{                                                                   }
+{  RUNON  Copyright (C) 1980   Wynn Newhouse and Herb Jellinek.     }
+{                              All rights reserved.                 }
+{                                                                   }
+{*******************************************************************}
+ 
+ 
+ 
+{**********************************************************************
+ 
+  Explanation of global CONSTants.
+ 
+   MINLINEWIDTH    The minimum size that the paper width can be set to.
+   MAXLINEWIDTH    The maximum size that the paper width can be set to.
+                   (all buffers are this long.)
+   MAXNUMSIZE      Maximum number of digits of the page number.
+   MINPAPLEN       The minimum size of the paper length.
+   MAXCMDLENGTH    The length of the longest dot command plus one (1).
+                   A space must be added to the string name of each
+                   command. Check this when adding commands.    
+   MAX_FILES       The maximum number of open INCLUDE files at one time.
+   BORDERSIZE      Amount of space reserved at top and bottom of
+                   page to serve as border.
+   MINSPACING      Minimum spacing between lines, as with typewriters
+                   (i.e. spacing 1 means no intervening blank lines)
+   MAXSPACING      Maximum spacing between lines.
+   LCOFFSET        ORD('a') - ORD('A') : used in case conversion.
+   R_OFFSET        Offset from right side of page to start of
+                   page number.
+   BLANK_HEADING   Number of lines to skip at top of first page.
+   VERSION_NUMBER  The current version of RUNON.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+const
+   minlinewidth   = 30;
+   maxlinewidth   = 132;
+   maxnumsize     = 4;
+   minpaplen      = 20;
+   maxcmdlength   = 12;
+   max_files      = 5;
+   bordersize     = 14;
+   minspacing     = 1;
+   maxspacing     = 5;
+   lcoffset       = 32;  
+   r_offset       = 5;  
+   blank_heading  = 7;
+   uca            = 'A';
+   ucz            = 'Z';
+   lca            = 'a';
+   lcz            = 'z';
+   blank_char     = ' ';
+   zero           = '0';
+   nine           = '9';
+   dot            = '.';
+   pound          = '#';
+   underline      = '_';
+   nul            = '';
+   version_number = 'V2';
+ 
+{**********************************************************************
+ 
+   Description of global types.
+ 
+   COMMANDTYPE    Enumerated type that represents current status to
+                  OUT_PROC.
+   ERRORTYPE      Type representing error.
+   FILLTYPE       Type representing the current filling mode.
+   HARD_SOFT      Used to represent 'malleability' in determining
+                  flexibility attribute of spaces.
+   OLD_NEW        Used in SYSVARS to 'point' to current settings.
+   ATTRIB         Attributes that a character may have.  
+   CHAR_REC       One individual element of internal and output
+                  buffers.  Represents one character.
+   LINE_OF_RECS   An array of CHAR_RECs.
+   BUFFER         A LINE_OF_RECS with STart and ENd pointers.
+   LINE_OF_CHARS  An array of characters.
+   STRNG          A LINE_OF_CHARS with STart and ENd pointers.
+   MISCINFO       A record used to hold system values.
+   STACK_ENTRY    The current variables that need to be saved
+                  when INCLUDEing a file, and recursively calling  
+                  PROCESS_FILE.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+type
+   commandtype   = (brk,    fig,    indt,   pag,    tstpag, skp,    nofil,
+                    cntr,   til,    inclu,  fil,    lmar,   rmar,   onnum,
+                    offnum, num,    onpag,  offpag, papsiz, spc,    std,
+                    justfy, norm,   autop,  noauto, autset, upper,  lower,
+                    same,   cmnt);
+ 
+   errortype     = (badcmd,  tooshrt, toowide, toonrrw, badsym,  argmsng,
+                    nonnum,  toolow,  toohgh,  tilwide, cntwide, figbad,
+                    wdlen,   dblnam,  incerr,  filerr,  nesdep,  aplow,
+                    aphgh,   cmderr,  baddelm, dlmmsng, endlead, badcnt);
+ 
+   filltype      = (justification, filling, nofilling);
+ 
+   cmd_name      = packed array [1..maxcmdlength] of char;
+ 
+   posint        = 0..maxint;
+ 
+   hard_soft     = (hard, soft);
+ 
+   old_new       = (old, new);   
+ 
+   attrib        = (u_line, u_case, l_case, xpand);
+ 
+   attrib_set    = set of attrib;
+ 
+   char_rec      = record
+                      ch           : char;
+                      malleability : hard_soft;
+                      length       : posint;
+                      atts         : attrib_set;
+                   end;
+ 
+   line_of_recs  = packed array [1..maxlinewidth] of char_rec;
+ 
+   buffer        = record
+                      st,
+                      en   : posint;
+                      str  : line_of_recs;
+                   end;
+ 
+   line_of_chars = packed array [1..maxlinewidth] of char;
+ 
+   strng         = record
+                      st,
+                      en  : posint;
+                      str : line_of_chars;
+                   end;
+ 
+   Miscinfo      = record
+                      version         : old_new;
+                      fill_mode       : filltype;
+                      paging,
+                      numbering,
+                      ap_mode         : boolean;
+                      lm,
+                      rm              : posint;
+                      ap_indent,
+                      ap_skip,
+                      paper_width,
+                      paper_length,
+                      chars_in_line,
+                      printable_lines : posint;
+                      spacing         : minspacing..maxspacing;
+                   end;
+ 
+  stack_entry    = record
+                      name   : string;
+                      line   : posint;
+                      in_buf : strng;
+                   end;
+ 
+{**********************************************************************
+ 
+  Explanation of global variables.
+ 
+   F,
+   S0..S5,
+   DEST           F is used to test for the existence of a file or
+                  volume. S0 and DEST are the file variables for
+                  the main input and output files. S1..S5 are used
+                  to INCLUDE other source files.
+   FILE_IN,
+   FILE_OUT       Actual names of input and output files.
+   SYSVARS        Contains commonly-used system values, such as
+                  margins, etc.  Subject to time-warp effect.
+   PAGEINFO       Contains other system information pertinent
+                  to output page, such as page number, etc.
+                  Not subject to time-warp effect.
+   STD_VALS       Contains default values for system initialization.
+   INPUT_BUF      Buffer into which characters are initially read
+                  from input file.
+   INTERNAL_BUF,
+   OUTPUT_BUF     Two buffers that hold intermediate representations
+                  of the text.
+   GLOBAL_CASE    The case that all text read in is taken to be. Over-
+                  ridden by special character commands.
+   N, M           Global variables used to represent dot-command
+                  parameters.
+   TEXT_DELIMS    The set of legal characters that can be used to
+                  delimit text parameters for dot commands.
+   LEADIN_CHARS   Set of charcters used as first character of
+                  all embedded command sequences.
+   DELIM_CHARS    Set of control characters plus space and pound sign.
+                  These are the valid delimiters.
+   LOCK_OPS,
+   WORD_OPS       These are the characters that may follow LEADIN_CHARS.
+   SPACE_CHARS    Set of space and pound-sign characters.
+   LC_LETTERS     Set of lower-case letters.
+   LOCK_STATUS    A set that contain current attributes as set
+                  by the scanner, assigned to characters being scanned.
+   LEAD_BLANK     Boolean set by READLINE to indicate that first character
+                  of INPUT_BUF is a blank.  Used to start a new paragraph. 
+   BLANKLINE,
+   DOT_COMMAND    Flags set by READLINE to indicate status of input
+                  buffer.
+   NUMBERS        Characters representing digits '0' through '9'.
+   ACT_CMDS       'Constant' set of commands which get routed to
+                  output processor.
+   TEXT_CMDS      The set of commands that take textual parameters.
+   MORE_INPUT     Boolean flag which indicates if the internal
+                  buffer contains unprocessed text.
+   VC_IN_LINE     Number of visible characters in current output line.
+   IC_IN_LINE     Number of invisible characters in current output line.
+   LN_NUMBER      Current line number of input file.  Used only
+                  by ERROR.
+   HARD_SPACE,
+   SOFT_SPACE,
+   BLANK_BUF,
+   BLANK_STRING   'Constant' blank-like thingies, used to
+                  reinitialize characters, buffers, etc.
+   CMD_STRINGS    The actual string names for each commandtype. Used by
+                  GET_COMMAND to match abbreviations. 
+   FILE_STACK     A stack used to keep track of the level of nesting
+                  of INCLUDE files. The file names are saved for error
+                  testing purposes.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+var
+   f,
+   s0, s1, s2,
+   s3, s4, s5,
+   dest          : text;
+ 
+   file_in,
+   file_out      : string;
+ 
+   sysvars       : array [old_new] of miscinfo;
+ 
+   pageinfo      : record
+                      currline,
+                      currpage       : posint;
+                      figure_set,
+                      figure_pending : boolean;
+                      figure_size    : posint;
+                      title          : strng;
+                   end;
+ 
+   std_vals      : miscinfo;
+ 
+   input_buf     : strng;
+   internal_buf,
+   output_buf    : buffer;
+ 
+   global_case   : set of u_case..l_case;
+ 
+   n, m          : posint;
+ 
+   text_delims,
+   leadin_chars,
+   delim_chars,
+   space_chars,
+   uc_letters,
+   lc_letters,
+   word_ops,
+   lock_ops      : set of char;
+ 
+   numbers       : set of zero..nine;
+ 
+   act_cmds      : set of brk..nofil;
+   text_cmds     : set of cntr..inclu;
+ 
+   lock_status   : attrib_set;
+ 
+   more_input,
+   blankline,
+   dot_command,
+   lead_blank    : boolean;
+ 
+   vc_in_line,
+   ic_in_line,
+   ln_number     : posint;
+ 
+   soft_space,
+   hard_space    : char_rec;
+   blank_buf     : buffer;
+   blank_string  : strng;
+ 
+   cmd_strings   : packed array [commandtype] of cmd_name;
+ 
+   file_stack    : record
+                      ptr   : 0..max_files;
+                      stack : packed array[1..max_files] of stack_entry;
+                   end;
+ 
+   bs            : char;
+ 
+ 
+ 
+

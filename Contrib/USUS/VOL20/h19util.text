@@ -1,0 +1,445 @@
+{This unit was written for use with the H19 (Z19) terminal. It may be edited
+ for use with some other terminals. Procedures or functions requiring editing
+ include: CLEARSCREEN, SAVECURSOR, LINE25, GOTO25, NORMALKEYPAD, SHIFTKEYPAD,
+ and IN_REAL. For the latter SAVECURSOR is almost essential; however, IN_REAL's
+ error messages may be moved from line 24 (the "25th" line) to line 0 by
+ making the changes marked with (**instruction **). Real numbers may be input
+ from the terminal or a text file using IN_REAL. In either instance, input ofn
+ of a number may be terminated by a space, comma, or carriage return. IN_REAL
+ will not accept plus (+) signs.  Modification to accept plus signs is possible
+ by creating boolean variables POSNO and POSEXP and adding code similar to that
+ for handling minus signs.  The back space (erase) routines will have to be
+ rewritten to handle no, plus, and minus signs. Another possibly useful
+ alternative would be to rewrite IN_REAL as FUNCTION IN_REAL(VAR S : STRING):
+ REAL where the string form of the number is saved (in the event it needed
+ to be written out elsewhere).---Henry E. Baumgarten}
+ 
+(*$S+*)
+UNIT H19UTIL;  (*Version 1.2, 17 Jan 83*)
+
+INTERFACE
+
+TYPE    FILECODE = (INPT,INFIL,OUTFIL);
+        VISIBLE = SET OF ' '..'~';
+VAR     XCUR,YCUR : INTEGER;
+
+PROCEDURE CLEARSCREEN;
+PROCEDURE CLEARSPACE(XCSP,YCSP,N : INTEGER);
+PROCEDURE SAVECURSOR(VAR XCUR,YCUR : INTEGER);
+PROCEDURE LINE25(ON : BOOLEAN);
+PROCEDURE GOTO25;
+PROCEDURE NORMALKEYPAD;
+PROCEDURE SHIFTKEYPAD;
+PROCEDURE CLEAR_EOL;
+PROCEDURE CLEAR_EOS;
+PROCEDURE GETREPLY (VAR REPLY : CHAR);
+FUNCTION DOIT : BOOLEAN;
+PROCEDURE PAUSE;
+FUNCTION CONTINUE: BOOLEAN;
+FUNCTION COMMAND(S : STRING; GOODSET : VISIBLE): CHAR;
+FUNCTION GOAHEAD: BOOLEAN;
+FUNCTION IN_REAL(VAR F : TEXT; FCODE : FILECODE): REAL;
+
+IMPLEMENTATION
+
+PROCEDURE CLEARSCREEN;
+  VAR T : PACKED ARRAY [0..1] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('E');
+    UNITWRITE(1,T,2)
+  END;
+
+PROCEDURE CLEAR_EOS; {clear to end of screeen (page)}
+  VAR T : PACKED ARRAY [0..1] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('J');
+    UNITWRITE(1,T,2)
+  END;
+
+PROCEDURE CLEAR_EOL;  {clear to end of line}
+  VAR T : PACKED ARRAY [0..1] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('K');
+    UNITWRITE(1,T,2)
+  END;
+
+PROCEDURE CLEARSPACE (*XCSP,YCSP,N : INTEGER*);
+  VAR I : INTEGER;
+      CS :PACKED ARRAY [1..160] OF CHAR;
+  BEGIN
+    GOTOXY(XCSP,YCSP);
+    FILLCHAR(CS,N,' ');
+    FILLCHAR(CS[N+1],N,CHR(8));
+    UNITWRITE(1,CS[1],2*N);
+  END;
+  
+PROCEDURE SAVECURSOR (*VAR XCUR,YCUR : INTEGER*);
+  VAR T : PACKED ARRAY [0..7] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('j');
+    T[2] := 27;
+    T[3] := ORD('n');
+    UNITWRITE(1,T,4);
+    UNITREAD(2,T[4],4);
+    XCUR := T[7] - 32;
+    YCUR := T[6] - 32
+  END;
+  
+PROCEDURE LINE25(*ON : BOOLEAN*);
+  VAR T : PACKED ARRAY [0..2] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    IF ON THEN T[1] := ORD('x') ELSE T[1] := ORD('y');
+    T[2] := ORD('1');
+    UNITWRITE(2,T,3)
+  END;
+  
+PROCEDURE GOTO25;
+  VAR T : PACKED ARRAY [0..3] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('Y');
+    T[2] := 56;  {Y=24+32}
+    T[3] := 32;  {X=0+32}
+    UNITWRITE(2,T,4)
+  END;
+    
+PROCEDURE NORMALKEYPAD;
+  VAR T : PACKED ARRAY[0..1] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('u');
+    UNITWRITE(1,T,2)
+  END;
+  
+PROCEDURE SHIFTKEYPAD;
+  VAR T : PACKED ARRAY[0..1] OF 0..255;
+  BEGIN
+    T[0] := 27;
+    T[1] := ORD('t');
+    UNITWRITE(1,T,2)
+  END;
+  
+PROCEDURE GETREPLY (*VAR REPLY : CHAR*);
+  VAR   SURROGATE : PACKED ARRAY[0..0] OF CHAR;
+  BEGIN
+    UNITREAD(2,SURROGATE[0],1);
+    REPLY := SURROGATE[0];
+    IF REPLY IN ['a'..'z'] THEN REPLY := CHR(ORD(REPLY) - 32);
+  END;
+  
+FUNCTION DOIT(* : BOOLEAN*);
+  VAR   REPLY : CHAR;
+  BEGIN
+    REPEAT
+      GETREPLY(REPLY)
+    UNTIL REPLY IN ['Y','N'];
+    IF REPLY = 'Y' THEN DOIT := TRUE
+    ELSE DOIT := FALSE
+  END;
+  
+PROCEDURE PAUSE;
+  VAR   REPLY : CHAR;
+  BEGIN
+    REPEAT
+      GETREPLY(REPLY)
+    UNTIL REPLY = ' '
+  END;
+  
+FUNCTION CONTINUE(* : BOOLEAN*);
+   VAR  REPLY : CHAR;
+  BEGIN
+    REPEAT
+      GETREPLY(REPLY)
+    UNTIL REPLY IN [' ','Q'];
+    IF REPLY = ' ' THEN CONTINUE := TRUE
+    ELSE CONTINUE := FALSE
+  END;
+  
+FUNCTION COMMAND(*S : STRING; GOODSET : VISIBLE): CHAR*);
+  VAR   REPLY : CHAR;
+  BEGIN
+    WRITELN(S);
+    REPEAT GETREPLY(REPLY) UNTIL REPLY IN GOODSET;
+    COMMAND := REPLY
+  END;
+  
+FUNCTION GOAHEAD(* : BOOLEAN*);
+  VAR   REPLY : CHAR;
+  BEGIN
+    WRITELN('Check entries for errors.  <SP> accepts, <TAB> rejects, <ESC> quits');
+    REPEAT GETREPLY(REPLY) UNTIL ((REPLY = ' ') OR (REPLY = CHR(9)) OR
+      (REPLY = CHR(27)));
+    IF (REPLY = CHR(27)) THEN
+      BEGIN
+        CLEARSCREEN;
+        EXIT(PROGRAM)
+      END;
+    IF (REPLY = ' ') THEN GOAHEAD := TRUE ELSE GOAHEAD := FALSE;
+    CLEARSCREEN
+  END;
+  
+FUNCTION IN_REAL(*VAR F : TEXT; FCODE : FILECODE): REAL*);
+  TYPE  NUMBERS = PACKED ARRAY[1..38] OF 0..255;
+  VAR   I,J,K : INTEGER;
+        INTG,IFRACTN,FRACTION,EXPONENT,SUM,TESTNO : REAL;
+        INT,FRAC,EX : NUMBERS;
+        NEGNO,NEGEXP,DEC,EXPNT,FRACDONE : BOOLEAN;
+        BS,CR,CH : CHAR;
+  
+  PROCEDURE ERRORHNDLR(KEY : INTEGER);
+    VAR S : STRING;
+    BEGIN
+      SAVECURSOR(XCUR,YCUR);
+      {CLEARSPACE(0,0,80);       (**replaces next 2 lines**)}
+      LINE25(TRUE);
+      GOTO25;
+      CASE KEY OF
+        1 : S := 'Number too large.';
+        2 : S := 'Too many decimal points.';
+        3 : S := 'Misplaced minus sign.';
+        4 : S := 'Non-numerical character present.';
+        5 : S := 'Misplaced "E"';
+        6 : S := 'Exponent too large';
+        7 : S := 'Mantissa = 0';
+        8 : S := 'Plus sign not acceptable';
+      END;
+      WRITE(S,' Type <SP> to continue or Q(uit.');
+      IF NOT CONTINUE THEN
+        BEGIN
+          CLEARSCREEN;  (**delete 3 lines**)
+          GOTOXY(0,0);
+          LINE25(FALSE);
+          CLEARSCREEN;
+          EXIT(PROGRAM)
+        END;
+      {CLEARSPACE(0,0,80)}    (**replaces next line**)
+      CLEARSCREEN;
+      GOTOXY(XCUR,YCUR);
+      LINE25(FALSE);          (**delete 1 line**)
+      IF (FCODE = INPT) THEN WRITE(BS,' ',BS)
+    END;
+    
+  PROCEDURE GET_INTEGER;
+    BEGIN
+      IF (CH IN ['0'..'9']) THEN
+        BEGIN
+          IF (INTG <= ((1.0E37 - ORD(CH) + ORD('0'))/10)) THEN
+            BEGIN
+              IF (I<0) THEN I := 0;
+              I := I+1;
+              INT[I] := ORD(CH)-ORD('0');
+              INTG := INTG*10 + ORD(CH) - ORD('0');
+            END
+          ELSE ERRORHNDLR(1)
+        END
+      ELSE IF (CH = '.') THEN
+        BEGIN
+          DEC := TRUE;
+          I := I+1;
+          J := J+1;
+          CH := '0';
+        END
+      ELSE IF (CH = '-') THEN
+        BEGIN
+          CH := '0';
+          IF (I < 0) THEN
+            BEGIN
+              NEGNO := TRUE;
+              I := I+1;
+            END
+          ELSE ERRORHNDLR(3)
+        END
+      ELSE IF (CH = '+') THEN ERRORHNDLR(8)
+      ELSE IF (CH = 'E') THEN
+        BEGIN
+          CH := '0';
+          SUM := INTG;
+          IF NOT(SUM = 0) THEN
+            BEGIN
+              EXPNT := TRUE;
+              I := I+1;
+              TESTNO := ROUND(LOG(SUM))
+            END
+          ELSE ERRORHNDLR(7);
+        END
+      ELSE IF (CH = BS) THEN
+        BEGIN
+          IF (FCODE = INPT) THEN
+            BEGIN
+              IF (I<0) THEN WRITE(' ') ELSE WRITE(' ',BS)
+            END;
+          CH := '0';
+          IF (INTG>0) THEN INTG := (INTG - INT[I])/10
+            ELSE IF (I=0) THEN NEGNO := FALSE;
+          IF (I>=0) THEN I := I-1;
+          IF (I=0) AND (NOT NEGNO) THEN I := -1;
+        END;
+      IF NOT (CH IN [' ','0'..'9']) THEN ERRORHNDLR(4);
+    END;
+    
+  PROCEDURE GET_FRACTION;
+    BEGIN
+      IF (CH IN ['0'..'9']) THEN
+        BEGIN
+          IF (J>=37) THEN
+            BEGIN
+              IF NOT FRACDONE THEN
+                BEGIN
+                  IF ((ORD(CH)-ORD('0'))>=5) THEN
+                    BEGIN
+                      IFRACTN := IFRACTN+1.0;
+                      FRACDONE := TRUE
+                    END;
+                  FRAC[38] := ORD(CH)-ORD('0');
+                END;
+              J := J+1;
+              I := I+1
+            END
+          ELSE BEGIN
+              I := I+1;
+              J := J+1;
+              FRAC[J] := ORD(CH)-ORD('0');
+              IFRACTN := IFRACTN*10 + FRAC[J];
+            END
+        END
+      ELSE IF (CH = '.') THEN ERRORHNDLR(2)
+      ELSE IF (CH = '-') THEN ERRORHNDLR(3)
+      ELSE IF (CH = 'E') THEN
+        BEGIN
+          EXPNT := TRUE;
+          CH := '0';
+          I := I+1;
+          IF (J>=37) THEN SUM := INTG + IFRACTN/PWROFTEN(37)
+            ELSE SUM := INTG +  IFRACTN/PWROFTEN(J);
+          IF NOT(SUM=0) THEN TESTNO := ROUND(LOG(SUM)) ELSE ERRORHNDRLR(7)
+        END
+      ELSE IF (CH = BS) THEN
+        BEGIN
+          IF (FCODE = INPT) THEN
+            BEGIN
+              IF (I<0) THEN WRITE(' ') ELSE WRITE(' ',BS)
+            END;
+          CH := '0';
+          IF (J=0) THEN DEC := FALSE
+          ELSE IF (J>=38) THEN
+            BEGIN
+              IF FRACDONE THEN
+                BEGIN
+                  IFRACTN := IFRACTN-1.0;
+                  FRACDONE := FALSE
+                END
+            END
+          ELSE IF (IFRACTN>0) THEN IFRACTN := (IFRACTN - FRAC[J])/10;
+          J := J-1;
+          I := I-1
+        END
+      ELSE IF NOT (CH IN ['0'..'9']) THEN ERRORHNDLR(4)
+    END;
+    
+  PROCEDURE GET_EXPONENT;
+    VAR EX0 : 0..255;
+        EX1 : REAL;
+    BEGIN
+      IF (CH IN ['0'..'9']) THEN
+        BEGIN
+          EX0 := ORD(CH)-ORD('0');
+          IF (EXPONENT <= (37-EX0)/10) THEN
+            BEGIN
+              EX1 := EXPONENT*10+EX0;
+              IF NOT((EX1+TESTNO)>37) THEN
+                BEGIN
+                  IF (K<0) THEN K := 0;
+                  I := I+1;
+                  K := K+1;
+                  EX[K] := EX0;
+                  EXPONENT := EX1
+                END
+              ELSE ERRORHNDLR(1)
+            END
+          ELSE ERRORHNDLR(6)
+        END
+      ELSE IF (CH = 'E') THEN ERRORHNDLR(5)
+      ELSE IF (CH = '+') THEN ERRORHNDLR(8)
+      ELSE IF (CH = '-') THEN
+        BEGIN
+          IF (K<0) THEN
+            BEGIN
+              I := I+1;
+              K := 0;
+              NEGEXP := TRUE;
+              TESTNO := -TESTNO;
+              CH := '0'
+            END
+          ELSE ERRORHNDLR(3)
+        END
+      ELSE IF (CH = BS) THEN
+        BEGIN
+          IF (FCODE = INPT) THEN
+            BEGIN
+              IF (I<0) THEN WRITE(' ') ELSE WRITE(' ',BS)
+            END;
+          CH := '0';
+          IF (EXPONENT>0) THEN EXPONENT := (EXPONENT - EX[K])/10
+          ELSE IF (K=0) THEN
+            BEGIN
+              NEGEXP := FALSE;
+              TESTNO := -TESTNO
+            END
+          ELSE IF (K<0) THEN EXPNT := FALSE;
+          IF (K>=0) THEN K := K-1;
+          IF (K=0) AND (NOT NEGEXP) THEN K := -1;
+          I := I-1
+        END
+      ELSE IF NOT (CH IN ['0'..'9']) THEN ERRORHNDLR(4)
+    END; 
+    
+  BEGIN  (*IN_REAL*)
+    BS := CHR(8);
+    CR := CHR(13);
+    DEC := FALSE;
+    NEGNO := FALSE;
+    EXPNT := FALSE;
+    NEGEXP := FALSE;
+    FRACDONE := FALSE;
+    I := -1;
+    J := -1;
+    K := -1;
+    CH := '0';
+    INTG := 0;
+    IFRACTN := 0;
+    FRACTION := 0;
+    EXPONENT := 0;
+    IF (FCODE = INPT) THEN READ(F,CH);
+    IF ((CH = CR) OR (CH = ',')) THEN CH := ' ';
+    WHILE (NOT EOLN(F)) AND (NOT (CH = ' ')) DO
+      BEGIN
+        IF (FCODE = INFIL) THEN READ (F,CH);
+        IF ((CH = CR) OR (CH = ',')) THEN CH := ' ';
+        IF (NOT(DEC)) AND (NOT(EXPNT)) THEN GET_INTEGER
+        ELSE IF DEC AND (NOT(EXPNT)) THEN GET_FRACTION
+        ELSE IF EXPNT THEN GET_EXPONENT;
+        IF (FCODE = INPT) THEN
+          BEGIN
+            READ(F,CH);
+            IF ((CH = CR) OR (CH = ',')) THEN CH := ' ';
+          END
+      END;
+    IF EOLN(F) THEN READLN(F);
+    IF DEC THEN
+      BEGIN
+        IF (J>37) THEN J := 37;
+        FRACTION := IFRACTN/PWROFTEN(J)
+      END;
+    EXPONENT := PWROFTEN(TRUNC(EXPONENT));
+    IF NEGEXP THEN EXPONENT := 1/EXPONENT;
+    INTG := (INTG+FRACTION)*EXPONENT;
+    IF NEGNO THEN INTG := -INTG;
+    IN_REAL := INTG
+  END;
+
+END. {of Unit}

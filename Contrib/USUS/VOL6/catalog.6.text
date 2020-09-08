@@ -1,0 +1,64 @@
+                                VOLUME 6 CATALOG
+                             USUS SOFTWARE LIBRARY
+                             
+                            PTP and FORMAT revisited
+   
+   Filename     Blocks                          Description
+   
+PTP.BUSH.TEXT    154      The all-new Pascal Transfer Program, updated by its
+                           author, Mark Gang, and edited by Randy Bush.  Baud
+                           rate selected by inter-modem dialogue; choice of
+                           radix-41 or true binary file transfer; improved al-
+                           gorithms speed up data transfer.  PTP has been select-
+                           ed as the USUS standard file interchange program.
+
+BAUD.A.TEXT        6      I've added an "A.TEXT" suffix to 8080 assembly-
+CTS.A.TEXT         4       language files used by PTP; the function of each
+DIALER.A.TEXT      6       routine is described by "PTP-FILES.TEXT".  Note that
+DTONEDET.A.TEXT    4       these routines are highly processor- and modem-
+DTRON.A.TEXT       4       specific, which is why Bob Peterson is working on a
+HANGUP.A.TEXT      4       communications UNIT that will pack all this material
+KBSTAT.A.TEXT      4       once and for all into a standardized form.
+MODEMINI.A.TEXT    4
+MREAD.A.TEXT       4      Rewrite these files for your machine. 
+MRECSTAT.A.TEXT    4 
+MWRITE.A.TEXT      4 
+RI.A.TEXT          4 
+RINGING.A.TEXT     4 
+SH.A.TEXT          4 
+
+SYSNAME.TEXT       4      User ID (just a few characters) used by PTP.
+
+PTP-FILES.TEXT     8      PTP documentation - which files are which.
+PTP-INST.TEXT      6      PTP documentation - how to set it up.
+PTP-USE.TEXT      20      PTP documentation - how to use.
+
+FORMAT.TEXT        6      I corrected and greatly updated FORMAT (from USUS Vol.
+FORMAT.1.TEXT     16       1), so that now it works reasonably well.  Most bugs
+FORMAT.2.TEXT     24       are gone (except the program still has trouble with
+FORMAT.3.TEXT     18       extended comments and may terminate prematurely).
+FORMAT.4.TEXT     20       Format options are now MENU SELECTED!!  Finally, it
+FORMAT.5.TEXT     22       accepts nearly all valid UCSD Pascal syntax.  It is
+FORMAT.6.TEXT     24       handy for reformatting Pascal source to fit on CRT
+                           screens of different sizes.
+
+FMT.64MASK.DATA    5      Mask for FORMAT menu for 64-column screens.
+FMT.64MENU.TEXT    4      Source for above data; needs MAKEMASKS from Vol. 5.
+FMT.MASK.DATA      5      This menu mask is for 80-column CRTs and Apples.
+FMT.MENU.TEXT      6      Source for the above data; needs MAKEMASKS from Vol 5.
+FMT.NEWDOC.TEXT   20      Documentation on my changes to FORMAT.
+FORMAT.DOC.TEXT   30      Copy of original FORMAT documentation from Vol. 1.
+
+BANNER.TEXT       20      This program was added 26-Jul-81, and was donated by
+                          David Mundie.  Prints a banner vertically on print-
+                          out paper, with up to 6 lines or 7-inch letters.
+
+NOTE:  USUS Library material may be used only in accordance with policy outlined
+elsewhere.  In particular, these programs may not be given to nonmembers of 
+USUS, nor may commercial use be made of them, without the written permission of
+the authors.
+
+Although an Apple version of the original PTP is in the works, we will release
+the same material for all versions until it works well.  Keep an eye on the USUS
+newsletter for corrections and updates.
+

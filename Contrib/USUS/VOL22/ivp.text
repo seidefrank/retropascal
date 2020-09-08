@@ -1,0 +1,678 @@
+{$L-,S- IVP.LIST}
+PROGRAM IVP;  { written by Ken Gaal, 1-25-80 }
+              { last modified on 2-6-80}
+{
+       This program obtains numerical solutions to an arbitrary Initial
+   Value Problem (IVP).  The user types in the differential equation
+   (DE) dy/dx=f(x,y), the initial conditions (IC) Xo Yo, and various 
+   other values used to control the form of the graphical display.
+       The main program IVP consists of 2 procedures: 
+              INITIALIZE
+              OPTIONS
+       INITIALIZE assigns nominal values to the DE, IC and other variables.
+       The procedure OPTIONS allows the user to select various options.
+       
+       The PROCEDURES used in this program appear in the code in the 
+  following order.  Indenting indicates that the procedure is local to
+  the procedure above it.
+  
+       Utility Procedures:
+           GET_FUNCTION     (in the unit post_entry_of_function) 
+           REPLACE_FUNCTION (in the unit post_entry_of_function)
+           DRAWLINE         (an external procedure)
+           CLEAR            (clears text on a section of a row)
+           INPUT_FUNC       (to type in a function expression)
+           INPUT_CONST      (to type in a constant expression)
+           SET_SCREEN       (clears and resets xy grid)
+                BOUNDRIES      (draws boundries for xy grid)
+                AXES           (draws xy axes)
+                LABEL_AXES     (prints scale values for xy grid)
+           CONVERT          (converts xy from actual to screen pt. values)
+           PRTOK            (boolean fuction: true if pt is on screen)
+           TABLE_HEAD       (prints heading for xy table)
+           LIST_TABLE       (prints x,y or x,y,y-Y table values)
+           
+       Program Structure:
+           INITIALIZE       (initializes values of functions and variables)
+                ZAP_AXES         (erases or plots xy axes)
+                DESCRIBE_PROGRAM (describes program options)
+           OPTIONS      (displays options)
+                ENTER_DE     (to enter dy/dx=F(x,y) )
+                ENTER_IC     (to enter Xo,Yo)
+                ENTER_SOLN   (to enter Y(x) )
+                OMIT_SOLN    (omits Y(x) )
+                ENTER_DX     (to enter Dx increment value)
+                ENTER_XF     (to enter final x value (Xf) )
+                SCREEN_LIMITS(for xy grid limits)
+                     GET_XRANGE  (options for xmin,xmax values)
+                     GET_YRANGE  (options for ymin,ymax values)
+                         COMPUTE_YRANGE (computes ymin and ymax)
+                SW_TAB_OPT   (displays table_option as ON or OFF)
+                PLOT_SOLN    (plots Y(x) vs x )
+                EULER        (Euler <increment> soln to IVP)
+                RUNGE        (4th order Runge-Kutta soln to IVP)
+                
+     Changes made by reviewer:
+        Removed definitions of RLF and CEOL.
+        Added line DEFINESTRINGS.
+        Replaced PAGE(OUTPUT) with CLEARSCREEN.
+        Reversed ranges in SCREENTYPE.
+                ---Henry E. Baumgarten
+}
+
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF, POST_ENTRY_OF_FUNCTION;
+   { POST_ENTRY was written by Ed Grundler. This unit contains procedures:
+      GET_FUNCTION and REPLACE_FUNCTION; the interface variables are:
+      ENTERED_FUNCTION and  ERROR_CODE }
+        
+CONST RW=20;
+      XLEFT=28; XRIGHT=228; { screen boundries }
+      YTOP=25; YBOT=225;    { for x,y graph    }
+   
+TYPE SCREENTYPE=PACKED ARRAY[0..239,0..319] OF BOOLEAN;
+     XSCREEN=0..319;
+     YSCREEN=0..239;
+     XTEXT=0..79;
+     YTEXT=0..23;
+
+VAR X0,Y0,XF,DX,XSCALE,YSCALE,YMIN,YMAX,XMIN,XMAX,XRANGE,YRANGE: REAL;
+    Y_AT_BOT,Y_AT_TOP: REAL;
+    L: YSCREEN;
+    R,XSTART,YSTART: INTEGER;
+    S: SCREENTYPE;
+    ESC,LF,KB: CHAR;
+    SOLN,XSTOP,TABLE_OPTION,LISTING_SOLN,LIST_OPTIONS: BOOLEAN;
+    FXY,FX: STRING;
+    XTAB,YTAB: ARRAY[1..17] OF REAL;
+    OPTION_KEYS: SET OF CHAR;
+    
+PROCEDURE DRAWLINE(VAR RANGE:INTEGER;VAR SCREEN:SCREENTYPE;RW,
+    XSTART,YSTART,DX,DY,INK:INTEGER); EXTERNAL;
+    { Drawline is an external procedure }
+    
+
+PROCEDURE CLEAR(ROW:YTEXT; LEFT,RIGHT:XTEXT);
+VAR COL: XTEXT;
+BEGIN
+    GOTOXY(LEFT,ROW);
+    IF RIGHT = 79
+        THEN WRITE(CEOL)
+        ELSE FOR COL:= LEFT TO RIGHT DO WRITE(' ');
+END;
+
+PROCEDURE INPUT_FUNC;
+BEGIN
+  IF EOF THEN RESET(INPUT); { recovers from accidental etx entry }
+  GET_FUNCTION;
+  IF ERROR THEN
+    BEGIN
+      GOTOXY(10,3); WRITE('***INPUT ERROR***');
+      GOTOXY(10,4);
+      CASE ERROR_CODE OF
+        1: WRITELN('UNBALANCED PARENTHESES');
+        2: WRITELN('UNRECOGNIZED SYMBOL');
+        3: WRITELN('MULTIPLE DEC. PT. IN CONSTANT');
+       15: WRITELN('ARGUMENT NOT IN PARENTHESES');
+        END;
+      GOTOXY(10,6); WRITE('sp bar to re-enter data');
+      READ(KEYBOARD,KB);
+      FOR L:=3 TO 6 DO CLEAR(L,10,40);
+    END;
+END; { of procedure input_func }
+
+PROCEDURE INPUT_CONST(VAR V:REAL; ROW:YTEXT; LEFT,RIGHT:XTEXT);
+BEGIN
+  REPEAT
+    CLEAR(ROW,LEFT,RIGHT);
+    GOTOXY(LEFT,ROW);
+    INPUT_FUNC;
+  UNTIL NOT ERROR;
+  V:=F(0,0,0);
+END; { or procedure input_const }
+    
+PROCEDURE SET_SCREEN;
+   
+   PROCEDURE BOUNDRIES; { local to procedure set_screen }
+   BEGIN { draw boarders }
+     DRAWLINE(R,S,RW,0,0,319,0,1); { top screen }
+     DRAWLINE(R,S,RW,319,0,0,239,1); { right screen }
+     DRAWLINE(R,S,RW,319,239,-319,0,1); { bottom screen }
+     DRAWLINE(R,S,RW,0,239,0,-239,1); { left screen }
+     DRAWLINE(R,S,RW,XLEFT-1,YTOP,XRIGHT-XLEFT+1,0,1); { top grid }
+     DRAWLINE(R,S,RW,XRIGHT,YTOP,0,YBOT-YTOP,1); { right grid }
+     DRAWLINE(R,S,RW,XRIGHT,YBOT,-(XRIGHT-XLEFT),0,1); { bottom grid }
+     DRAWLINE(R,S,RW,XLEFT,YBOT,0,-(YBOT-YTOP),1); { left grid }
+   END; { of procedure boundries }
+   
+   PROCEDURE AXES; { local to procedure set_screen }
+   BEGIN
+     IF YMIN*YMAX<=0 THEN { draw x axes }
+        DRAWLINE(R,S,RW,XLEFT,YBOT-ROUND(-YMIN*YSCALE),XRIGHT-XLEFT,0,1);
+     IF XMIN*XMAX<=0 THEN { draw y axes }
+        DRAWLINE(R,S,RW,XLEFT+ROUND(-XMIN*XSCALE),YTOP,0,YBOT-YTOP,1);
+   END; { of procedure axes }
+   
+   PROCEDURE LABEL_AXES; { local to procedure set_screen }
+   VAR I: INTEGER;
+       XDIV,YDIV: REAL;
+   BEGIN { put numeric lables on axes }
+     YDIV:=(YBOT-YTOP)/10.0;
+     FOR I:=0 TO 10 DO DRAWLINE(R,S,RW,XLEFT,YTOP+ROUND(YDIV*I),4,0,1);
+     XDIV:=(XRIGHT-XLEFT)/10.0;
+     FOR I:=0 TO 10 DO DRAWLINE(R,S,RW,XLEFT+ROUND(XDIV*I),YBOT,0,-4,1);
+     { the following numeric lable values assume a "200 by 200" graph }
+     GOTOXY(0,2);
+     FOR I:=0 TO 10 DO
+       BEGIN
+         WRITELN(YMAX-I*YRANGE/10:7:3);
+         IF I<>10 THEN WRITELN
+       END;
+     FOR I:=0 TO 5 DO
+       BEGIN
+         GOTOXY(10*I,23);
+         WRITE(XMIN+I*XRANGE/5:10:5);
+       END;
+   END; { of procedure label_axes }
+
+BEGIN { procedure set_screen }
+  FILLCHAR(S,9600,CHR(0)); { clear graphics }
+  BOUNDRIES;
+  AXES;
+  LABEL_AXES
+END; { of procedure set_screen }
+  
+PROCEDURE CONVERT(X,Y:REAL; VAR XPLOT,YPLOT:INTEGER);
+BEGIN
+  IF ABS((X-XMIN)*XSCALE) < 32000
+     THEN XPLOT:=XLEFT+ROUND((X-XMIN)*XSCALE)
+     ELSE XPLOT:=0; { pt will not be plotted }
+  IF (Y > Y_AT_BOT) AND (Y < Y_AT_TOP) THEN YPLOT:=YBOT-ROUND((Y-YMIN)*YSCALE);
+  IF Y <= Y_AT_BOT THEN YPLOT:=239; { below screen values = bot of screen }
+  IF Y >= Y_AT_TOP THEN YPLOT:=0;   { above screen values = top of screen }
+END; { of procedure convert }
+  
+FUNCTION PRTOK(X1,Y1,X2,Y2:INTEGER):BOOLEAN;
+BEGIN
+  PRTOK:=(X1 IN [0..319]) AND (X2 IN [0..319])
+          AND (Y1 IN [0..239]) AND (Y2 IN [0..239]);
+  IF (Y1<YTOP) AND (Y2>YBOT) THEN PRTOK:=FALSE; { a check to avoid plotting }
+  IF (Y1>YBOT) AND (Y2<YTOP) THEN PRTOK:=FALSE; { "discontinuities" in Y(x) }
+END; {  of function prtok }
+
+PROCEDURE TABLE_HEAD;
+BEGIN
+  GOTOXY(57,4);
+  IF SOLN 
+      THEN WRITE('   X    Y approx Y-Y(x)')
+      ELSE WRITE('     X       Y approx. ');
+END; { of procedure table_head }
+
+PROCEDURE LIST_TABLE(N:INTEGER);
+BEGIN
+  IF SOLN THEN
+    BEGIN ENTERED_FUNCTION:=FX; REPLACE_FUNCTION END;
+  FOR L:=1 TO N DO
+    BEGIN
+      GOTOXY(58,L+4); { line L+4 }
+      IF (NOT SOLN) OR (LISTING_SOLN)
+         THEN WRITE(XTAB[L]:10:4,YTAB[L]:11:5)
+         ELSE WRITE(XTAB[L]:7:3,YTAB[L]:7:3,YTAB[L]-F(XTAB[L],0,0):7:4);
+    END;
+  GOTOXY(58,5+N);
+  WRITE('sp_bar or E)nd plot');
+  READ(KEYBOARD,KB);
+  FOR L:=5 TO (N+5) DO CLEAR(L,55,79);
+  IF KB='E' THEN XSTOP:=TRUE;
+  IF SOLN AND (NOT LISTING_SOLN) THEN
+    BEGIN ENTERED_FUNCTION:=FXY; REPLACE_FUNCTION END;
+END; { of procedure list_table }
+
+{ end of the utility procedures }
+
+{ beginning of program procedures }
+
+PROCEDURE INITIALIZE;
+
+   PROCEDURE ZAP_AXES(INK:INTEGER); { local to procedure initialize }
+      BEGIN
+        IF YMIN*YMAX<=0 THEN { draw x axes }
+           DRAWLINE(R,S,RW,XLEFT,YBOT-ROUND(-YMIN*YSCALE),XRIGHT-XLEFT,0,INK);
+        IF XMIN*XMAX<=0 THEN { draw y axes }
+           DRAWLINE(R,S,RW,XLEFT+ROUND(-XMIN*XSCALE),YTOP,0,YBOT-YTOP,INK);
+      END; { of procedure zap_axes }
+   
+   PROCEDURE DESCRIBE_PROGRAM; { local to procedure initialize }
+     BEGIN
+       GOTOXY(15, 3); WRITE('******Initial Value Problem (IVP)*******');
+       GOTOXY(15, 4); WRITE('  An IVP consists of a differential');
+       GOTOXY(15, 5); WRITE('equation, dy/dx, and initial conditions,');
+       GOTOXY(15, 6); WRITE('(Xo,Yo).');
+       GOTOXY(15, 7); WRITE('  This program plots solutions to IVPs.');
+       GOTOXY(15, 8); WRITE('You will have various options to modify');
+       GOTOXY(15, 9); WRITE('the IVP, the solution method, and the');
+       GOTOXY(15,10); WRITE('screen display.');
+       GOTOXY(15,12); WRITE('****Instructions****');
+       GOTOXY(15,13); WRITE('  To select an option: type the letter');
+       GOTOXY(15,14); WRITE('     associated with the option.');
+       GOTOXY(15,15); WRITE('  To enter data: type the expression');
+       GOTOXY(15,16); WRITE('     then type the RETURN key.');
+       GOTOXY(15,18); WRITE('  Type SPACE_BAR to see the OPTIONS ');
+     END; { of procedure describe_program }
+   
+ BEGIN { procedure initialize }
+   ESC:=CHR(27); LF:=CHR(10); DEFINESTRINGS;
+   CLEARSCREEN;
+   FILLCHAR(S,9600,CHR(0));
+   UNITWRITE(3,S,63);
+   OPTION_KEYS:=['F','I','Y','O','D','X','C','L','T','P','E','R','B','Q',
+                 'f','i','y','o','d','x','c','l','t','p','e','r','b','q'];
+   X0:=0; Y0:=-0.5; XF:=2; DX:=0.1;
+   XMIN:=-2; XMAX:=2; XRANGE:=XMAX-XMIN;
+   YMIN:=-1; YMAX:=3; YRANGE:=YMAX-YMIN;
+   XSCALE:=(XRIGHT-XLEFT)/XRANGE;
+   YSCALE:=(YBOT-YTOP)/YRANGE;
+   Y_AT_BOT:=YMIN-(239-YBOT)/YSCALE; { y value at bottom of screen }
+   Y_AT_TOP:=YMAX+YTOP/YSCALE;       { y value at top of screen }
+   SET_SCREEN;
+   FXY:='X';
+   GOTOXY(0,0); WRITE('dy/dx=F(x,y)= ',FXY);
+   GOTOXY(40,0); WRITE('Xo=',X0:8:4);
+   GOTOXY(40,1); WRITE('Yo=',Y0:8:4);
+   FX:='XX/2 - 1/2';
+   SOLN:=TRUE;
+   LISTING_SOLN:=FALSE;
+   TABLE_OPTION:=TRUE;
+   LIST_OPTIONS:=TRUE;
+   GOTOXY(0,1); WRITE('Soln=Y(x)= ',FX);
+   GOTOXY(60,0); WRITE('Xf=',XF:8:4);
+   GOTOXY(60,1); WRITE('Dx=',DX:8:4);
+   ZAP_AXES(2);
+   DESCRIBE_PROGRAM;
+   READ(KEYBOARD,KB);
+   FOR L:=3 TO 18 DO CLEAR(L,15,79);
+   ZAP_AXES(1);
+END; { of procedure initialize }
+
+PROCEDURE OPTIONS;
+  
+    PROCEDURE ENTER_DE; { local to procedure opions }
+    BEGIN
+      REPEAT
+        CLEAR(0,13,39);
+        GOTOXY(13,0);
+        INPUT_FUNC;
+      UNTIL NOT ERROR;
+      FXY:=ENTERED_FUNCTION
+    END; { of procedure enter_de }
+
+    PROCEDURE ENTER_IC; { local to procedure opions }
+    BEGIN
+      CLEAR(0,43,59);
+      GOTOXY(43,0); INPUT_CONST(X0,0,43,59);
+      CLEAR(0,43,59);
+      GOTOXY(43,0); WRITE(X0:8:4);
+      CLEAR(1,43,59);
+      GOTOXY(43,1); INPUT_CONST(Y0,1,43,59);
+      CLEAR(1,43,59);
+      GOTOXY(43,1); WRITE(Y0:8:4);
+    END; { of procedure enter_ic }
+
+    PROCEDURE ENTER_SOLN; { local to procedure options}
+    BEGIN
+      REPEAT
+        CLEAR(1,10,39);
+        GOTOXY(10,1);
+        INPUT_FUNC;
+      UNTIL NOT ERROR;
+      SOLN:=TRUE;
+      FX:=ENTERED_FUNCTION
+    END; { of procedure enter_soln }
+    
+    PROCEDURE OMIT_SOLN; { local to procedure options }
+    BEGIN
+      CLEAR(1,10,39);
+      GOTOXY(10,1); WRITE('<no solution entered>');
+      SOLN:=FALSE
+    END; { of porcedure omit_soln }
+    
+    PROCEDURE ENTER_DX; { local to procedure options }
+    BEGIN
+      CLEAR(1,63,79);
+      GOTOXY(63,1);
+      INPUT_CONST(DX,1,63,79);
+      CLEAR(1,63,79);
+      GOTOXY(63,1); WRITE(DX:8:4);
+    END; { of procedure enter_dx }
+
+    PROCEDURE ENTER_XF; { local to procedure options }
+    BEGIN
+      CLEAR(0,63,79);
+      GOTOXY(63,0);
+      INPUT_CONST(XF,0,63,79);
+      CLEAR(0,63,79);
+      GOTOXY(63,0); WRITE(XF:8:4);
+    END; { of procedure enter_xf }
+    
+    PROCEDURE SCREEN_LIMITS; { local to procedure options }
+    
+      PROCEDURE GET_XRANGE; { local to procedure screen_limits }
+      BEGIN
+        GOTOXY(60,3);  WRITE('  X LIMITS ON GRAPH ');
+        GOTOXY(60,4);  WRITE('XMIN=',XMIN:8:3);
+        GOTOXY(60,5);  WRITE('XMAX=',XMAX:8:3);
+        GOTOXY(60,6);  WRITE('***OPTIONS***');
+        GOTOXY(60,7);  WRITE('*FOR X RANGE*');
+        GOTOXY(60,9);  WRITE('(N) No change');
+        GOTOXY(60,10); WRITE('(I) Input new values');
+        GOTOXY(60,11); WRITE('(U) Use Xo Xf values');
+        REPEAT
+          GOTOXY(60,13);
+          WRITE('type N,I, or U');
+          READ(KEYBOARD,KB);
+        UNTIL KB IN ['N','I','U','n','i','u'];
+        IF KB IN ['n','i','u'] THEN KB:=CHR(ORD(KB)-32); {to upper case}
+        IF KB <> 'I'
+             THEN FOR L:=3 TO 13 DO CLEAR(L,60,79)
+             ELSE FOR L:=6 TO 13 DO CLEAR(L,60,79);
+        CASE KB OF
+          'N': EXIT(GET_XRANGE);
+          'I': BEGIN
+                 REPEAT
+                   INPUT_CONST(XMIN,4,65,79);
+                   INPUT_CONST(XMAX,5,65,79)
+                 UNTIL XMAX > XMIN;
+                 FOR L:=3 TO 5 DO CLEAR(L,60,79);
+               END;
+          'U': BEGIN
+                 XMIN:=X0; XMAX:=XF
+               END;
+          END; { of case opt }
+        XRANGE:=XMAX-XMIN;
+        XSCALE:=(XRIGHT-XLEFT)/XRANGE; { graphic pts / x units }
+        SET_SCREEN
+      END; { of procedure get_xrange }
+      
+      PROCEDURE GET_YRANGE; { local to procedure screen_limits }
+      VAR X1,Y1,DELX: REAL;
+         
+         PROCEDURE COMPUTE_YRANGE; { local to procedure get_yrange}
+         BEGIN
+           GOTOXY(60,3); WRITE('*computing y range*');
+           Y1:=F(XMIN,0,0);
+           YMIN:=Y1; YMAX:=Y1;
+           DELX:=1/XSCALE;
+           IF SOLN 
+             THEN
+               BEGIN
+                 GOTOXY(60,4); WRITE('* using soln Y(x) *');
+                 ENTERED_FUNCTION:=FX;
+                 REPLACE_FUNCTION;
+                 X1:=XMIN;
+                 REPEAT
+                   Y1:=F(X1,0,0);
+                   IF Y1>YMAX THEN YMAX:=Y1;
+                   IF Y1<YMIN THEN YMIN:=Y1;
+                   X1:=X1+DELX;
+                 UNTIL X1>XMAX;
+               END
+             ELSE
+               BEGIN
+                 GOTOXY(60,4); WRITE('using DE dy/dx');
+                 ENTERED_FUNCTION:=FXY;
+                 REPLACE_FUNCTION;
+                 X1:=X0; Y1:=Y0;
+                 REPEAT
+                   Y1:=Y1+F(X1,Y1,0)*DELX;
+                   IF Y1>YMAX THEN YMAX:=Y1;
+                   IF Y1<YMIN THEN YMIN:=Y1;
+                   X1:=X1+DELX
+                 UNTIL X1>XMAX;
+                 X1:=X0; Y1:=Y0;
+                 REPEAT
+                   Y1:=Y1+F(X1,Y1,0)*(-DELX);
+                   IF Y1>YMAX THEN YMAX:=Y1;
+                   IF Y1<YMIN THEN YMIN:=Y1;
+                   X1:=X1-DELX
+                 UNTIL X1<XMIN;
+               END;
+           IF YMAX > 2000 THEN YMAX:=2000;
+           IF YMIN < -2000 THEN YMIN:=-2000;
+           YRANGE:=YMAX-YMIN;
+           IF YRANGE=0
+             THEN { yrange=0 only if y=constant }
+               BEGIN
+                 YMIN:=YMIN-0.5; YMAX:=YMAX+0.5;
+                 YRANGE:=1
+               END
+             ELSE
+               BEGIN
+                 YMIN:=YMIN-0.1*YRANGE;
+                 YMAX:=YMAX+0.1*YRANGE;
+                 YRANGE:=1.2*YRANGE
+               END;
+           FOR L:=3 TO 4 DO CLEAR(L,60,79)
+        END; { of procedure compute_yrange }
+            
+      BEGIN { of procedure get_yrange }
+        GOTOXY(60,3);  WRITE('Y LIMITS ON GRAPH   ');
+        GOTOXY(60,4);  WRITE('YMIN=',YMIN:8:3);
+        GOTOXY(60,5);  WRITE('YMAX=',YMAX:8:3);
+        GOTOXY(60,6);  WRITE('***OPTIONS***');
+        GOTOXY(60,7);  WRITE('*FOR Y RANGE*');
+        GOTOXY(60,9);  WRITE('(N) No change');
+        GOTOXY(60,10); WRITE('(I) Input new values');
+        GOTOXY(60,11); WRITE('(C) Compute values');
+        REPEAT
+          GOTOXY(60,13);
+          WRITE('type N,I, or C');
+          READ(KEYBOARD,KB);
+        UNTIL KB IN ['N','I','C','n','i','c'];
+        IF KB IN ['n','i','c'] THEN KB:=CHR(ORD(KB)-32); {to upper case}
+        IF KB <> 'I'
+             THEN FOR L:=3 TO 13 DO CLEAR(L,60,79)
+             ELSE FOR L:=6 TO 13 DO CLEAR(L,60,79);
+        CASE KB OF
+          'N': EXIT(GET_YRANGE);
+          'I': BEGIN
+                 REPEAT
+                   INPUT_CONST(YMIN,4,65,79);
+                   INPUT_CONST(YMAX,5,65,79)
+                 UNTIL YMAX > YMIN;
+                 YRANGE:=YMAX-YMIN;
+                 FOR L:=3 TO 5 DO CLEAR(L,60,79);
+               END;
+          'C': COMPUTE_YRANGE
+          END;
+        YSCALE:=(YBOT-YTOP)/YRANGE; { graphic pts / y units }
+        Y_AT_BOT:=YMIN-(239-YBOT)/YSCALE; { y value at bottom of screen }
+        Y_AT_TOP:=YMAX+YTOP/YSCALE;       { y value at top of screen }
+        SET_SCREEN
+      END; { of procedure get_yrange }
+    
+    BEGIN { procedure screen_limits }
+      GET_XRANGE;
+      GET_YRANGE
+    END; { of procedure screen_limits }
+
+    PROCEDURE SW_TAB_OPT(K: CHAR); { local to procedure options }
+    BEGIN
+      IF K='Y' THEN TABLE_OPTIONS:=NOT TABLE_OPTIONS;
+      GOTOXY(77,14);
+      IF TABLE_OPTIONS
+          THEN WRITE('ON ')
+          ELSE WRITE('OFF');
+    END; { of procedure sw_tab_opt }
+    
+    PROCEDURE PLOT_SOLN; { local to procedure options }
+    VAR X,XINC: REAL;
+        PX1,PX2,PY1,PY2,I: INTEGER;
+    BEGIN { procedure plot_soln }
+      IF (NOT SOLN) THEN EXIT(PLOT_SOLN);
+      GOTOXY(60,3); WRITE('* plotting Y(x) *');
+      LISTING_SOLN:=TABLE_OPTION;
+      IF TABLE_OPTION THEN
+         BEGIN
+           GOTOXY(60,4); WRITE('  x         Y(x)')
+         END;
+      ENTERED_FUNCTION:=FX; REPLACE_FUNCTION;
+      XINC:=1/XSCALE;
+      X:=XMIN-XINC;
+      REPEAT
+        I:=0;
+        REPEAT
+          I:=I+1;
+          X:=X+XINC;
+          CONVERT(X,F(X,0,0),PX1,PY1);
+          CONVERT(X,F(X+XINC,0,0),PX2,PY2);
+          IF PRTOK(PX1,PY1,PX2,PY2) THEN
+            DRAWLINE(R,S,RW,PX1,PY1,1,PY2-PY1,1);
+          IF TABLE_OPTION THEN
+             BEGIN XTAB[I]:=X; YTAB[I]:=F(X,0,0) END;
+          XSTOP:=X>=XMAX
+        UNTIL (XSTOP) OR (I>=16);
+        IF TABLE_OPTION THEN
+          BEGIN
+            XTAB[I+1]:=X+XINC; YTAB[I+1]:=F(X+XINC,0,0);
+            LIST_TABLE(I+1)
+          END;
+      UNTIL XSTOP;
+      FOR L:=3 TO 4 DO CLEAR(L,60,79);
+      LISTING_SOLN:=FALSE
+    END; { of procedure plot_soln }
+  
+    PROCEDURE EULER; { local to options }
+    VAR X,Y: REAL;
+        DELTAX,DELTAY,XNEW,YNEW,I: INTEGER;
+    BEGIN
+      GOTOXY(57,2); WRITE('**Plotting EULER Soln**');
+      GOTOXY(57,3); WRITE('  for approx. y values');
+      ENTERED_FUNCTION:=FXY; REPLACE_FUNCTION;
+      IF TABLE_OPTION THEN TABLE_HEAD;
+      X:=X0; Y:=Y0;
+      REPEAT
+        I:=0;
+        REPEAT
+          I:=I+1;
+          IF TABLE_OPTION THEN
+            BEGIN
+              XTAB[I]:=X; YTAB[I]:=Y
+            END;
+          CONVERT(X,Y,XSTART,YSTART);
+          Y:=Y+F(X,Y,0)*DX; X:=X+DX; 
+          CONVERT(X,Y, XNEW,YNEW);
+          DELTAX:=XNEW-XSTART; DELTAY:=YNEW-YSTART;
+          IF PRTOK(XSTART,YSTART,XNEW,YNEW) THEN 
+              DRAWLINE(R,S,RW,XSTART,YSTART,DELTAX,DELTAY,1);
+          IF DX>0 THEN XSTOP:=X>XF ELSE XSTOP:=X<XF;
+        UNTIL (XSTOP) OR (I>=16);
+        IF TABLE_OPTION THEN
+          BEGIN
+            XTAB[I+1]:=X; YTAB[I+1]:=Y;
+            LIST_TABLE(I+1)
+          END;
+      UNTIL XSTOP;
+      FOR L:=2 TO 4 DO CLEAR(L,57,79);
+    END; { of procedure euler }
+
+    PROCEDURE RUNGE; { local to procedure options }
+    VAR X,Y,K,K1,K2,K3,K4,H: REAL;
+        I,XOLD,YOLD,XNEW,YNEW,DELTAX,DELTAY: INTEGER;
+    BEGIN
+      GOTOXY(57,2); WRITE('**Plotting RUNGE-KUTTA*');
+      GOTOXY(57,3); WRITE('soln for approx y val.');
+      ENTERED_FUNCTION:=FXY; REPLACE_FUNCTION;
+      IF TABLE_OPTION THEN TABLE_HEAD;
+      H:=DX;
+      X:=X0; Y:=Y0;
+      REPEAT
+        I:=0;
+        REPEAT
+          I:=I+1;
+          K1:=F(X,Y,0);
+          K2:=F(X+H/2,Y+K1*H/2,0);
+          K3:=F(X+H/2,Y+K2*H/2,0);
+          K4:=F(X+H, Y+K3*H,0);
+          K:=(K1+2*K2+2*K3+K4)/6;
+          IF TABLE_OPTION THEN
+            BEGIN
+              XTAB[I]:=X; YTAB[I]:=Y
+            END;
+          CONVERT(X,Y,XOLD,YOLD);
+          X:=X+H; Y:=Y+K*H;
+          CONVERT(X,Y,XNEW,YNEW);
+          DELTAX:=XNEW-XOLD; DELTAY:=YNEW-YOLD;
+          IF PRTOK(XOLD,YOLD,XNEW,YNEW) THEN 
+            DRAWLINE(R,S,RW,XOLD,YOLD,DELTAX,DELTAY,1);
+          IF DX>0 THEN XSTOP:=X>XF ELSE XSTOP:=X<XF;
+        UNTIL (XSTOP) OR (I>=16);
+      IF TABLE_OPTION THEN
+        BEGIN
+          XTAB[I+1]:=X; YTAB[I+1]:=Y;
+          LIST_TABLE(I+1)
+        END;
+      UNTIL XSTOP;
+      FOR L:=2 TO 4 DO CLEAR(L,57,79);
+    END; { of procedure runge }
+  
+BEGIN { procedure options }
+  REPEAT
+    IF LIST_OPTIONS THEN
+      BEGIN
+        GOTOXY(57,3); WRITE('KEY******OPTIONS*******');
+        GOTOXY(57,4); WRITE('**data change options**');
+        GOTOXY(57,5); WRITE(' F  dy/dx = F(x,y)     ');
+        GOTOXY(57,6); WRITE(' I  Initial cond. Xo,Yo');
+        GOTOXY(57,7); WRITE(' Y  Soln. Y(x)         ');
+        GOTOXY(57,8); WRITE(' O  Omit soln. Y(x)    ');
+        GOTOXY(57,9); WRITE(' D  Dx integration step');
+        GOTOXY(57,10);WRITE(' X  Xf = final x value ');
+        GOTOXY(57,11);WRITE('****screeen options****');
+        GOTOXY(57,12);WRITE(' C  Clear graph        ');
+        GOTOXY(57,13);WRITE(' L  Limits on screen   ');
+        GOTOXY(57,14);WRITE(' T  xy Table is now '); SW_TAB_OPT('N');
+        GOTOXY(57,15);WRITE('*soln plotting options*');
+        GOTOXY(57,16);WRITE(' P  Plot soln. Y(x)    ');
+        GOTOXY(57,17);WRITE(' E  Euler (increment)  ');
+        GOTOXY(57,18);WRITE(' R  Runge 4th order    ');
+        GOTOXY(57,19);WRITE('**termination options**');
+        GOTOXY(57,20);WRITE(' B  Begin program again');
+        GOTOXY(57,21);WRITE(' Q  Quit program       ');
+      END;
+    REPEAT
+      GOTOXY(61,23); WRITE('TYPE OPTION KEY:');
+      READ(KEYBOARD,KB);
+    UNTIL KB IN OPTION_KEYS;
+    IF KB IN ['a'..'z'] THEN KB:=CHR(ORD(KB)-32); { convert to upper case }
+    CLEAR(23,61,79);
+    LIST_OPTIONS:=KB IN ['L','P','E','R'];
+    IF LIST_OPTIONS THEN FOR L:=3 TO 22 DO CLEAR(L,57,79);
+    CASE KB OF
+      'F': ENTER_DE;
+      'I': ENTER_IC;
+      'Y': ENTER_SOLN;
+      'O': OMIT_SOLN;
+      'D': ENTER_DX;
+      'X': ENTER_XF;
+      'C': SET_SCREEEN;
+      'L': SCREEN_LIMITS;
+      'T': SW_TAB_OPT('Y');
+      'P': PLOT_SOLN;
+      'E': EULER;
+      'R': RUNGE;
+      'B': EXIT(OPTIONS);
+      'Q': BEGIN
+             FILLCHAR(S,SIZEOF(S),FALSE);
+             CLEARSCREEN;
+             EXIT(IVP);
+           END
+       END;
+  UNTIL FALSE;
+END; { of procedure options }
+  
+BEGIN { main program ivp }
+  REPEAT
+    INITIALIZE;
+    OPTIONS
+  UNTIL FALSE;
+END. { of main program ivp }
+

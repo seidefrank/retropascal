@@ -1,0 +1,117 @@
+program compfile;
+  { compare file utility program.
+    written by Jon Bondy Feb 1982 }
+  const 
+    { number of retries for reading and writing }
+    readretries = 1;
+    writeretries = 3;
+    buffsize = 32; { blocks }
+    bs = 8;
+  type
+    block = packed array [1..512] of char;
+  var
+    buff1, buff2 : array[1..buffsize] of block;
+    retrycount : integer;
+    file_1, file_2 : file;
+    fname : string;
+    ch : char;
+      
+  procedure do_compare;
+    var
+       startblock : integer;
+       size : integer;
+       retrycount : integer;
+       i : integer;
+       error : boolean;
+    
+    procedure read_1(var size : integer; startblock : integer);
+      var
+        retrycount : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try reading file 1 after block ',
+             startblock,'.');
+        { obtain actual amount of data read here for use later on }
+        {$I-} size := blockread(file_1,buff1,buffsize,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until (ioresult = 0) or (retrycount > readretries);
+      if (ioresult <> 0) then begin
+        writeln('Unrecoverable error reading file 1 after block ',
+           startblock,'.');
+        exit(do_compare);
+        end;
+      end; { read_1 }
+          
+    procedure read_2(size, startblock : integer);
+      var
+        retrycount, size_read : integer;
+      begin
+      retrycount := 0;
+      repeat
+        if (ioresult <> 0) then 
+          writeln('Attempting to re-try reading file 2 after block ',
+             startblock,'.');
+        {$I-} size_read := blockread(file_2,buff2,size,startblock); {$I+}
+        retrycount := retrycount + 1;
+        until ((ioresult = 0) and (size_read = size)) or 
+          (retrycount > readretries);
+      if (ioresult <> 0) or (size_read <> size) then begin
+        writeln('Unrecoverable error reading file 2 after block ',startblock,'.');
+        exit(do_compare);
+        end;
+      end; { read_2 }
+          
+    procedure compare_buffers(size, startblock : integer);
+      var
+        i, j : integer;
+      begin
+      for i := 1 to size do
+        if (buff1[i] <> buff2[i]) then begin
+           writeln('Compare error in block ', (startblock + i - 1), '.');
+           for j := 1 to 512 do
+             if (buff1[i][j] <> buff2[i][j]) then begin
+                writeln('Compare error in  byte ', j, '.');
+                exit(do_compare);
+                end; { if }
+           end; { if }
+      end; { compare_buffers }
+        
+    begin { do_compare }
+    startblock := 0;
+    repeat
+      size := buffsize; { try to fill buffer each time }
+      write('Comparing block ',startblock:4,'    ');
+      for i := 1 to 24 do write(chr(bs));
+      read_1(size,startblock);
+      read_2(size,startblock);
+      compare_buffers(size,startblock);
+      startblock := startblock + buffsize;
+      until (size < buffsize);
+    writeln;
+    writeln('Comparison completed successfully.');
+    end; { do_compare }
+    
+  begin { main }
+  repeat
+    writeln('Compare File Utility.  Written by Jon Bondy, 2/82.');
+    repeat
+      write('Enter first file name : ');
+      readln(fname);
+      close(file_1); {$I-} reset(file_1,fname); {$I+}
+      until (ioresult = 0);
+    repeat
+      write('Enter second file name : ');
+      readln(fname);
+      close(file_2); {$I-} reset(file_2,fname); {$I+}
+      until (ioresult = 0);
+    do_compare;
+    write('Do you wish to make another comparison? ');
+    read(ch); writeln;
+    until (ch = 'n') or (ch = 'N');
+  write('Press <CR> when system disk is in Unit 4 again.');
+  readln(ch);
+  end.
+
+

@@ -1,0 +1,513 @@
+{
+{  MAP - Pascal macro preprocessor
+{        written by Doug Comer, Purdue University Computing Center
+{
+{       from Pascal News #17
+{
+{  Copyright (C) 1978. Permission to copy, modify and distribute,
+{                       but not for profit, is hereby granted,
+{                       provided that this not is included.
+{       Jul 1980 -      Modifications for UCSD Pascal - dhd     }
+
+{$S+ permit compiler to swap }
+program map;
+  uses fastread;
+
+  const
+    alfaleng    = 10;
+    arrow       = '^';
+    blank       = ' ';
+    break       = '      ';
+    comma       = ',';
+    defexpr     = true; { default for expression evaluation }
+    deflist     = false;{ default for listing }
+    defprc      = 71;   { default right column for Pascal }
+    defrc       = 140;  { default right column for map input }
+    dollar      = '$';
+    double      = '0';  { double space carriage control }
+    equal       = '=';
+    errprefix   = '---> error ';
+    errlen      = 40;   { length of error messages }
+    errflag     = ' ';
+    greater     = '>';
+    letterb     = 'B';
+    lettere     = 'E';
+    lparen      = '(';
+    maxcalls    = 15;   { max macro call depth }
+    maxcons     = 200;  { max active const defns }
+    maxcol      = 120;  { max right col for input/output }
+    maxcstr     = 1000; { max const string area }
+    maxdefs     = 100;  { max defined macros }
+    maxdefstr   = 4000; { max macro string area }
+    maxfiles    = 1;    { max included file depth }
+    maxfns      = 14;   { max recognized functions }
+    maxkeys     = 21;   { max recognized language keywords }
+    maxline     = 140;  { max characters / input line }
+    mincol      = 70;   { min right column for input/output }
+    minus       = '-';
+    ndefconst   = 9;    { number of pre-defined constants }
+    
+    nsysmac     = 5;    { number of system macros }
+    pagesize    = 55;   { lines/page not counting heading }
+    period      = '.';
+    plus        = '+';
+    quote       = '''';
+    rparen      = ')';
+    semi        = ';';
+    space       = ' ';
+    star        = '*';
+    sysinc      = 1;    { codes for system macros }
+    syscodeif   = 2;
+    sysindex    = 3;
+    sysdefine   = 4;
+    sysoption   = 5;
+(*
+    title       = ' M A P  (vers 2.0p of 4/30/79)';
+    title1a     = '                    run on ';
+    title1b     = ' at ';
+    title2      = '        include    pascal';
+    title3      = ' line  file     line    line         source';
+    title4      = ' ----  -------------   ------  ------------';
+    title5      = '------------------------------------------------';
+    title6      = '-----'; 
+*)
+    zero        = '0';
+    
+  type
+    alfa        = packed array[1..alfaleng] of char;
+    crng        = 0..maxcons;   { constant expression stack }
+    csrng       = 0..maxcstr;   { constant expression string area }
+    drng        = 0..maxdefs;   { macro defination stack }
+    dsrng       = 0..maxdefstr; { macro def string area }
+    flrng       = 0..maxfiles;  { included file stack }
+    fnrng       = 0..maxfns;    { built-in functions }
+    krng        = 0..maxkeys;   { keywords }
+    lnrng       = 0..maxline;   { input line }
+    mrng        = 0..maxcalls;  { macro call stack }
+    pgrng       = 0..pagesize;  { listing page }
+    
+    msg         = packed array[1..140] of char;
+
+    fptr        = ^formal;
+    
+    formal      = record
+                    fname: alfa;        { name of formal parameter }
+                    fnext: fptr
+                  end;
+    
+    fns         = (fabs,fatn,fchr,fcos,fexp,    { built-in functions }
+                   flen,fln,fodd,ford,frou,fsin,fsqr,fstr,ftru);
+                   
+    lex         = (lexadd,lexsub,       { order dependent }
+                  lexand,lexmult,lexdvd,lexmin,lexmax,lexdiv,lexmod,
+                  lexalpha,lexint,lexreal,lexst,lexmac,
+                  lexbeg,lexcas,lexend,lexrec,lexfun,lexproc,lexcon,
+                  lexmcon,
+                  lextpe,lexvar,lexfwd,
+                  lexor,lexnot,
+                  lexlt,lexle,lexeq,lexgt,lexge,lexne,
+                  lexsemi,lexother,
+                  lexlparen,lexrparen,
+                  lexcomma,lexeof);
+                  
+    aptr        = ^arg;
+    
+    arg         = record        { actual arg list }
+                    aform: alfa;        { formal name }
+                    afirst: dsrng;      { start of actual in dstr }
+                    alast:  dsrng;
+                    anext: aptr
+                  end;
+                  
+    constyp     = (tbl,tch,terr,tin,tot,tre);   { type of const expr }
+    
+    cset        = set of constyp;
+    
+    strng       = packed array[1..maxline] of char;
+    
+    errmsg      = string[errlen];
+    
+    lfnstring   = string[30];
+  
+  var
+    (*
+    DEBUGON     : BOOLEAN;
+    DEBUGSET    : SET OF 0..100; *)
+    ftop        : -1..maxfiles;
+    ctop,                       { current top of ctab and last const }
+    cvalid      : crng;         { last non-temporary constant }
+    mtop        : mrng;         { top of called macro stack }
+    dtop        : drng;
+    cstop       : csrng;
+    newline     : char;         { newline character }
+    dstop       : dsrng;        { top of definition string area }
+    last,
+    next        : lnrng;        { last char and next char in inline }
+    ch          : char;         { next char from getch }
+    line        : integer;      { last line number }
+    pline       : integer;      { next pascal output line number }
+    atop        : dsrng;        { actual arguments saved in top of defstr }
+    linectr     : integer;      { lines so far on this page }
+    nerrors     : integer;      { number of erros found }
+    lexlen      : lnrng;        { number of chars in lexstr }
+    lextyp      : lex;          { type of token in lexstr }
+    index       : integer;      { for $index macro }
+    onscreen    : boolean;      { if listing to screen }
+    
+    ctab        : array[crng] of        { constant table }
+                    record
+                      cname: alfa;
+                      case ctyp: constyp of
+                        tin: (ci: integer);
+                        tre: (cr: real);
+                        tch: (cfirst: csrng; clen: csrng);
+                        tbl: (cb: boolean);
+                        tot: (co: alfa)
+                    end;
+                      
+  cstr          : packed array[csrng] of char; { string const storage }
+  infile        : ffile; { input file }
+  
+  fstack        : array[flrng] of       { included file stack }
+                    record
+                      ffcb : fcb;       { file control block }
+                      fline: integer
+                    end;
+                    
+  keywd         : array[0..maxkeys] of { language keywords }
+                    record
+                      kname: alfa;      { keyword name }
+                      klex:  lex
+                    end;
+                    
+  mstack        : array[mrng] of        { macros calls }
+                    record
+                      margs: aptr;      { list of args }
+                      mnext: dsrng;     { next char to read }
+                      mlast: dsrng;     { last char in this macro }
+                      matop: dsrng;     { actual top upon call }
+                    end;
+                    
+  defs          : array[drng] of        { macro definitions }
+                    record
+                      dname: alfa;      { macro name }
+                      dfirst: dsrng;    { first char in this macro }
+                      dlast: dsrng;     { last char in this macro }
+                      dargs: fptr       { list of formals }
+                    end;
+                    
+  defstr        : array[dsrng] of char; { macro definition bodies }
+  
+  funct         : array[fnrng] of       { list of built in functions }
+                    record
+                      fnnme: alfa;
+                      fntyp: fns
+                    end;
+                    
+  blankalfa     : alfa;
+  
+  inline        : longstring;
+  tme,                          { time of day from system }
+  dte           : alfa;         { date from system }
+  timein        : integer;      { clock value at start of run }
+  tottme        : integer;      { total time used in ms }
+  
+  psource       : text;         { output file }
+  (* 
+  dummy         : text;         { dummy used for real number conversion }*)
+  
+  rcopt,
+  prcopt        : lnrng;        { right column on input/output }
+  listopt       : boolean;      { list on or off }
+  expropt       : boolean;      { recognize expressions on or off }
+  
+  lastlex       : lex;          { last token type put by puttok }
+  outpos        : lnrng;        { last column pos used by puttok }
+  
+  lexstr        : strng;        { lexical string }
+  confl         : set of lex;   { set of tokens needing blank between }
+  
+{ MAP-FPROCS }
+
+procedure arith;        forward;
+procedure ckformal(name: alfa; var found: boolean);
+                        forward;
+procedure ckmacro(name: alfa; { macro name } var found: boolean);
+                        forward;
+procedure closefile;    forward;
+procedure convrt;       forward;
+procedure convrti;      forward;
+procedure convrtr;      forward;
+procedure convrts;      forward;
+procedure docodeif;     forward;
+procedure dodefine;     forward;
+procedure doinclude;    forward;
+procedure doindex;      forward;
+procedure dooptions;    forward;
+procedure dosysmac(d: drng); { which macro }
+                        forward;
+procedure error(err: errmsg);
+                        forward;
+procedure evalfns(f: fns);
+                        forward;
+procedure evalabs;      forward;
+procedure evalatn;      forward;
+procedure evalchr;      forward;
+procedure evalcos;      forward;
+procedure evalexp;      forward;
+procedure evallen;      forward;
+procedure evalln;       forward;
+procedure evalodd;      forward;
+procedure evalord;      forward;
+procedure evalrou;      forward;
+procedure evalsin;      forward;
+procedure evalsqr;      forward;
+procedure evalstr;      forward;
+procedure evaltru;      forward;
+procedure experror(err: errmsg);
+                        forward;
+procedure expression;   forward;
+procedure factor;       forward;
+procedure findcon(name: alfa; var found: boolean);
+                        forward;
+procedure flookup(name: alfa; var fun: fns; var found: boolean);
+                        forward;
+procedure flush;        forward;
+procedure forcereal;    forward;
+procedure getactuals(f: fptr; var act: aptr);
+                        forward;
+procedure getbody;      forward;
+procedure getbsu;       forward;
+procedure getcdparm;    forward;
+procedure getch;        forward;
+procedure getformals(var f: fptr);
+                        forward;
+procedure getkey;       forward;
+procedure getline;      forward;
+procedure getparm;      forward;
+procedure gettok;       forward;
+procedure need(L: pgrng);
+                        forward;
+procedure newpg;        forward;
+procedure open(name: lfnstring); { file name to open }
+                        forward;
+procedure over(i: integer; maxval: integer);
+                        forward;
+procedure parse(top: crng; tok: lex);
+                        forward;
+procedure parsecon;     forward;
+procedure parsemcon;    forward;
+procedure pushback;     forward;
+procedure putc(ch: char);
+                        forward;
+procedure puttok;       forward;
+procedure relate;       forward;
+procedure scanheader;   forward;
+procedure term;         forward;
+procedure terminate;    forward;
+function toupper(ch: char): char;
+                        forward;
+function typeis(c: cset): boolean;
+                        forward;
+function typesmatch: boolean;
+                        forward;
+procedure variable;     forward;
+
+segment procedure initialize;
+  var 
+    i           : integer;
+    valid       : boolean;
+    ilfn, olfn  : string[30];
+
+  procedure timedate;
+    const
+      backspace = 8;
+    var i, l: integer;
+        xstr: packed array[1..16] of char;
+        date, time: string[alfaleng];
+  begin { timedate }
+    xstr := 'MM/DD/YYHH:MM:SS';
+    tme := '*TIME*    ';
+    dte := '*DATE*    ';
+    repeat
+      write('Enter date in form MM/DD/YY'); 
+      for i := 1 to 8 do write(chr(backspace));
+      readln(date);
+      l := length(date);
+    until (l = 8) or (l = 0);
+    if l > 0 then
+      begin moveleft(date[1], xstr[1], 8); 
+        moveleft(date[1], dte[1], 8) 
+      end;
+    repeat
+      write('Enter time in form HH:MM:SS'); 
+      for i := 1 to 8 do write(chr(backspace));
+      readln(time);
+      l := length(time);
+    until (l = 8) or (l = 0);
+    if l > 0 then
+      begin moveleft(time[1], xstr[9], 8); 
+        moveleft(time[1], tme[1], 8) 
+      end;
+    moveleft(xstr[1], cstr[1], 16);
+    cstop := 16;
+  end;  { timedate }
+
+procedure initctab;
+  begin { initctab }
+    with ctab[1] do
+      begin cname := 'MM        '; ctyp := tch; clen := 2; cfirst := 1 end;
+    with ctab[2] do
+      begin cname := 'DD        '; ctyp := tch; clen := 2; cfirst := 4 end;
+    with ctab[3] do
+      begin cname := 'YY        '; ctyp := tch; clen := 2; cfirst := 7 end;
+    with ctab[4] do
+      begin cname := 'TIME      '; ctyp := tch; clen := 8; cfirst := 9 end;
+    with ctab[5] do
+      begin cname := 'DATE      '; ctyp := tch; clen := 8; cfirst := 1 end;
+    with ctab[6] do
+      begin cname := 'TRUE      '; ctyp := tbl; cb := true end;
+    with ctab[7] do
+      begin cname := 'FALSE     '; ctyp := tbl; cb := false end;
+    with ctab[8] do
+      begin cname := 'MAXINT    '; ctyp := tre; cr := maxint end;
+    with ctab[9] do
+      begin cname := 'MININT    '; ctyp := tre; cr := -maxint end;
+    ctop := ndefconst;
+    cvalid := ndefconst;
+  end;  { initctab }
+  
+  procedure initkeywd;
+  begin { initkeywd }
+    { keywords are in order of decreasing frequency of access }
+    with keywd[16] do begin kname := 'AND       '; klex := lexand   end;
+    with keywd[20] do begin kname := 'BEGIN     '; klex := lexbeg   end;
+    with keywd[14] do begin kname := 'CASE      '; klex := lexcas   end;
+    with keywd[10] do begin kname := 'CONST     '; klex := lexcon   end;
+    with keywd[11] do begin kname := 'DIV       '; klex := lexdiv   end;
+    with keywd[21] do begin kname := 'END       '; klex := lexend   end;
+    with keywd[ 8] do begin kname := 'EXTERNAL  '; klex := lexfwd   end;
+    with keywd[ 2] do begin kname := 'FORTRAN   '; klex := lexfwd   end;
+    with keywd[15] do begin kname := 'FORWARD   '; klex := lexfwd   end;
+    with keywd[ 9] do begin kname := 'FUNCTION  '; klex := lexfun   end;
+    with keywd[ 4] do begin kname := 'MAX       '; klex := lexmax   end;
+    with keywd[ 3] do begin kname := 'MCONST    '; klex := lexmcon  end;
+    with keywd[ 5] do begin kname := 'MIN       '; klex := lexmin   end;
+    with keywd[ 6] do begin kname := 'MOD       '; klex := lexmod   end;
+    with keywd[17] do begin kname := 'NOT       '; klex := lexnot   end;
+    with keywd[12] do begin kname := 'OR        '; klex := lexor    end;
+    with keywd[19] do begin kname := 'PROCEDURE '; klex := lexproc  end;
+    with keywd[13] do begin kname := 'RECORD    '; klex := lexrec   end;
+    with keywd[ 1] do begin kname := 'RUN       '; klex := lexfwd   end;
+    with keywd[ 7] do begin kname := 'TYPE      '; klex := lextpe   end;
+    with keywd[18] do begin kname := 'VAR       '; klex := lexvar   end;
+    mtop := 0; dstop := 0; 
+  end;  { initkeywd }
+  
+  procedure initdefs;
+  begin { initdefs }
+    defs[sysinc   ].dname := '$INCLUDE  ';
+    defs[sysdefine].dname := '$DEFINE   ';
+    defs[sysindex ].dname := '$INDEX    ';
+    defs[sysoption].dname := '$OPTIONS  ';
+    defs[syscodeif].dname := '$CODEIF   ';
+    dtop := nsysmac; atop := maxdefstr;
+  end;  { initdefs }
+
+  procedure initfuncts;
+  begin { initfuncts }
+    with funct[ 01] do begin fnnme :=  'ABS       '; fntyp :=   fabs   end;
+    with funct[ 02] do begin fnnme :=  'ARCTAN    '; fntyp :=   fatn   end;
+    with funct[ 03] do begin fnnme :=  'CHR       '; fntyp :=   fchr   end;
+    with funct[ 04] do begin fnnme :=  'COS       '; fntyp :=   fcos   end;
+    with funct[ 05] do begin fnnme :=  'EXP       '; fntyp :=   fexp   end;
+    with funct[ 06] do begin fnnme :=  'LENGTH    '; fntyp :=   flen   end;
+    with funct[ 07] do begin fnnme :=  'LN        '; fntyp :=   fln    end;
+    with funct[ 08] do begin fnnme :=  'ODD       '; fntyp :=   fodd   end;
+    with funct[ 09] do begin fnnme :=  'ORD       '; fntyp :=   ford   end;
+    with funct[ 10] do begin fnnme :=  'ROUND     '; fntyp :=   frou   end;
+    with funct[ 11] do begin fnnme :=  'SIN       '; fntyp :=   fsin   end;
+    with funct[ 12] do begin fnnme :=  'SQR       '; fntyp :=   fsqr   end;
+    with funct[ 13] do begin fnnme :=  'STRINGOF  '; fntyp :=   fstr   end;
+    with funct[ 14] do begin fnnme :=  'TRUNC     '; fntyp :=   ftru   end;
+  end;  { initfuncts }
+  
+begin { initialize }
+  timedate;
+  initctab;
+  initkeywd;
+  initdefs;
+  initfuncts;
+  line := 0;    { last line number for listing }
+  pline := 1;   { next, not last, pascal line number }
+  rcopt := defrc;
+  prcopt := defprc;
+  listopt := deflist;
+  expropt := defexpr;   { parse const expressions }
+  outpos := 0;          { last output position used }
+  lastlex := lexeof;    { last token type output }
+  nerrors := 0;
+  index := 0;
+  confl := [lexalpha,lexreal,lexint,lexand,lexor,lexnot,lexmin,
+                lexmax,lexdiv,lexmod,lexbeg,lexcas,lexend,lexrec,lexfun,
+                lexproc,lexcon,lextpe,lexvar];
+  linectr := pagesize;  { force newpage on listing }
+  newline := chr(10);
+  blankalfa := '          ';
+  ftop := -1; { no open files }
+  lexlen := 0; ch := ' '; lextyp := lexeof;
+  {$R- disable string range checks }
+  inline[0] := chr(sizeof(inline)); fillchar(inline[1], sizeof(inline), space);
+  {$R+}
+(* DEBUGON := FALSE; *)
+  repeat
+    write('Input file name: '); readln(ilfn);
+    if ilfn <> '' then
+      begin
+        for i := 1 to length(ilfn) do
+          ilfn[i] := toupper(ilfn[i]);
+        if pos('.TEXT', ilfn) <= 0 then
+          ilfn := concat(ilfn, '.TEXT');
+      end
+    else
+      ilfn := '*SYSTEM.WRK.TEXT';
+    write('Output file name: '); readln(olfn);
+    if olfn <> '' then
+      begin
+        for i := 1 to length(olfn) do
+          olfn[i] := toupper(olfn[i]);
+        onscreen := (olfn = '#1:') or (olfn = 'CONSOLE:');
+        if not onscreen then
+          begin
+            if pos('.TEXT', olfn) <= 0 then
+              olfn := concat(olfn, '.TEXT');
+          end;
+      end
+    else
+      olfn := '*SYSTEM.WRK.TEXT';
+    valid := ilfn <> olfn;
+    if not valid then
+      writeln('Input file same as output file');
+  until valid;
+  open(ilfn);
+  rewrite(psource, olfn);
+  (*
+  rewrite(dummy, 'dummy');
+  DEBUGON := TRUE;
+  DEBUGSET := [];
+  REPEAT
+    WRITE('SET WHICH BREAKPOINT: '); READLN(I);
+    IF I > 0 THEN
+      DEBUGSET := DEBUGSET + [I];
+  UNTIL I <= 0; *)
+end;  { initialize }
+
+{$I MAP-A}
+{$I MAP-B}
+  
+begin { map }
+  initialize;
+  parse(ctop, lexeof);
+  terminate
+end.  { map }
+

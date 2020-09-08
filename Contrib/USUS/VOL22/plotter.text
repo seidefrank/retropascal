@@ -1,0 +1,245 @@
+{
+ This unit was assembled for use with Grundler programs using the PLOTTER unit.
+ DMP2PLOT must be edited to use your serial board addresses or replaced with
+ the following or something similar:
+     TYPE BYTE = PACKED ARRAY[0..0] OF 0..255;
+     PROCEDURE DMP2PLOT(CH : CHAR);
+     VAR  OUTCODE : BYTE;
+     BEGIN
+       OUTCODE := ORD(CH);
+       UNITWRITE(8,OUTCODE,1)
+     END;
+ to use REMOUT (not recommended). HPXMAX and HPYMAX will have to be redefined
+ for use with the large, "dumb" Hiplot. The "smart" Hiplots may also be used
+ but require more complex routines than those given here. 
+      The THROTTLE routine may be removed by Terak users as a similar routine
+ is in the Terak library.
+ }
+
+UNIT PLOTTER;   {Version 1.1, 23 Dec 1982}
+INTERFACE
+
+VAR     PENSTATE,PLOT_XLOC,PLOT_YLOC,OLDIPX,OLDIPY  : INTEGER;
+        OLDPEN : BOOLEAN;
+        
+PROCEDURE THROTTLE(TICKS: INTEGER);
+
+PROCEDURE PLOT(PMODE,X,Y : INTEGER);
+
+PROCEDURE INITPLOT;
+
+IMPLEMENTATION
+
+CONST   HPXMAX = 2000;  (*maximum horizontal plotter steps*)
+        HPYMAX = 1400;  (*maximum vertical plotter steps*)
+
+PROCEDURE THROTTLE(*TICKS:INTEGER*);
+  
+  VAR   COUNT,HITIME,START,STOP,TIMEDIFF : INTEGER;
+  BEGIN
+    COUNT := 0;
+    TIME(HITIME,START);
+    REPEAT
+      COUNT := COUNT+1;  (*Without counter routine, CPU is too fast and
+                           will stop and give the error message even if 
+                           the clock is on.  The value 1000 works but has not
+                           been optimized. Presumably it could be smaller.*)
+      TIME(HITIME,STOP);
+      TIMEDIFF := STOP-START;
+      IF (TIMEDIFF < 0) THEN TIMEDIFF := TIMEDIFF+32767;
+      IF ((TIMEDIFF = 0) AND (COUNT = 1000)) THEN
+        BEGIN
+          GOTOXY(0,23);
+          WRITE(CHR(7),'Turn on the line time clock! Type <RTN> to continue.');
+          READLN
+        END;
+      UNTIL (TIMEDIFF >= TICKS)
+  END;
+  
+PROCEDURE DMP2PLOT(CH : CHAR);
+
+{Note: address of serial board receiver status register and receiver buffer
+ must be specified in decimal.  The easy way to do this is illustrated for
+ the standard REMOUT addresses, 177524 and 177526 (not used by the reviewer):
+    200000 - 177524 = 0252 (8)   (using octal arithmetic)
+    (0*512)+(2*64)+(5*8)+(2*1) = 172 (10)
+    PXCSR = -172
+    PXBUF = -170}
+
+  CONST PXCSR = -684 (*176524 (octal); also reviewer's REMOUT address
+                        but seems to cause no problems*);
+        PXBUF = -682 (*176526 (octal)*); 
+        BITNO = 7;
+  TYPE  INFO = PACKED RECORD CASE BOOLEAN OF
+          TRUE : (CH : PACKED ARRAY [0..1] OF CHAR);
+          FALSE : (BIT : PACKED ARRAY [0..15] OF BOOLEAN);
+        END;
+        IOPORT = PACKED RECORD CASE BOOLEAN OF
+          TRUE : (ADDR : INTEGER);
+          FALSE : (PNTR : ^INFO)
+        END;
+  VAR   XCSR,XBUF : IOPORT;
+  
+  BEGIN
+    REPEAT
+      XCSR.ADDR := PXCSR
+    UNTIL XCSR.PNTR^.BIT[BITNO];
+    XBUF.ADDR := PXBUF;
+    XBUF.PNTR^.CH[0] := CH;
+  END;
+
+PROCEDURE ENCODE(COMMAND : INTEGER);
+
+  CONST SP = ' ';
+        DELAY = 24;  (*delay for pen changes*)
+  
+  VAR   PENCODE2 : CHAR;
+        I : INTEGER;
+        
+  BEGIN
+    IF (COMMAND IN [0..10]) THEN
+      BEGIN
+        CASE COMMAND OF
+          0 : PENCODE2 := ' ';     (*delay*)
+          1 : PENCODE2 := 't';     (*-y*)
+          2 : PENCODE2 := 'p';     (*+y*)
+          3 : PENCODE2 := 'z';     (*pen down*)
+          4 : PENCODE2 := 'v';     (*-x*)
+          5 : PENCODE2 := 'u';     (*-x,-y*)
+          6 : PENCODE2 := 'w';     (*-x,+y*)
+          7 : PENCODE2 := 'y';     (*pen up*)
+          8 : PENCODE2 := 'r';     (*+x*)
+          9 : PENCODE2 := 's';     (*+x,-y*)
+         10 : PENCODE2 := 'q';     (*+x,+y*)
+       END;
+       DMP2PLOT(PENCODE2);
+       IF ((COMMAND IN [3,7]) AND (COMMAND <> PENSTATE)) THEN
+         BEGIN 
+           PENSTATE := COMMAND;
+           FOR I := 1 TO DELAY DO DMP2PLOT(SP)  (*Output spaces for pen delay*)
+        END                                   (*Could use THROTTLE(10) instead*)
+     END;
+  END;
+
+PROCEDURE PLOTMOVE(PMODE,PMOVE : INTEGER);
+  BEGIN
+    IF NOT (PMODE IN [0..4]) THEN EXIT(PLOTMOVE);
+    CASE PMODE OF
+      0 : IF (OLDPEN) THEN
+            BEGIN
+              ENCODE(7);  (*raise before*)
+              OLDPEN := FALSE
+            END;
+      1 : IF (NOT OLDPEN) THEN
+            BEGIN
+              ENCODE(3);  (*lower before*)
+              OLDPEN := TRUE
+            END;
+      2 : BEGIN
+            OLDIPX := 0;     (*set current pen position as plotter origin*)
+            OLDIPY := 0;
+            PENSTATE := 0;
+            EXIT(PLOTMOVE)
+          END;
+      3,4 : ;
+    END; (*case*)
+    ENCODE(PMOVE)
+  END;
+  
+  {The following is based on the Grundler GRAPHICS unit, which appears to
+   be based on the DRAWLINE implementation described in the UCSD manual for
+   version 1.5} 
+
+PROCEDURE PLOT(*PMODE,X,Y : INTEGER*);
+
+VAR     DELTAX,DELTAY,XINC,YINC,XCODE,YCODE,XYCODE,PMOVE : INTEGER;
+
+  PROCEDURE DOFORX;   {MORE HORIZONTAL}
+  
+    VAR ERROR,I:INTEGER;
+    BEGIN
+      IF DELTAX=0 THEN EXIT(PLOT);
+      ERROR:=DELTAX DIV 2;
+      I:=DELTAX;
+      REPEAT
+        X := X+XINC;
+        ERROR:=ERROR+DELTAY;
+        IF ERROR>=DELTAX THEN
+          BEGIN
+            ERROR:=ERROR-DELTAX;
+            Y := Y+YINC;
+            PMOVE := XYCODE;
+          END
+        ELSE PMOVE := XCODE;
+        PLOTMOVE(PMODE,PMOVE);
+        I:=I-1;
+      UNTIL I=0
+    END (*DOFORX*);
+    
+  PROCEDURE DOFORY;   {MORE VERTICAL}
+    
+    VAR ERROR,I:INTEGER;
+    BEGIN
+      ERROR:=DELTAY DIV 2;
+      I:=DELTAY;
+      REPEAT
+        Y := Y+YINC;
+        ERROR:=ERROR+DELTAX;
+        IF ERROR>=DELTAY THEN
+          BEGIN
+            ERROR:=ERROR-DELTAY;
+            X := X+XINC;
+            PMOVE := XYCODE;
+          END
+        ELSE PMOVE := YCODE;
+        PLOTMOVE(PMODE,PMOVE);
+        I:=I-1;
+      UNTIL I=0
+    END (*DOFORY*);
+    
+    BEGIN (*PLOT*)
+      IF (X>HPXMAX) THEN DELTAX := HPXMAX-PLOT_XLOC
+        ELSE IF (X<0) THEN DELTAX := -PLOT_XLOC
+        ELSE DELTAX := X-PLOT_XLOC;
+      IF (Y>HPYMAX) THEN DELTAY := HPYMAX-PLOT_YLOC
+        ELSE IF (X<0) THEN DELTAX := -PLOT_YLOC
+        ELSE DELTAY := Y-PLOT_YLOC;
+      OLDIPX := X;
+      OLDIPY := Y;
+      PLOT_XLOC := PLOT_XLOC+DELTAX;
+      PLOT_YLOC := PLOT_YLOC+DELTAY;
+      IF DELTAX < 0 THEN
+        BEGIN
+          XCODE := 4;
+          XINC := -1;
+          DELTAX := -DELTAX
+        END
+      ELSE
+        BEGIN
+          XCODE := 8;
+          XINC := 1
+        END;
+      IF DELTAY < 0 THEN
+        BEGIN
+          YCODE := 1;
+          YINC := -1;
+          DELTAY := -DELTAY
+        END
+      ELSE
+        BEGIN
+          YCODE := 2;
+          YINC := 1
+        END;
+      XYCODE := XCODE+YCODE;
+      IF DELTAX >= DELTAY THEN DOFORX ELSE DOFORY;
+    END (*PLOT*);
+
+PROCEDURE INITPLOT;
+  BEGIN
+    PLOTMOVE(2,0);
+    ENCODE(7);
+    OLDPEN := FALSE;
+    PLOT_XLOC := 0;      (*actual pen coordinates for limiting pen motion*)
+    PLOT_YLOC := 0;    (*assumes that origin will be extreme lower, left corner*)
+  END;
+END.

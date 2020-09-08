@@ -1,0 +1,21 @@
+
+        .FUNC   MREAD,0
+        .PRIVATE RETADDR
+TPORT   .EQU    0C0H            ;STATUS PORT
+DPORT   .EQU    0C1H            ;DATA PORT
+RECRDY  .EQU    02H             ;REC BUF FULL
+        POP     HL
+        LD      (RETADDR),HL    ;SAVE RET ADDR
+        POP     HL              ;CORRECT STACK
+        POP     HL              ;CORRECT STACK
+WAIT:   IN      A,(TPORT)        ;READ STATUS WORD
+        AND     RECRDY          ;IS REC FULL
+        JP      Z,WAIT
+        IN      A,(DPORT)
+        LD      L,A             ;STORE FOR RETURN
+        PUSH    HL              ;RETURN VALUE ON STACK
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+
+

@@ -1,0 +1,221 @@
+
+
+PROGRAM BALANCED;
+
+(**************************************)
+(*                                    *)
+(* MAKE AND PLOT A BALANCED TREE      *)
+(* (PROGRAM BY BILL ATKINSON)         *)
+(* BALANCE ALGORITHM FROM N.WIRTH,    *)
+(* ALGORITHMS+DATA STRUCTURES, P 215  *)
+(*                                    *)
+(**************************************)
+
+USES TURTLEGRAPHICS;
+
+CONST WORDLENGTH=6;
+      CONSOLE=1;
+
+TYPE WORDSTRING=STRING[WORDLENGTH];
+     NODEPTR=^NODE;
+     NODE=RECORD
+            WORD: WORDSTRING;
+            LEFT,RIGHT: NODEPTR;
+            BAL: -1..+1;
+          END;
+          
+VAR ROOT: NODEPTR;
+    S: STRING;
+    W: WORDSTRING;
+    DELTAY: ARRAY[0..4] OF INTEGER;
+    BOOL: BOOLEAN;
+    
+
+PROCEDURE INSERTIT(W: WORDSTRING; VAR P: NODEPTR; VAR H: BOOLEAN);
+VAR P1,P2: NODEPTR;
+BEGIN
+  IF P=NIL THEN (* MAKE NEW NODE *) 
+    BEGIN
+      NEW(P); H:=TRUE;
+      WITH P^ DO
+        BEGIN
+          LEFT:=NIL;
+          RIGHT:=NIL;
+          WORD:=W;
+          BAL:=0;
+        END;
+    END
+  
+  ELSE (* CHASE DOWN TREE FURTHER *)
+    IF W<P^.WORD THEN
+      BEGIN
+        INSERTIT(W,P^.LEFT,H);
+        IF H THEN  (* LEFT BRANCH HAS GROWN *)
+          CASE P^.BAL OF
+            1: BEGIN 
+                 P^.BAL:=0;
+                 H:=FALSE;
+               END; (* CASE1 *)
+               
+            0: P^.BAL:=-1;
+           
+           -1: BEGIN (* REBALANCE *)
+                 P1:=P^.LEFT;
+                 IF P1^.BAL=-1 THEN 
+                   BEGIN
+                     (* SINGLE LL ROTATION *)
+                     P^.LEFT:=P1^.RIGHT;
+                     P1^.RIGHT:=P;
+                     P^.BAL:=0;
+                     P:=P1;
+                   END
+                 ELSE
+                   BEGIN (* DOUBLE LR ROTATION *)
+                     P2:=P1^.RIGHT;
+                     P1^.RIGHT:=P2^.LEFT;
+                     P2^.LEFT:=P1;
+                     P^.LEFT:=P2^.RIGHT; 
+                     P2^.RIGHT:=P;
+                     IF P2^.BAL=-1 THEN P^.BAL:=+1 ELSE P^.BAL:=0;
+                     IF P2^.BAL=+1 THEN P1^.BAL:=-1 ELSE P1^.BAL:=0;
+                     P:=P2;
+                   END;
+                 P^.BAL:=0; H:=FALSE;
+               END; (* CASE -1 *)
+               
+          END; (* CASE *)
+      END (* IF W<P^.WORD *)
+      
+    ELSE
+    IF W>P^.WORD THEN 
+      BEGIN
+        INSERTIT(W,P^.RIGHT,H);
+        IF H THEN (* RIGHT BRANCH HAS GROWN *)
+          CASE P^.BAL OF
+           -1: BEGIN
+                 P^.BAL:=0;
+                 H:=FALSE;
+               END; (* CASE -1 *)
+               
+            0: P^.BAL:=+1;
+            
+            1: BEGIN (* REBALANCE *)
+                 P1:=P^.RIGHT;
+                 IF P1^.BAL=+1 THEN 
+                   BEGIN (* SINGLE RR ROTATION *)
+                     P^.RIGHT:=P1^.LEFT;
+                     P1^.LEFT:=P;
+                     P^.BAL:=0;
+                     P:=P1;
+                   END
+                 ELSE
+                   BEGIN (* DOUBLE RL ROTATION *)
+                     P2:=P1^.LEFT;
+                     P1^.LEFT:=P2^.RIGHT;
+                     P2^.RIGHT:=P1;
+                     P^.RIGHT:=P2^.LEFT;
+                     P2^.LEFT:=P;
+                     IF P2^.BAL=+1 THEN P^.BAL:=-1 ELSE P^.BAL:=0;
+                     IF P2^.BAL=-1 THEN P1^.BAL:=+1 ELSE P1^.BAL:=0;
+                     P:=P2;
+                   END;
+                   P^.BAL:=0; H:=FALSE;
+               END; (* CASE1 *)
+          
+          END; (* CASE *)
+      END (* IF W>P^.WORD *)
+      
+    ELSE H:=FALSE;
+
+END; (* INSERTIT *)
+  
+  
+  
+  
+                     
+PROCEDURE PRINTTREE(P: NODEPTR);
+BEGIN
+  IF P<>NIL THEN 
+    BEGIN
+      PRINTTREE(P^.LEFT);
+      WRITELN(P^.WORD);
+      PRINTTREE(P^.RIGHT);
+    END;
+END;
+
+
+PROCEDURE BOXWORD(W: WORDSTRING);
+(* BEGIN AND END PEN AT LEFT OF BOX *)
+VAR X,Y: INTEGER;
+BEGIN
+  X:=TURTLEX; Y:=TURTLEY;
+  PENCOLOR(WHITE); MOVETO(X,Y+5); 
+  MOVETO(X+44,Y+5); MOVETO(X+44,Y-5); 
+  MOVETO(X,Y-5); MOVETO(X,Y); 
+  PENCOLOR(NONE); MOVETO(X+2,Y-4); 
+  WSTRING(W); MOVETO(X,Y);
+END;
+
+
+
+PROCEDURE SHOWTREE(P: NODEPTR; LEVEL: INTEGER);
+VAR X,Y: INTEGER;
+BEGIN
+  IF P<>NIL THEN 
+    BEGIN
+      X:=TURTLEX;
+      Y:=TURTLEY;
+      BOXWORD(P^.WORD);
+      IF LEVEL>4 THEN WRITE(CHR(7)); (* BEEP *)
+      IF LEVEL<=4 THEN
+        BEGIN
+          PENCOLOR(NONE); MOVETO(X+44,Y+3);
+          PENCOLOR(WHITE); MOVETO(X+56,Y+DELTAY[LEVEL]);
+          SHOWTREE(P^.LEFT,LEVEL+1);
+          PENCOLOR(NONE); MOVETO(X+44,Y-3);
+          PENCOLOR(WHITE); MOVETO(X+56,Y-DELTAY[LEVEL]);
+          SHOWTREE(P^.RIGHT,LEVEL+1);
+        END;
+    END;
+END;
+
+
+PROCEDURE GOODBYE;
+BEGIN
+  TEXTMODE;
+  WRITELN; WRITELN('THAT''S ALL FOLKS...');
+  EXIT(PROGRAM);
+END;
+
+
+BEGIN
+  ROOT:=NIL;
+  DELTAY[0]:=48;
+  DELTAY[1]:=24;
+  DELTAY[2]:=12;
+  DELTAY[3]:=6;
+  DELTAY[4]:=3;
+  
+  REPEAT
+    WRITE('ENTER WORD: ');
+    UNITCLEAR(CONSOLE); (* NO TYPE-AHEAD *)
+    READLN(S);
+    IF LENGTH(S)=0 THEN GOODBYE;
+    IF LENGTH(S)<=WORDLENGTH THEN W:=S
+      ELSE W:=COPY(S,1,WORDLENGTH);
+    INSERTIT(W,ROOT,BOOL);
+    WRITELN; 
+    WRITELN('THE WORDS IN ORDER ARE:');
+    PRINTTREE(ROOT);
+    WRITELN; READLN;
+    INITTURTLE; MOVETO(0,182);
+    WSTRING('AVL-BALANCED');
+    MOVETO(0,170); 
+    WSTRING('BINARY TREE:');
+    MOVETO(0,96); 
+    SHOWTREE(ROOT,0);
+    READLN; TEXTMODE;
+  UNTIL FALSE; (* TILL ZERO LENGTH EXIT *)
+END.
+
+

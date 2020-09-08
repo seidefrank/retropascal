@@ -1,0 +1,46 @@
+
+     FreeForm is a 3-D spreadsheet.  It is very useful in certain types
+of problems and useless in others.
+
+     FreeForm assumes that calculations are done on entire rows or columns at a
+time and the results are deposited in other entire rows or columns.  It
+therefore is well suited to ledger sheets sort of applications.  The 3-D nature
+becomes apparent when you realize that you can set up a sheet, for example, for
+each month's activity of a business.  Each month's sheet can be stacked behind
+the next month's sheet and year end consolidations can be done on all twelve
+sheets to end up with grand totals.  Up to 100 sheets (all must be of identical
+format) can be stacked.
+
+     FreeForm does not allow calculations of individual cells so that it is
+nearly useless in an application such as a tax calculator.  You pays your money
+and takes your chances.
+
+     FreeForm uses real numbers for all of it calculations so that 4 word reals
+are necessary to obtain any kind of precision.  A 2 word real version is
+provided for those that don't have 4 word reals on their iron, but its use 
+is strictly limited as dollar figures can only be represented to $9,999.99
+before you start losing track of the odd cents.  Also, if you build data files
+with two word reals, and then switch to 4 word reals, THE DATA WILL NOT BE
+COMPATIBLE!!!
+
+     The screen control features of FreeForm have been modified extensively
+by the reviewer (yours truly, gws) to allow the software to be transported
+to different types of terminals.  The author used the screen control values
+found in KERNEL to obtain the values of the arrow keys and such.  However, he
+did not allow for terminals with two-character sequences (such as an H-19). The
+use of KERNEL also made the program un-compilable on most hardware without
+extended memory as the compilation of KERNEL uses up most of memory for mere
+mortal iron.
+
+     The program has been modified to eliminate the dependance on KERNEL.
+It now uses SCREENOPS instead.  In this way it becomes terminal independant.
+However, since SCREENOPS does not support HOME, KEY_TO_INSERT_CHARACTER, or
+KEY_TO_DELETE_CHARACTER, these features are no longer available.  The
+modifications have been done in a haphazard style (typical of this
+particular reviewer) so that some of the old code has been commented out and
+some of it has been entirely removed.  It will now compile on most IV.x
+p-systems.  If you are using a p-system older than IV.1 then you must comment
+out the selective uses list for SCREENOPS (found in FF.FREEFRM).
+
+     regards - gws
+

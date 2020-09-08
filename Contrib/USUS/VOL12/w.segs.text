@@ -1,0 +1,417 @@
+{w.segs - Segment procedures for Window Manager}
+{Copyright 22-Feb-82 Austin Tate, ERCC}
+
+SEGMENT PROCEDURE WMStartup; {Initialise Window Manager System}
+VAR i:INTEGER;
+BEGIN
+  Sc_Clr_Screen;
+  
+  WCursor:=CHR(64);    {At symbol} {Symbol for Window Manager Cursor}
+
+  FOR i:=1 TO (MaxLine-1) DO Lines[i].NextLine:=i+1;
+  Lines[MaxLine].NextLine:=0;
+  FreeLine:=1;
+  
+  FOR i:=1 TO (MaxWindow-1) DO Windows[i].PrevWindow:=i+1;
+  Windows[MaxWindow].PrevWindow:=NoWindow;
+  FreeWindow:=1;
+  
+  {$R-}
+  ClearLine[0]:=CHR(ScreenWidth);
+  {$R^}
+  FOR i:=1 TO ScreenWidth DO ClearLine[i]:=' ';
+  
+  WSequence:=NoWindow; OldWSequence:=NoWindow;
+  SCursBuff:=' ';      SCursIn:=NoWindow;
+  WX:=0;               WY:=0;
+  RealX:=-1;           RealY:=-1;
+  WCursPlaced:=FALSE;  ScreenValid:=FALSE;
+END;
+
+SEGMENT PROCEDURE WMInit;
+BEGIN
+  Sc_Clr_Screen;
+  OldWSequence:=NoWindow;
+  ScreenValid:=FALSE;
+END;
+  
+SEGMENT PROCEDURE RePaint;
+    VAR LineNo,FirstChanged,LastChanged,
+      LastNonSpace,OldLastNonSpace,X,Y:INTEGER;
+      WTemp,LastObscured,OldLastObscured:Window;
+      ClearX,ClearY,ClearTo:INTEGER;
+      OkToClear,PartialClear:BOOLEAN;
+      RevSequence,OldRevSequence:ARRAY [0..MaxWindow] OF Window;
+      NextWLine,OldNextWLine:ARRAY [0..MaxWindow] OF INTEGER;
+      OldBuff,Buff,IOBuff:PACKED ARRAY [-1..XScreenWidth] OF CHAR;
+  BEGIN
+    IF ScreenValid THEN EXIT(RePaint);    {Nothing to do}
+    RemoveCursor;
+    
+    {We are going to reconstruct 'before' and 'after' images
+     of the screen line by line. Each window will place its
+     contribution to a composite screen line in a screen line
+     buffer. This is done in reverse show order to get overlapping
+     right.}
+       
+    {First build two access vectors for the windows, containing
+     'show' sequences}
+    
+    LastObscured:=0; OldLastObscured:=0;
+    WTemp:=WSequence;
+    WHILE WTemp<>NoWindow DO BEGIN
+      RevSequence[LastObscured]:=WTemp;
+      LastObscured:=LastObscured+1;
+      WTemp:=Windows[WTemp].PrevWindow;
+    END;
+    WTemp:=OldWSequence;
+    WHILE WTemp<>NoWindow DO BEGIN
+      OldRevSequence[OldLastObscured]:=WTemp;
+      OldLastObscured:=OldLastObscured+1;
+      WTemp:=Windows[WTemp].OldPrevWindow;
+    END;
+    
+    {Build screen lines 'before' and 'after', and compute
+     I/O need to make the screen change from 'before' to after'}
+       
+    OkToClear:=FALSE;
+    FOR Y:=0 TO ScreenHeight-1 DO BEGIN
+      FILLCHAR(Buff[-1],XScreenWidth+2,' ');
+      
+      {Each window, in reverse show sequence, places its
+       contribution into the composite line buffer}
+      
+      FOR X:=LastObscured-1 DOWNTO 0 DO BEGIN
+        WITH Windows[RevSequence[X]] DO BEGIN
+          IF (Y>=AtY) AND (Y<(AtY+SizeY)) THEN BEGIN
+            {It has somthing to give}
+            IF Y=AtY THEN LineNo:=StartLine
+            ELSE LineNo:=NextWLine[X];
+            IF LineNo<>0 THEN BEGIN
+              NextWLine[X]:=Lines[LineNo].NextLine;
+              {Get window's contibution to this line}
+              IF (LineNo=StartLine) AND (HasHeading IN Options) THEN
+                BEGIN
+                  {Don't pan title lines}
+                  MOVELEFT(Lines[LineNo].Contents[1],Buff[AtX],SizeX);
+                  {Put pan indicators on title line if there is one}
+                  IF (CanPan IN Options) THEN
+                    BEGIN
+                     IF CurrPan<>0 THEN Buff[Atx]:='<';
+                     IF (CurrPan+SizeX)<ScreenWidth THEN Buff[AtX+SizeX-1]:='>';
+                    END;
+                END
+              ELSE MOVELEFT(Lines[LineNo].Contents[CurrPan+1],Buff[AtX],SizeX);
+            END
+            ELSE FILLCHAR(Buff[AtX],SizeX,' ');
+                 {LineNo of 0 indicates line of spaces}
+            {Put side frame chars in buffer}
+            Buff[AtX-1]:=LEChr; Buff[AtX+SizeX]:=REChr;
+          END
+          ELSE IF (Y=AtY-1) THEN BEGIN
+            {Do top of frame}
+            Buff[AtX-1]:=TLChr; Buff[AtX+SizeX]:=TRChr;
+            FILLCHAR(Buff[AtX],SizeX,TEChr);
+          END
+          ELSE IF (Y=AtY+SizeY) THEN BEGIN
+            {Do bottom of frame}
+            Buff[AtX-1]:=BLChr; Buff[AtX+SizeX]:=BRChr;
+            FILLCHAR(Buff[AtX],SizeX,BEChr);
+          END;
+        END;
+      END;
+      {Above dealt with after image( ie what we want)
+       Computation of before image (ie what's there now) follows}
+      FILLCHAR(OldBuff[-1],XScreenWidth+2,' ');
+      FOR X:=OldLastObscured-1 DOWNTO 0 DO BEGIN
+        WITH Windows[OldRevSequence[X]] DO BEGIN
+          IF (Y>=OldAtY) AND (Y<(OldAtY+OldSizeY)) THEN BEGIN
+            IF Y=OldAtY THEN LineNo:=StartLine
+            ELSE LineNo:=OldNextWLine[X];
+            IF LineNo<>0 THEN OldNextWLine[X]:=Lines[LineNo].NextLine;
+            {When a window has been cleared then we forget what
+             was on the screen before the clear took place - 
+             see more below}
+            IF Cleared AND NOT((HasHeading IN Options) AND (Y=OldAtY)) THEN
+              LineNo:=0;
+            IF LineNo<>0 THEN BEGIN
+              IF (LineNo=StartLine) AND (HasHeading IN Options) THEN
+                BEGIN
+                  MOVELEFT(Lines[LineNo].Contents[1],OldBuff[OldAtX],OldSizeX);
+                  IF (CanPan IN Options) THEN
+                    BEGIN
+                      IF OldPan<>0 THEN OldBuff[OldAtx]:='<';
+                      IF (OldPan+OldSizeX)<ScreenWidth THEN 
+                        OldBuff[OldAtX+OldSizeX-1]:='>';
+                    END;
+                END
+              ELSE MOVELEFT(Lines[LineNo].Contents[OldPan+1],
+                            OldBuff[OldAtX],OldSizeX);
+            END
+            ELSE IF Cleared THEN
+              {The effect of the following is to force a total
+               repaint of the area covered by a window which has
+               been cleared, since we've forgotten what's currently
+               on the screen}
+              FILLCHAR(OldBuff[OldAtX],OldSizeX,CHR(0))
+            ELSE FILLCHAR(OldBuff[OldAtX],OldSizeX,' ');
+            OldBuff[OldAtX-1]:=LEChr; OldBuff[OldAtX+OldSizeX]:=REChr;
+          END
+          ELSE IF (Y=OldAtY-1) THEN BEGIN
+            OldBuff[OldAtX-1]:=TLChr; OldBuff[OldAtX+OldSizeX]:=TRChr;
+            FILLCHAR(OldBuff[OldAtX],OldSizeX,TEChr);
+          END
+          ELSE IF (Y=OldAtY+OldSizeY) THEN BEGIN
+            OldBuff[OldAtX-1]:=BLChr; OldBuff[OldAtX+OldSizeX]:=BRChr;
+            FILLCHAR(OldBuff[OldAtX],OldSizeX,BEChr);
+          END;
+        END;
+      END;
+      {Now compare before and after images, and compute
+       I/O requirements}
+      {Most of the complexity is due to delaying clear to EOLs
+       with a view to doing a monumental clear to EOS.
+       When multiple clear to EOLs are unavoidable, a limited effort
+       to avoid clearing lines which are already clear is made}
+      LastNonSpace:=ScreenWidth-1
+                      +SCAN(-(ScreenWidth),<>' ',Buff[ScreenWidth-1]);
+      IF Buff<>OldBuff THEN BEGIN
+        {Screen must change}
+        IF LastNonSpace>=0 THEN BEGIN
+          {Non-blank line which was not blank before}
+          FirstChanged:=0; LastChanged:=LastNonSpace;
+          WHILE ((FirstChanged<LastChanged) AND
+                 (Buff[FirstChanged]=OldBuff[FirstChanged])) DO
+            FirstChanged:=FirstChanged+1;
+          WHILE ((LastChanged>FirstChanged) AND
+                 (Buff[LastChanged]=OldBuff[LastChanged])) DO
+            LastChanged:=LastChanged-1;
+          {Catch up on deferred line clearing}
+          IF OkToClear THEN 
+            FOR X:=ClearY TO ClearTo DO BEGIN
+              Sc_Erase_To_Eol(ClearX,X);
+              ClearX:=0;
+            END;
+          OkToClear:=FALSE; PartialClear:=FALSE;
+          {Blat the screen, asynchronously}
+          FGOTOXY(FirstChanged,Y); {**ALSO ENSURES THAT NEXT ASSIGN IS OK**}
+          IOBuff:=Buff;
+          UNITWRITE(CONSOLE,IOBuff[FirstChanged],
+                      LastChanged-FirstChanged+1,,1);
+          {Check if a clear to EOL is needed, but don't
+           do it now}
+          OldLastNonSpace:=ScreenWidth-1
+                      +SCAN(-(ScreenWidth),<>' ',OldBuff[ScreenWidth-1]);
+          IF LastNonSpace<OldLastNonSpace THEN BEGIN
+            ClearX:=LastNonSpace+1; ClearY:=Y; ClearTo:=Y;
+            OkToClear:=TRUE; PartialClear:=FALSE;
+          END
+        END
+        ELSE BEGIN
+          {Blank line which was not blank before}
+          IF NOT(OkToClear) THEN BEGIN
+            {If no outstanding clears then remember start and end point}
+            ClearX:=0; ClearY:=Y; ClearTo:=Y; 
+            OkToClear:=TRUE; PartialClear:=FALSE;
+          END
+          {Else just update end point}
+          ELSE ClearTo:=Y
+        END
+      END
+      ELSE BEGIN
+        IF LastNonSpace>=0 THEN BEGIN
+          {Unchanged non-blank line}
+          {If there are any deferred clears do them now}
+          IF OkToClear THEN BEGIN
+            FOR X:=ClearY TO ClearTo DO BEGIN
+              Sc_Erase_To_Eol(ClearX,X);
+              ClearX:=0;
+            END;
+            OkToClear:=FALSE; PartialClear:=FALSE;
+          END
+        END
+        ELSE BEGIN
+          {Unchanged blank line}
+          {Try to avoid doing a clear to EOL for this line}
+          IF OkToClear THEN
+            IF NOT PartialClear THEN BEGIN
+              PartialClear:=TRUE;
+              ClearTo:=Y-1;
+            END
+        END
+      END;
+    END;
+    IF OkToClear THEN Sc_Eras_Eos(ClearX,ClearY);
+    {Save info need to compute before image on next call}
+    SaveSequence;
+    ScreenValid:=TRUE;
+    RealX:=-1; RealY:=-1;
+  END;
+
+SEGMENT PROCEDURE WHelp;
+VAR WTop,WPopup:Window;
+BEGIN
+  WTop:=WSequence;
+  WPopup:=WNew(WX,WY,36,15,[CanMove,CanKill,CanAlter],'');
+  IF WPopup=NoWindow THEN WRITE(CHR(Bel))
+  ELSE
+    BEGIN
+      WShow(WPopup);
+      WWriteStr('Help - Window Manager Revn ');
+      WWriteStr(WVersion);                                 WWriteLn;
+      WWriteStr('------------------------------------');   WWriteLn;
+      WWriteStr('Enter Window Manager Mode using ESC.');   WWriteLn;
+      WWriteStr('       In this mode you can type:');      WWriteLn;
+      WWriteStr('ESC or <space> to leave this Mode or');   WWriteLn;
+      WWriteStr('       to make a ''mark''');              WWriteLn;
+      WWriteStr('<arrow keys> move cursor');               WWriteLn;
+      WWriteStr('1..9   move cursor over screen');         WWriteLn;
+      WWriteStr('S(how  window under cursor');             WWriteLn;
+      WWriteStr('K(ill  window under cursor');             WWriteLn;
+      WWriteStr('H(ide  window under cursor');             WWriteLn;
+      WWriteStr('M(ove  window under cursor to ''mark'''); WWriteLn;
+      WWriteStr('A(lter window under cursor to fit');      WWriteLn;
+      WWriteStr('       within next two ''marks''');       WWriteLn;
+      WWriteStr('?      give this help window');
+      WShow(WTop);
+    END;
+END;
+
+SEGMENT PROCEDURE WindowFunction;
+VAR WTemp,WTop:Window;
+    WF:sc_key_command;
+    Ch:CHAR;
+    Temp,X1,Y1,X2,Y2:INTEGER;
+    Key:PACKED ARRAY [0..1] OF CHAR;
+    
+  PROCEDURE ZoneMove(Y,X,ZY,ZX:INTEGER);
+  BEGIN
+    WX:=(ScreenWidth DIV (ZX*2))*((2*(X-1))+1);
+    WY:=(ScreenHeight DIV (ZY*2))*((2*(Y-1))+1);
+  END;
+    
+BEGIN
+  PlaceCursor;
+  UNITREAD(SYSTERM,Key[0],1);
+  Ch:=Key[0];
+  {<space> (known as 'MARK') or ESC cause an exit from WindowFunction}
+  WHILE (Ch<>' ') AND (Ch<>CHR(27)) DO BEGIN
+    WF:=sc_map_crt_command(Ch);
+    RemoveCursor;
+    CASE WF OF
+      sc_up_key   : IF WY>0 THEN WY:=WY-1;
+      sc_down_key : IF WY<(ScreenHeight-1) THEN WY:=WY+1;
+      sc_right_key: IF WX<(ScreenWidth -1) THEN WX:=WX+1;
+      sc_left_key : IF WX>0 THEN WX:=WX-1;
+      sc_not_legal: 
+        BEGIN
+          CASE Ch OF
+                   {numbers used to allow rapid cursor moves by a keypad
+                       7  8  9
+                       4  5  6
+                       1  2  3
+                   added by Chris Lee}
+           '7'   : ZoneMove(1,1,3,3);
+           '8'   : ZoneMove(1,2,3,3);
+           '9'   : ZoneMove(1,3,3,3);
+           '4'   : ZoneMove(2,1,3,3);
+           '5'   : ZoneMove(2,2,3,3);
+           '6'   : ZoneMove(2,3,3,3);
+           '1'   : ZoneMove(3,1,3,3);
+           '2'   : ZoneMove(3,2,3,3);
+           '3'   : ZoneMove(3,3,3,3);
+           
+           'A',
+           'a'   : BEGIN
+                     WTop:=WSequence; WTemp:=SCursin;
+                     IF WTemp<>NoWindow THEN BEGIN
+                       IF (CanAlter IN Windows[WTemp].Options) THEN BEGIN
+                         WindowFunction; {get one corner - wait for 'mark'}
+                         X1:=WX; Y1:=WY;
+                         WindowFunction; {get opposite corner - wait for 'mark'}
+                         X2:=WX; Y2:=WY;
+                         WHide(WTemp);
+                         IF X2<X1 THEN BEGIN
+                           Temp:=X1; X1:=X2; X2:=Temp;
+                         END;
+                         IF Y2<Y1 THEN BEGIN
+                           Temp:=Y1; Y1:=Y2; Y2:=Temp;
+                         END;
+                         WAlter(WTemp,X1,Y1,X2-X1+1,Y2-Y1+1,
+                                Windows[WTemp].Options,'');
+                         WShow(WTemp); WShow(WTop);
+                       END
+                       ELSE WRITE(CHR(Bel))
+                     END
+                     ELSE WRITE(CHR(Bel));
+                   END;
+           
+           'H',
+           'h'   : BEGIN
+                     WTemp:=SCursIn;
+                     IF WTemp<>NoWindow THEN BEGIN
+                       IF (WSequence<>SCursIn) AND
+                          (CanHide IN Windows[SCursin].Options) THEN
+                         WHide(SCursIn)
+                       ELSE WRITE(CHR(Bel)) {cannot hide current window}
+                     END
+                     ELSE WRITE(CHR(Bel))
+                   END;
+           
+           'K',
+           'k': BEGIN
+                  WTemp:=SCursIn;
+                  IF (WTemp<>NoWindow) AND (WTemp<>WSequence) THEN BEGIN
+                    IF CanKill IN Windows[WTemp].Options THEN BEGIN
+                      WHide(WTemp);
+                      WDispose(WTemp);
+                    END
+                    ELSE WRITE(CHR(Bel))
+                  END
+                  ELSE WRITE(CHR(Bel))
+                END;
+           
+           'M',
+           'm': BEGIN
+                  WTop:=Wsequence; WTemp:=SCursIn;
+                  IF WTemp<>NoWindow THEN BEGIN
+                    IF CanMove IN Windows[WTemp].Options THEN BEGIN
+                      WindowFunction; {get new top left - wait for 'mark'}
+                      X1:=WX; Y1:=WY;
+                      WHide(WTemp);
+                      WAlter(WTemp,X1,Y1,-1,-1,
+                             Windows[WTemp].Options,'');
+                      WShow(WTemp); WShow(WTop);
+                    END
+                    ELSE WRITE(CHR(Bel))
+                  END
+                  ELSE WRITE(CHR(Bel));
+                END;
+           
+           'S',
+           's'   : IF WSequence<>SCursIn THEN
+                     BEGIN
+                       IF SCursIn<>NoWindow THEN
+                         BEGIN
+                           WTop:=WSequence;
+                           WHide(WSequence);
+                           WShow(SCursIn);
+                           WShow(WTop);
+                         END
+                       ELSE WRITE(CHR(Bel));
+                     END;
+           
+           '?'   : WHelp;
+          END;
+          IF NOT(Ch IN ['1'..'9','A','a','H','h','K','k','M','m','S','s','?'])
+            THEN WRITE(CHR(Bel));
+        END;
+    END; {CASE}
+    IF NOT ScreenValid THEN RePaint;
+    PlaceCursor;
+    UNITREAD(SYSTERM,Key[0],1);
+    Ch:=Key[0];
+  END;
+  RemoveCursor;
+END;
+

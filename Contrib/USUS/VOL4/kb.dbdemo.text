@@ -1,0 +1,25 @@
+(*$S+*)
+PROGRAM DBTEST;
+USES DBUNIT,SCUNIT,STARTER;
+
+BEGIN (*DBDEMO PROGRAM*)
+  STINITIALIZE;
+  REPEAT
+    GOTOXY(0,0);
+    BLANKTOPLINE;
+    CASE GETCOMMAND('DBDEMO: C(hangerec F(indrec G(etrec N(ewrec Q(uit T(race',
+                                ['C', 'F', 'G', 'N', 'Q', 'T']) OF
+      'C': IF CHANGEREC(WA1) THEN SAVEREC;
+      'F': FINDREC;
+      'G': GETREC;
+      'N': NEWREC;
+      'T': BEGIN
+             DEBUGGING:=TRUE;
+             DBSHOWERR('Halt request from keyboard - allows trace change',100);
+             DEBUGGING:=FALSE;
+           END;
+      'Q': DONE:=TRUE
+    END (*CASE*);
+  UNTIL DONE;
+END.
+

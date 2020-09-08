@@ -1,0 +1,22 @@
+
+
+(* This is a GOTOXY procedure for the TelVideo 912 CRT.  Program
+   Author is Paul Gilliam, P. O. Box 2202, Pullman, WA 99163.  *)
+   
+PROGRAM DUMMY;   
+  PROCEDURE MYGOTOXY(X,Y: INTEGER); { for tvi 912c }
+    VAR 
+      P : PACKED ARRAY [0..3] OF CHAR;  
+    BEGIN
+      IF X < 0 THEN X := 0;
+      IF X > 79 THEN X := 79;
+      IF Y < 0 THEN Y := 0;
+      IF Y > 23 THEN Y := 23;
+      P[0] := CHR(27);
+      P[1] := '=';
+      P[2] := CHR(Y+32);
+      P[3] := CHR(X+32);
+      UNITWRITE(2,P,4);
+    END  { MYGOTOXY };
+  BEGIN  END.
+

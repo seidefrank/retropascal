@@ -1,0 +1,565 @@
+{w.impln - Implementation part of Window Manager}
+{Copyright 22-Feb-82 Austin Tate, ERCC}
+
+  USES  SCREENOPS;
+  
+  CONST CONSOLE=1;
+        SYSTERM=2;
+        MaxLine=72;     {<<<<< reduce this if you have stack overflow problems}
+        ScreenWidth=78;
+        XScreenWidth=79;
+        ScreenHeight=24;
+        Bel=7;
+        Bs=8;
+        Cr=13;
+        {for bottom corners, if quote slopes on your VDU,}
+        {a reasonable alternative is +                   }
+        TLChr='.';TRChr='.';BLChr='''';BRChr='''';
+        TEChr='_';REChr='|';LEChr='|';BEChr='-';
+
+  TYPE  ScreenPos=0..255;
+        LineId=0..MaxLine;
+    
+  {all cursor values have a base of 0}
+  
+    WFormat=PACKED RECORD
+      CurrY,CurrX:ScreenPos;   {cursor position for this window}
+                               {scroll when CurrY is incremented to SizeY}
+                               {Cursor sits at position of NEXT ch output}
+                               {to the window will be written}
+      SizeY,SizeX:ScreenPos;   {Size of window - 1 to N}
+      StartLine:LineId;        {index to first line of text in window}
+                               {window always has 1 line minimum, 2 if headed}
+      AtX,AtY:ScreenPos;       {top left corner of window}
+      CurrPan,OldPan:ScreenPos;{amount window 'panned' by}
+      OldSizeY,OldSizeX,
+      OldAtY,OldAtX:ScreenPos;
+      Cleared:BOOLEAN;
+      Options:WindowAttributes;{what user can do, does it have a heading}
+      OldPrevWindow,
+      PrevWindow:Window;       {index to window array to give the previous}
+                               {window in show order - NoWindow at end}
+                               {Also used prechained to hold free window list}
+  END;
+  
+  LINEREC=RECORD
+      Contents:STRING[ScreenWidth];
+      NextLine:LineId;
+  END;
+  
+VAR
+  OldXMin,OldXMax,
+  CurrLine,
+  OldWSequence,
+  WSequence:INTEGER; {Start of list of shown windows - last shown at head}
+                     {NoWindow at end}
+  FreeLine,FreeWindow:INTEGER;
+                     {Free lists - 0 at end of line list}
+                     {             NoWindow at end of window list}
+  WX,WY:INTEGER;     {Current Window Manager Cursor Coords - screen coord}
+  RealX,RealY:INTEGER;{Actual Cursor Position - -ve implies not known}
+  
+  WCursPlaced:BOOLEAN;{true if window cursor is on the screen}
+  ScreenValid:BOOLEAN;{true if no Hides or Shows since last RePaint}
+  
+  WCursor:CHAR;      {window manager cursor character}
+  SCursBuff:CHAR;    {Character underneath the Window Cursor position}
+  SCursIn:Window;    {Window in which cursor currently resides}
+  
+  Windows:ARRAY [1..MaxWindow] OF WFormat;
+  
+  Lines:ARRAY[1..MaxLine] OF LineRec;
+  ClearLine:STRING[ScreenWidth]; {line containing spaces for clearances,etc}
+
+{all forward declarations needed for Window Manager}
+
+PROCEDURE SaveSequence; FORWARD;
+
+PROCEDURE PlaceCursor; FORWARD;
+
+PROCEDURE RemoveCursor; FORWARD;
+
+PROCEDURE FGOTOXY(X,Y:INTEGER); FORWARD;
+
+{$I w.segs}
+{end of SEGMENT PROCEDURES}
+
+PROCEDURE SaveSequence;
+VAR WTemp:Window;
+BEGIN
+  WTemp:=WSequence;
+  OldWsequence:=WSequence;
+  WHILE (WTemp<>NoWindow) DO BEGIN
+    WITH Windows[WTemp] DO BEGIN
+      OldAtX:=AtX;
+      OldAtY:=AtY;
+      OldSizeX:=SizeX;
+      OldSizeY:=SizeY;
+      OldPan:=CurrPan;
+      OldPrevWindow:=PrevWindow;
+      Cleared:=FALSE;
+      WTemp:=Windows[WTemp].PrevWindow;
+    END;
+  END;
+END;
+
+PROCEDURE WStartUp;
+BEGIN
+  WMStartUp;
+END;
+
+PROCEDURE WInit;
+BEGIN
+  WMInit;
+END;
+
+FUNCTION WNew{(WatX,WatY,WSizeX,WSizeY:INTEGER;
+               WControls:WindowAttributes;
+               WHeading:STRING):Window}; {Get new window}
+VAR W:Window;
+    Offset,Top,i:INTEGER;
+BEGIN
+  IF (FreeWindow=NoWindow) OR (FreeLine=0) OR
+     ((HasHeading IN WControls) AND (WSizeY=1)) OR
+     (WSizeY<1) OR (WSizeX<1) OR
+     (WatY<0) OR (WatY>=ScreenHeight) OR
+     (WatX<0) OR (WatX>=ScreenWidth) THEN 
+    WNew:=NoWindow
+  ELSE BEGIN
+    W:=FreeWindow;
+    FreeWindow:=Windows[FreeWindow].PrevWindow;
+    WITH Windows[W] DO BEGIN
+      IF WSizeX>ScreenWidth THEN SizeX:=ScreenWidth ELSE SizeX:=WSizeX;
+      IF WSizeY>ScreenHeight THEN SizeY:=ScreenHeight ELSE SizeY:=WSizeY;
+      AtX:=WatX; AtY:=WatY;
+      {Move so whole window on screen if necessary}
+      IF AtX+SizeX>ScreenWidth THEN AtX:=ScreenWidth-SizeX;
+      IF AtY+SizeY>ScreenHeight THEN AtY:=ScreenHeight-SizeY;
+      CurrX:=0; CurrY:=0; CurrPan:=0;
+      PrevWindow:=NoWindow;
+      {Get one blank line for initial text buffer}
+      StartLine:=FreeLine;
+      FreeLine:=Lines[FreeLine].NextLine;
+      Lines[Startline].NextLine:=0; {end of chain}
+      Lines[StartLine].Contents:=ClearLine;
+      Options:=WControls-[HasHeading];
+      IF (HasHeading IN WControls) AND (WHeading<>'') AND 
+         (FreeLine<>0) AND (SizeY>1) THEN BEGIN
+        Options:=Options+[HasHeading];
+        CurrY:=1;
+        {Get line for Heading - chain on front of first text line}
+        i:=FreeLine;
+        FreeLine:=Lines[FreeLine].NextLine;
+        Lines[i].NextLine:=StartLine;
+        StartLine:=i;
+        WITH Lines[StartLine] DO BEGIN
+          Contents:=ClearLine;
+          IF CanPan IN Options THEN Offset:=1 ELSE Offset:=0;
+          Top:=LENGTH(WHeading);
+          IF Top>(ScreenWidth-Offset) THEN Top:=ScreenWidth-Offset;
+          FOR i:=1 TO Top DO Contents[Offset+i]:=WHeading[i];
+        END;
+      END;
+    END;
+    WNew:=W;
+  END;
+END;
+               
+PROCEDURE AddToFree(LineNo:INTEGER);
+          {restore to Free Line List all lines chained to LineNo}
+VAR Next,i:INTEGER;
+BEGIN
+  Next:=LineNo;
+  WHILE Next<>0 DO BEGIN
+    i:=Lines[Next].NextLine;
+    Lines[Next].NextLine:=FreeLine;
+    FreeLine:=Next;
+    Next:=i;
+  END;
+END;
+
+FUNCTION InShow(W:Window):BOOLEAN;
+VAR WTemp:Window;
+    Seen:BOOLEAN;
+BEGIN
+  WTemp:=WSequence;
+  Seen:=FALSE;
+  WHILE (WTemp<>NoWindow) AND NOT Seen DO BEGIN
+    Seen:=(WTemp=W);
+    WTemp:=Windows[WTemp].PrevWindow;
+  END;
+  InShow:=Seen;
+END;
+
+PROCEDURE LinesClear(W:Window);
+VAR LineNo:INTEGER;
+BEGIN
+  WITH Windows[W] DO BEGIN
+    CurrX:=0; CurrPan:=0; 
+    IF HasHeading IN Options THEN BEGIN
+      LineNo:=Lines[StartLine].NextLine;
+      CurrY:=1;
+    END
+    ELSE BEGIN
+      LineNo:=StartLine;
+      CurrY:=0;
+    END;
+    WITH Lines[LineNo] DO BEGIN
+      AddToFree(NextLine);
+      NextLine:=0; {End of chain}
+      Contents:=ClearLine;
+    END;
+    Cleared:=TRUE;
+  END;
+END;
+
+PROCEDURE WAlter{(W:Window;
+               WatX,WatY,WSizeX,WSizeY:INTEGER;
+               WControls:WindowAttributes;
+               WHeading:STRING)}; {Get new window}
+VAR Offset,Top,i:INTEGER;
+BEGIN
+  {Window must not be in show when WAlter called}
+  IF (W<>NoWindow) AND NOT InShow(W) THEN
+    WITH Windows[W] DO BEGIN
+      Options:=(Options*[HasHeading])+(WControls-[HasHeading]);
+      IF (WSizeX>0) THEN SizeX:=WSizeX;
+      IF (SizeX>ScreenWidth) THEN SizeX:=ScreenWidth;
+      IF (WSizeY>0) THEN SizeY:=WSizeY;
+      IF (SizeY>ScreenHeight) THEN SizeY:=ScreenHeight;
+      IF (HasHeading IN Options) and (SizeY<2) THEN SizeY:=2;
+      IF (WatX>=0) AND (WatX<ScreenWidth) THEN
+        BEGIN
+          IF (WatX+SizeX)<=ScreenWidth THEN AtX:=WatX
+          ELSE AtX:=ScreenWidth-SizeX;
+        END;
+      IF (WatY>=0) AND (WatY<ScreenHeight) THEN
+        BEGIN
+          IF (WatY+SizeY)<=ScreenHeight THEN AtY:=WatY
+          ELSE AtY:=ScreenHeight-SizeY;
+        END;
+      {check CurrX and CurrY are in Window}
+      IF NOT(CanPan in Options) AND (CurrX>=SizeX) THEN CurrX:=SizeX-1;
+      {Zero pan position if possible}
+      IF (CurrX<SizeX) THEN CurrPan:=0;
+      {check 2 lines available if heading present}
+      IF (Hasheading IN Options) AND (Lines[StartLine].NextLine=0) THEN
+        BEGIN
+          IF (FreeLine=0) THEN Options:=Options-[HasHeading]
+          ELSE
+            BEGIN
+              i:=FreeLine;
+              FreeLine:=Lines[FreeLine].NextLine;
+              Lines[i].NextLine:=StartLine;
+            END;
+        END;
+      IF CurrY>=SizeY THEN
+        BEGIN
+          CurrY:=SizeY-1;
+          IF CanScroll IN Options THEN LinesClear(W);
+        END;
+      IF (HasHeading IN Options) AND (HasHeading IN WControls) AND
+                                     (WHeading<>'') THEN
+        BEGIN
+          WITH Lines[StartLine] DO BEGIN
+            Contents:=ClearLine;
+            {allow for Pan indicator on heading}
+            IF CanPan IN Options THEN Offset:=1 ELSE Offset:=0;
+            Top:=LENGTH(WHeading);
+            IF Top>(ScreenWidth-Offset) THEN Top:=ScreenWidth-Offset;
+            FOR i:=1 TO Top DO Contents[Offset+i]:=WHeading[i];
+          END;
+        END;
+    END;
+END;
+
+FUNCTION XYOverWindow(X,Y:INTEGER; W:Window):BOOLEAN;
+BEGIN
+  IF W=NoWindow THEN XYOverWindow:=FALSE
+  ELSE
+    WITH Windows[W] DO BEGIN
+      XYOverWindow:=((X>=AtX-1) AND (X<=AtX+SizeX) AND
+                     (Y>=AtY-1) AND (Y<=AtY+SizeY));
+    END;
+END;
+
+FUNCTION WInWindow{(X,Y:INTEGER):Window};
+VAR W:Window;
+    Found:BOOLEAN;
+BEGIN
+  {returns window in which position X,Y occurs - NoWindow if none}
+  {X,Y in screen coordinates}
+  Found:=FALSE;
+  W:=WSequence; {Start of show list}
+  WHILE (W<>NoWindow) AND NOT Found DO BEGIN
+    Found:=XYOverWindow(X,Y,W);
+    IF NOT Found THEN W:=Windows[W].PrevWindow;
+  END;
+  WInWindow:=W;
+END;
+
+FUNCTION WChAtXY{(X,Y:INTEGER; W:Window):CHAR};
+VAR LineNo,Xindex,i:INTEGER;
+BEGIN
+  {return Ch under screen position X,Y in W}
+  {space returned if X,Y not in Window, or NoWindow}
+  {Ch need not be in view at the time of call}
+  IF (W=NoWindow) OR NOT XYOverWindow(X,Y,W) THEN WChAtXY:=' '
+  ELSE
+    WITH Windows[W] DO BEGIN
+      IF Y=AtY-1 THEN
+        BEGIN
+          IF X=AtX-1 THEN WChAtXY:=TLChr
+          ELSE IF X=AtX+SizeX THEN WChAtXY:=TRChr
+          ELSE WChAtXY:=TEChr;
+        END
+      ELSE IF Y=AtY+SizeY THEN
+        BEGIN
+          IF X=AtX-1 THEN WChAtXY:=BLChr
+          ELSE IF X=AtX+SizeX THEN WChAtXY:=BRChr
+          ELSE WChAtXY:=BEChr;
+        END
+      ELSE IF X=AtX-1 THEN WChAtXY:=LEChr
+      ELSE IF X=AtX+SizeX THEN WChAtXY:=REChr
+      ELSE
+        BEGIN
+          i:=Y-AtY;
+          IF i>=0 THEN LineNo:=StartLine 
+          ELSE LineNo:=0;
+          WHILE (LineNo<>0) AND (i>0) DO BEGIN
+            LineNo:=Lines[LineNo].NextLine;
+            i:=i-1;
+          END;
+          IF LineNo=0 THEN WChAtXY:=' '
+          ELSE
+            BEGIN
+              IF (X<0) OR (X>(ScreenWidth-1)) OR
+                 (X<AtX) OR (X>=AtX+SizeX) THEN WChAtXY:=' '
+              ELSE
+                IF (LineNo<>StartLine) OR
+                   NOT(HasHeading IN Options) OR
+                   NOT(CanPan IN Options) THEN
+                     WChAtXY:=Lines[LineNo].Contents[(X-AtX+CurrPan)+1]
+              ELSE
+                BEGIN
+                  IF (X=AtX) AND (CurrPan<>0) THEN {more to left} WChAtXY:='<'
+                  ELSE IF (X=AtX+SizeX-1) AND (CurrPan+SizeX<ScreenWidth) THEN
+                          {more to right} WChAtXY:='>'
+                  ELSE WChAtXY:=Lines[LineNo].Contents[(X-AtX)+1];
+                END;
+            END;
+        END;
+  END;
+END;
+
+PROCEDURE WXY{(VAR X,Y:INTEGER)}; {Give Coordinates of window manager cursor}
+BEGIN
+  X:=WX; Y:=WY;
+END;
+
+PROCEDURE WCursorXY {(X,Y:INTEGER)}; {Set Coordinates of window manager cursor}
+BEGIN
+  IF X<0 THEN WX:=0 ELSE WX:=X;
+  IF WX>(ScreenWidth-1) THEN WX:=ScreenWidth-1;
+  IF Y<0 THEN WY:=0 ELSE WY:=Y;
+  IF WY>(ScreenHeight-1) THEN WY:=ScreenHeight-1;
+END;
+
+PROCEDURE FGOTOXY{X,Y:INTEGER};
+BEGIN
+  {This is here to allow experimentation with
+   asynchronous gotoxy's, without having to
+   modify *SYSTEM.PASCAL}
+  GOTOXY(X,Y);
+END;
+  
+PROCEDURE WMGoToXY(X,Y:INTEGER);
+BEGIN
+  IF (RealX<>X) OR (RealY<>Y) THEN BEGIN
+    FGOTOXY(X,Y);
+    RealX:=X; RealY:=Y;
+  END;
+END;
+
+PROCEDURE RemoveCursor;
+BEGIN
+  IF WCursPlaced THEN BEGIN
+    {Replace position WX,WY on Screen by SCursBuff}
+    WMGoToXY(WX,WY);
+    WRITE(SCursBuff,CHR(Bs));
+    WCursPlaced:=FALSE;
+  END;
+END;
+
+PROCEDURE PlaceCursor;
+VAR W:Window;
+BEGIN
+  IF NOT WCursPlaced THEN BEGIN
+    {Cursor was last in window SCursIn.  It is likely it is still there}
+    {Check if WX,WY are still in the same window range}
+    SCursIn:=WInWindow(WX,WY);
+    IF SCursIn=NoWindow THEN SCursBuff:=' '
+    ELSE SCursBuff:=WChAtXY(WX,WY,SCursIn);
+    WMGoToXY(WX,WY);
+    WRITE(WCursor,CHR(Bs));
+    WCursPlaced:=TRUE;
+  END;
+END;
+
+PROCEDURE GetLine;
+{Get CurrY line of current window}
+VAR LineNo,i,nl:INTEGER;
+BEGIN
+  IF WSequence=NoWindow THEN EXIT(GetLine);
+  WITH Windows[WSequence] DO BEGIN
+    LineNo:=Startline; i:=CurrY;
+    OldXMin:=CurrX; OldXMax:=CurrX;
+  END;
+  WHILE i>0 DO BEGIN
+    nl:=Lines[LineNo].NextLine;
+    IF nl=0 THEN BEGIN {get a blank line to extend text}
+      IF FreeLine=0 THEN
+        BEGIN {Stay on last real line}
+          nl:=LineNo;
+          WITH Windows[WSequence] DO CurrY:=CurrY-i;
+          i:=0; {to terminate loop}
+        END
+      ELSE
+        BEGIN {new line really available}
+          nl:=FreeLine;
+          WITH Lines[nl] DO BEGIN
+            Contents:=ClearLine;
+            FreeLine:=NextLine;
+            NextLine:=0;
+          END;
+          Lines[LineNo].NextLine:=nl;
+        END;
+    END;
+    LineNo:=nl; i:=i-1;
+  END;
+  CurrLine:=LineNo;
+END;
+  
+PROCEDURE FlushOutput;
+VAR RightX,LeftX,LineNo:INTEGER;
+BEGIN
+  IF WSequence=NoWindow THEN EXIT(FlushOutput);
+  WITH Windows[WSequence] DO BEGIN
+    IF (OldXMin<>OldXMax) AND
+       (OldXMax>=CurrPan) AND
+       (OldXMin<=CurrPan+SizeX-1) THEN BEGIN
+      LeftX:=OldXMin; RightX:=OldXMax;
+      IF LeftX<CurrPan THEN LeftX:=CurrPan;
+      IF RightX-CurrPan>=SizeX THEN RightX:=SizeX+CurrPan;
+      WMGoToXY(AtX+LeftX-CurrPan,AtY+CurrY);
+      UNITWRITE(CONSOLE,Lines[CurrLine].Contents[LeftX+1],
+                RightX-LeftX,,1);
+      RealX:=AtX+RightX-CurrPan; OldXMin:=CurrX; OldXMax:=CurrX;
+    END;
+  END;
+END;
+
+PROCEDURE WDispose{(W:Window)}; {Dispose of old window}
+BEGIN
+  {Window must not be in show when WDispose called}
+  IF (W<>NoWindow) AND NOT InShow(W) THEN BEGIN
+    IF NOT ScreenValid THEN RePaint;       {Because info will be destroyed}
+    AddToFree(Windows[W].StartLine);
+    Windows[W].PrevWindow:=FreeWindow;
+    FreeWindow:=W;
+  END;
+END;
+
+FUNCTION Intersects(W1,W2:Window):BOOLEAN;
+         {does W1 intersect with W2}
+VAR WatX,WatY,WSizeX,WSizeY:INTEGER;
+BEGIN
+  WITH Windows[W1] DO BEGIN
+    WatX:=AtX; WatY:=AtY;
+    WSizeX:=SizeX; WSizeY:=SizeY;
+  END;
+  WITH Windows[W2] DO BEGIN
+    Intersects:=(((AtX+SizeX)>=WatX) AND
+                 (AtX<(WAtX+WSizeX)) AND
+                 ((AtY+SizeY)>=WatY) AND
+                 (AtY<(WatY+WSizeY)));
+  END;
+END;
+
+PROCEDURE WShow{(W:Window)}; {Display window and set it as "current" one}
+VAR LineNo,StartX,EndX,IndY,i:INTEGER;
+    Seen,Obscured:BOOLEAN;
+    WTemp:Window;
+BEGIN
+  IF (WSequence=W) OR (W=NoWindow) THEN EXIT(WShow);
+  FlushOutput;
+  {If already on show remove from sequence list first}
+  WTemp:=WSequence; Seen:=FALSE; Obscured:=FALSE;
+  WHILE WTemp<>NoWindow DO BEGIN
+    Obscured:=Obscured OR Intersects(W,WTemp);
+    IF Windows[WTemp].PrevWindow=W THEN BEGIN
+      Seen:=TRUE;
+      Windows[WTemp].PrevWindow:=Windows[W].PrevWindow;
+      WTemp:=NoWindow; {to escape from WHILE}
+    END
+    ELSE WTemp:=Windows[WTemp].PrevWindow;
+  END;
+  Windows[W].PrevWindow:=WSequence;
+  WSequence:=W; {add to show list head}
+  IF Obscured OR NOT Seen THEN ScreenValid:=FALSE;
+  GetLine;
+  {IF NOT ScreenValid THEN Repaint;}
+END;
+
+FUNCTION RemoveFromSeq(W:Window):BOOLEAN;
+Var WTemp:Window;
+    Removed:BOOLEAN;
+BEGIN
+  Removed:=FALSE;
+  IF (W<>NoWindow) AND (W=WSequence) THEN BEGIN
+    WSequence:=Windows[WSequence].PrevWindow;
+    Removed:=TRUE;
+  END
+  ELSE BEGIN
+    WTemp:=WSequence;
+    WHILE (WTemp<>NoWindow) AND NOT Removed DO BEGIN
+      IF Windows[WTemp].PrevWindow=W THEN BEGIN
+        Windows[WTemp].PrevWindow:=Windows[W].PrevWindow;
+        Removed:=TRUE;
+      END
+      ELSE WTemp:=Windows[WTemp].PrevWindow;
+    END;
+  END;
+  RemoveFromSeq:=Removed;
+END;
+
+PROCEDURE WHide{(W:Window)}; {remove window from screen - it is not disposed of}
+VAR i:INTEGER;
+BEGIN
+  FlushOutput;
+  IF W<>NoWindow THEN
+    IF RemoveFromSeq(W) THEN BEGIN
+      IF SCursIn=W THEN SCursIn:=NoWindow;
+      GetLine;
+      ScreenValid:=FALSE;
+    END;
+  {IF NOT ScreenValid THEN Repaint;}
+END;
+
+PROCEDURE WClearAndShow{(W:Window)}; {Clear Window and "Show" it}
+BEGIN
+  IF W=NoWindow THEN EXIT(WClearAndShow);
+  FlushOutput;
+  LinesClear(W);
+  WShow(W);
+  ScreenValid:=FALSE;
+  GetLine;
+  {IF NOT ScreenValid THEN Repaint;}
+END;
+
+PROCEDURE WClear; {clear "current" window}
+BEGIN
+  WClearAndShow(WSequence);
+END;
+
+{$I w.io}

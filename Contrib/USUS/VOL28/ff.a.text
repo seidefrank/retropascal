@@ -1,0 +1,211 @@
+Freeform [F.4] 
+Introduction and Overview 
+8/82 
+
+
+1. FREEFORM 
+ 
+
+1.1  FREEFORM INTRODUCTION AND OVERVIEW 
+ 
+     Freeform is a math package which allows a user to define a form under UCSD
+p-SYSTEMTM.  The form consists of pages of rows and columns of numbers. Algebra
+ic calculations, specified by the user, can then be performs on the data.  
+ 
+Operation 
+ 
+     Upon initiating the Freeform program, the user will be prompted with a 
+main menu describing Freeform's options and capabilities.  Typically, a user
+would begin by selecting the form definition option which prompts the user for
+the dimensions of the form, the headings for the rows, columns, and pages and
+the calculations to be performed.  Once the form is defined, the user may 
+proceed to the data entry mode and enter data, have the math performed, alter
+data, or list desired data to a printer.  Other options in the main menu prompt
+the user through the other features decribed in this document.  
+ 
+     The following is an example of a simple table (Form) representing the 
+distribution of inventory for three part types in five locations.  A total of 
+each part type at each location is also computed. 
+ 
+Form Example - Distribution of Inventory by Location 
+ 
+                 loc 1     loc 2     loc 3     loc 4     loc 5     Total 
+        
+        part 1    100       200       300        -         50       650 
+        
+        part 2     10        50        80       30          -       170 
+        
+        part 3    200         -         -      120         90       410 
+        
+        Total     310       250       380      150        140      1230 
+ 
+ 
+1.1.1 The Freeform Form 
+ 
+     Many numerical problems, particularly those in business applications, can 
+be represented as tables or matrices.  In general terms, a matrix is a set of 
+related data in which each element of the set is ordered by qualifiers called 
+coordinates, the bounds of which form the dimensions of the matrix.  Any 
+element in the set may be referenced by specifying the values of each 
+coordinate.  A FREEFORM matrix has three dimensions and is referred to
+throughout this  documentation as a Form.  Each Form will be assigned a unique
+name by the user in addition to the specification of the three dimensions of
+the Page, Row, and Column.  A Form is defined by its dimensions and 'attributes
+' which describe the row and column names, types, calculations, and editing 
+formats.  A visual model of how the inventory example on the previous page 
+would be represented by a FREEFORM matrix or Form is shown on the next page.  
+Note, an additional page has been provided for a second month's data. 
+ 
+ 
+ 
+ 
+ 
+ 
+                      .___.___.___.___.___.___.___.___.___.___.___.___.
+                     /       /       /       /       /       /       /
+           month 2  /       /       /       /       /       /       /
+    Pages          .___.___.___.___.___.___.___.___.___.___.___.___.  .
+  _.    month 1  /       /       /       /       /       /       /
+   /            / loc 1 / loc 2 / loc 3 / loc 4 / loc 5 / Total /
+  /             .___.___.___.___.___.___.___.___.___.___.___.___.     .
+ +-> Columns                                               ./
+                 100    200    300     -      50    650   /  .        .
+ v      part 1  __________________________________________
+Rows                                                        ./        .
+                   10     50     80     30     -     170   /  .
+        part 2  __________________________________________
+                                                            ./
+                  200     -      -     120     90    410   /  .
+        part 3  __________________________________________
+                                                            ./
+                  310    250    380    150    140   1230   /
+        Total   __________________________________________
+
+
+     Version F.4 of FREEFORM is limited to a maximum Form size of 100 pages.  
+Each page has the same number of rows and columns with the constraints of 
+having no more than 32,704 numbers in a page with no more than 101 columns.
+up to 18 forms may be stored on one disk.  Details of this process and further
+definition of terms are found in section 1.2.
+
+     At this point, a brief word about disk files and the structure of FREEFORM
+is appropriate.
+
+1.1.2 System Environment
+
+     The FREEFORM program is named FF/VER4.CODE.  FREEFORM uses one file to
+keep reference information about Forms which are stored on the disk.  This
+'directory' file is not to be confused with the disk directory.  It is just
+another file on the disk and is named FREEFORM.DIR.  For each Form defined,
+FREEFORM creates a Control, Constants, Titles, and Data file.  The Control,
+Constants, Titles, and Data files' file names are made up of the Form name
+concatenated with the suffix '.CTL', '.CON', '.TIT', and '.DAT' respectively.
+The Control file contains the information which describes the Form, and the
+Data file contains the values input by the user and/or which are computed by
+FREEFORM under the user's direction.
+
+     To run FREEFORM eXecute the file FF/VER4.CODE.  The FREEFORM main function
+menu is then displayed in the following format.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+     *********************************************************************
+
+ 
+ 
+ 
+          F R E E F O R M   The Electronic Worksheet  [F.4] 
+          ========================================== 
+                                        June 24, 1981
+ 
+ 
+          0.   Data Entry Procedure 
+          1.   Define new FORM controls 
+          2.   Modify FORM controls 
+          3.   Display or List directory 
+          4.   Display or List FORM controls 
+          5.   Consolidate Procedure 
+          6.   Roll a FORM 
+          7.   Copy a FORM 
+          8.   Delete a FORM 
+          9.   Help and User's Guide 
+ 
+ 
+ 
+          Enter desired option # _      Press ESC to leave 
+ 
+     ********************************************************************* 
+ 
+     The cursor will stop on the function selection prompt.  Select the
+appropriate function by typing its respective number.  Terminate FREEFORM by
+pressing the <esc> key.  If a FREEFORM function is selected, there will be a
+pause while the appropriate program is loaded and the system responds with its
+next prompt.  Most inputs to FREEFORM prompts have been designed to be brief
+yet self-explanatory and allow for error corrections. 
+ 
+ 
+1.1.3 Standard Keyboard Procedures 
+ 
+     Each program requests input from the user via "prompts".  These indicate
+what information is being requested.  To enter a response, type as though using
+a standard typewriter keyboard.  Each character entered will appear on the
+video screen.  Pressing the <return> key terminates the input and sends the
+response to the program.  Prior to pressing <return>, one may backspace one
+character at a time by pressing the <left-arrow> or the <char> key.  A number 
+of other keys to perform special functions when entering a string response 
+(as opposed to a numerical response) exist.  The <del char> key, for example, 
+deletes the character at the current cursor position. The <erase input> key 
+erases all the characters from the current cursor position to the end of the 
+field.  The <erase field> key redisplays the field with its original value.  
+The <ins char> key allows characters to be inserted into the middle of a 
+response.  After pressing the <ins char> key, simply enter the characters to be
+added.  To get out of the insert mode, press a different function key.  These 
+functions allow the user to correct input prior to sending it to the program.  
+All prompts are pre-programmed to expect a certain range or type of response 
+to which the program can properly react.  If a user attempts to enter invalid 
+data, the cursor will neither move nor print the character which is being 
+entered.  To speed the process of using FREEFORM, many prompts are preset to 
+specific defaults which they will assume if <return> is pressed.  These are 
+typically one-character responses to multiple choice prompts. 
+ 
+     Throughout this documentation, prompts will be highlighted by three
+leading asterisks (***) to prevent confusing them with the surrounding
+explanatory text.  These leading asterisks will not appear on the video display
+during actual program execution.  A FREEFORM prompt takes the general form 
+ 
+*** {Prompt text}?  (valid responses)  default [optional comment] 
+ 
+Example: 
+ 
+*** Select another Form? (Y/N)  Y 
+ 
+ 
+    Most FREEFORM program modules will begin with the prompt 
+ 
+*** Form Name (8 alpha max.) __________    Press ESC to leave  
+ 
+     A valid Form name consists of 1 to 8 alphanumeric characters.  
+The special characters  
+          
+       " # $ % & ' ( ) * : = - { } [ ] ^ ~ + ; ` @ |    _ < > , . ? / 
+ 
+and embedded blanks are not allowed. 
+ 
+
+

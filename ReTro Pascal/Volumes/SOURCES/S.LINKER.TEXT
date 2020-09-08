@@ -1,0 +1,50 @@
+
+{.fs} {$L L.LINKER.TEXT[*]} { LIST file helps debugging since it has all proc nos etc. }
+
+{$C Copyright (c) 1979 Regents of the University of California. LINKER II.799}
+
+    (******************************************************************)
+    (*                                                                *)
+    (*  Copyright (c) 1979 Regents of the University of California.   *)
+    (*  Permission to copy or distribute this software or documen-    *)
+    (*  tation in hard or soft copy granted only by written license   *) 
+    (*  obtained from the Institute for Information Systems.          *)
+    (*                                                                *)
+    (******************************************************************)
+
+{$S+,U-,R+
+
+
+	UCSD  PASCAL  SYSTEM
+	  PROGRAM  LINKER
+
+	  (VERSION I.5f)
+
+	Written summer '78 by
+	Roger T. Sumner, IIS
+
+	  (Version II.0)
+	  March 1, 1979
+
+	Copyright (c) 1979, Regents of
+	the University of California
+
+    All hope abandon ye who enter here
+			-Dante
+
+}
+
+program systemlevel;
+
+{.fs}
+{ The source exceeds the editor's maximum file size.                          }
+{ The original source came in parts, which we regroup and rename to begin     }
+{ with the same characters as the main source, for better grouping.           }
+{ The filenames of the original parts are given inside the soruce files.      }
+
+{$I S.LINKER1} { global variables and types; mem utils; symtab; phase 1       }
+{$I S.LINKER2} { phase 2; phase 3 work-list building                          }
+{$I S.LINKER3} { phase 3 copying, fix-up, write-out; main incl. UI            }
+{.fs}
+
+begin end.

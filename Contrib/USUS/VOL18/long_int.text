@@ -1,0 +1,201 @@
+  program benchusus;
+  (* a long integer benchmark using the structure of
+     bench.usus from volume 12   - gws *)
+  
+  (* I suggest that you run test 1 with 10,000 loops and the
+     rest of the tests with 100 or 1000 loops *)
+  
+  (* There appears to be some sort of problem with divides on my H-89.  If
+     I run with more than about 250 loops on the 12 and 36 digit divied, 
+     the processor hangs.  If you run into
+     similar trouble, PLEASE let me know.  This might be a general Z-80 
+     system problem.*)
+     
+  (* If you have a real time clock, the program will time itself.  If you
+     don't, then fret not, just get a stopwatch.  The timer code will 
+     detect the lack of a clock and not do anything.  *)
+     
+  type int4  = integer [ 4 ];
+       int12 = integer [ 12 ];
+       int36 = integer [ 36 ];
+       
+  var
+    i, j, k, l, test : integer;
+    starth,startl,endh,endl : integer;
+    num_loops : integer;
+    long_a4, long_b4, long_c4 : int4;
+    long_a12, long_b12, long_c12 : int12;
+    long_a36, long_b36, long_c36 : int36;
+    overhead,t,s,e : real;
+    fudge_loop : boolean;
+    
+    procedure prompt;
+      procedure prompt1; 
+        var line:integer;
+        begin
+        gotoxy(0,23);
+        for line:=1 to 24 do writeln;
+        gotoxy(0,0);
+        writeln('Select a test or enter "0" for all tests.');
+        writeln('Enter a negative number to quit.');
+        writeln;
+        end;
+      begin
+      prompt1;
+      writeln(' 1. null for loops (to).           2. integer [ 4 ] adds.');
+      writeln(' 3. integer [ 12 ] adds            4. integer [ 36 ] adds.');
+      writeln(' 5. integer [ 12 ] multiplies.     6. integer [ 12 ] divides.');
+      writeln(' 7. integer [ 36 ] multiplies.     8. integer [ 36 ] divides.');
+      writeln;
+      write('Test number ? ');
+      end; { prompt }
+      
+  procedure doneit;
+  
+  
+  begin
+    writeln( chr ( 7 ), 'Done.');
+    s:=ABS(startl);
+    e:=ABS(endl);
+    t:=ABS(e-s)/60;
+    if t <> 0.0 then 
+      begin
+         write('Time = ',t:5:2,' seconds  ' );
+         if fudge_loop then  
+         writeln ((((t/numloops ) * 1000 ) - ( overhead )):7:3,' ms per loop ')
+         else writeln ((( t/numloops ) * 1000 ):7:3, ' ms per loop' );
+      end;
+  end;
+
+  procedure test1;
+    begin
+    fudge_loop := false;
+    write('1 . ',numloops,' null for loops (to).');
+    time(starth,startl);
+    for i := 1 to num_loops do begin end;
+    time(endh,endl);
+    doneit;
+    end;
+  
+procedure test2;
+    begin
+    fudge_loop := true;
+    long_a4 := 1234;
+    long_b4 := 5678;
+    write('2 . ',numloops,' integer [ 4 ] adds.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c4 := long_a4 + long_b4 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test3;
+    begin
+    fudge_loop := true;
+    long_a12 := 123456789012;
+    long_b12 := 012345678901;
+    write('3 . ',numloops,' integer [ 12 ] adds.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c12 := long_a12 + long_b12 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test4;
+    begin
+    fudge_loop := true;
+    long_a36 := 123456789012345678901234567890123456;
+    long_b36 := long_a36;
+    write('4 . ',numloops,' integer [ 36 ] adds.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c36 := long_a36 + long_b36 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test5;
+    begin
+    fudge_loop := true;
+    long_a12 := 100000;
+    long_b12 := 100000;
+    write('5 . ',numloops,' integer [ 12 ] multiplies.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c12 := long_a12 * long_b12 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test6;
+    begin
+    fudge_loop := true;
+    long_a12 := 300000000000;
+    long_b12 := 100000000000;
+    write('6 . ',numloops,' integer [ 12 ] divides.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c12 := long_a12 div long_b12 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+procedure test7;
+    begin
+    fudge_loop := true;
+    long_a36 := 10000000000000000;
+    long_b36 := long_a36;
+    write('7 . ',numloops,' integer [ 36 ] multiplies.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c36 := long_a36 * long_b36 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+  procedure test8;
+    begin
+    fudge_loop := true;
+    long_a36 := 300000000000000000000000000000000000;
+    long_b36 := 100000000000000000000000000000000000;
+    write('8 . ',numloops,' integer [ 36 ] divides.');
+    time(starth,startl);
+    for i := 1 to num_loops do begin long_c36 := long_a36 div long_b36 end;
+    time(endh,endl);
+    doneit;
+    end;
+
+
+  begin { main }
+  writeln ( 'initializing ... ' );
+  numloops := 10000;
+  test1;
+  s:=ABS(startl);
+  e:=ABS(endl);
+  t:=ABS(e-s)/60;
+  overhead := ( t/numloops ) * 1000;
+  writeln;
+  write('Enter number of loops per test : ');
+  readln(num_loops);
+  repeat
+    prompt;
+    readln(test);
+    if (test >= 0) then
+      case test of
+          0 : begin
+              test1; test2; test3; test4; test5; test6; test7; test8;
+              end;
+          1 : test1;  
+          2 : test2; 
+          3 : test3; 
+          4 : test4;
+          5 : test5; 
+          6 : test6; 
+          7 : test7; 
+          8 : test8;
+        end;
+        if test>=0 then
+          begin
+            write('Type <return> to continue');
+            readln;
+          end;
+    until (test < 0);
+  end.
+
+

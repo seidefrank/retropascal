@@ -1,0 +1,56 @@
+{$R-,$F-}(* THIS PROGRAM SORTS AN ARRAY OF 10000 INTEGERS ACCORDING TO THE *)
+(* METHOD CALLED QUICKSORT.  IT USES A RECURSIVE PROCEDURE.  THE  *)
+(* THE MAXIMUM DEPTH OF RECURSION IS LN(10000).                   *)
+
+(* EXECUTION TIME ON THE CDC 6400 WAS 4098 MSEC. (2861 MSEC WITHOUT *)
+(* RANGE CHECKING).                                                 *)
+{  Note CDC times did not include initializing array. }
+
+
+(* THE TEXT OF THIS PROGRAM WAS MODIFIED TO ACCOMODATE 16 BIT MACHINES *)
+
+PROGRAM QUICKSORT(OUTPUT);
+   CONST N = 10000;
+   VAR I,Z, q, iterations: INTEGER;
+       A: ARRAY[1..N] OF INTEGER;
+       
+    SHITIME ,SLOWTIME, EHITIME, ELOWTIME: INTEGER;
+
+   PROCEDURE SORT(L,R: INTEGER);
+      VAR I,J,X,W: INTEGER; 
+   BEGIN (*QUICKSORT WITH RECURSION ON BOTH PARTITIONS*)
+      I := L;  J := R;  X := A[ (I+J) DIV 2];
+      REPEAT
+         WHILE A[I] < X DO I := I+1;
+         WHILE X < A[J] DO J := J-1;
+         IF I <= J THEN
+            BEGIN W := A[I];  A[I] := A[J];  A[J] := W;
+               I := I+1;  J := J-1;
+            END
+      UNTIL I > J;
+      IF L < J THEN SORT(L,J);
+      IF I < R THEN SORT(I,R)
+   END; (*SORT*)
+      
+BEGIN  
+   Writeln;
+   Writeln ('Quicksort 10000 integers  (R-)');
+   Writeln;
+   WRITE('Iterations?  (<cr> starts benchmark) ');
+   READLN (iterations);
+
+   for q := 1 to iterations do begin
+      {$R-}
+      Z := 257;  (*GENERATE RANDOM SEQUENCE*)
+      FOR I := 1 TO N DO
+         BEGIN  
+         Z := (251*Z) MOD 255;  A[I] := Z
+         END;
+      {$R+}
+      
+      SORT(1,N);
+      end {for};
+   
+   WRITELN('DONE',CHR(7));
+
+END.

@@ -1,0 +1,316 @@
+          .NARROW_PAGE
+          .TITLE    "Balke Associates Bootstrap Installer"
+
+;  Programmer:  Karl Balke
+;  Version:     001                 16 Jan 82
+
+          .INCLUDE  bios.const
+
+          .PROC     BOOT_WRIT, 2
+;  This service writes a bootstrap track, whose contents are
+;  supplied in an argument array, to the diskette in Unit 5.
+
+;  It is declared in the calling Pascal program as:
+
+; PROCEDURE boot_writ
+;
+;  (VAR
+;     rslt:                  INTEGER;
+;                                 {Result of the format process.  Values
+;                                 correspond to IO_RESULT.}
+;
+;   VAR
+;     boot_ary);
+;                                 {Bootstrap to be installed on new disk.}
+;
+;   EXTERNAL;
+
+
+;  Recalibrate drive B.
+          CALL  FDC_RECAL
+
+;  Position SBIOS address for DMA programming.
+          POP   HL
+          EX    (SP), HL
+
+;  Interpret result of recalibration.
+          JR    NZ, $1
+
+;  Write bootstrap to track 0.
+          CALL  SEND_W_LST
+          CALL  SEND_BUT
+
+$1:
+;  Return result of write to calling program.
+          POP   DE
+          POP   HL
+          LD    (HL), A
+          INC   HL
+          LD    (HL), 0
+          EX    DE, HL
+          JP    (HL)
+
+
+SEND_W_LST:
+; This service prepares the DMA controller to send a bootstrap parameter
+; list to the FDC as needed during SBIOS updating.
+
+; On Entry:
+;         (HL) => SBIOS Control list.
+
+          LD    C, DMA_ADR
+          OUT   (C), L
+          OUT   (C), H
+          INC   C                   ; DMA_TMCNT
+          LD    HL, 91FFH
+          OUT   (C), L
+          OUT   (C), H
+          LD    A, 41H
+          OUT   (DMA_CTL), A
+          RET
+
+
+SEND_BUT:
+; This service sends the format command list to the FDC and interprets
+; its response.
+          LD    HL, FDC_BUT_TBL
+          LD    B, 9
+          CALL  SEND_CMD
+          CALL  POLL_INT
+          CALL  INT_R_W_ST
+          RET
+
+
+SEND_CMD:
+; Write a command to the disk.
+
+; On Entry:
+;         (B) = Command Table Length.
+;         (HL) => Command Table.
+
+; On Exit:
+;         (B), (C), (HL) spoiled.
+
+          LD    C, FDC_DATA
+
+$1:
+; Wait for FDC to be ready.
+          IN    A, (FDC_STAT)
+          AND   0C0H
+          CP    080H
+          JR    NZ, $1
+
+; Send next character.
+          OUTI
+          RET   Z
+          JR    $1
+
+
+FDC_RECAL:
+; This service restores the active drive to track 0.
+
+; On Exit:
+;         (A) = 0  |  if recalibration successful.
+;         (ZF) set |
+
+;         (A) = IO_RESULT if recalibration unsuccessful, or
+;               drive off line.
+
+          LD    HL, FDC_RCL_TBL
+          LD    B, 2
+          CALL  SEND_CMD
+
+; Wait for recalibration to complete.
+          CALL  POLL_INT
+
+; Sense status and interpret.
+          CALL  SNS_INT_ST
+          AND   A
+          RET
+
+
+POLL_INT:
+; Detect FDC interrupt signal.  This signals the begining of the
+; result phase for many FDC functions.
+
+          IN    A, (FDC_INT)
+          RLA
+          RET   C
+
+          JR    POLL_INT
+
+
+SNS_INT_ST:
+; Checks the status of the FDC after completion os a seek or
+; recalibrate.
+
+; On Exit:
+;   (A) = 0 if no error.
+;         1 if seek abnormally completed.
+;         9 if drive off-line.
+
+; Send prompt command.
+          LD    HL, SIS_CMD_TB      ; Sense Interrupt command table.
+          LD    B, 1
+          CALL  SEND_CMD
+
+; Accept the two result bytes.  Only the first is important.
+          CALL  GET_RSLT_BT
+          LD    B, A
+          CALL  GET_RSLT_BT
+
+; Decode error flags.
+          BIT   3, B
+          LD    A,9
+          RET   NZ
+
+          LD    A, 0D0H
+          AND   B
+          RET   Z
+          LD    A, 1
+          RET
+
+
+INT_R_W_ST:
+; Interpret the seven byte status returned by the FDC after a
+; read or write command.  Only the first three bytes are im-
+; portant, but all bytes must be read.  Give immediate pre-
+; ference to non-CRC errors.
+
+; On Exit:
+;   (A) = 0 if no error.
+;         1 if CRC error.
+;         2 if seek error.
+;         3 if illegal IO request.
+;         9 if drive off-line.
+;         16 if write protected error.
+
+; Accept first three bytes and interpret error flags.
+          CALL  GET_RSLT_BT         ;  ST0 byte.
+          LD    E, 6
+
+          BIT   3, A                ;  Not ready bit.
+          LD    B, A
+          LD    A, 9
+          JR    NZ, $1
+
+          LD    A, 0D0H             ;  Interrupt code, Equip Chk.
+          AND   B
+          LD    D,A
+
+          CALL  GET_RSLT_BT         ; ST1 byte.
+          DEC   E
+
+          LD    B,A
+          LD    A, 02H               ;  Write protected.
+          AND   B
+          LD    A, 16
+          JR    NZ, $1
+
+          LD    A, 84H              ;  End cyl, No data.
+          AND   B
+          LD    A, 3
+          JR    NZ, $1
+
+          LD    A, 61H              ;  Data Error, Overrun, MAM.
+          AND   B
+          OR    D
+          LD    D,A
+
+          CALL  GET_RSLT_BT         ;  ST2 byte.
+          DEC   E
+
+          LD    B, A
+          LD    A, 12H              ;  Bad cylinder error.
+          AND   B
+          LD    A, 2
+          JR    NZ, $1
+
+          LD    A, B
+          OR    D
+          LD    A, 0
+          JR    Z, $1
+          INC   A
+
+$1:
+; Read and discard remaining result bytes.
+          LD    B, E
+          LD    E, A
+$2:
+          CALL  GET_RSLT_BT
+          DJNZ  $2
+          LD    A, E
+          RET
+
+
+GET_RSLT_BT:
+; Wait until FDC is ready to send, and then accept input byte
+; in (A).
+
+          IN    A, (FDC_STAT)
+          AND   0C0H
+          CP    0C0H
+          JR    NZ, GET_RSLT_BT
+
+; Accept character.
+          IN    A, (FDC_DATA)
+          RET
+
+
+
+;  This section defines the working storage data blocks used by the 
+;  Bootmaker for its own purposes.
+
+;  Disk Command Tables
+;  ---- ------- ------
+
+SIS_CMD_TB:
+;  Table to define Sense Interrupt Status command.
+          .BYTE     08H
+
+FDC_RCL_TBL:
+;  Table of recalibration control parameters needed by FDC.
+
+          .BYTE 07H                ;  Recalibrate command.
+
+          .BYTE 1                  ;  Disk number.
+
+FDC_BUT_TBL:
+;  Table of SBIOS writing control parameters needed by FDC.
+
+          .BYTE 45H                ;  Write command.
+
+          .BYTE 1                  ;  Disk number.
+
+          .BYTE 0                  ;  Track number of track to which disk
+                                   ;  is currently positioned by recalibrate.
+
+          .BYTE 0                  ;  Head number.
+
+          .BYTE 1                  ;  Initial sector number.
+
+          .BYTE 2                  ;  Sector size = 2 for 512.
+
+          .BYTE 9                  ;  Sectors / track.
+
+          .BYTE 27                 ;  Gap-3 read/write length.  Format
+                                   ;  length is 84 bytes for Sony disks.
+
+          .BYTE 0FFH               ;  Data length (superseded
+                                   ;  by sector size.
+
+
+          .END
+
+
+**********
+George:  This looked OK as it was echoed to me.  Please let me know if
+there are any problems with it.
+
+Karl
+
+Action?   purge
+
+  Purged.
+
+Action?   

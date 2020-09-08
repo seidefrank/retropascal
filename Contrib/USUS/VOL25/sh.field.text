@@ -1,0 +1,187 @@
+  Procedure EATSPL;   (* var F_FLD: STRING *)
+   { Local procedure that removes all spaces on the left end of string F_FLD. }
+
+    begin {EATSPL}
+      repeat
+       if length(F_FLD)=0 then exit(EATSPL)
+        else if (F_FLD[1]=' ') or (F_FLD[1]=ULINE) then delete(F_FLD,1,1)
+        else exit(EATSPL);
+      until False;
+    end; {EATSPL}
+
+  Procedure EATSPR; (* var F_FLD: STRING *)
+  { Local procdeure that removes all spaces on the right side of string F_FLD.}
+   
+     begin {EATSPR}
+       repeat
+        if length(F_FLD)=0 then exit(EATSPR)
+         else if (F_FLD[length(F_FLD)]=' ') or (F_FLD[length(F_FLD)]=ULINE)
+            then delete(F_FLD,length(F_FLD),1)
+          else exit(EATSPR);
+       until False;
+     end;  {EATSPR}
+       
+  Procedure FIELD;
+   var CHAR_POSITION,TEMP_CHAR,MAX_CHAR,CHAR_INDEX,CHAR_COUNT: Integer;
+       F_ERROR,EXIT_FLAG: Boolean;
+       ULCHAR: String[1];
+       F_INPUT: Char;
+  
+  Procedure INIT_FIELD(var F_FLD:STRINGFL;
+                       F_LEN,F_E_COL,F_E_ROW:Integer;
+                       F_JUS:Char);
+    {Local procedure that initilizes the data field and some other variables}
+   
+   begin {INIT}
+    if (F_E_ROW<0) or (F_E_ROW>MAX_ROW) then F_E_ROW:=MAX_ROW;
+    if (F_E_COL<0) or (F_E_COL>MAX_COL) then F_E_COL:=MAX_COL-40;
+    if (F_JUS='L') or (F_AN='N')  then
+      begin
+       EATSPL(F_FLD);
+       F_FLD:=copy(concat(F_FLD,UNDERLINE),1,F_LEN);
+      end
+     else if F_JUS='R' then
+      begin
+       EATSPR(F_FLD);
+       while length(F_FLD)<F_LEN do insert(ULCHAR,F_FLD,1);
+      end
+     else F_FLD:=copy(concat(F_FLD,UNDERLINE),1,F_LEN);     
+    for CHAR_POSITION:=1 to F_LEN do
+       if F_FLD[CHAR_POSITION]=' ' then F_FLD[CHAR_POSITION]:=ULINE;
+    MAX_CHAR:=F_LEN;
+   end;  {INIT}
+  
+  Procedure UPDATE(var F_FLD: STRINGFL;
+                     F_SKIP: Boolean;
+                     F_LEN,F_E_COL,F_E_ROW: Integer;
+                     F_AN: Char);
+              
+    begin {UPDATE}
+     if CHAR_POSITION=F_LEN then 
+       begin
+        write(ALARM_BELL);
+        CHAR_POSITION:=CHAR_POSITION-1;
+       end;
+     if F_INPUT=' ' then F_INPUT:=ULINE;
+     F_ERROR:=False;
+     if (F_INPUT=ULINE)  or
+        ((F_INPUT in['0'..'9','+','-','.']) and (F_AN='N'))
+                       or
+        ((F_INPUT in['A'..'Z','a'..'z','-','.']) and (F_AN='L'))
+                       or
+        ((F_INPUT in['A'..'Z','a'..'z','-','.','+','0'..'9']) and (F_AN='A'))
+                       or
+        ((F_INPUT in[' '..'~']) and (F_AN='S'))
+       then
+         begin
+          gotoxy(F_COL+CHAR_POSITION,F_ROW);
+          write(F_INPUT);
+          F_FLD[CHAR_POSITION+1]:=F_INPUT;
+          CHAR_POSITION:=CHAR_POSITION+1;
+          if (F_SKIP) and (CHAR_POSITION>=F_LEN) then F_INPUT:=CURSOR_RIGHT;
+         end
+       else 
+         begin
+           F_ERROR:=True;
+           gotoxy(F_E_COL,F_E_ROW);
+           write(ALARM_BELL,'ERROR: ');
+           if not (F_AN in['A','L','N','S']) then F_AN:='S';
+           case F_AN of 
+             'A' : write('Alphanumeric character required.');
+             'L' : write('Alphabetic letter required.');
+             'N' : write('Numeric character required.');
+             'S' : write('Illegal character.');
+            end; {case}
+        end; {else}
+   end; {UPDATE}
+
+   begin {FIELD}
+    ULCHAR:=' ';  ULCHAR[1]:=ULINE;
+    INIT_FIELD(F_FLD,F_LEN,F_E_COL,F_E_ROW,F_JUS);
+    CHAR_POSITION:=0;
+    gotoxy(F_COL,F_ROW);  write(F_FLD);
+    gotoxy(F_COL,F_ROW);
+    F_ERROR:=True;
+    repeat
+      EXIT_FLAG:=False;
+      repeat
+        if CHAR_POSITION<F_LEN then gotoxy(F_COL+CHAR_POSITION,F_ROW)
+           else gotoxy(F_COL+CHAR_POSITION-1,F_ROW);
+        read(Keyboard,F_INPUT);
+        if eoln(Keyboard) then F_INPUT:=RETURN_KEY;
+        if F_ERROR then 
+          begin
+            ERASE_EOL(F_E_COL,F_E_ROW);
+            F_ERROR:=False;
+           end;
+        if F_INPUT in[' '..'~']
+          then UPDATE(F_FLD,F_SKIP,F_LEN,F_E_COL,F_E_ROW,F_AN);
+       {case F_INPUT of }
+        if F_INPUT=CURSOR_LEFT then 
+           if CHAR_POSITION>0 then CHAR_POSITION:=CHAR_POSITION-1
+            else EXIT_FLAG:=True
+         else if F_INPUT=CURSOR_RIGHT then
+            if CHAR_POSITION+1<F_LEN then CHAR_POSITION:=CHAR_POSITION+1
+              else EXIT_FLAG:=True
+         else if F_INPUT=DEL_KEY then 
+           begin
+            delete(F_FLD,CHAR_POSITION+1,1);
+            F_FLD:=concat(F_FLD,ULCHAR);
+           end
+         else if F_INPUT=INS_KEY then 
+           begin
+            F_FLD:=copy(F_FLD,1,length(F_FLD)-1);
+            insert(ULCHAR,F_FLD,CHAR_POSITION+1);
+            MAX_CHAR:=MAX_CHAR+1;
+           end
+         else if F_INPUT in[C_CLEAR_HOME,C_HOME,ENTER_KEY,TAB_LEFT,TAB_SKIP,
+                            TAB_RIGHT,CURSOR_UP,ERASE_INPUT,CURSOR_DOWN,
+                            RETURN_KEY]
+                     then EXIT_FLAG:=True
+         else if F_INPUT=ESC_KEY then
+           begin
+            F_EXIT:=F_INPUT;
+            F_FLD:='';
+            exit(FIELD);
+           end       
+         else if F_INPUT=ERASE_FIELD then 
+           begin
+            F_FLD:=UNDERLINE;
+            CHAR_POSITION:=0;
+           end;
+        if CHAR_POSITION>MAX_CHAR then MAX_CHAR:=CHAR_POSITION;
+        if MAX_CHAR>F_LEN then MAX_CHAR:=F_LEN;
+        gotoxy(F_COL,F_ROW);
+        write(copy(concat(F_FLD,UNDERLINE),1,MAX_CHAR));
+      until EXIT_FLAG=True;
+     CHAR_COUNT:=0;
+     for CHAR_INDEX:=1 to F_LEN do
+       if F_FLD[CHAR_INDEX]<>ULINE then CHAR_COUNT:=CHAR_COUNT+1;
+     if CHAR_COUNT<F_MIN then 
+        begin
+         F_ERROR:=True;
+         gotoxy(F_E_COL,F_E_ROW);
+         write(ALARM_BELL,'ERROR: Minimun input is ',F_MIN);
+        end
+       else F_ERROR:=False;
+    until F_ERROR=False;
+    if F_JUS='L' then 
+      begin
+       EATSPL(F_FLD);
+       F_FLD:=copy(concat(F_FLD,UNDERLINE),1,F_LEN);
+      end
+     else if F_JUS='R' then 
+      begin
+       EATSPR(F_FLD);
+       while length(F_FLD)<F_LEN do insert(ULCHAR,F_FLD,1);
+      end
+     else F_FLD:=copy(concat(F_FLD,UNDERLINE),1,F_LEN);
+   gotoxy(F_COL,F_ROW);
+   write(copy(F_FLD,1,F_LEN));
+   for CHAR_POSITION:=1 to F_LEN do
+     if F_FLD[CHAR_POSITION]=ULINE then F_FLD[CHAR_POSITION] := ' ';
+   F_FLD:=copy(F_FLD,1,F_LEN);
+   F_EXIT:=F_INPUT;
+ end; {FIELD}
+
+

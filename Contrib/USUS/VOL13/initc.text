@@ -1,0 +1,480 @@
+ 
+{**********************************************************************
+ 
+  INIT_CONST initializes all variables that remain constant throughout
+  program execution. These variables are true system constants.
+ 
+**********************************************************************}
+ 
+ 
+ 
+Procedure init_const;
+ 
+var
+   i : posint;
+ 
+ 
+      Procedure init_cmd_strings;
+ 
+      begin
+         cmd_strings[ autop  ] := 'AUTOPARA    ';
+         cmd_strings[ autset ] := 'AUTOSET     ';
+         cmd_strings[ brk    ] := 'BREAK       ';
+         cmd_strings[ cntr   ] := 'CENTER      ';
+         cmd_strings[ cmnt   ] := 'COMMENT     ';
+         cmd_strings[ fig    ] := 'FIGURE      ';
+         cmd_strings[ fil    ] := 'FILL        ';
+         cmd_strings[ indt   ] := 'INDENT      ';
+         cmd_strings[ inclu  ] := 'INCLUDE     ';
+         cmd_strings[ justfy ] := 'JUSTIFY     ';
+         cmd_strings[ lmar   ] := 'LEFTMARGIN  ';
+         cmd_strings[ lower  ] := 'LOWERCASE   ';
+         cmd_strings[ noauto ] := 'NOAUTOPARA  ';   
+         cmd_strings[ nofil  ] := 'NOFILL      ';
+         cmd_strings[ num    ] := 'NUMBER      ';
+         cmd_strings[ offnum ] := 'OFFNUMBER   ';
+         cmd_strings[ offpag ] := 'OFFPAGE     ';
+         cmd_strings[ onnum  ] := 'ONNUMBER    ';
+         cmd_strings[ onpag  ] := 'ONPAGE      ';
+         cmd_strings[ pag    ] := 'PAGE        ';
+         cmd_strings[ papsiz ] := 'PAPERSIZE   ';
+         cmd_strings[ rmar   ] := 'RIGHTMARGIN ';
+         cmd_strings[ same   ] := 'SAMECASE    ';
+         cmd_strings[ skp    ] := 'SKIP        ';
+         cmd_strings[ spc    ] := 'SPACING     ';
+         cmd_strings[ std    ] := 'STANDARD    ';
+         cmd_strings[ tstpag ] := 'TESTPAGE    ';
+         cmd_strings[ til    ] := 'TITLE       ';
+         cmd_strings[ upper  ] := 'UPPERCASE   ';
+      end; { init_cmd_strings }
+ 
+ 
+begin  { init_const }
+ 
+   init_cmd_strings;
+ 
+   with std_vals do
+      begin
+         version := new;
+         fill_mode := justification; 
+         paging := true;
+         numbering := true;
+         ap_mode := true;
+         lm := 10;
+         rm := 70;
+         ap_indent := 5;
+         ap_skip := 1;
+         paper_width := 80;
+         paper_length := 66;
+         chars_in_line := rm - lm + 1;
+         printable_lines := paper_length - bordersize;
+         spacing := 1;
+      end; { with }
+ 
+   with blank_string do
+      begin
+         st := 1;
+         en := 0;
+         for i := 1 to maxlinewidth do
+            str[i] := blank_char;
+      end;
+ 
+   with soft_space do
+      begin
+         ch := blank_char;
+         malleability := soft;
+         length := 1;
+         atts := [];
+      end; { with }
+ 
+   with blank_buf do
+      begin
+         st := 1;
+         en := 0;
+         for i := 1 to maxlinewidth do
+            str[i] := soft_space;
+      end; { with }
+ 
+   hard_space := soft_space;
+   hard_space.malleability := hard;
+ 
+   numbers := [zero..nine];
+   act_cmds := [brk..nofil];
+   text_cmds := [cntr..inclu];
+ 
+   text_delims := ['!'..'/'] + [':'..'@'] + ['['..'_'];
+   leadin_chars := ['^', '\', '<', '_'];
+   lock_ops := ['&', '^'];
+   word_ops := ['&', '^'];
+ 
+   space_chars := [blank_char, pound];
+   delim_chars := [chr(1)..chr(32)] + [pound];
+   uc_letters := [uca..ucz];
+   lc_letters := [lca..lcz];
+ 
+   bs := chr(8);
+ 
+end; { init_const }
+
+{**********************************************************************
+ 
+  INIT_VARS initializes all system variables that can change during
+  program execution.
+ 
+**********************************************************************}
+ 
+ 
+ 
+Procedure init_vars;
+ 
+var
+   i : posint;
+ 
+begin
+ 
+   sysvars[new] := std_vals;
+   sysvars[old] := std_vals;
+ 
+   with pageinfo do
+      begin
+         currline := 0;
+         currpage := 2;
+         figure_set := false;
+         figure_pending := false;
+         figure_size := 0;
+         title := blank_string;
+      end;
+ 
+   internal_buf := blank_buf;
+   output_buf := blank_buf;
+ 
+   n := 0;
+   m := 0;
+ 
+   global_case := [];
+   lock_status := [];
+ 
+   lead_blank := false;
+   blankline := false;
+   dot_command := false;
+   more_input := false;
+ 
+   vc_in_line := 0;
+   ic_in_line := 0;
+   ln_number := 0;
+ 
+   with file_stack do
+      begin
+         ptr := 0;
+         for i := 1 to max_files do
+            with stack[i] do
+               begin
+                  name := nul;
+                  line := 0;
+                  in_buf := blank_string;
+               end;
+      end; { with }
+ 
+end; { init_vars }
+
+{**********************************************************************
+
+  Error procedure.  This routine accepts a parameter of type ERRORTYPE,
+  and prints the corresponding error message on the user's terminal,
+  preceded by the line number of the source line in which the error
+  occurred, and followed by the offending line itself. It is assumed
+  that ERR_POS has been set to the position of the offending item.
+  The routine then closes all open files, and executes an EXIT(RUNON),
+  which ends RUNON execution.
+
+***********************************************************************} 
+
+
+Procedure error(err_msg : errortype;
+                err_ptr : posint;
+                err_buf : line_of_chars);
+
+var
+   i : posint;
+   
+   
+   Procedure print1;
+   
+   begin
+      case err_msg of
+         badcmd  : writeln('Unknown command');
+         tooshrt : writeln('Paper length too short');
+         toowide : writeln('Paper width too wide');
+         toonrrw : writeln('Paper width less than right margin');
+         badsym  : writeln('Bad character following lead-in');
+         argmsng : writeln('Missing parameter');
+         nonnum  : writeln('Numeric parameter required');
+         toolow  : writeln('Parameter out of range - too low');
+         toohgh  : writeln('Parameter out of range - too high');
+         tilwide : writeln('Title wider than paper width');
+         cntwide : writeln('Text wider than margins allow');
+         figbad  : writeln('Figure already set or pending');
+      end { case }
+   end; { print1 }
+   
+   
+   
+   Procedure print2; 
+   
+   begin
+      case err_msg of
+         wdlen   : writeln('Word too long for present line'); 
+         dblnam  : writeln('Non unique abbreviation'); 
+         incerr  : writeln('File already included'); 
+         filerr  : writeln('Include file I/O error'); 
+         nesdep  : writeln('Too many include files'); 
+         aplow   : writeln('Auto-indent out of range - too low'); 
+         aphgh   : writeln('Auto-indent out of range - too high'); 
+         cmderr  : writeln('Command error'); 
+         baddelm : writeln('Illegal delimiter for text parameter'); 
+         dlmmsng : writeln('Missing delimiter for text parameter'); 
+         endlead : writeln('Lead-in character illegal at end of line'); 
+         badcnt  : writeln('Attemp to center non-existent text');
+      end; { case }
+   end; { print2 }
+
+
+
+begin  { error }
+
+   writeln;
+   writeln('ERROR IN LINE ', ln_number:5, ' : ');
+   
+   if err_msg in [badcmd..figbad]
+      then print1
+      else print2;
+   
+   writeln(err_buf);
+   
+   if err_ptr > 0 then
+      begin
+         for i := 1 to (err_ptr - 1) do write(blank_char);
+         writeln('^');
+      end;
+   
+   writeln;
+   
+   close(s0);
+   
+   for i := 1 to file_stack.ptr do
+      case i of
+         1 : close(s1);
+         2 : close(s2);
+         3 : close(s3);
+         4 : close(s4);
+         5 : close(s5);
+      end; { case }
+   
+   close(dest, lock);
+   
+   exit(RUNON);      { so, it's ugly... }
+   
+end; { error }
+ 
+{**********************************************************************
+ 
+  CENTER_BUFFER centers the text found in the ALINE buffer between
+  the parameters LMARG and RMARG. The text is presumed to be left
+  justified in ALINE upon entry to this procedure. The .ST and .EN
+  pointers are changed to point to the centered text.
+ 
+  CENTER_BUFFER is called on by PUT_TITLE and TEXT_CMNDS to center
+  the title, and for the .CENTER command.
+ 
+**********************************************************************}
+ 
+ 
+Procedure center_buffer(var aline    : buffer;
+                            lmarg,
+                            rmarg    : posint;
+                            err_pos  : posint;
+                            err_code : errortype);
+ 
+var
+   textlen,
+   width,
+   offset, i : posint;
+ 
+begin
+   width := rmarg - lmarg + 1;
+   textlen := aline.en;
+ 
+   if textlen > width then
+      begin
+         if err_code = tilwide
+            then error(err_code, err_pos, pageinfo.title.str)
+            else error(err_code, err_pos, input_buf.str);
+         end;
+ 
+   offset := ((width - textlen) div 2) - 1;
+ 
+   for i := textlen downto 1 do
+      aline.str[i + offset + lmarg] := aline.str[i];
+ 
+   aline.st := offset + lmarg + 1;
+   aline.en := offset + lmarg + textlen;
+ 
+   for i := (offset + lmarg) downto 1 do
+      aline.str[i] := soft_space;
+ 
+end; { center_buffer }
+     
+{**********************************************************************
+ 
+  SCANNER parses the IN_BUF, placing the 'image' of the line into
+  the OUT_BUF.  It processes the special symbols ( ^&, etc.),
+  removes them from the text, and gives each character 'attributes'
+  based on previous occurrences of the special symbols. Note that
+  only quoted characters, and normal (i.e. non-delimiter, non-
+  control) characters have attributes. Further, note that quoted
+  characters may only have U_LINE as an attribute, and that if
+  normal characters do not have case attributes, they assume what-
+  ever global case attribute is in effect as set by the case dot
+  commands, or the default setting.
+ 
+  A subprocedure, INTERN, is used to put each character into the
+  internal buffer, setting the print-out length of the character,
+  'malleability' (both used in the justification process), and
+  the attributes.
+ 
+  Note that ASCII control characters are INTERNed with zero
+  length, in order to allow them to be justified 'unnoticed'.  
+ 
+**********************************************************************}
+ 
+ 
+Procedure scanner(    st_pos,
+                      en_pos  : posint;
+                      in_buf  : line_of_chars;
+                  var out_buf : buffer       );
+ 
+var
+   current_char : char;
+   current_atts : attrib_set;
+   char_num     : posint;
+   quote,
+   word_on,
+   lock_on,
+   lock_off     : boolean;
+   word_status  : attrib_set;
+   
+   
+ 
+      Procedure intern(curr_ch : char;
+                       density : hard_soft;
+                       len     : posint;
+                       ats     : attrib_set );
+ 
+      begin
+         out_buf.en := out_buf.en + 1;
+ 
+         with out_buf.str[out_buf.en] do
+            begin
+               ch := curr_ch;
+               malleability := density;
+               length := len;
+               atts := ats
+            end  { with }
+ 
+      end; { intern }
+ 
+ 
+ 
+begin  { scanner }
+ 
+   quote := false;
+   word_on := false;
+   lock_on := false; 
+   lock_off := false;
+   word_status := [];
+   
+   For char_num := st_pos to en_pos do
+      begin
+         current_char := in_buf[char_num];
+         current_atts := word_status + lock_status;
+ 
+         if quote then
+            begin
+               intern(current_char, hard, 1, current_atts - [u_case, l_case]);
+               quote := false;
+            end
+         else
+            If word_on then
+               begin
+                  if current_char in word_ops then
+                     case current_char of
+                        '&'    : word_status := word_status + [u_line];
+                        '^'    : word_status := word_status + [u_case];
+                     end
+                  else
+                     error(badsym, char_num, in_buf);
+                  word_on := false;
+               end
+            else
+               If lock_on then
+                  begin
+                     if current_char in lock_ops then
+                        case current_char of
+                           '&'    : lock_status := lock_status + [u_line]; 
+                           '^'    : lock_status := lock_status + [u_case];
+                        end
+                     else
+                        error(badsym, char_num, in_buf);
+                     lock_on := false;
+                  end
+               else
+                  If lock_off then
+                     begin
+                        if current_char in lock_ops then
+                           case current_char of
+                              '&'    : lock_status := lock_status - [u_line];
+                              '^'    : lock_status := lock_status - [u_case];
+                           end
+                        else
+                           error(badsym, char_num, in_buf);
+                        lock_off := false;
+                     end
+                  else
+                     If current_char in leadin_chars then
+                        case current_char of  
+                           '^'    : lock_on := true;
+                           '\'    : lock_off := true;
+                           '<'    : word_on := true;
+                           '_'    : quote := true
+                        end
+                     else
+                        If current_char in delim_chars then
+                           begin
+                              word_status := [];
+                              If current_char in space_chars then
+                                 begin
+                                    if current_char = pound
+                                       then intern(blank_char, hard, 1, [])
+                                       else intern(blank_char, soft, 1, []);
+                                 end
+                              else   { ctrl chars }
+                                 intern(current_char, hard, 0, []);
+                           end
+                        else
+                           begin
+                              if (current_atts - [u_case, l_case]) =
+                                 current_atts then
+                                    current_atts :=
+                                       current_atts + global_case;
+                              intern(current_char, hard, 1, current_atts);
+                           end;
+      end;  { for }
+ 
+   if quote or word_on or lock_on or lock_off then
+      error(endlead, en_pos, in_buf);
+ 
+end;  { scanner }
+ 
+ 
+ 
+

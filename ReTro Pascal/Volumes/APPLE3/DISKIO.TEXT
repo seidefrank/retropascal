@@ -1,0 +1,371 @@
+(*$V-*)
+(*$G+*)
+PROGRAM DISKIO;
+(*********************************************************)
+(*                                                       *)
+(*  PROGRAM TO DEMONSTRATE RANDOM ACCESS DISK FILES      *)
+(*  AND TERMINAL-INDEPENDENT SCREEN CONTROL.             *)
+(*                                                       *)
+(*********************************************************)
+
+CONST NAMELEN=32;
+      COMPLEN=32;
+      STREETLEN=20;
+      CITYLEN=30;
+      TELELEN=14;
+      
+TYPE SETOFCHAR=SET OF CHAR;
+     PERSON=RECORD
+                 NAME:      STRING[NAMELEN];
+                 COMPANY:   STRING[COMPLEN];
+                 STREET:    STRING[STREETLEN];
+                 CITYSTATE: STRING[CITYLEN];
+                 TEL:       STRING[TELELEN];
+               END;
+     CRTCOMMAND= (ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT,LEADIN);
+
+
+VAR CH:        CHAR;
+    RECNUM:    INTEGER;
+    LASTCHANGE: BOOLEAN;
+    DATAFILE:  FILE OF PERSON;
+    CRTINFO:   PACKED ARRAY[CRTCOMMAND] OF CHAR;
+    PREFIXED:  ARRAY[CRTCOMMAND] OF BOOLEAN;
+    
+    
+
+PROCEDURE GETCRTINFO;
+(****************************************************************)
+(*                                                              *)
+(*  READ SYSTEM.MISCINFO AND GET CRT CONTROL CHARACTER INFO     *)
+(*                                                              *)
+(****************************************************************)
+VAR BUFFER: PACKED ARRAY[0..511] OF CHAR;
+    I,BYTE: INTEGER;
+    F: FILE;
+BEGIN
+  RESET(F,'*SYSTEM.MISCINFO');
+  I:=BLOCKREAD(F,BUFFER,1);
+  CLOSE(F);
+  BYTE:=ORD(BUFFER[72]); (* PREFIX INFORMATION BYTE *)
+  CRTINFO[LEADIN]:=BUFFER[62];  PREFIXED[LEADIN]:=FALSE;
+  CRTINFO[ERASEOS]:=BUFFER[64]; PREFIXED[ERASEOS]:=ODD(BYTE DIV 8);
+  CRTINFO[ERASEOL]:=BUFFER[65]; PREFIXED[ERASEOL]:=ODD(BYTE DIV 4);
+  CRTINFO[RIGHT]:=BUFFER[66];   PREFIXED[RIGHT]:=ODD(BYTE DIV 2);
+  CRTINFO[UP]:=BUFFER[67];      PREFIXED[UP]:=ODD(BYTE);
+  CRTINFO[LEFT]:=BUFFER[68];    PREFIXED[LEFT]:=ODD(BYTE DIV 32);
+  CRTINFO[DOWN]:=CHR(10);       PREFIXED[DOWN]:=FALSE;
+END;
+
+
+
+PROCEDURE CRT(C: CRTCOMMAND);
+(*****************************************************************)
+(*                                                               *)
+(*  CRT COMMANDS ARE: ERASEOS,ERASEOL,UP,DOWN,RIGHT,LEFT.        *)
+(*                                                               *)
+(*****************************************************************)
+BEGIN
+  IF PREFIXED[C] THEN UNITWRITE(1,CRTINFO[LEADIN],1,0,12);
+  UNITWRITE(1,CRTINFO[C],1,0,12);
+END;
+
+
+PROCEDURE PROMPTAT(Y: INTEGER; S: STRING);
+BEGIN
+  GOTOXY(0,Y);
+  WRITE(S);
+  CRT(ERASEOL);
+END;
+
+
+FUNCTION GETCHAR(OKSET: SETOFCHAR): CHAR;
+(******************************************************************)
+(*                                                                *)
+(*  GET A CHARACTER, BEEP IF NOT IN OKSET, ECHO ONLY IF PRINTING  *)
+(*                                                                *)
+(******************************************************************)
+VAR CH: CHAR;
+    GOOD: BOOLEAN;
+BEGIN
+  REPEAT
+    READ(KEYBOARD,CH);
+    IF EOLN(KEYBOARD) THEN CH:=CHR(13);
+    GOOD:= CH IN OKSET;
+    IF NOT GOOD THEN WRITE(CHR(7))
+      ELSE IF CH IN [' '..'}'] THEN WRITE(CH);
+  UNTIL GOOD;
+  GETCHAR:=CH;
+END;
+
+
+PROCEDURE GETSTRING(VAR S: STRING; MAXLEN: INTEGER);
+(***************************************************************)
+(*                                                             *)
+(*  GET AND ECHO A STRING UP TO MAXLEN CHARS LONG.             *)
+(*  IF NULL STRING ENTERED, DEFAULT AND PRINT PREVIOUS VALUE.  *)
+(*                                                             *)
+(***************************************************************)
+VAR S1: STRING[1];
+    STEMP: STRING[80];
+    OKSET: SET OF CHAR;
+BEGIN
+  OKSET:=[' '..'}'];
+  S1:=' ';
+  STEMP:='';
+  REPEAT
+    IF LENGTH(STEMP) = 0 THEN S1[1]:=GETCHAR(OKSET + [CHR(13)])
+      ELSE IF LENGTH(STEMP)=MAXLEN THEN S1[1]:=GETCHAR([CHR(13),CHR(8)])
+             ELSE S1[1]:=GETCHAR(OKSET + [CHR(13),CHR(8)]);
+    IF S1[1] IN OKSET THEN STEMP:=CONCAT(STEMP,S1)
+      ELSE IF S1[1]=CHR(8) THEN 
+        BEGIN
+          CRT(LEFT); WRITE(' '); CRT(LEFT);
+          DELETE(STEMP,LENGTH(STEMP),1);
+        END;
+  UNTIL S1[1] = CHR(13);
+  IF LENGTH(STEMP) <> 0 THEN S:=STEMP
+  ELSE WRITE(S);
+END;
+
+
+FUNCTION YES: BOOLEAN;
+BEGIN
+  YES:= GETCHAR(['Y','y','N','n']) IN ['Y','y'];
+END;
+
+
+PROCEDURE ZEROREC(VAR REC: PERSON);
+BEGIN
+  WITH REC DO
+    BEGIN
+      NAME:='';
+      COMPANY:='';
+      STREET:='';
+      CITYSTATE:='';
+      TEL:='';
+    END;
+END;
+
+
+PROCEDURE VALIDATE(VAR REC: PERSON);
+(*********************************************************)
+(*                                                       *)
+(*  TRIES TO DETECT AND ZERO AN UNINITIALIZED RECORD     *)
+(*  NO CHANGE IF ALL FIELDS ARE VALID.                   *)
+(*                                                       *)
+(*********************************************************)
+  PROCEDURE CHECK(VAR S: STRING; MAXLEN: INTEGER);
+  LABEL 1;
+  VAR I: INTEGER;
+  BEGIN
+    IF LENGTH(S) > MAXLEN THEN GOTO 1;
+    FOR I:=1 TO LENGTH(S) DO 
+      IF NOT (S[I] IN [' '..'}']) THEN GOTO 1;
+    EXIT(CHECK); (* STRING IS OK *)
+  1: ZEROREC(REC); EXIT(VALIDATE);
+  END; (* CHECK *)
+  
+BEGIN (* VALIDATE *)
+  WITH REC DO
+    BEGIN
+      CHECK(NAME,NAMELEN);
+      CHECK(COMPANY,COMPLEN);
+      CHECK(STREET,STREETLEN);
+      CHECK(CITYSTATE,CITYLEN);
+      CHECK(TEL,TELELEN);
+    END;
+END; (* VALIDATE *)
+
+
+PROCEDURE SHOWREC(REC: PERSON);
+BEGIN
+  GOTOXY(0,4); CRT(ERASEOS);
+  WITH REC DO
+    BEGIN
+      WRITELN('Name:         ',NAME);
+      WRITELN('Company:      ',COMPANY);
+      WRITELN('Street:       ',STREET);
+      WRITELN('City & State: ',CITYSTATE);
+      WRITELN('Telephone:    ',TEL);
+    END;
+END;
+
+
+PROCEDURE CHANGEREC(VAR REC: PERSON);
+BEGIN 
+  GOTOXY(0,12); CRT(ERASEOS);
+  PROMPTAT(12,'(Press return for no change)');
+  WITH REC DO
+    BEGIN
+      GOTOXY(0,14);
+      WRITE('Name:         '); GETSTRING(NAME,NAMELEN);  WRITELN;
+      WRITE('Company:      '); GETSTRING(COMPANY,COMPLEN); WRITELN;
+      WRITE('Street:       '); GETSTRING(STREET,STREETLEN); WRITELN;
+      WRITE('City & State: '); GETSTRING(CITYSTATE,CITYLEN); WRITELN;
+      WRITE('Telephone:    '); GETSTRING(TEL,TELELEN); WRITELN;
+   END;
+END; (* CHANGEREC *)
+  
+  
+PROCEDURE NEWFILE;
+VAR SUCESSFUL: BOOLEAN;
+    FILENAME:  STRING[30];
+    IREC,MAXREC: INTEGER;
+BEGIN
+  CLOSE(DATAFILE,LOCK); (* IN CASE IT'S ALREADY OPEN *)
+  (*$I-*)
+  REPEAT
+    GOTOXY(0,1); CRT(ERASEOS);
+    PROMPTAT(8,'File Name: '); READLN(FILENAME);
+    RESET(DATAFILE,FILENAME);  (* TRY TO OPEN AN OLD FILE *)
+    SUCESSFUL := (IORESULT=0);
+    IF NOT SUCESSFUL THEN  (* START A NEW FILE? *)
+      BEGIN
+        PROMPTAT(10,'Start a new file ? ');
+        IF YES THEN 
+          BEGIN
+            REWRITE(DATAFILE,FILENAME);
+            PROMPTAT(12,'Reserve how many records ? ');
+            READLN(MAXREC);
+            SEEK(DATAFILE,MAXREC);
+            ZEROREC(DATAFILE^);
+            (*$I-*)
+            PUT(DATAFILE);
+            (*$I+*)
+            IF (IORESULT<>0) OR EOF(DATAFILE) THEN 
+              BEGIN
+                PROMPTAT(14,'Not enough room. Press return ');
+                READLN;
+                SUCESSFUL:=FALSE;
+              END
+            ELSE
+              BEGIN
+                (* INITIALIZE CONTENTS OF FILE *)
+                FOR IREC:=0 TO MAXREC DO
+                  BEGIN
+                    SEEK(DATAFILE,IREC);
+                    PUT(DATAFILE);
+                  END;
+                CLOSE(DATAFILE,LOCK); (* LOCK IT IN PLACE *)
+                RESET(DATAFILE,FILENAME);
+                SUCESSFUL := (IORESULT = 0);
+              END;
+          END;
+      END;
+  UNTIL SUCESSFUL;
+  (*$I+*)
+  RECNUM:=-1;
+  LASTCHANGE:=FALSE;
+END;
+
+
+PROCEDURE CHANGE;
+BEGIN
+  (*$I-*)
+  REPEAT
+    PROMPTAT(2,'Change which record ? '); 
+    READLN(RECNUM);
+  UNTIL IORESULT=0;
+  (*$I+*)
+  SEEK(DATAFILE,RECNUM);
+  GET(DATAFILE);
+  IF EOF(DATAFILE) THEN (* EXTENDING FILE *) ZEROREC(DATAFILE^);
+  VALIDATE(DATAFILE^);
+  SHOWREC(DATAFILE^);
+  CHANGEREC(DATAFILE^);
+  SEEK(DATAFILE,RECNUM);
+  (*$I-*)
+  PUT(DATAFILE);
+  (*$I+*)
+  IF (IORESULT<>0) OR EOF(DATAFILE) THEN 
+    BEGIN
+      GOTOXY(0,20); 
+      WRITELN(CHR(7),'UNABLE TO EXTEND FILE, NO DATA WRITTEN');
+      WRITELN('Use Filer K(runch command to make space after file.');
+    END;
+  LASTCHANGE:=TRUE;
+END;
+  
+
+PROCEDURE VIEW;
+BEGIN
+  (*$I-*)
+  REPEAT
+    PROMPTAT(2,'View which record ? '); 
+    READLN(RECNUM);
+  UNTIL IORESULT=0;
+  (*$I+*)
+  SEEK(DATAFILE,RECNUM);
+  GET(DATAFILE);
+  IF EOF(DATAFILE) THEN 
+    BEGIN
+      GOTOXY(0,4);
+      WRITE('Record ',RECNUM,' not in file.');
+    END
+  ELSE 
+    BEGIN
+      VALIDATE(DATAFILE^);
+      SHOWREC(DATAFILE^);
+    END;
+  LASTCHANGE:=FALSE;
+END;
+  
+  
+PROCEDURE NEXT;
+(* VIEW OR CHANGE NEXT RECORD *)
+BEGIN
+  RECNUM:=RECNUM+1;
+  SEEK(DATAFILE,RECNUM);
+  GET(DATAFILE);
+  IF EOF(DATAFILE) THEN 
+    BEGIN
+      ZEROREC(DATAFILE^);
+      IF NOT LASTCHANGE THEN 
+        BEGIN
+          GOTOXY(0,4);
+          WRITE('Record ',RECNUM,' not in file.');
+          EXIT(NEXT);
+        END;
+    END;
+  GOTOXY(0,2); WRITE('Record number ',RECNUM);
+  VALIDATE(DATAFILE^);
+  SHOWREC(DATAFILE^);
+  IF LASTCHANGE THEN 
+    BEGIN
+      CHANGEREC(DATAFILE^);
+      SEEK(DATAFILE,RECNUM);
+      (*$I-*)
+      PUT(DATAFILE);
+      (*$I+*)
+      IF (IORESULT<>0) OR EOF(DATAFILE) THEN 
+        BEGIN
+          GOTOXY(0,20); 
+          WRITELN(CHR(7),'UNABLE TO EXTEND FILE, NO DATA WRITTEN');
+          WRITELN('Use Filer K(runch command to make space after file.');
+        END;
+    END;
+END;
+  
+  
+BEGIN (* MAIN PROGRAM *)
+  GETCRTINFO;
+  GOTOXY(0,0); CRT(ERASEOS);
+  NEWFILE;
+  REPEAT
+    PROMPTAT(0,'>DISKIO: V(iew, C(hange, N(ext, F(ile, Q(uit ');
+    CH:=GETCHAR(['N','n','F','f','V','v','C','c','Q','q']);
+    CRT(ERASEOS);
+    CASE CH OF 
+      'N','n':  NEXT;
+      'F','f':  NEWFILE;
+      'V','v':  VIEW;
+      'C','c':  CHANGE;
+    END;
+  UNTIL CH IN ['Q','q'];
+  
+  CLOSE(DATAFILE,LOCK);
+  PROMPTAT(12,'THAT''S ALL FOLKS...');
+END.
+
+

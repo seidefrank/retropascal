@@ -1,0 +1,27 @@
+        .PROC   RI,0 
+        .PRIVATE RETADDR
+        
+TPORT   .EQU    0C0H            ;UART CONTROL PORT
+RPORT   .EQU    TPORT+2         ;RATE PORT
+RIBT    .EQU    02H             ;RI (MODEM WILL BE IN ANSWER MODE)
+TRATE   .EQU    250             ;TIMER RATE FOR .1 DELAY
+TMPUL   .EQU    80H             ;TIME MASK
+
+        POP     HL
+        LD      (RETADDR),HL
+        LD      A,RIBT          
+        OUT     (TPORT),A
+; DELAY REQUIRED FOR OFF HOOK        
+        LD      A,TRATE
+        OUT     (RPORT),A
+TIMES   IN      A,(RPORT)
+        AND     TMPUL
+        JP      Z,TIMES
+TIMEE   IN      A,(RPORT)
+        AND     TMPUL
+        JP      NZ,TIMEE
+; RETURN
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

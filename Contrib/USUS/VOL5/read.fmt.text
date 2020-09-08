@@ -1,0 +1,1039 @@
+
+
+
+
+
+         
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   UCSD PASCAL Textformatter User's Guide
++                  UCSD PASCAL Textformatter User's Guide
++                  UCSD PASCAL Textformatter User's Guide
++                  UCSD PASCAL Textformatter User's Guide
+
+
+
+
+                                    "Fmt"
+
+
+                                 Version 2.1
+
+
+
+
+                                      by
+
+
+
+
+                              Francis J. Monaco
++                             Francis J. Monaco
++                             Francis J. Monaco
++                             Francis J. Monaco
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                 24 Apr 1980                           
+1
+
+
+
+
+
+
+
+                                Introduction
++                               ____________
++                               ____________
++                               ____________
+
+
+
+              "Fmt" is a Pascal Program specifically written for  the
+         University of California at  San  Diego's  PASCAL  Operating
+         System "USCD PASCAL." "Fmt" is designed  to  facilitate  the
+         preparation of neatly formatted documents, letters, reports,
+         etc. "Fmt" allows the user to input a text  file  using  the
+         UCSD screen editor without concern  of  margins,  centering,
+         etc.; by interspersing a  few  "imbedded"  commands  in  the
+         input text file, the user is able to tell "fmt"  what  needs
+         to be done to the text being processed. By studying the "in-
+         put"  to "fmt" alongside the "output" from "fmt",  the  user
+         can easily modify the text to look exactly as he wants  with
+         a minimum effort. The "output" of "fmt" is  a  ".text"  file
+         containing FORTRAN carriage controls;  this  output  can  be
+         funneled through a program  like  "sp"  to  convert  FORTRAN
+         carriage controls to Line Printer  controls  (more  on  this
+         later). 
+
+              "Fmt"  draws   heavily   from   other   textformatters;
+         basically, it was designed to include almost  all  the  good
+         features found in  other  "word  processing"  systems  while
+         simultaneously keeping the program small, easy to  maintain,
+         and, above all, easy to modify. "Fmt" provides  many  impor-
++                        easy to modify.                             
++                        easy to modify.                             
++                        easy to modify.                             
+         tant  features such  as  automatic  margining,  hyphenation,
+         paragraphing,  and  pagination  along  with  "headers"   and
+         "footers": basically, everything needed to ease the chore of
+         text writing. In addition, "Fmt" enables the user to solicit
+         input from multiple files as well  as  from  the  terminal's
+         keyboard. 
+
+              The purpose of this guide is to demonstrate the use  of
+         "Fmt" to a UCSD PASCAL user. The reader of this  guide  need
+         not be familiar with other text formatting  tools;  however,
+         it is important that the reader be familiar with UCSD PASCAL
+         at least at the novice level. 
+
+
+                              
+                                   Basics
++                                  ______
++                                  ______
++                                  ______
+                              
+
+              The file <fmt.code> is the eXecutable file; at the com-
+         mand  level of the UCSD PASCAL system, the user should type 
+
+
+                                                            
+                                X for eXecute
++                               X for eXecute
++                               X for eXecute
++                               X for eXecute
+                                                            
+
+
+
+                                    - 1 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+              and when prompted for a file name, the response is 
+
+
+                                                        
+                                 <path>:fmt
++                                <path>:fmt
++                                <path>:fmt
++                                <path>:fmt
+                                                        
+
+              where <path> is the UCSD PASCAL unit number  containing
+         the file <fmt.code>. If all goes well, "Fmt" will respond: 
+
+
+                                                           
+                Enter title of text file to be formatted --> 
++               Enter title of text file to be formatted --> 
++               Enter title of text file to be formatted --> 
++               Enter title of text file to be formatted --> 
+                                                           
+
+              to which the user should respond with  the  name  of  a
+         text  file  containing   imbedded   "Fmt"   commands   like:
+         <#5:user.in2>. Note that the ".text" must not be  typed.  If
++                                                  not               
++                                                  not               
++                                                  not               
+         the file <#5:user.in2.text> exists, "Fmt" will next  respond
+         with: 
+
+
+      
+         Enter the title of the formatted text or CR <for CRT> --> 
++        Enter the title of the formatted text or CR <for CRT> --> 
++        Enter the title of the formatted text or CR <for CRT> --> 
++        Enter the title of the formatted text or CR <for CRT> --> 
+      
+
+              to which the user must specify a disk file name <to  be
+         REWRITTEN>  like:  <#5:user.out2>;  again,  note  that   the
+         ".text" is omitted. Typing a carriage return will default to
+         sending  output  to  the  CRT  (this  is  good  for  initial
+         viewing). Note: do not specify PRINTER: as the output file. 
+
+              Next, "Fmt" will respond with: 
+
+
+                                    
+               ...Monaco's Fmt inititializing... <THEDATE>...
++              ...Monaco's Fmt inititializing... <THEDATE>...
++              ...Monaco's Fmt inititializing... <THEDATE>...
++              ...Monaco's Fmt inititializing... <THEDATE>...
+                                    
+
+              where <THEDATE> is the date last  typed  in  the  Filer
+         using the D(ate command. "Fmt" spends a few seconds with its
+         segemented  procedure  initializations,  and   then   begins
+         reading the input file for commands and text, simultaneously
+         writing to the output file or CRT. 
+
+              "Fmt" does not incorporate IO checking using  the  UCSD
+         Function "IORESULT" and the Compiler  option  (*$I-*).  Such
+         code could be added  in  a  later  release;  however,  "Fmt"
+         presently gives the user no second  chances  at  interactive
+         input. In addition, some of the commands described later  in
+
+
+
+                                    - 2 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+         this guide  require  TYPED  (in  the  strict  PASCAL  sense)
+         arguments; failure to include required command arguments  of
+         the correct type will currently result in run-time errors. 
+
+
+                                                           
+                              Commands and Text
++                             _________________
++                             _________________
++                             _________________
+                                                           
+
+              "Fmt" defines a "word" as the  contiguous  grouping  of
+         characters between blanks or between  end-of-line  character
+         and a blank. Thus "." is a word, as  is  "word",  where  the
+         double quotes represent blanks. The basic unit  returned  by
+         "Fmt's" input routine is a word. Words can  be  either  com-
++                                                                com-
++                                                                com-
++                                                                com-
+         mands  or text; Commands always  begin  with  a  period  "."
++        mands  or text;                                             
++        mands  or text;                                             
++        mands  or text;                                             
+         usually at the beginning of a line in the input  text  file;
+         note that any word beginning with a period found anywhere in
+         the input file will be treated as a  command;  thus  "...  "
+         cannot be used! An example of a command follows: 
+
+
+                                                 
+                               .tl @Some Title
++                              .tl @Some Title
++                              .tl @Some Title
++                              .tl @Some Title
+                                                 
+
+              where "tl" is the 'Command Name', "@Some Title" is  the
+         'Command Argument', in this case, a string of characters  of
+         'Argument Type' STRING. Note that nothing else  may  legally
+         appear on the command line; "Fmt" does not require that com-
+         mands  be the first word on a line; however, it  is  a  good
+         idea to put commands  on  separate  lines  from  surrounding
+         text. Note also that some commands may 'bracket' text  lines
+         as: 
+
+                                     .bo 
+                              This is text to be
+                                  boldfaced.
+                                     .bo
+
+              where the command "bo" means boldface  the  text  until
+         the next occurence of the command. 
+
+              Some commands have 'defaults', either default values if
+         a numeric argument is required, or  default  switches  if  a
+         boolean value is appropriate. 
+
+              "Fmt" attempts, in its normal mode, to 'fill'  as  many
+         text words between its left and right margins  as  possible.
+         Some commands cause the current  'unfilled'  line  preceding
+         the command to be forced to the output file; this is  called
+         'breaking'. 
+
+
+
+                                    - 3 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+
+            
+                             Command Description
++                            ___________________
++                            ___________________
++                            ___________________
+            
+
+              The following paragraphs in this  User  Guide  describe
+         all available commands in "Fmt" including: 
+
+                              1)  COMMAND NAME
++                             1)  COMMAND NAME
++                             1)  COMMAND NAME
++                             1)  COMMAND NAME
+                                2)  ARGUMENTS
++                               2)  ARGUMENTS
++                               2)  ARGUMENTS
++                               2)  ARGUMENTS
+                                 3)  DEFAULT
++                                3)  DEFAULT
++                                3)  DEFAULT
++                                3)  DEFAULT
+                              4)  BREAK CAUSED
++                             4)  BREAK CAUSED
++                             4)  BREAK CAUSED
++                             4)  BREAK CAUSED
+                            5)  ACTION OF COMMAND
++                           5)  ACTION OF COMMAND
++                           5)  ACTION OF COMMAND
++                           5)  ACTION OF COMMAND
+
+              By studying the command syntax along with a copy of the
+         file  <user.in2.text>,   <user.a2.text>   and   this   guide
+         <user.out.text>,  the  user  should  be   able   to   easily
+         capitalize on the available features of "Fmt". 
+
+                               Command #1: .pp
++                              Command #1: .pp
++                              Command #1: .pp
++                              Command #1: .pp
+         COMMAND:  Startnewparagraph
+         ARGUMENTS: None required
+         DEFAULT: N/A
+         BREAK: Yes
+         ACTION:
+
+              Causes the  current  unfilled  line  to  be  forced  to
+         output, skipping LINESPACING line(s), and indenting the next
+         line PDENT spaces. 
+
+                               Command #2: .ce
++                              Command #2: .ce
++                              Command #2: .ce
++                              Command #2: .ce
+         COMMAND: Centeraline
+         ARGUMENTS: STRING
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              Centers  the  argument  if  possible;  recognizes   the
+         character "@" to mean boldface the argument or "_"  to  mean
+         underline the argument if and only if the character  appears
+         as the first character in the argument string. The  argument
+         may appear on the same line or  the  line  immediately  fol-
+         lowing  the command. 
+
+                               Command #3: .br
++                              Command #3: .br
++                              Command #3: .br
++                              Command #3: .br
+         COMMAND: Breakcurrentline 
+         ARGUMENTS: None
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+
+
+                                    - 4 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+              Forces the current unfilled text line to be written  to
+         the Output File. Note that a new  line  indentation  is  not
+         automatically begun; thus the line after a ".br" will  start
+         in column 1 instead of in the leftmargin.  The  user  should
+         thus combine this command with another like ".pp". 
+
+                               Command #4: .nf
++                              Command #4: .nf
++                              Command #4: .nf
++                              Command #4: .nf
+         COMMAND: Donotfilltext 
+         ARGUMENTS: String(s) of lines;
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              Causes input to be echoed to output without  fill,  but
+         each line starting at the LEFTMARGIN. The user  must  insure
+         that text will fit between  the  LEFTMARGIN  and  LINEWIDTH.
+         Used for tables, etc. Note that this is  a  BRACKET  command
+         that is turned off by another occurence of the same  command
+         (MUST begin in Column One). Also,  the  line  following  the
+         terminal ".nf" will begin in column one, not the leftmargin,
+         unless the user provides an additional command like ".pp". 
+
+                               Command #5: .sp
++                              Command #5: .sp
++                              Command #5: .sp
++                              Command #5: .sp
+         COMMAND: Skipline 
+         ARGUMENTS: None
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              Causes the current unfilled line of text to be  written
+         to the output file and the next line to be skipped. Each oc-
+         curence  of the command skips one line (See Command #28  for
+         multiple skips). 
+
+                               Command #6: .so
++                              Command #6: .so
++                              Command #6: .so
++                              Command #6: .so
+         COMMAND: Takeinputfromnewfile 
+         ARGUMENTS: STRING { '-',  <filename>}
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              This command temporarily alters  the  input  stream  of
+         "Fmt". It has two options: A) Interactive  Input:  when  the
+         argument string contains the character '-', "Fmt" will  stop
+         taking input from the original file and begin  taking  input
+         from the terminal's keyboard  (until  either  another  ".so"
+         command is seen or the user types  ASCII  ETX  (Control  C).
+         "Fmt" will discard the last  "word"  typed  before  the  ETX
+         before returning to the main input file, so the user  should
+         include an extra word like " * " at the end of the last line
+
+
+
+                                    - 5 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+         of interactive input. In addition, the  user  should  use  a
+         ".pr" command to prompt for input at the Console. Note  that
+         interactive input makes sense only when writing  to  a  Disk
+         File (and using CARRIAGECONTROL). An example of  interactive
+         input follows: 
+         
+         .pr Please type in the name line:
+         .so -
+         
+         { A ? will now appear on the screen. The 
+           user should type until finished, 
+           adding a "*" at the end, followed by 
+           a carriage-return, and last by a 
+           CONTROL-C as }
+           
+          ?  This is the name line *
+          { Control- C}
+          { "Fmt" now returns to the original input file }
+          
+               
+
+              B) Input from a New Disk File: when the string argument
+         doesn't contain '-' , "Fmt" interprets the String as a  Disk
+         Text file (without the ".text") as: #5:new.input. "Fmt" then
+         RESETS the new file and begins taking input from it,  remem-
+         bering  how to return to the original input  file  when  EOF
+         occurs in the new file. 
+
+                               Command #7: .lm
++                              Command #7: .lm
++                              Command #7: .lm
++                              Command #7: .lm
+         COMMAND: Setleftmargin 
+         ARGUMENTS: INTEGER in the range 1..40
+         DEFAULT: 9
+         BREAK: No 
+         ACTION:
+
+              Alters the value of LEFTMARGIN. 
+
+                               Command #8: .rm
++                              Command #8: .rm
++                              Command #8: .rm
++                              Command #8: .rm
+         COMMAND: Setrightmargin 
+         ARGUMENTS: INTEGER in the range 40..80
+         DEFAULT: 69
+         BREAK: No 
+         ACTION:
+
+              Alters the value of LINEWIDTH (the  number  of  columns
+         between the LEFTMARGIN and RIGHTMARGIN.  For  all  practical
+         purposes, LINEWIDTH is the  RIGHTMARGIN  in  the  typewriter
+         sense. 
+
+                              Command #9: .hy+
++                             Command #9: .hy+
++                             Command #9: .hy+
++                             Command #9: .hy+
+         COMMAND: Onhyphen 
+
+
+
+                                    - 6 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+         ARGUMENTS: None
+         DEFAULT: True
+         BREAK: No 
+         ACTION:
+
+              Turns on automatic hyphenation (HYNATE := TRUE). 
+
+                              Command #10: .hy-
++                             Command #10: .hy-
++                             Command #10: .hy-
++                             Command #10: .hy-
+         COMMAND: Offhyphen 
+         ARGUMENTS: None
+         DEFAULT: False
+         BREAK: No
+         ACTION:
+
+              Turns off automatic hyphenation (HYNATE := FALSE). 
+
+                              Command #11: .lpt
++                             Command #11: .lpt
++                             Command #11: .lpt
++                             Command #11: .lpt
+         COMMAND: Lineprinter 
+         ARGUMENTS: None
+         DEFAULT: False
+         BREAK: No 
+         ACTION:
+
+              Turns on generation of Fortran  Carriage  Controls  '1'
+         for ASCII FF, and '+' for CR without LF (CARRIAGECONTROL  :=
+         TRUE). Note that the ".lpt"  command  must  be  selected  in
+         order to generate BOLDFACE or UNDERLINE. 
+
+                              Command #12: .crt
++                             Command #12: .crt
++                             Command #12: .crt
++                             Command #12: .crt
+         COMMAND: Crt 
+         ARGUMENTS: None
+         DEFAULT: True
+         BREAK: No 
+         ACTION:
+
+              Turns  off  generation  of  Fortran  Carriage  Controls
+         (CARRIAGECONTROL  :=  FALSE).  Also   stops   BOLDFACE   and
+         UNDERLINE. 
+
+                              Command #13: .tl
++                             Command #13: .tl
++                             Command #13: .tl
++                             Command #13: .tl
+         COMMAND:  Title
+         ARGUMENTS: {@STRING} , {_STRING}, {STRING}
+         DEFAULT: N/A
+         BREAK: Yes: one before and one after Title 
+         ACTION:
+
+              Generates a blank line following by  a  centered  title
+         followed by a blank line. The characters  "@"  and  "_"  can
+         only be used as the first character of the STRING  argument,
+         with  "@"  meaning  BOLDFACE  the  STRING  and  "_"  meaning
+         UNDERLINE the STRING (as well as center). 
+
+
+
+                                    - 7 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+                              Command #14: .he
++                             Command #14: .he
++                             Command #14: .he
++                             Command #14: .he
+         COMMAND:  Header
+         ARGUMENTS: {' S1 '}, {' S1 ' S2 '}, {' S1 ' S2 ' S3 '}
+         DEFAULT: N/A
+         BREAK: No
+         ACTION:
+
+              The next time the HEADER line  is  encountered  in  the
+         output file, this command will generate a one, two, or three
+         part header. Do not use the Single Quotes (')  for  anything
+         but delimiters of the STRING(s). If the  characters  "#"  or
+         "^" appear in S1, S2, or S3, they have special meaning:  "#"
+         denotes the CURRPAGE; "^" denotes THEDATE. 
+
+              The Header line appears M1 lines from the  Top  of  the
+         Page. There are M2 lines between the  Header  line  and  the
+         first text line. 
+
+              If more than four single quotes appear in the argument,
+         the header will be  blank.  Also,  Headers  can  be  changed
+         anywhere in the text. 
+
+                              Command #15: .fo
++                             Command #15: .fo
++                             Command #15: .fo
++                             Command #15: .fo
+         COMMAND: Footer 
+         ARGUMENTS: See Header, #14.
+         DEFAULT:       "
+         BREAK:         " 
+         ACTION:        
+
+              Same as Header, #14, except that the  Footer  line  ap-
+         pears  M3 lines after the last text line on a page of output
+         text. There are M4 lines after every Footer until the Top of
+         next Page. 
+         
+                              Command #16: .m1
++                             Command #16: .m1
++                             Command #16: .m1
++                             Command #16: .m1
+         COMMAND: Setm1 
+         ARGUMENTS: INTEGER in the range 1..5
+         DEFAULT: 1
+         BREAK: No 
+         ACTION:
+
+              Sets the M1 margin (the number of lines between the Top
+         of Page and the Header Line). 
+
+                              Command #17: .m2
++                             Command #17: .m2
++                             Command #17: .m2
++                             Command #17: .m2
+         COMMAND: Setm2 
+         ARGUMENTS: INTEGER in the range 1..10
+         DEFAULT: 2
+         BREAK: No 
+         ACTION:
+
+
+
+                                    - 8 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+              Sets the M2 margin (the number  of  lines  between  the
+         Header and the first line of text). 
+
+                              Command #18: .m3
++                             Command #18: .m3
++                             Command #18: .m3
++                             Command #18: .m3
+         COMMAND: Setm3 
+         ARGUMENTS: INTEGER in the range 1..10
+         DEFAULT: 2
+         BREAK: No 
+         ACTION:
+
+              Sets the M3 margin (the number  of  lines  between  the
+         last text line and the Footer). 
+
+                              Command #19: .m4
++                             Command #19: .m4
++                             Command #19: .m4
++                             Command #19: .m4
+         COMMAND: Setm4 
+         ARGUMENTS: INTEGER in the range 1..5
+         DEFAULT: 1
+         BREAK: No 
+         ACTION:
+
+              Sets the M4 margin (the number  of  lines  between  the
+         Fotter and the Top of the Next Page). 
+
+                              Command #20: .pn
++                             Command #20: .pn
++                             Command #20: .pn
++                             Command #20: .pn
+         COMMAND: Setpagenum 
+         ARGUMENTS: INTEGER
+         DEFAULT: N/A (However, first output page is CURRPAGE := 1).
+         BREAK: No 
+         ACTION:
+
+              Sets the  value  of  CURRPAGE.  Useful  when  preparing
+         documents in many chapters. 
+
+                              Command #21: .pg
++                             Command #21: .pg
++                             Command #21: .pg
++                             Command #21: .pg
+         COMMAND: Startpage 
+         ARGUMENTS: None
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              Breaks the current unfilled line, vertical tabs to  the
+         Footer, outputs the Footer, starts a new page,  and  outputs
+         the Header of the new page. 
+
+                              Command #22: .bo
++                             Command #22: .bo
++                             Command #22: .bo
++                             Command #22: .bo
+         COMMAND: Boldface 
+         ARGUMENTS: STRING(s) (of lines)
+         DEFAULT: N/A
+         BREAK: No 
+         ACTION:
+
+
+
+                                    - 9 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+              BOLDFACEs the  arguments  bracketed  by  the  commands.
+         Terminated by another occurence of the command.  Works  only
+         with the ".lpt" option. Do not use in Headers,  Footers,  or
+         Titles. 
+
+                              Command #23: .ul
++                             Command #23: .ul
++                             Command #23: .ul
++                             Command #23: .ul
+         COMMAND: Underline 
+         ARGUMENTS: STRING(s) (of lines)
+         DEFAULT: N/A
+         BREAK: No 
+         ACTION:
+
+              UNDERLINES the arguments  bracketed  by  the  commands.
+         Terminated by another occurence of the command.  Works  only
+         with the ".lpt" option. Do not use in Headers,  Footers,  or
+         Titles. 
+
+                              Command #24: .ls
++                             Command #24: .ls
++                             Command #24: .ls
++                             Command #24: .ls
+         COMMAND: Setlinespacing 
+         ARGUMENTS: INTEGER in the range 1..3
+         DEFAULT: 1
+         BREAK: No 
+         ACTION:
+
+              Alters the current value of LINESPACING. 
+
+                              Command #25: .ps
++                             Command #25: .ps
++                             Command #25: .ps
++                             Command #25: .ps
+         COMMAND: Setpagesize  
+         ARGUMENTS: INTEGER in the range 30..63
+         DEFAULT: 63
+         BREAK: No 
+         ACTION:
+
+              Alters the value of PAGESIZE, the number of lines on  a
+         page counting M1, M2, M3, M4 and the text between.. 
+
+                              Command #26: .pi
++                             Command #26: .pi
++                             Command #26: .pi
++                             Command #26: .pi
+         COMMAND: Pindentation 
+         ARGUMENTS: INTEGER in the range 1..20
+         DEFAULT: 5
+         BREAK: No 
+         ACTION:
+
+              Alters the value of PDENT, the  number  of  spaces  in-
+         dented  whenever a new paragraph is started (with a ".pp"). 
+
+                              Command #27: .ti
++                             Command #27: .ti
++                             Command #27: .ti
++                             Command #27: .ti
+         COMMAND: Tindentation 
+         ARGUMENTS: INTEGER in the range 1..20
+         DEFAULT: N/A
+
+
+
+                                    - 10 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+         BREAK: Yes 
+         ACTION:
+This command causes a break followed by  an  indentation  of
+         the next line TDENT spaces, where TDENT is the  argument  of
+         the command. 
+
+                              Command #28: .sp+
++                             Command #28: .sp+
++                             Command #28: .sp+
++                             Command #28: .sp+
+         COMMAND: Skipplus  
+         ARGUMENTS: INTEGER in the range 2..50
+         DEFAULT: N/A
+         BREAK: Yes 
+         ACTION:
+
+              This commands breaks  the  current  unfilled  line  and
+         skips THESKIP * LINESPACING lines, where THESKIP is the com-
+         mand  argument. Note that after this command executes, it is
+         necessary to execute a command like ".pp"  to  start  a  new
+         line in the LEFTMARGIN. 
+
+                             Command #29: .noadj
++                            Command #29: .noadj
++                            Command #29: .noadj
++                            Command #29: .noadj
+         COMMAND: Donotrightadjusttext 
+         ARGUMENTS: None
+         DEFAULT: False
+         BREAK: No 
+         ACTION:
+
+              Toggles the value of NOADJ; text from this command 
+         foward (until another occurence of the command) will be word
+         justified such that if a word is attempted to be added to a 
+         line and cannot fit, the line will be broken and the word 
+         will begin the next line. This is useful whenever the user 
+         wants to give the rightmargin a ragged, typewriter look. 
+         Note that the ".noadj" option has been selected for this 
+         paragraph as an example. 
+
+                              Command #30: .ne
++                             Command #30: .ne
++                             Command #30: .ne
++                             Command #30: .ne
+         COMMAND: Need 
+         ARGUMENTS: INTEGER in the Range 1..50 
+         DEFAULT: N/A 
+         BREAK: Yes 
+         ACTION:
+
+              Checks to see whether  the  argument  number  of  lines
+         remain in the text portion of a given page before  the  next
+         line of input is processed. If not,  a  new  page  is  begun
+         before the the line of input is processed. 
+
+                              Command #31: .pr
++                             Command #31: .pr
++                             Command #31: .pr
++                             Command #31: .pr
+         COMMAND: Prompt 
+         ARGUMENTS: STRING 
+         DEFAULT: N/A 
+
+
+
+                                    - 11 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+         BREAK: Yes 
+         ACTION:
+
+              Used just before the ".so -"  command,  this  writes  a
+         prompt to the crt if and only if the  ".lpt"  option  is  in
+         effect. The user should use this command only when  building
+         output text files on disk, as interspersing prompts and text
+         on the crt is very confusing. 
+
+                               Command #32: .#
++                              Command #32: .#
++                              Command #32: .#
++                              Command #32: .#
+         COMMAND: Comment 
+         ARGUMENTS: STRING 
+         DEFAULT: N/A 
+         BREAK: No 
+         ACTION:
+
+              Allows the user to comment the input text file; no  ac-
+         tion  is taken with the comment (it  is  ignored  by  "Fmt";
+         however, it must be there!) 
+
+
+                            
+                         Helpful Hints on Using Fmt
++                        __________________________
++                        __________________________
++                        __________________________
+                            
+
+              Once the user of "Fmt" has studied the  available  com-
+         mands  alongside of the input file(s) and output  files,  it
+         is necessary to observe a few factors when using "Fmt". 
+
+              First, keep strings of characters less than  TWENTY-ONE
+         characters long; otherwise, you'll find that  "Fmt"  does  a
+         COBOL-like job of character truncation of the righthand part
+         of long strings! 
+
+              Next, realize that the output file will be on the order
+         of 3 times larger than the input file; ensure adequate space
+         for it to be built. 
+
+              Once your output file is built with "FORTRAN"  carriage
+         controls within (using the ".lpt" option), use  the  program
+         "SP" to spool your output to your printer. You may  have  to
+         tinker with "SP" and your printer to turn off automatic Line
+         Feeds at the end of a line (since the "+"  carriage  control
+         character, used for  boldfacing  and  underlining,  requires
+         only a carriage return). 
+
+              Watch out for  ".nf"  and  ".sp+  <integer>"  commands;
+         their behavior is sometimes questionable, and it is best  to
+         put a ".pp" after ending a ".nf" or after a ".sp+". 
+
+              Above all, never "nest" any commands  inside  bracketed
++                              "nest"                                
++                              "nest"                                
++                              "nest"                                
+         "Fmt" commands (.nf,.bo, etc.). 
+
+
+                                    - 12 -                             
+1
+
+
+         User Guide               Fmt V2.1                 24 Apr 1980
+
+
+
+
+
+              Lastly, to learn how to use any textformatter, you must
+         study the input alongside the output (that's the third  time
+         I've recommended this, please take note!). 
+
+
+
+
+                                           
+                            The Future of Fmt...
++                           The Future of Fmt...
++                           The Future of Fmt...
++                           The Future of Fmt...
+                                           
+
+              When time permits, the  following  additional  features
+         will be added to "Fmt": 1) User defined macros for sequences
+         of  "Fmt"  commands.  2)   Tabbing   and   replacement   tab
+         characters. 3) IO checking to make it almost  impossible  to
+         bomb "Fmt". 4) Character mapping Function  to  enable  upper
+         and lower case hyphenation and  commands.  5)  User  defined
+         in-line variables. 
+
+
+                   
+                 Where to Send Bug Reports and Suggestions:
++                __________________________________________
++                __________________________________________
++                __________________________________________
+                   
+
+                         Address until 14 June 1980:
+
+                              Francis J. Monaco
+                               Captain, US ARMY
+                               679 Lowell Drive
+                           Marietta, Georgia 30060
+                                 404-424-1460
+
+
+                         Address after 14 June 1980:
+
+                              Francis J. Monaco
+                               Captain, US ARMY
+                 Department of Geography and Computer Science
+                      The United States Military Academy
+                          West Point, New York 10996
+                                 914-938-2063

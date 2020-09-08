@@ -1,0 +1,135 @@
+Controls Modification Procedures 
+
+
+1.5 CONTROLS MODIFICATION PROCEDURES 
+ 
+1.5.1 How to Modify a Form 
+ 
+      Modifying a Form involves changing the dimensions of existing Forms are 
+stored in the Form control files. 
+ 
+*<Note> Review the procedures described in the Form Definition Procedures
+section (1.2) as use of the modification program requires that the user be
+completely familiar with it. 
+ 
+    The Form modification program allows the user to:  change the dimensions 
+and other attributes of a Form, change the row and column descriptions and 
+calculations to be performed and load the control file accordingly.  The 
+formatting of a Form cannot be changed. 
+ 
+1.5.2 Calling the Modify Procedure 
+ 
+To envoke the Form modification procedure select menu option number 
+ 
+        ********************************************************************
+
+             F R E E F O R M   The Electronic Worksheet  [F.4] 
+             ========================================== 
+                                           June 24, 1981
+
+
+             0. 
+             1. 
+             2.  Modify FORM controls <===== Form modification 
+             3. 
+             4. 
+             5. 
+             6. 
+             7. 
+             8. 
+             9. 
+
+
+
+             Enter desired option # _      Press ESC to leave 
+
+        ********************************************************************
+ 
+ 
+    When the program has loaded, the screen will clear and a new title will be 
+displayed. 
+ 
+                F R E E F O R M   F O R M S   C O N T R O L S 
+                Forms Modification 
+ 
+*<Note> If FREEFORM does not find a 'directory' file on its first try
+(FREEFORM searches on the prefix disk unless another drive was previously
+specified), it displays an error message stating there is no directory.  If
+this happens, FREEFORM will ask if you wish to try another disk.  If so, press
+<return> otherwise type <N>.  If <return> was pressed, the program will prompt 
+for the disk drive number to search in for a directory file.  After receiving a
+valid disk drive number, the program will instruct the user to insert a disk in
+to that drive and press <return>. 
+ 
+*<Note> A review of the Standard Keyboard Procedures (1.1.3) is recommended. 
+ 
+    The program then displays the prompt: 
+ 
+*** Form Name (8 alpha max.)__________    Press ESC to leave 
+ 
+     There are three possible responses to this command.  Press <esc> to
+return to the FREEFORM main menu, supply a Form name, or press <?>.  Each
+time <?> is pressed FREEFORM looks at the FreeForm directory and displays a
+possible Form name.  If a selected Form name is not found on the user diskette,
+the prompt 
+ 
+*** Form named <name given> not found... 
+*** Try another Form name? (Y/N)  Y 
+ 
+will appear.  The user may now try another Form name by supplying the desired
+Form name in the manner previously described.  If a user chooses not to select
+another Form name by typing <N>, control will return to the FREEFORM main menu. 
+ 
+    When a valid Form name is selected FREEFORM will continue its normal
+progress and inform the user that the Form controls are being loaded. 
+ 
+1.5.3 Modifying a Form 
+ 
+     The modification portion of the FREEFORM program is now entered.  The
+program then asks whether or not it is desired to change certain controls.  The
+change prompts are of the form: 
+ 
+*** Change <text>? (Y/N)  N 
+ 
+where <text> is the control in question.  If a control is to be changed respond
+with a <Y>, else press <return>.  Once a <Y> response is given, the control may
+be changed in the same way as in the Form definition program.  The user is 
+allowed to do such things as inserting and/or deleting rows and columns from a 
+form, adding pages, changing various descriptions, etc. 
+ 
+EXAMPLE: 
+ 
+Change Row Controls? Y 
+ 
+Enter row # to be modified?  23  (max. XX) 
+ 
+     The controls for row 23 will be displayed and the user may then elect to
+change the fields of description, type, editing format, and calculation string
+as necessary.  The parameters are the same as those detailed in How to Define a
+Form (1.2.1). 
+ 
+1.5.4 Special Hints on Modify 
+ 
+     It is not possible to change the format of a Form once it has been 
+created. 
+ 
+     No rows or columns may be added to a Form once the maximum values set for 
+them, at Form definition time, have been reached.  It is possible to use the 
+Copy utility (see 1.6.3) to create a new Form, just like the old one but, with 
+larger maximums for either the number of rows, or columns, or both.  It will 
+then be possible to add rows, or columns, to the new Form. 
+ 
+     To add pages to a Form there has to be fewer than 100 pages in it already 
+and there must be empty space on the data disk immediately below the data file 
+that is to be extended.  To create empty space below the data file use the 
+Extended List Directory command and note the block number just below the data 
+file.  Then use the Krunch command and Krunch, not the whole disk but, from the
+block number noted. 
+ 
+1.5.5 Exiting the Modify Program 
+ 
+     After modifications for a Form have been completed, the program will
+return to the FREEFORM main menu. 
+ 
+
+

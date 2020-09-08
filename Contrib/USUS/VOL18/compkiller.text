@@ -1,0 +1,75 @@
+program stack_death;
+
+     {this program writes a file with a bunch of declarations, so many in fact
+that the resultant file should not compile, it will crash of a stack
+overflow.  If it does, make 'big_number' even bigger so that the program will
+just compile.  When the program becomes too large, it is easist to comment out
+lines until it does compile.  Then remove any commented-out lines and re-run
+it, time it if you wish.  Please note the number of lines displayed by the
+compiler.
+
+     This indicates the actual amount of symbol table space which you have
+available, with enough room for the compiler to still continue to operate.
+Version II.0 kept you nicely informed about how much room was available in the
+symbol table, but not so IV.x, it just goes slower and slower until it dies. 
+If you are using something earlier than IV.0, try it both with $S- and $S+.
+
+     II.0 will compile the declarations at a fairly constant rate.  If there
+are too many declarations, the compiler will crash with a stack overflow.  The 
+compiler may still crash when it tries to compile the main body if there is
+not enough room to swap into memory a new code segment.  When it finally 
+displays the program name, you may have to eliminate several hundered lines
+of declarations before will finished.
+
+     IV.x will compile at a greatly fluctuating rate.  It will go for a while
+and then stop for a while, go a little further and stop again.  What is 
+happening is that the system is suffering heap faults as a bigger and bigger 
+symbol table is generated.  The code pool is then moved halfway between the 
+stack and the heap, and the system can go again until it suffers another heap 
+fault and must manage memory again.  This happens a shorter and shorter 
+intervals until the code pool can no longer be moved.  The system will then
+throw out a segment, and go through the same sequence until it has to throw
+out another segment.  Finally, when the compiler gets really desperate, it
+begins swapping code segments in and out of memory for every line! At this
+point, you are scraping the bottom of the bucket.  In the case of this test
+program, certain death is not far away, as when the main body is reached, a
+large segment must be loaded, and there is no room.  A stack overflow
+results, and the system will require rebooting.  As in II.0, reduce the
+number of lines of declarations until the compilation completes and record
+the number of lines and the elapsed time from envoking the compiler to
+returning to the system prompt.
+
+     IV.1 systems with extended memory will behave differently.  Code segments
+do not reside between the stack and the heap so movement of the code pool is
+not necessary.  Segment references are all to memory, so they happen very
+fast.  The compiler will continue at a fairly constant, if not leasurely, rate
+until the main body is reached.  The segment load here is not deadly, as it
+does not affect the heap space.  As before, note the time and number of lines
+for the run.  With a hard disk, IV.1 will be just a little faster than IV.0
+on large programs.  With floppy, the difference should be significant.  On 
+most extended memory systems, the size of the compilable file will be much 
+larger in IV.1.  On the PDP-11 and probably the 9900, the size will be about 
+the same.
+
+     - gws }
+
+const big_number = 1500;
+var i : integer;
+    disk : text;
+    
+begin
+   rewrite ( disk, 'stackdeath.text' );
+   writeln ( disk, 'program stackdeath;' );
+   writeln ( disk, 'var' );
+   for i := 1 to big_number do 
+      begin
+         write ( '.' );
+         if ( i mod 50 ) = 0 then writeln;
+         writeln ( disk, 'a', i, ',' );
+      end;
+   writeln ( disk, 'b : integer;' );
+   writeln ( disk, 'begin' );
+   writeln ( disk, 'end.' );
+   close ( disk, lock );
+end.
+

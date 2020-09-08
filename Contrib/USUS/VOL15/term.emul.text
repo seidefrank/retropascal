@@ -1,0 +1,201 @@
+{$P+}
+{******************************************************************************
+
+      Because of their time-sensitive nature, routines after this message 
+                            SHOULD NOT BE SEGMENTED.
+
+******************************************************************************}
+
+
+
+PROCEDURE LOGIT{ C : CHAR } ;
+{$N+}
+BEGIN
+  IF ORD( C ) IN [BACKSPACE, RUBOUT]
+    THEN
+      IF LOGINDEX > 1
+        THEN
+          { Subtract 2 here because we add one back later. }
+          LOGINDEX := LOGINDEX - 2
+        ELSE
+          { NULL STATEMENT }
+    ELSE
+      LOGARRAY[ LOGINDEX ] := C ;
+  IF LOGINDEX = NEARLY
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN( ' ***> CURRENTLY AT 80% OF LOG SPACE <***' ) ;
+      WRITELN ;
+      END ;
+  IF LOGINDEX >= LOGLIMIT 
+    THEN
+      BEGIN
+      WRITELN ;
+      WRITELN( ' >* LOGLIMIT EXCEEDED *< ', CHR(7), CHR(7) ) ;
+      WRITELN ;
+      { We turn logging off in order to preserve the current
+        logged data, since it is usually easier to remember
+        where we overflowed and restart from there than to
+        restart the entire transaction stream.  }
+      LOGTEXT := FALSE ;
+      END
+    ELSE
+      LOGINDEX := LOGINDEX + 1 ;
+END ;
+{$N-}
+
+{$P+}
+PROCEDURE DISPLAY{ C : CHAR } ;
+VAR
+  ORD_C         : INTEGER ;
+  P_A           : PACKED ARRAY[0..1] OF CHAR ;
+
+PROCEDURE V_GOTOXY ;
+{ This routine processes a Videotext GOTOXY sequence. }
+VAR
+  C     : CHAR ;
+  X     : INTEGER ;
+  Y     : INTEGER ;
+BEGIN
+  REPEAT
+  UNTIL CR_REMSTAT OR CR_KBSTAT ;
+  IF CR_KBSTAT
+    THEN
+      BEGIN
+      C := CR_GETKB ;
+      EXIT( DISPLAY ) ;
+      END ;
+  C := CR_GETREM ;
+  Y := ORD( C ) - 31 ;
+  
+  REPEAT
+  UNTIL CR_REMSTAT OR CR_KBSTAT ;
+  IF CR_KBSTAT
+    THEN
+      BEGIN
+      C := CR_GETKB ;
+      EXIT( DISPLAY ) ;
+      END ;
+  C := CR_GETREM ;
+  X := ORD( C ) - 31 ;
+
+  GOTOXY( X, Y ) ;
+
+END ; { V_GOTOXY }
+
+{$N+}
+BEGIN
+
+  IF VIDEOTEXT AND (C = CHR( ESCAPE ))
+    THEN
+      BEGIN
+      REPEAT
+      UNTIL CR_REMSTAT OR CR_KBSTAT ;
+      IF CR_KBSTAT
+        THEN
+          BEGIN
+          C := CR_GETKB ;
+          EXIT( DISPLAY ) ;
+          END ;
+      C := CR_GETREM ;
+      ORD_C := 0 ;
+      CASE C OF 
+        'm',
+        'l'      : ; { Wide character/Normal character }
+        'A'      : ORD_C := ARROW_UP ; { Up arrow }
+        'B'      : ORD_C := ARROW_DOWN ; { Down arrow }
+        'C'      : ORD_C := ARROW_RIGHT ; { Right arrow }
+        'D'      : ORD_C := ARROW_LEFT ; { Left arrow }
+        'H'      : ORD_C := HOME_CURSOR ; { Home }
+        'K'      : ORD_C := CLEAR_EOLN ; { Clear to end of line }
+        'J'      : ORD_C := CLEAR_EOS ; { Clear to end of screen }
+        'j'      : ORD_C := CLEAR_SCREEN ; { Clear screen }
+        'Y'      : V_GOTOXY ; { VIDEOTEXT's GOTOXY }
+        END ; { CASE ORD_C OF }
+        IF ORD_C <> 0
+          THEN
+            BEGIN
+            P_A[0] := CHR( ORD_C );
+            UNITWRITE( 1, P_A, 1 ) ;
+            END ;
+      END
+    ELSE
+      BEGIN
+      IF C > CHR( RUBOUT )
+        THEN
+          C := CHR( ORD_C - (RUBOUT + 1) ) ;
+      IF C <> CHR( LINEFEED )
+        THEN
+          IF FILTERCONTROL
+            THEN
+              BEGIN
+              IF NOT (C IN FILTERSET)
+                THEN
+                  BEGIN
+                  P_A[0] := C ;
+                  UNITWRITE( 1, P_A, 1 ) ;
+                  END ;
+              END
+            ELSE
+              BEGIN
+              P_A[0] := C ;
+              UNITWRITE( 1, P_A, 1 ) ;
+              END ;
+      IF LOGTEXT
+        THEN
+          IF NOT (C IN FILTERSET)
+            THEN
+              LOGIT( C ) ;
+      END ;
+END ;
+{$N-}
+
+{$P+}
+{$N+}
+PROCEDURE EMULATE ;
+{ This procedure exists solely so that native code can be
+  generated without generating native code for the rest
+  of the mainline.                                      }
+BEGIN
+  DONE := FALSE ;
+  REPEAT
+    IF CR_KBSTAT
+      THEN
+        BEGIN
+        C := CR_GETKB ;
+        IF C = CR_ATTENCHAR
+          THEN
+            BEGIN
+            MENU ;
+            IF NOT (CR_CARRIER OR DONE)
+              THEN
+                CR_HOOK( FALSE ) ;
+            END
+          ELSE
+            BEGIN
+            CR_PUTREM( C ) ;
+            IF ECHO
+              THEN
+                DISPLAY( C ) ;
+            END ;
+        END ;
+    IF NOT CR_CARRIER
+      THEN
+        BEGIN
+        WRITELN ;
+        WRITELN('LOST CARRIER');
+        WRITELN ;
+        MENU ;
+        IF NOT (CR_CARRIER OR DONE)
+          THEN
+            CR_HOOK( FALSE ) ;
+        END
+      ELSE
+        IF CR_REMSTAT
+          THEN
+            DISPLAY( CR_GETREM ) ;
+  UNTIL DONE ;
+END ; { EMULATE }
+{$N-}
+

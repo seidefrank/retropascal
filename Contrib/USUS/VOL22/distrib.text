@@ -1,0 +1,402 @@
+{$S+}
+{$L-DISTRIB.LIST}
+PROGRAM DISTRIB;
+
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF, POST_ENTRY{ by EDWARD J GRUNDLER},
+   GRAPHICS, FACTORIAL_STUFF;
+   
+VAR P:REAL; {probability of success.  1-P is the probability of failure}
+    N:INTEGER; {number of trials}
+    X1:INTEGER; {number of successes, or number of occurences}
+    MU:REAL;  { the population mean }
+    SIGMA:REAL; { the population standard deviation }
+    VALUE:REAL; {value returned by INPUT_VALUE}
+    LAST,COMMANDLN:STRING;
+    OLD_XMAX,OLD_XMIN,OLD_YMAX,YMAX,XMAX,XMIN,STEP,XEND,YEND:REAL;
+    HRDCPY:BOOLEAN;
+    I:INTEGER;
+    CH:CHAR;
+    
+{ Changes made by reviewer:
+      Replaced missing unit DGS_STUFF by FACTORIAL_STUFF. This unit provides
+        the functions LNFACTORIAL(X:INTEGER):REAL and
+        LN_COMBINATION(N,X:INTEGER):REAL.
+      Removed three lines
+        X:=0;
+        Y:=0;
+        Z:=0;
+        which seemed to do nothing with undefined variables (may have been
+        defined in DGS_STUFF).
+      Concocted FUNCTION INPUT_VALUE from FUNCTION INPUT_VALUE in UNIT
+        REAL_INPUT (which see).
+      Added real variable, VALUE.
+      Changed CHR(29) to CEOL.
+      Changed PAGE(OUTPUT) to CLEARSCREEN.
+      Added DEFINESTRINGS to PROCEDURE FIRST_TIME.
+      Added last two lines to FIRST_TIME and added forward reference.
+                                  ---Henry E. Baumgarten}
+                                  
+FUNCTION INPUT_VALUE(VAR R:REAL; INP:STRING) : REAL;
+
+VAR I,INDEX:INTEGER;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J:REAL;
+  BEGIN
+    INDEX := POS('=',INP);
+    INP := COPY(INP,INDEX+1,LENGTH(INP)-INDEX);
+    REPEAT
+      DEC:=FALSE;
+      EX:=FALSE;
+      IF LENGTH(INP)=0 THEN INP:='0';
+      OK:=NOT(INP[1]='E');
+      IF LENGTH(INP)>1 THEN
+        OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+      FOR I:=1 TO LENGTH(INP) DO
+        BEGIN
+          OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+          IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+          OK:=OK AND NOT(DEC AND(INP[I]='.'));
+          IF NOT DEC THEN DEC:=(INP[I]='.');
+          OK:=OK AND NOT(EX AND (INP[I]='E'));
+          IF NOT EX THEN EX:=(INP[I]='E');
+          IF I>1 THEN
+            OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+          OK:=OK AND NOT(EX AND (INP[I]='.'))
+        END;
+      OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+      OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+      IF NOT OK THEN WRITE(RLF,'READ ERROR, TRY AGAIN ',CEOL)   (*****)
+    UNTIL OK;
+    R:=0;
+    DEC:=FALSE;
+    EXPO:=0;
+    NEG:=FALSE;
+    EX:=FALSE;
+    J:=1;
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+        IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+          EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+        IF NOT EX THEN
+          BEGIN
+            IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+              BEGIN
+                J:=J/10;
+                R:=R+(ORD(INP[I])-ORD('0'))*J
+              END
+            ELSE
+              IF NOT(INP[I] IN ['.','+','-']) THEN R:=R*10+ORD(INP[I])-ORD('0')
+          END
+      END;
+    IF EX AND NEX THEN EXPO:=-EXPO;
+    R:=R*EXP(LN(10)*EXPO);
+    IF NEG THEN R:=-R;
+    INPUT_VALUE := R
+  END;
+  
+PROCEDURE PREPARE_PLOT; FORWARD;
+
+PROCEDURE FIRST_TIME;
+
+BEGIN
+  DEFINESTRINGS;
+  CLEARSCREEN;
+  ENTERED_FUNCTION:='0';
+  LAST:='NONE';
+  XMIN:=-5;
+  XMAX:=5;
+  YMAX:=0.4;
+  MU:=1;
+  SIGMA:=1;
+  N:=25;
+  P:=0.5;
+  QUIET:=FALSE;
+  SETUP(SCREEN);
+  PSCALE:=6;
+  HRDCPY:=FALSE;
+  OLD_XMAX:=0;
+  OLD_XMIN:=0;
+  OLD_YMAX:=0;
+  CH := 'A';
+  PREPARE_PLOT;
+END;
+
+PROCEDURE SET_VARIABLE;
+
+VAR NAME:STRING;
+    RN:REAL;
+
+BEGIN
+  RN:=N;
+  NAME:=COPY(COMMANDLN,1,POS('=',COMMANDLN)-1);
+  IF NAME ='MU' THEN MU := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='SIGMA' THEN SIGMA := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='P' THEN P := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='YMAX' THEN YMAX := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='XMAX' THEN XMAX := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='XMIN' THEN XMIN := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='PSCALE' THEN PSCALE := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE IF NAME ='N' THEN RN := INPUT_VALUE(VALUE,COMMANDLN)
+  ELSE EXIT(SET_VARIABLE);
+  N:=ROUND(RN);
+  WRITE(NAME,' = ',VALUE:7:4,'   ',CEOL);
+  IF SIGMA <= 0.0 THEN WRITE('INVALID ENTRY FOR SIGMA.  SIGMA MUST BE > 0.0',
+    CEOL);
+  IF (P<0.0) OR (P>1.0) THEN WRITE('P MUST BE IN THE RANGE 0.0 TO 1.0',CEOL);
+END;
+  
+PROCEDURE HELP;
+
+PROCEDURE FINISH_HELP;
+
+BEGIN
+  WRITELN;WRITE('press "RETURN" to continue');
+  READLN;
+  CLEARSCREEN;
+  NEXT_FRAME(SCREEN,NO_CLEAR,ALL,ALL,NOT_DONE);
+END;
+
+BEGIN {HELP}
+  NEXT_FRAME(SCREEN,NO_CLEAR,OFF,ALL,NOT_DONE);
+  CLEARSCREEN;
+  WRITELN('The following commands are available to the user when prompted:');
+  WRITELN;WRITELN('NORMAL      for a normal distribution plot');
+  WRITELN('BINOMIAL    for a binomial distribution');
+  WRITELN('POISSON     for a poisson distribution');
+  WRITELN('ALL or COMPARE for a comparison of all three distributions');
+  WRITELN('SAME        to plot another curve of the same type as before');
+  WRITELN;WRITELN('CLEARSCREEN to erase any plot on the screen');
+  WRITELN('HARDCOPY    if the plotter is to draw the plot as well as the screen');
+  WRITELN('VALUE       to print the value of the variables');
+  WRITELN('QUIT or DONE to leave the program');
+  WRITELN;WRITELN;WRITELN('The first letter of the command is sufficient'
+    ,' for every one of the ');
+  WRITELN('above commands with the exception of COMPARE {use A}');
+  WRITELN('Follow each command with a "RETURN"');
+  WRITELN;WRITELN('You may alter the value of the variables by entering the',
+    ' following:');
+  WRITELN('The name of the variable followed by an = then the new value');
+  WRITELN('ie. XMAX=25 "RETURN"');
+  FINISH_HELP;
+END;
+
+FUNCTION POISSON(X:INTEGER; MU:REAL):REAL;
+
+VAR TEMP:REAL;
+
+BEGIN
+  IF MU=0 THEN
+    BEGIN
+      POISSON:=0;
+      EXIT(POISSON);
+    END;
+  TEMP:= -MU+X*LN(MU)-LN_FACTORIAL(X);
+  IF TEMP>87.4 THEN POISSON:=1.0E37 ELSE POISSON:=EXP(TEMP);
+END;
+
+FUNCTION NORMAL(X,MU,SIGMA:REAL):REAL;
+  
+VAR TEMP:REAL;
+
+BEGIN
+  TEMP:=-SQR(X-MU)/(2.0*SQR(SIGMA));
+  IF TEMP < -20.0 THEN NORMAL:=0.0 ELSE
+    NORMAL:=1/(SIGMA*SQRT(8.0*ATAN(1.0){2PI}))*EXP(TEMP)
+END;
+
+FUNCTION BINOMIAL(N,X:INTEGER; P:REAL):REAL;
+
+VAR TEMP:REAL;
+
+BEGIN
+  IF (P=0.0) OR (P=1.0) THEN
+    BEGIN
+      BINOMIAL:=0.0;
+      EXIT(BINOMIAL)
+    END;
+  TEMP:=LN_COMBINATION(N,X)+X*LN(P)+(N-X)*LN(1-P);
+  IF TEMP>87.4 THEN BINOMIAL:=1.0E37 ELSE BINOMIAL:=EXP(TEMP);
+END;
+
+PROCEDURE DRAW_AXIS;
+
+VAR I,XTEMP:INTEGER;
+
+BEGIN
+  FOR I:=0 TO 8 DO 
+    BEGIN
+      GOTOXY(0,4+2*I);
+      WRITE(YMAX-YMAX/9*I:6:4)
+    END;
+  PICTURE(49,229,270,0,1);
+  XTEMP:=ROUND(-XMIN*270/(XMAX-XMIN)+50);
+  IF (XTEMP<320) AND (XTEMP>49) THEN PICTURE(XTEMP,29,0,200,1);
+END;
+
+PROCEDURE PREPARE_PLOT;
+
+PROCEDURE DRAW_PLOT(FUNCTN:STRING);
+
+PROCEDURE PLOT_IT(TYPE_OF_PLOT:STRING);
+
+VAR YTEMP:INTEGER;
+    XTEMP:INTEGER;
+    CH:CHAR;
+
+PROCEDURE GET_POINT;
+
+FUNCTION IN_RNG(X:REAL):INTEGER;
+
+BEGIN
+  IF X>32767.0 THEN X:=32767.0;
+  IF X<-32767 THEN X:=-32767;
+  IN_RNG:=ROUND(X)
+END;
+
+BEGIN {GET_POINT}
+  CASE CH OF
+    'P' : YEND:=POISSON(ROUND(XEND),MU);
+    'B' : YEND:=BINOMIAL(N,ROUND(XEND),P);
+    'N' : YEND:=NORMAL(XEND,MU,SIGMA);
+  END;
+  XTEMP:=IN_RNG(270*(XEND-XMIN)/(XMAX-XMIN)+49);
+  YTEMP:=229-IN_RNG(200.0/YMAX*YEND)
+END;
+
+BEGIN {PLOT_IT}
+  CH:=TYPE_OF_PLOT[1];
+  GET_POINT;
+  DRAW(XTEMP,YTEMP,UP);
+  WHILE XEND<=XMAX DO
+    BEGIN
+      XEND:=XEND+STEP;
+      GET_POINT;
+      GOTOXY(0,3);
+      DRAW(XTEMP,YTEMP,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(PREPARE_PLOT)
+    END
+END;
+
+BEGIN{DRAW_PLOT}
+  IF (LAST='NONE') OR (COMMANDLN='') THEN EXIT(DRAW_PLOT);
+  CH:=FUNCTN[1];
+  IF NOT((OLD_XMAX=XMAX) AND (OLD_XMIN=XMIN) AND (OLD_YMAX=YMAX)) OR HRDCPY
+    THEN BEGIN
+      IF HRDCPY THEN NEXT_FRAME(BOTH,CLEAR,ALL,ALL,NOT_DONE)
+        ELSE NEXT_FRAME(SCREEN,CLEAR,ALL,ALL,NOT_DONE);
+      DRAW_AXIS
+    END;
+  OLD_XMAX:=XMAX;
+  OLD_XMIN:=XMIN;
+  OLD_YMAX:=YMAX;
+  IF CH='N' THEN 
+    BEGIN
+      STEP:=(XMAX-XMIN)/270;
+      XEND:=XMIN;
+    END       ELSE
+    BEGIN
+      IF (XMAX-XMIN)/270.0 < 1.0 THEN STEP:=1 
+                                 ELSE STEP:=ROUND((XMAX-XMIN)/270.0);
+      IF XMIN>0.0 THEN XEND:=XMIN ELSE XEND:=0;
+    END;
+  GOTOXY(0,0);
+  WRITE(CEOL);
+  DRAW(XLOC,YLOC,NEW_COLOR);
+  GOTOXY(0,1);
+  WRITE(CEOL);
+  GOTOXY(0,0);
+  WRITELN(' I am plotting a ',FUNCTN,' curve!',CEOL);
+  WRITELN;
+  PLOT_IT(FUNCTN);
+  DRAW(0,ROUND(ABS(239*6/PSCALE)),UP);
+  HRDCPY:=FALSE;
+  LAST:=FUNCTN;
+END;
+
+PROCEDURE ERROR_MESSAGE(ERR_MSSG:STRING);
+
+BEGIN
+  GOTOXY(0,1);
+  WRITELN(ERR_MSSG,CEOL);
+  EXIT(PREPARE_PLOT);
+END;
+
+BEGIN{ PREPARE_PLOT}
+  IF XMIN>XMAX THEN ERROR_MESSAGE('XMIN must be < XMAX');
+  IF SIGMA <= 0.0 THEN ERROR_MESSAGE('SIGMA must be > 0 ');
+  IF (P<0.0) OR (P>1.0) THEN
+    ERROR_MESSAGE('P must be between 0 and 1 inclusive');
+  IF NOT(MU>0.0) AND (COMMANDLN='POISSON') THEN
+    ERROR_MESSAGE('MU be >= 0 when plotting the POISSON DISTRIBUTION');
+  ESCAPE_PLOT:=FALSE;
+  IF CH='S' THEN CH:=LAST[1];
+  CASE CH OF
+    'C' : BEGIN
+            NEXT_FRAME(SCREEN,CLEAR,ALL,ALL,NOT_DONE);
+            DRAW_AXIS
+          END;
+    'H' : IF COMMANDLN='HELP' THEN HELP ELSE HRDCPY:=TRUE;
+    'A' :BEGIN
+           SIGMA:=SQRT(N*P*(1-P));
+           MU:=N*P;
+           YMAX:=1/(SIGMA*SQRT(8.0*ATAN(1.0){2PI}));
+           XMIN:=MU-3*SIGMA;
+           XMAX:=MU+3*SIGMA;
+           DRAW_PLOT('BINOMIAL');
+           DRAW_PLOT('NORMAL');
+           DRAW_PLOT('POISSON');
+           LAST:='ALL'
+         END;
+    'B','N','P' : DRAW_PLOT(COMMANDLN);
+    'V' : BEGIN
+            NEXT_FRAME(SCREEN,NO_CLEAR,OFF,ALL,NOT_DONE);
+            CLEARSCREEN;
+            WRITELN('SIGMA =':20,SIGMA:10:4);
+            WRITELN('MU =':20,MU:10:4);
+            WRITELN('P =':20,P:10:4);
+            WRITELN('N =':20,N:5);
+            WRITELN;WRITELN('XMAX =':20,XMAX:10:4);
+            WRITELN('XMIN =':20,XMIN:10:4);
+            WRITELN('YMAX =':20,YMAX:10:4);
+            WRITELN;WRITELN('PSCALE =':20,PSCALE:10:4);
+            WRITELN;WRITELN;WRITELN('press RETURN to continue');
+            READLN;
+            CLEARSCREEN;
+            NEXT_FRAME(SCREEN,NO_CLEAR,ALL,ALL,NOT_DONE);
+          END;
+  END
+END;
+
+BEGIN
+  FIRST_TIME;
+  DRAW_AXIS;
+  GOTOXY(0,1);
+  WRITELN('Help is available by entering HELP followed by a "RETURN" at any time');
+  REPEAT
+    GOTOXY(0,0);
+    COMMANDLN:='';
+    WRITE('YOUR COMMAND ?   ',CEOL);
+    READLN(COMMANDLN);
+    WRITE(CEOL);
+    I:=1;
+    WHILE I<= LENGTH(COMMANDLN) DO
+      BEGIN
+        IF COMMANDLN[I] = ' ' THEN 
+          BEGIN
+            DELETE(COMMANDLN,I,1);
+            I:=I-1;
+          END;
+        I:=I+1;
+      END;
+      IF LENGTH(COMMANDLN)>0 THEN CH:=COMMANDLN[1];
+      IF COMMANDLN='COMPARE' THEN COMMANDLN:='ALL';
+      IF POS('=',COMMANDLN)>0 THEN SET_VARIABLE
+                              ELSE PREPARE_PLOT;
+  UNTIL CH IN ['D','Q'];
+  NEXT_FRAME(BOTH,CLEAR,OFF,ALL,DONE);
+  CLEARSCREEN;
+END.

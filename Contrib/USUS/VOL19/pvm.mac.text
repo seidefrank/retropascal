@@ -1,0 +1,225 @@
+.TITLE  VM  p-System KT11 Disk Driver
+;
+; Submitted to the USUS Library by Eliakim Willner
+;                                  USUS DEC SIG Chairman
+;
+.ENABL  LC
+
+; p-System KT11 Disk Driver
+; For Version II.0 Interpreters
+;
+
+
+
+
+.SBTTL  General comments
+
+; "Faster than a speeding bullet..."
+;                       -Clark Kent
+
+;+
+; VM.MAC is a handler to access extended memory on PDP 11's with the
+; KT11 memory management unit as a disk device.
+; 
+; This handler was originally written by DEC personnel and contributed
+; by DEC to DECUS. It was adapted to the p-System by Eliakim Willner.
+;
+; Author:
+;       RB      01-May-75
+;       With random assistance from A(C and HJ
+;
+; Edits:
+;       CG      15-Aug-79       V04 format and bootstrap
+;       EGW     31-Dec-82       p-System Version II.0 adaptation
+;-
+
+        .ASECT             
+.=250
+        VMINT
+        340
+
+        .CSECT  TABLES
+        .BLKW   128.   
+        .REPT   11.
+        .BLKW   3
+        .ENDR
+        .WORD   INBIT!OUTBIT,VMSTRT,VMABRT
+        
+        
+        .CSECT VMDRVR
+
+VMUNIT: .WORD   0
+VMOFST  = 14
+
+DUMCSW: .WORD
+        .WORD   DUMCSW
+DUMIOQ: .WORD
+        .WORD
+        .WORD
+        .WORD
+        .WORD   1
+        
+VMSTRT:
+        TST     VMUNIT
+        BNE     VMSTRT
+        MOV     R1,VMUNIT
+        BIS     #BSYBIT,@R1
+        TST     (R3)+
+        MOV     R3,@SP
+        MOV     R0,-(SP)
+        MOV     R1,-(SP)
+        MOV     R2,-(SP)
+        MOV     R4,-(SP)
+        MOV     R5,-(SP)
+        CLR     DUMCSW
+        MOV     #DUMIOQ,R5
+        MOV     <UBLOCK+VMOFST>(SP),(R5)+
+        MOV     @R1,(R5)+
+        MOV     <UBUFFR+VMOFST>(SP),(R5)+
+        MOV     <URLENG+VMOFST>(SP),R0
+        ROR     R0
+        TST     -(R3)
+        BNE     1$
+        NEG     R0
+1$:     MOV     R0,(R5)+
+        JSR     PC,QENTRY
+        MOV     (SP)+,R5
+        MOV     (SP)+,R4
+        MOV     (SP)+,R2
+        MOV     (SP)+,R1
+        MOV     (SP)+,R0
+        MOVB    DUMCSW,@R1
+        JMP     @(SP)+
+
+$INTEN:
+        MOV     R4,-(SP)
+        JSR     PC,@R5
+        MOV     (SP)+,R4
+        MOV     (SP)+,R5
+        JMP     @#INTRTN
+
+VMQUIT:
+        MOVB    DUMCSW,@VMUNIT
+        BIC     #BSYBIT,@VMUNIT
+        CLR     VMUNIT
+        RTS     PC
+        
+VMABRT: TST     VMUNIT
+        BNE     VMABRT
+        RTS     PC
+        
+
+
+.SBTTL  Macros and Definitions
+
+; Memory management registers
+
+MMSR0   = 177572                ;STATUS REG 0
+MMSR1   = 177574                ;STATUS REG 1
+MMSR2   = 177576                ;STATUS REG 2
+MMSR3   = 172516                ;STATUS REG 3
+UISDR0  = 177600                ;USER I DESC REG 0
+UISDR7  = 177616                ;USER I DESC REG 7
+UISAR0  = 177640                ;USER I ADDR REG 0
+UISAR7  = 177656                ;USER I ADDR REG 7
+KISDR0  = 172300                ;KERNEL I DESC REG 0
+KISDR7  = 172316                ;KERNEL I DESC REG 7
+KISAR0  = 172340                ;KERNEL I ADDR REG 0
+KISAR7  = 172356                ;KERNEL I ADDR REG 7
+
+; Miscellaneous definitions
+
+V.TRP4  = 4                     ;Trap to 4 vector
+PS      = 177776                ;PROCESSOR STATUS WORD
+UMODE   = 140000                ;CURRENT MODE = USER (IN PS)
+ADRS22  = 000020                ;22-BIT ADDRESSING MODE FOR 11/70
+PUMODE  = 030000                ;PREVIOUS MODE = USER MODE (IN PS)
+
+
+.SBTTL  Driver entry
+
+.ENABL  LSB
+VMCQE:  .WORD   DUMIOQ
+QENTRY:
+        MOV     VMCQE,R3        ;R3 -> QUEUE ELEMENT
+        MOV     (R3)+,R2        ;R2 = BLOCK NUMBER
+        ASL     R2
+        ASL     R2
+        ASL     R2              ;R2 = VM MEMORY BLOCK #
+        ADD     #1600,R2        ;   + 28K WORDS
+        CLR     R4              ;R4 = MEMORY BLK #
+        MOV     #UISAR0,R1      ;R1 -> USER I ADDRESS REGS
+        MOV     #8.,R0          ;8 REGS TO LOAD
+1$:     MOV     #77406,UISDR0-UISAR0(R1) ;LOAD USER DESC REG
+        MOV     #77406,KISDR0-UISAR0(R1) ;LOAD KERNEL DESC REG
+        MOV     R4,KISAR0-UISAR0(R1) ;LOAD KERNEL I ADDR REG
+        MOV     R4,(R1)+        ;AND USER I ADDR REG
+        ADD     #200,R4         ;BUMP ADDR BY 4K
+        SOB     R0,1$           ;AND LOOP TO SET UP ALL 8
+        MOV     R2,-(R1)        ;MAP VM BLK OVER USER I/O PAGE
+        MOV     #37406,@#UISDR7 ;WITH A LENGTH OF 2K WORDS
+        MOV     #177600,@#KISAR7 ;MAP I/O PAGE TO KERNEL
+        MOV     #160000,R5      ;R5 -> BASE OF I/O PAGE
+VMHPAT: NOP                     ;NOMODE22 ;Filler
+        NOP                     ;NOMODE22
+        NOP                     ;NOMODE22
+;       BIS     #ADRS22,@#MMSR3 ;MODE22   ;SET 22-BIT MODE FOR 11/70
+        BIS     #UMODE,@#PS     ;GO INTO USER MODE
+        BIS     #1,@#MMSR0      ;ENABLE MANAGEMENT
+        TST     (R3)+           ;SKIP UNIT NUMBER IN Q ELEMENT
+        MOV     (R3)+,R0        ;R0 = BUFFER ADDRESS
+        MOV     @R3,R4          ;R4 = WORD COUNT
+        BMI     VMWRT           ;IF NEGATIVE, WRITE REQUEST
+        BEQ     VMTRAP          ;IF SEEK THEN DONE IMMEDIATELY
+        INC     R4              ;FOLD WORD COUNT TO SPEED TRANSFER
+        ASR     R4
+        BCC     2$
+VMREAD: MOV     (R5)+,(R0)+     ;COPY TO USER BUFFER
+2$:     MOV     (R5)+,(R0)+
+        SOB     R4,VMREAD       ;LOOP UNTIL TRANSFER COMPLETE
+        BR      VMTRAP          ;THEN GO TO COMMON EXIT
+
+VMWRT:  NEG     R4              ;MAKE WORD COUNT POSITIVE
+        INC     R4              ;FOLD WORD COUNT TO SPEED TRANSFER
+        ASR     R4
+        BCC     4$
+3$:     MOV     (R0)+,(R5)+     ;MOVE A WORD FROM USER BUFFER
+4$:     MOV     (R0)+,(R5)+
+        SOB     R4,3$           ;LOOP UNTIL TRANSFER COMPLETE
+        MOVB    @R3,R4          ;CHECK IF ZERO-FILL REQ'D
+        BEQ     VMTRAP          ;NOPE - MULTIPLE OF A BLOCK
+5$:     CLR     (R5)+           ;ELSE CLEAR A WORD
+        DECB    R4              ;UNTIL REACH A BLOCK BOUNDARY
+        BNE     5$
+VMTRAP: CLR     @#MMSR0         ;TRY TO TURN OFF MANAGEMENT
+        MOV     PC,R4           ;POINT TO Q ELEMENT AGAIN
+        ADD     #VMCQE-.,R4
+;       MOV     @#54,R0         ;GET BASE OF RMON
+;       JMP     @270(R0)        ;AND DISPATCH ELEMENT
+        JMP     VMQUIT
+
+; ABORT ENTRY
+
+        BR      VMTRAP          ;ABORT BY DISABLING MANAGEMENT
+
+; INTERRUPT SERVICE
+
+VMINT:  MOV     #160000,R5      ;RESET TO POINT TO BASE OF I/O PAGE
+        ADD     #100,@#UISAR7   ;AND REMAP TO NEXT 2K CHUNK
+        MOV     @#MMSR2,R1      ;R1 = VIRTUAL PC OF ERROR
+        CMP     @R1,(PC)+       ;CHECK FOR R0 MODIFICATION
+        MOV    (R0)+,(R5)+      ;  ON THIS INSTRUCTION ONLY!
+        BNE     6$              ;NOT THIS ONE, SO SKIP CORRECTION
+        TST     -(R0)           ;ELSE UPDATE
+6$:     BIC     R5,@#MMSR0      ;CLEAR SEGMENT LENGTH FAULT
+        MOV     PC,R2           ;GET ADDR OF EXIT CODE
+        ADD     #VMTRAP-.,R2    ;  IN R2
+        CMP     R1,R2           ;TRYING TO EXIT?
+        BNE     7$              ;NOPE
+        BIC     R5,2(SP)        ;ELSE RETURN TO KERNEL MODE
+7$:     MOV     R1,@SP          ;RESTART INSTRUCTION
+        RTI                     ;AND EXIT
+.DSABL  LSB
+
+.END
+

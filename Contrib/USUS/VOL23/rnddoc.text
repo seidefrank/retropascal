@@ -1,0 +1,114 @@
+
+                             RNDTEST
+        
+        RND is a random number generator that gives reasonably
+random results without crashing my LSI-11 system.  RNDTEST
+includes four versions of RND, along with a few simple tests for
+randomness.  The first three versions of RND are included for
+those who are interested in the detailed operation of the basic
+algorithm.  The final version should run on any UCSD (TM)
+system, and is a clear candidate for inclusion in
+SYSTEM.LIBRARY.
+
+        The basic algorithm for RND is Meekings' Algorithm A-1
+in Pascal News #12, which is a Pascal version of Kendall's
+algorithm for a Tausworthe (or shift register) random sequence
+generator.  Each call to a Tausworthe generator gets the next
+integer in a fixed pseudorandom sequence of integers. In RND,
+the sequence includes one and only one copy of each of the
+integers between 1 and 32767 inclusive, arranged in an order
+that many statistical tests cannot distinguish from a true
+random order.  Starting with the 32768th call to the generator
+(or multiples thereof) the original sequence will repeat itself
+exactly.
+
+        The random number generators in RNDTEST are written as:
+
+               FUNCTION RND(LO,HI:INTEGER):INTEGER;
+
+        Each uses a different version of a Tausworthe generator
+to maintain an integer "seed", and uses the real fraction 
+(seed-1)/32767 to return an integer that is between LO and HI
+inclusive.  The initial seed can be any positive nonzero
+integer.  Changing seeds changes the starting point in the
+sequence, but does not change the sequence itself. 
+
+        The first version of RND uses a brute force Pascal bit
+manipulation version of the LSI-11 assembly language Tausworthe
+generator that appeared in Camp and Lewis, "Implementing a
+Pseudorandom Number Generator on a Minicomputer", IEEE
+Transactions on Software Engineering, May 1977, Page 259.
+Pascal does not flip bits with a great deal of alacrity, and
+this version is lethargic, if not moribund.  However, it does
+show exactly what should be happening, bit by bit, and it will
+probably run on any UCSD (TM) system.
+
+        The second and third versions of RND use what is
+essentially Meekings' algorithm from Pascal News #12.  The
+second version uses arithmetic to generate a logical complement,
+while the third version uses NOT.  Although these versions do
+run on my LSI-11 system, they do so only because AND, OR, and
+NOT are implemented as 16-bit operations, and booleans are
+treated as 16-bit words. These versions may or may not work on
+other systems.
+
+        The fourth version of RND is similar to the second
+version, but reflects Miner's comments in PN #12, and Meekings'
+comments in PN #13.  The changes prevent an integer multiply
+overflow, clear the sign bit of the seed (Note: this is not
+necessarily the same thing as taking the absolute value of the 
+seed!), and implement the logical XOR function with set
+operations.  This version is reasonably fast, and should work on
+any UCSD (TM) system.
+        
+        RNDTEST also includes three simple tests for random
+number generators.  The first test is to generate 10,000 random
+integers between 1 and 10 inclusive and count the number of
+times that each of the integers between 0 and 11 appear. Neither
+0 nor 11 should appear at all, and each of the other integers
+should appear roughly 1000 +/- 70 times.
+        
+        The second test is to generate 1000 random positions on
+the system (79 x 23) screen, GOTOXY there, and display an
+asterisk.  The resulting display should not show a pronounced
+pattern, and should be roughly half full of asterisks by the 
+time the test terminates.
+
+        The third test is to generate random integers until the
+initial seed reappears.  A count is kept of the number of times
+that each integer (positive, negative, or zero) crops up, as
+well as the total number of integers that have been generated.
+The count of each integer is then checked to ensure that no
+negative integers have been generated, that zero has not been
+generated, and that each positive integer has been generated
+once and only once.
+
+RANDOMIZE
+        Each time a program using RND is executed, the seed must 
+be initialized.  In programs such as sorting benchmarks it is 
+useful to use the same initial seed so that each sorting routine 
+uses the same sequence of integers.  In programs such as 
+arithmetic drills it is useful to use a different seed each time 
+the program is executed in order to avoid an identical sequence 
+of problems.
+
+        It is conventional to initialize a random number seed to 
+a single, fixed value.  If desired, a subsequent call to
+RANDOMIZE replaces the initial seed with a randomized seed.
+Obvious candidates for a randomized seed include using
+ABS(LOTIME) for those systems with a real time clock, or ORD(CH)
+where CH is the response to "Type any character".  Other
+alternatives include using ABS(PEEK(loc)) where "loc" is a fixed
+memory location known to have a highly variable content, or
+ABS(DATE) where DATE is the system date that is maintained on
+the system disk.  A final alternative that is practical under
+the IV UCSD (TM) system is to use the termination code of the
+UNIT construct to write the last value of seed out to disk.
+RANDOMIZE then reads this value back and uses it for the new
+value of seed.  
+ 
+        RANDOMIZE is not included in RNDTEST because of the 
+system specific nature of the beast.
+
+                                CR
+

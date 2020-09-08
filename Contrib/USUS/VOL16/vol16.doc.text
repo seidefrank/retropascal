@@ -1,0 +1,116 @@
+                             USUS Library Volume 16
+                    A little something from almost everyone
+
+P.TEXT            24  A simple text formatter which is easy to use 
+P.INC.TEXT        16    an include file for P
+INV.TEXT           8  An inventory management program from Pat Horton
+ISSUE.TEXT        10    an include file for INV
+BASPROC2.TEXT     12      ditto
+ADD.TEXT           8      ditto
+REPORT.TEXT       20      ditto
+BASPROC.TEXT      18      ditto
+INV.DOC.TEXT      34    documentation for INV
+Z80.SEEK.TEXT      8  A fast Z80 seek procedure.  Should have been on Volume 8
+CHECKBOOK.TEXT    26  Jim Gagne's checkbook balancer
+USUS.INV.TEXT     36  A USUS disk order entry program
+INVCS.MASK.DATA    5    a data file for USUS.INV
+8.INCH.TEXT        8  Prints 8" disk labels
+APPLE.LABL.TEXT    6  Prints Apple disk labels
+CRTINPUT.TEXT     22  A unit used by Jim's programs
+GETNUMBER.TEXT    30  Another unit used by Jim's programs
+ASE.HEADER.TEXT    6  The declarations for the ASE Header Page
+BUNIT.TEXT        12  Mike Adams's B-tree unit
+BDEBUG.TEXT        6    an include file of BUNIT
+BHKEEP.TEXT        6      ditto
+BINTERN.TEXT      24      ditto
+BIO.TEXT           8      ditto
+BMAIN.TEXT        22      ditto
+BDRIVER.TEXT      12  A main program which uses and demos BUNIT
+BDOC1.TEXT        30  Excellent documentation for Mike Adams's B-tree
+BDOC2.TEXT        30    More documentation on the b-tree
+BDOC3.TEXT        16    Even more documenation
+VOL16.DOC.TEXT    12  You're reading it
+-----------------------------------------------------------------------------
+Please transfer the text below to a disk label if you copy this volume.
+
+    USUS Volume 16 -***- USUS Software Library
+                         
+   For not-for-profit use by USUS members only.
+  May be used and distributed only according to 
+      stated policy and the author's wishes.
+
+
+
+This volume was assembled by George Schreyer from material collected by
+the Library committee.
+
+__________________________________________________________________________
+
+Some notes from the editor:
+
+                                       P
+
+     This is a simple, easy-to-use, and useful text formatter submitted by Pat 
+Horton.  It basically does what the UCSD editor does not, justify pre-filled
+paragraphs.  It has a nice user interface and built in help functions. All
+funtions are controlled interactively, no imbedded commands are used.
+
+                                      INV
+
+     This is a fairly elaborate inventory system submitted by Pat Horton.  It
+is easy to use and it works well.
+
+                                    Z80.SEEK
+
+     This routine was supposed to be on Volume 8, but it didn't make it into
+many of the masters.  It needs the GLOBALS from volume 8 to compile.
+
+          -----------------------------------------------------------
+         
+         Jim Gagne's submission -- four utility programs and two units
+                                        
+                                   CHECKBOOK
+
+     Checkbook will balance your checkbook for you and also act a little like 
+a calculator.  It uses CRTINPUT and GETNUMBER.
+
+                                    USUS.INV
+
+     This is the program Jim uses to process USUS orders.  Nice menu.  It uses
+CRTINPUT and GETNUMBER.
+
+                                     8.INCH
+
+     This program will print a label for a USUS volume on standard 8" disk
+labels.  Use it if you copy disks for another USUS member.  It uses CRTINPUT.
+                                        
+                                   APPLE.LABL
+
+     Same as above except for Apple labels.
+
+                                    CRTINPUT
+
+     This is a collection of utility procedures.  A version of it is found
+on volume 5, but this one doesn't have any EXTERNAL procedures.
+
+                                   GETNUMBER
+
+     More utility routines, specifically to get numbers from the user.
+
+                                   ASE.HEADER
+
+     The RECORD declaration for the first "page" of an ASE TextFile.  This is
+meant as an aid for folks writing RunOffs, Spellers, and Grammarians which
+might wish to use ASE files.
+
+                               BUNIT and BDRIVER
+
+     This is Mike Adams's B-tree implementation.  There is a general purpose b-
+tree unit and a demo program.  The demo is pretty simple, it is intended to
+store only integers, probably to be used as keys to another file, but the unit
+itself is very general.  Mike has supplied excellent documentation of what a 
+b-tree is, what it does and why it works better than other ways to store
+data.  He describes his own implementation and how to use it, and how you
+might modify it to make it work better for your own application.
+
+

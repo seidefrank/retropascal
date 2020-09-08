@@ -1,0 +1,13 @@
+(*The following is a sample gotoxy procedure for the VT-52*)
+(*$U-*)
+PROGRAM DUMMY;
+PROCEDURE FGOTOXY(X,Y:INTEGER);
+BEGIN
+  IF X<0 THEN X:=0;
+  IF X>79 THEN X:=79;
+  IF Y<0 THEN Y:=0;
+  IF Y>23 THEN Y:=23;
+  WRITE (CHR(27),'Y',CHR(Y+32),CHR(X+32));
+END;
+BEGIN
+END.

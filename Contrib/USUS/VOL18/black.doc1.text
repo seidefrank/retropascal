@@ -1,0 +1,22 @@
+     Blackbox is aa game where one or more players guess the position of
+marbles inside an 8 * 8 grid.  Information about the position of marbles in 
+the grid is deduced by the player firing raays at any row or column in the 
+grid.
+
+     A ray fired at the black box can cause one of three possible outcomes.  
+The outcome is indicated by a marker where the ray was fired.  A '*' marker 
+means a ray fired from this location has hit a marble in the grid ( i.e. the 
+ray hits a marble straight on and is absorbed and does not exit the board).  A 
+'^' marker means a ray has been reflected ( the ray has approached two marbles
+one grid apart and has bounced back and emerged from the grid at its entry
+point).  A special case for reflection occurs at the grid boundary.  If a ray 
+hits the corner of a marble at the ray entering boundary, it is reflected back 
+without entering the grid.  A ray that passes through the grid without
+absorption or reflection is marked by a lower case letter.  The first ray to
+pass through is marked 'a', the second 'b', each subsequent marble labelled
+by an ascending letter.  A ray turns 90 degrees if it does not hit a marble
+straight on, but hits the marble at a corner.  One ray fired at the grid may
+undergo zero or more 90 degree turns while in the black box, so that a
+straight forward analysis of the marble path may not indicate the true path.
+
+     Type <return> to continue.

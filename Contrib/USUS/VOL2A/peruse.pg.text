@@ -1,0 +1,51 @@
+
+(*   Program Author:  Frank Monaco
+                      679 Lowell Drive
+                      Marietta, GA 30060
+                      404-424-1460
+                                                        *)
+                                                        
+
+program perusepage;
+
+var
+  i : integer;
+  ch : char;
+  file1, f1 : string;
+  source : text;
+  more : boolean;
+
+
+begin
+more := true; i := 0;
+write('enter file to be perused- - -> '); readln(f1);
+file1 := concat(f1,'.text');
+reset(source,file1);
+while (not eof(source) and more) do
+   begin
+      while not eoln(source) do
+         begin
+            read(source, ch);
+            write(ch)
+         end;
+      readln(source);
+      writeln;
+      i := succ(i);
+      if i = 23 then
+         begin
+           write('more? '); readln(ch);
+           if ch = 'q' then
+              begin
+                 more := false
+              end
+              else
+              begin
+                 i := 0;
+                 reset(input)
+              end
+         end
+  end 
+end.
+         
+
+

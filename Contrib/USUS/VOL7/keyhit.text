@@ -1,0 +1,20 @@
+;  THIS FUNCTION CALLS THE CP/M CONSOLE READY ENTRY POINT AND RETURNS
+;  A BOOLEAN VALUE (TRUE OR FALSE). CODE WILL OPERATE ON EITHER 8080 OR Z80
+;
+
+        .FUNC   KEYHIT          ;TESTS CONSOLE CHAR READY AND RETURNS T ! F
+        POP     DE              ;RETURN ADDR
+        POP     HL
+        POP     HL              ;ZEROS
+        LD      L,06H           ;CP/M CONSOLE READY ENTRY POINT
+        CALL    BIOS
+        LD      L,A
+        PUSH    HL              ;BOOLEAN RESULT TO STACK
+        EX      DE,HL           ;RETURN ADDR TO HL
+HERE:   JP      (HL)            ;EXIT
+BIOS:   LD      A,(0002H)       ;PAGE NO IN LOCATION 02H
+        LD      H,A
+        JP      (HL)
+        .END
+
+

@@ -1,0 +1,58 @@
+(*$I-*)  (*no bomb for errors in I/O*)
+PROGRAM LARGEFILESINGLEDISKTRANSFER;
+(* Keith *)
+CONST
+  BLOCKS = 62;
+VAR
+  LGTH: 0..BLOCKS;
+  ITITLE,OTITLE: STRING[30];
+  BUF: PACKED ARRAY[0..32000] OF CHAR;
+  IFILE,OFILE: FILE;
+
+PROCEDURE INDISK;
+BEGIN
+  WRITE('Please insert disk containing source file and type <return>');
+  READLN;
+END;
+
+PROCEDURE OUTDISK;
+BEGIN
+  WRITE('Please insert disk onto which file is to be copied and type <return>');
+  READLN;
+END;
+
+BEGIN
+  IF EOLN THEN READLN;
+  INDISK;
+  REPEAT
+    WRITE('Please type full input filename: ');
+    READLN(ITITLE);
+    IF LENGTH(ITITLE) = 0 THEN EXIT(PROGRAM);
+    OPENOLD(IFILE,ITITLE);
+  UNTIL IORESULT = 0;
+  OUTDISK;
+  REPEAT
+    WRITE('Please type full output filename: ');
+    READLN(OTITLE);
+    IF LENGTH(OTITLE) = 0 THEN EXIT(PROGRAM);
+    OPENNEW(OFILE,OTITLE);
+  UNTIL IORESULT = 0;
+  REPEAT
+    INDISK;
+    LGTH := BLOCKREAD(IFILE,BUF,BLOCKS);
+    IF (IORESULT <> 0) THEN
+      BEGIN
+	WRITELN('Error encountered in reading');
+	EXIT(PROGRAM)
+      END;
+    OUTDISK;
+    IF (BLOCKWRITE(OFILE,BUF,LGTH) <> LGTH) THEN
+      BEGIN
+	WRITELN('Error encountered in output');
+	EXIT(PROGRAM)
+      END;
+  UNTIL LGTH < BLOCKS;
+  CLOSE(OFILE,LOCK);
+  CLOSE(IFILE,NORMAL);
+  WRITELN('Copy completed successfully');
+END.

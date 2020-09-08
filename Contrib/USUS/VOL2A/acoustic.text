@@ -1,0 +1,23 @@
+; FOR MY ACOUSTIC COUPLER NO INITIALIZATION IS NECESSARY    
+
+        .PROC   MODEMINIT,1 
+        .PRIVATE RETADDR
+        
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;POP ARGUMENT OFF STACK
+        LD      HL,(RETADDR)
+        JP      (HL)
+
+
+; HANGUP FOR FOR AN ACOUSTIC COUPLER (WOULD YOU BELIEVE)     
+
+        .PROC   HANGUP,0 
+        .PRIVATE RETADDR
+        POP     HL
+        LD      (RETADDR),HL
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+
+

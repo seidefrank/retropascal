@@ -1,0 +1,43 @@
+program stars;
+
+     { This is a simple test of console I/O speed with the slowest I/O method,
+single character writes.  1000 characters are written to the console, each
+with a separate WRITE statement and its attendant system overhead.  The actual
+time it takes to write the character to a serial port at 9600 baud is about 1
+ms (0.5 ms for 19,200 baud) and the loop overhead time will be processor
+dependant, but usually between about 0.05 ms for a Sage to about 0.4 ms for an
+Apple.
+
+     You will probably find that the time necessary to execute this test is 
+much longer than you would expect.  For example, the loop overhead of my LSI-
+11/23 is 0.14 ms and the I/O overhead is 0.5 ms (19.2k baud).  One would 
+expect that the test would take 0.64 ms/loop to complete.  Not so under IV.1,
+with extended memory the test takes 6.2 ms/loop! Without extended memory the
+test runs at 4 ms/loop.  IV.0 takes 2.3 ms/loop. II.0 takes 1.5 ms/loop.
+
+     Using the UNITWRITE, version II.0 takes 0.8 ms/loop, much closer to what
+you would expect as UNIT I/O has very little system overhead.  Version IV.0
+takes 0.9 ms/loop, and version IV.1 (with extended memory and probably memory 
+management overhead) takes 1.6 ms/loop.  IV.1 without extended memory takes
+1.2 ms/loop (IV.1 is about 15% slower than IV.0 anyway).
+
+     As you may find, different versions of software can affect I/O speed as 
+much as different hardware!
+
+     - gws
+     }
+
+var i,j : integer;
+    ch : packed array [ 0..1 ] of char;
+begin
+ch [ 0 ] := '*';
+write ( chr ( 7 ) );
+for i := 1 to 20 do
+  begin
+     for j := 1 to 49 do write ( '*' ) 
+     {unitwrite ( 1, ch [ 0 ], 1 )};
+     writeln;
+  end; 
+write ( chr ( 7 ) ); 
+end.
+

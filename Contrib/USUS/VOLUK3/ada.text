@@ -1,0 +1,401 @@
+(*$L PRINTER:*)
+(*$S+*)
+{$G+}
+program asc;
+USES (*$U FILECHECK.CODE*) FILECHECK;
+
+{$I #5:types.text}
+
+   procedure er_error_message (error_number   : er_errornumber_range;
+                               error_type     : er_error_type;
+                               error_position : so_position;
+                               error_symbol   : lu_sym_descriptor);
+   forward;
+(*       SPECIFIES AN ERROR MESSAGE*)
+   function  er_num_of_errors : integer;
+   forward;
+(*    RETURNS THE ACTUAL NUMBER OF ERRORS*)
+   function  er_number_of_warnings : integer;
+   forward;
+(*    RETURNS THE ACTUAL NUMBER OF WARNINGS*)
+   procedure er_init;
+   forward;
+(*    TO INITIALIZE THE COUNTERS*)
+(*END ERROR_MESSAGE_HANDLER;*)
+   procedure co_int_to_string (int       :  integer;
+                               base      :  co_base_type;
+                               leading0  :  boolean;
+                               last_char :  integer;
+                         var   str       :  string);
+      forward;
+      (* INT IS CONVERTED TO STRING REPRESENTATION TO   BASE BASE*)
+      (* IT IS IN STR(STR'FIRST..LAST_CHAR) WITH LEADING ZEROS OR*)
+      (* BLANKS (LEADING0). IF IT DOES NOT FIT IT IS LEFT TRUNCATED.*)
+      (* IF INT<0, THEN "-" IS IN FRONT OF THE DIGITS*)
+   procedure co_its_left (int            :  integer;
+                          base           :  co_base_type;
+                    var   outp_last_char :  integer;
+                    var   str            :  string);
+      forward;
+      (* INT IS CONVERTED TO STRING REPRESENTATION TO BASE BASE.*)
+      (* THE DIGITS ARE LEFT ADJUSTED IN STR(STR'FIRST..LAST_CHAR)*)
+      (* IF INT<0 THEN "-" IS IN FRONT OF THE DIGITS.*)
+      (* ONLY NECESSARY PART OF STR IS USED*)
+   procedure co_string_to_int (buffer    :  string;
+                               firstc,
+                               lastc     :  integer;
+                               base      :  integer;
+                          var  outp_too_large :  boolean;
+                          var  outp_int       :  integer);
+      forward;
+      (* THE DIGITS] IN BUFFER(FIRSTC..LASTC) ARE CONVERTED TO*)
+      (* BINARY VALUE WITH BASE BASE. TOO_LARGE INDICATES WHETHER AN*)
+      (* OVERFLOW HAS OCCURED; THEN INT=MAX_INT.*)
+      (* IN EVERY CASE ALL DIGITS ARE TESTED, THAT THEY ARE CORRECT.*)
+      (* LASTC < FIRSTC IS ALLOWED, THEN INT=0.*)
+(*END CONVERSION;*)
+   procedure st_init; forward;
+      (* INITIALIZATION: MUST BE CALLED BEFORE USE*)
+      (* SETS THE SYMBOL TABLE EMPTY. CAN BE CALLED AT EVERY STAGE.*)
+(*---------------------------------------------------------------*)
+(* CODING: STRING --> ST_SYMBOL*)
+(*---------------------------------------------------------------*)
+   function  st_get_sub_code (str    :  string;
+                              firstc,
+                              lastc  :  integer;
+                              enter  :  boolean) : st_symbol;
+      forward;
+      (* IF SYMBOL STR(FIRSTC..LASTC) IS ALREADY ENTERED THEN*)
+      (*                                             RETURN ITS CODE*)
+      (* ELSIF ENTER THEN INSERT STR(FIRSTC..LASTC)*)
+      (* ELSE RETURN ST_NIL*)
+   function  st_get_code (str : st_literal; l : integer) : st_symbol;
+      forward;
+      (* ST_GET_SUB_CODE( STR, STR'FIRST, STR'LAST, TRUE);*)
+   function  st_get_char_code (chr  : char) : st_symbol;
+      forward;
+      (* ST_GET_CODE( (1=> CHR));    NO 1-CHARACTER STRINGS*)
+(*---------------------------------------------------------------*)
+(* RECODING: ST_SYMBOL  -->  STRING*)
+(*---------------------------------------------------------------*)
+   procedure st_get_string (code               : st_symbol;
+                           var  str            : string;
+                           var  outp_last_char : integer);
+         forward;
+      (* RETURN STR(STR'FIRST .. OUTP_LAST_CHAR) OF SYMBOL "CODE"*)
+(*END SYMBOL_TABLE;*)
+    (* procedure lu_init; forward; ---> removed since segment procedure *)
+(*---------------------------------------------------------------*)
+(*  LEXICAL UNITS FOR ERROR HANDLING*)
+(*---------------------------------------------------------------*)
+   (* procedure lu_error_symbol (lex_unit :    lu_lexical_unit;*)
+                              (* var result :  lu_sym_descriptor);*)
+   (* forward; MADE INTO SEG PROCEDURE *)
+(*---------------------------------------------------------------*)
+(* LEXICAL UNITS AS STRINGS*)
+(*---------------------------------------------------------------*)
+   procedure lu_str_of (symbol         : lu_sym_descriptor;
+                      var  str            : string;
+                      var  outp_last_char : integer);
+      (* RETURNS THE STRING REPRESENTATION*)
+   forward;
+(*END LEXICAL_UNITS;*)
+   (* procedure la_init; forward; ----> removed since segment procedure *)
+      (* INITIALIZATION: MUST BE CALLED BEFORE LA_NEXT_SYM*)
+   procedure la_next_sym (var outp_sym : lu_sym_descriptor;
+                          var outp_pos    : so_position); forward;
+      (* DELIVERS IN OUTP_SYMBOL THE NEXT LEXICAL UNIT*)
+      (* OUTP_POS IS THE POSITION OF THE FIRST CHARACTER OF THE UNIT*)
+(*END LEXICAL_ANALYZER;*)
+{$I #5:luerror.text}
+{$I #5:luinit.text}
+{$I #5:lainit.text}
+{$I #5:parser.text}
+{$I #5:coint.text}
+{$I #5:stget.text}
+{$I #5:lanext.text}
+   procedure so_init;
+   begin
+      so_nil_position.sourceline := 0;
+      so_nil_position.column     := 1;
+   end;
+   procedure st_init ;
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(*    DESCRIPTION: SYMTAB_ENTRIES ARE DELETED. SYMTAB_STRINGS IS SET-*)
+(*    ------------ TO STB_EMPTY. ST_NIL BECOMES "<IDENT>".          -*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+   var loop_i : st_symbol;
+   begin
+      for loop_i := 1 to st_sym_ubound do
+         stb_s_tab_entries [loop_i].textb := stb_empty;
+    (*END LOOP;*)
+      stb_number_char := stb_empty;
+      stb_texttable_full := false; stb_hashtable_full := false;
+      stb_s_tab_entries [st_nil] :=
+           stb_s_tab_entries [ st_get_code ('<IDENT>  ',7)];
+   end;  (*ST_INIT;*)
+(*-------------------------------------------------------------------*)
+   procedure lu_str_of; (* (SYMBOL         : LU_SYMBOL_DESCRIPTOR;
+                          VAR  STR            : STRING;
+                          VAR  OUTP_LAST_CHAR : INTEGER);  *)
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(*    DESCRIPTION: RETURNS THE EXTERNAL STRING OF THE LEXICAL UNIT  -*)
+(*    ------------                                                  -*)
+(*-------------------------------------------------------------------*)
+VAR
+   DISCRIM : LU_SELECTOR;
+   SHIFT : INTEGER;
+   I, J, K, L : INTEGER;
+  BEGIN
+     DISCRIM :=SYMBOL.DISCRIM;
+     CASE DISCRIM OF
+     LU_ID :                                     BEGIN
+          ST_GET_STRING (SYMBOL.IDCODE, STR, L);
+          IF SYMBOL.SYM = LU_CHARACTER_SYM THEN BEGIN
+             STR [SFIRST + 1] := STR[SFIRST];
+             STR [SFIRST] := '''';
+             STR [SFIRST + 2] := '''';
+             OUTP_LAST_CHAR := SFIRST + 2;      END
+          ELSE IF SYMBOL.SYM = LU_STRING_SYM THEN BEGIN
+             SHIFT := 1;
+             FOR I := L DOWNTO SFIRST DO  BEGIN
+                STR [I + 1] := STR[I];
+                IF STR[I] = '"' THEN      BEGIN
+                   FOR J:= L + SHIFT DOWNTO I + 2 DO
+                      STR[J+1] := STR[J];
+                   STR[I+2] := '"';
+                   SHIFT :=SHIFT + 1;     END;
+             END;(*LOOP*)
+             STR[SFIRST] := '"';
+             OUT_PLAST_CHAR := L + SHIFT + 1;
+             STR[OUTP_LAST_CHAR] := '"';    END
+          ELSE
+             OUTP_LAST_CHAR := L;                 END;
+
+              lu_int :                                     begin
+            str [sfirst] := '0';
+            outp_last_char := sfirst;                      end;
+              lu_real :                                    begin
+            str [sfirst]   := '0';
+            str [sfirst+1] := '.';
+            str [sfirst+2] := '0';
+            outp_last_char := sfirst+2;                    end;
+              lu_other :                                  begin
+            outp_last_char := sfirst + 1;
+            case symbol.sym of
+                    lu_dot_sym :                           begin
+                  str [sfirst] := '.';
+                  outp_last_char := sfirst;                end;
+                    lu_interval_sym :                      begin
+                  str [sfirst] := '.';
+                  str [sfirst + 1] := '.';                 end;
+                    lu_left_label_sym :                    begin
+                  str [sfirst] := '<';
+                  str [sfirst + 1] := '<';                 end;
+                    lu_box_sym :                           begin
+                  str [sfirst] := '<';
+                  str [sfirst + 1] := '>';                 end;
+                    lu_lpar_sym :                          begin
+                  str [sfirst] := '(';
+                  outp_last_char := sfirst;                end;
+                    lu_separator_sym :                     begin
+                  str [sfirst] := '!';
+                  outp_last_char := sfirst;                end;
+                    lu_rpar_sym :                          begin
+                  str [sfirst] := ')';
+                  outp_last_char := sfirst;                end;
+                    lu_semicolon_sym :                     begin
+                  str [sfirst] := ';';
+                  outp_last_char := sfirst;                end;
+                    lu_comma_sym :                         begin
+                  str [sfirst] := ',';
+                  outp_last_char := sfirst;                end;
+                    lu_right_label_sym :                   begin
+                  str [sfirst] := '>';
+                  str [sfirst + 1] := '>';                 end;
+                    lu_colon_sym :                         begin
+                  str [sfirst] := ':';
+                  outp_last_char := sfirst;                end;
+                    lu_assign_sym :                        begin
+                  str [sfirst] := ':';
+                  str [sfirst + 1] := '=';                 end;
+                    lu_quote_sym :                         begin
+                  str [sfirst] := '''';
+                  outp_last_char := sfirst;                end;
+                    lu_arrow_sym :                         begin
+                  str [sfirst] := '=';
+                  str [sfirst + 1] := '>';                 end;
+       lu_identifier_sym , lu_integer_sym    , lu_real_sym  ,
+       lu_character_sym  , lu_string_sym,
+       lu_eof_sym   ,
+       lu_abort_sym , lu_accept_sym, lu_access_sym, lu_all_sym   ,
+       lu_and_sym   , lu_array_sym , lu_at_sym    , lu_begin_sym ,
+       lu_body_sym  , lu_case_sym  , lu_constant_sym   ,
+       lu_declare_sym    , lu_delay_sym , lu_delta_sym , lu_digits_sym,
+       lu_do_sym    , lu_else_sym  , lu_elsif_sym , lu_end_sym   ,
+       lu_entry_sym , lu_exception_sym  , lu_exit_sym  , lu_for_sym   ,
+       lu_function_sym   , lu_generic_sym    , lu_goto_sym  ,
+       lu_if_sym    , lu_in_sym    , lu_is_sym    , lu_limited_sym    ,
+       lu_loop_sym  , lu_mod_sym   , lu_new_sym   , lu_not_sym   ,
+       lu_null_sym  , lu_of_sym    , lu_or_sym    , lu_others_sym,
+       lu_out_sym   , lu_package_sym    , lu_pragma_sym,
+       lu_private_sym    , lu_procedure_sym  , lu_raise_sym ,
+       lu_range_sym , lu_record_sym, lu_rem_sym   , lu_renames_sym    ,
+       lu_return_sym, lu_reverse_sym    , lu_salect_sym,
+       lu_seperate_sym   , lu_subtype_sym    , lu_task_sym  ,
+       lu_terminate_sym  , lu_then_sym  , lu_type_sym  , lu_use_sym   ,
+       lu_when_sym  , lu_while_sym , lu_with_sym  , lu_xor_sym   ,
+       lu_minus_sym ,  lu_less_sym  ,
+        lu_less_equal_sym ,
+        lu_plus_sym   ,
+       lu_catenation_sym , lu_multiply_sym   , lu_exponentiation_sym  ,
+       lu_divide_sym,
+       lu_not_equal_sym  , lu_greater_sym    ,
+       lu_greator_equal_sym   ,
+       lu_equal_sym :
+                                                           begin
+                  str [sfirst] := 'e';
+                  str [sfirst + 1] := 'o';
+                  str [sfirst + 2] := 'f';
+                  outp_last_char := sfirst + 2;            end;
+          (*END CASE;*)
+                                                           end;   end;
+    (*END CASE;*)
+                                                           end;
+   end;    (* LU_STRING_OF;*)
+(*-------------------------------------------------------------------*)
+   procedure er_init;
+   begin
+     errors_count := 0;
+     warnings_count := 0;
+     error_no := 0;
+     erb_last_pos := so_nil_position;
+   end;
+(*-------------------------------------------------------------------*)
+   procedure er_error_message;(*(ERROR_NUMBER   : ER_ERRORNUMBER_RANGE;
+                                 ERROR_TYPE     : ER_ERROR_TYPE;
+                                 ERROR_POSITION : SO_POSITION;
+                                 ERROR_SYMBOL   : LU_SYMBOL_DESCRIPTOR);*)
+(*-------------------------------------------------------------------*)
+(*    DESCRIPTION: PUTS THE MESSAGE DIRECTLY TO THE LISTING.        -*)
+(*    ------------                                                  -*)
+(*       ERROR_NO STARTS FROM 0. ERRORS WITH ERROR_TYPE HAVING THE  -*)
+(*       VALUE ER_SYMBOL_INSERTED OR ER_RESET_POSITION ARE NOT      -*)
+(*       COUNTED AS ERRORS                                          -*)
+(*-------------------------------------------------------------------*)
+   var
+       str : so_symbol_string;
+       l, i : integer;
+   begin
+     if (error_type <> er_reset_position) or
+        (error_position.sourceline <> erb_last_pos.sourceline) or
+        (error_position.column     <> erb_last_pos.column)
+     then begin  (* RESET AT SAME POSITION IS IGNORED *)
+        if error_type <> er_sym_inserted then begin
+           if error_type = er_reset_position then
+              l := error_position.column + 3
+           else
+              l := error_position.column + 4;
+           for i := sfirst to l do
+              write ( '-' );
+           write ( '!' );
+        end (*IF*);
+        if error_type = er_syntax_error then begin
+           erb_last_pos := error_position;
+           writeln ('syntax error')
+        end else if error_type = er_sym_inserted then begin
+                               (* ONLY MESSAGE ABOUT INSERTED SYMBOL*)
+           write ('symbol inserted: ');
+           lu_str_of (error_symbol, str, l);
+           for i := sfirst to l do
+              write ( str [i]);
+           writeln;
+        end else if error_type = er_reset_position then
+           writeln ('symbols ignored up to here')
+        else
+           if error_number = 1400 then
+              writeln ('symbol table overflow')
+           else if error_number = 1401 then
+              writeln ('text table overflow')
+           else if error_number = 1500 then
+              writeln ('character not allowed here')
+           else if error_number = 1501 then
+              writeln ('(extended) digits expected')
+           else if error_number = 1502 then
+              writeln ('sharp or colon expected')
+           else if error_number = 1503 then
+              writeln ('string must end with line"')
+           else if error_number = 1504 then
+              writeln ('illegal insertion of underscore')
+           else if error_number = 1505 then
+              writeln ('adjacent identifiers/numbers must be separated')
+           else if error_number = 1508 then
+              writeln ( 'base not within 2..16')
+           else if error_number = 1601 then
+              writeln ( 'illegal exponent value')
+           else if error_number = 1509 then
+              writeln ( 'digit too large for base')
+           else if error_number = 5097 then
+              writeln ( 'inconsistent parser tables')
+           else if error_number = 5099 then
+              writeln ( 'parser stack overflow')
+           else
+              writeln ( 'compiler error: unknown error');
+     end (*IF*);
+     if error_type = er_warning then        (* COUNT THE ERRORS*)
+        warnings_count := warnings_count + 1
+     else if (error_type <> er_sym_inserted) and
+             (error_type <> er_reset_position) then
+             errors_count := errors_count + 1;
+      error_no := error_no + 1;
+   end;  (* ER_ERROR_MESSAGE;*)
+(*-------------------------------------------------------------------*)
+   function  er_num_of_errors; (*     RETURN INTEGER IS*)
+   begin
+      er_num_of_errors := errors_count;
+   end;  (* ER_NUMBER_OF_ERRORS;*)
+(*-------------------------------------------------------------------*)
+   function  er_number_of_warnings;  (*   RETURN INTEGER IS*)
+   begin
+      er_number_of_warnings := warnings_count;
+   end ; (* ER_NUMBER_OF_WARNINGS;*)
+(*END ERROR_MESSAGE_HANDLER;*)
+
+
+
+
+begin
+   morefiles:=false;
+ repeat
+   write   ( '*********************');
+   write ('*** START ADA SYNTAX CHECKER ***');
+   writeln ( '********************');
+   writeln ; writeln ;
+   so_init;
+   er_init;
+   st_init;
+   lu_init;
+   la_init;
+   CHECKINPUTMODE;
+   parser;
+   writeln; writeln; writeln;
+   writeln ( er_num_of_errors:5, ' errors reported.');
+   writeln;
+   write   ( '********************');
+   write   ( '*** END ADA SYNTAX CHECKER ***');
+   writeln ( '********************');
+   writeln; writeln; writeln;
+   writeLN('Do you want to check any other Ada Files? --> type Y/N ');
+   repeat
+     read(reply);
+     if reply ='Y' then morefiles:=true
+      else if reply ='N' then morefiles:=false
+      else write('Invalid Reply....Type again --> Y/N ');
+   until reply in ['N','Y'];
+ until MOREFILES=false;
+end.
+ 
+

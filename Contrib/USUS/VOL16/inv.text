@@ -1,0 +1,89 @@
+{         
+
+Program: Inv
+         an inventory maintanence program.
+         
+Programmer: Patrick R. Horton
+
+Copyright: Copyright 1980 (c), Associated Computer Industries
+           Permission to copy and distribute for non-profit
+           purposes is hereby granted provided that this header
+           is included on all copies
+           
+Revised : 7/15/80 to add vendor partnumber
+} 
+
+(*  
+{$Q+}                     
+{$L-REMOTE:} 
+*)
+
+PROGRAM Inventory;                                    
+ TYPE arcrec = RECORD  
+                partnum : STRING[16];
+                code    : STRING[10]; 
+                date    : STRING[6];
+                trans   : STRING[6];
+                qty     : REAL; 
+               END;
+      invrec = RECORD
+                partnum : STRING[16];
+                descrip : STRING[24];
+                vpart   : STRING[16];
+                units   : STRING[5]; 
+                ldate   : STRING[6];
+                qty     : REAL;
+               END;
+      xrerec = RECORD  
+                part1   : STRING[16];
+                part2   : STRING[16];
+                qty     : REAL; 
+                link    : ^xrerec; 
+               END;
+      
+ VAR invfile : FILE OF invrec;
+     arcfile : FILE OF arcrec;
+     xrefile : TEXT;
+     first, ptr : ^xrerec;
+     ntrans, narecs, nirecs, temp : INTEGER;       
+     command2,command : CHAR;  
+
+PROCEDURE Uppercase(VAR s : STRING);                FORWARD;    
+PROCEDURE Clear;                                    FORWARD; 
+PROCEDURE Clrline(x,y : INTEGER);                   FORWARD;                 
+PROCEDURE Str(i : INTEGER; VAR s : STRING);         FORWARD;          
+PROCEDURE Rdata(x,y,l : INTEGER; VAR s : STRING);   FORWARD;                    
+PROCEDURE Getint(x,y : INTEGER; VAR t1 : INTEGER);  FORWARD;     
+PROCEDURE Getreal(x,y : INTEGER; VAR r : REAL);     FORWARD;
+PROCEDURE Wnirecs;                                  FORWARD; 
+PROCEDURE Wnarecs;                                  FORWARD;
+FUNCTION Val(s : STRING):INTEGER;                   FORWARD;
+FUNCTION rVal(s : STRING):REAL;                     FORWARD;
+FUNCTION Chkdate(s : STRING): BOOLEAN;              FORWARD;
+
+{$I ADD.TEXT}   
+{$I ISSUE.TEXT} 
+{$I REPORT.TEXT} 
+{$I BASPROC.TEXT} 
+{$I BASPROC2.TEXT} 
+
+BEGIN  
+ Initfiles;
+ Clear;
+ REPEAT 
+  Clrline(0,0);
+  WRITE( 
+  'Inventory :: A)dd, C)hange, D)elete, I)ssue, R)eport, S)ort, Q)uit  :: ');    
+  READ(command);
+  CASE command OF
+   'A','a' : Add;
+   'C','c' : Change;
+   'D','d' : Delete;
+   'I','i' : Issue;
+   'R','r' : Report;
+   'S','s' : Sort;
+   END;
+ UNTIL command IN ['Q','q'];
+ Closefiles;
+END.   
+

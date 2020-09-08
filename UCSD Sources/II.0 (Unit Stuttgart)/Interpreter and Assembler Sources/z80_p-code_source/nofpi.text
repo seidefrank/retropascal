@@ -1,0 +1,47 @@
+	.IF ~LSTFP
+	 .NOLIST
+        .ELSE
+	 .LIST
+	.ENDC
+
+;Copyright (c) 1978
+;  by the Regents of the University of California, San Diego
+
+; Beginning of file NOFPI
+
+FPFADD
+FPFSUB
+FPFMUL
+FPFDIV
+FPFFIX
+FPFFLOAT
+
+FPFNEG
+FPFRND
+FPFABS
+FPFSQR
+FPFINV
+FPFPOT
+
+FLT
+FLO
+
+ABR     ; Real absolute value
+ADR     ; Add reals
+SBR     ; Subtract reals
+MPR     ; Multiply reals
+SQR     ; Square reals
+DVR     ; Divide reals
+NGR     ; Negate real
+TNC     ; truncate real and convert to integer
+RND     ; round real
+POT     ; 10.0 ^ n
+REALCP
+REALC   ; compare the real numbers on the top of stack
+
+	JP      NOTIMP
+
+
+; End of file NOFPI
+
+

@@ -1,0 +1,134 @@
+
+ 
+.comment            !---------------------------------!
+.comment            !                                 !
+.comment            !      RUNON documentation        !
+.comment            !        Error messages           !
+.comment            !                                 !
+.comment            !        August 3, 1980           !
+.comment            !                                 !
+.comment            !---------------------------------!
+
+
+.page .center " ^&Errors and Error Messages\& "
+
+  When an error occurs, the output file is locked, preserving all text
+processed so far. The offending line of the input file is output to the
+console, with a pointer to whatever was incorrect.  Some messages do
+not point at anything.
+
+  Note that errors that point to the title will have incorrect line
+numbers, because the title is not checked until it is time to print
+it out.
+
+  The following is a list of the messages RUNON uses to inform the user of
+errors and warnings:
+
+.noautopara .skip 2 .center " <^unknown <^command "
+
+<^runon saw a period ('.') on the current command line, and could not
+recognize the command following it.
+
+.skip 2 .center " <^missing <^parameter "
+
+A parameter was expected after the command, but none was found.
+
+.skip 2 .center " ^^parameter out of range - too high/low\^ "
+
+The numeric parameter is incorrect. See the description
+of the dot-command for an explanation of the allowable range
+of the number.
+ 
+.skip 2 .center " ^^numeric parameter required\^ "
+ 
+Text was found where <^runon expected to find a number.
+ 
+.skip 2 .center " ^^bad character following lead-in\^ "
+ 
+<^runon could not recognize the symbol following the
+'_\', '_^', or '_<' as a valid command.
+ 
+.skip 2 .center " ^^lead-in character illegal at end of text\^ "
+ 
+Using a lead-in character across line boundaries is not allowed.
+ 
+.skip 2 .testpage 3 .center " ^^text wider than margins allow\^ "
+ 
+The piece of text that you are trying to center is too long.
+ 
+.skip 2 .testpage 4 .center " ^^title wider than paper width\^ "  
+ 
+The program could not fit the title onto the page, because it
+was too long for the current paper width.
+ 
+.skip 2 .testpage 3 .center " ^^paper length too short\^ "
+ 
+Paper can be a minimum of 20 lines long.
+ 
+.skip 2 .center " ^^paper too wide\^ "
+ 
+Paper can be a maximum of 132 columns wide.
+ 
+.skip 2 .center " ^^paper width less than right margin\^ "
+ 
+This is a no-no.
+ 
+.skip 2 .center " ^^word too long for present line\^ "
+ 
+The word is too long to fit on one line.  You can either
+change the margins or use a smaller word.
+ 
+.skip 2 .center " ^^figure already set or pending\^ "
+ 
+While RUNON was waiting for a new page so that it could
+output a pending figure, a request for a new figure came up.
+Move the FIGURE command down in the file.
+ 
+.skip 2 .center " ^^non-unique abbreviation\^ "
+ 
+The command was too short for <^runon to discern it from other commands.
+Try a longer abbreviation.
+ 
+.skip 2 .center " ^^file already included\^ "
+ 
+You attempted to include a file that was still in use.  This is not allowed 
+because it would lead to an infinite recursion.
+ 
+.skip 2 .center " ^^include file i/o error\^ "
+ 
+Something is not right with the file you tried to include. Either it does not
+exist or the volume name is incorrect.
+ 
+.skip 2 .center " ^^too many include files\^ "
+ 
+Too many files were active at one time. There is a maximum of five nested
+levels of include files simultaneously.
+ 
+.skip 2 .center " ^^auto-indent out of range - too low\^ "
+ 
+The minimum setting of the indent parameter is 1.
+ 
+.skip 2 .testpage 3 .center " ^^auto-indent out of range - too high\^ "
+ 
+The auto-indent parameter exceeded the right margin. Note that the line and line
+number that get printed out are essentially meaningless, in that they
+indicate the line that <&triggered the auto-paragraph, and <&not the
+one that originally set the incorrect parameter.
+ 
+.skip 2 .testpage 3 .center " ^^command error\^ "
+ 
+The command parser found unrecognizable junk on the line. 
+ 
+.skip 2 .testpage 3 .center " ^^illegal delimiter for text parameter\^ "
+ 
+The delimiter is not a member of the set of legal text delimiters. Refer to
+the section on dot commands for more information.
+ 
+.skip 2 .center " ^^missing delimiter for text parameter\^ "
+ 
+<^runon could not find a matching right delimiter for the indicated one.
+ 
+.skip 2 .center " ^^attempt to center non-existent text\^ "
+ 
+The text you centered contained nothing. Don't do that.
+.standard

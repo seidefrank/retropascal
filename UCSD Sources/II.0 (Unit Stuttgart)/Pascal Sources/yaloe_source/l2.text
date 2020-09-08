@@ -1,0 +1,3778 @@
+(*$TS c r e e n   E d i t o r*)
+(*$L PRINTER: *)
+(*$S+*)
+
+(**********************************************************************)
+(*                                                                    *)
+(*    Screen Oriented Editor                        July 8, 1978      *)
+(*    ------ -------- ------                                          *)
+(*                                                   _________        *)
+(*    By Richard S. Kaufmann,                       /         \       *)
+(*       IIS                                        | Version |       *)
+(*       University of California, San Diego        |   L.2   |       *)
+(*       La Jolla CA 92093                          \_________/       *)
+(*                                                                    *)
+(*    Copyright (c) 1978, by The Regents of the University of         *)
+(*       California at San Diego                                      *)
+(*                                                                    *)
+(**********************************************************************)
+
+(*$U-*)
+PROGRAM PASCALSYSTEM;
+
+CONST
+  VIDLENG = 7;  (* Number of characters in a volume ID *)
+  TIDLENG = 15;	(* Number of characters in a title ID *)
+
+TYPE
+
+  VID = STRING[VIDLENG];
+
+  TID = STRING[TIDLENG];
+
+  DATEREC=PACKED RECORD
+	    MONTH: 0..12;
+	    DAY:   0..31;
+	    YEAR:  0..100
+	  END;
+
+  INFOREC = RECORD
+	      TRASH1,TRASH2: INTEGER;
+	      ERRSYM,ERRBLK,ERRNUM: INTEGER;    (* Error com for EDIT *)
+	      TRASH3: ARRAY [0..2] OF INTEGER;
+	      GOTSYM,GOTCODE: BOOLEAN;
+	      WORKVID,SYMVID,CODEVID: VID;      (* Perm&Cur workfile volumes *)
+	      WORKTID,SYMTID,CODETID: TID       (* Perm&Cur workfile titles *)
+	    END (*INFOREC*) ;
+
+  SYSCOMREC = RECORD
+		JUNK: ARRAY [0..6] OF INTEGER;
+		LASTMP: INTEGER;
+		EXPANSION: ARRAY [0..20] OF INTEGER;
+		MISCINFO: PACKED RECORD
+			    NOBREAK,STUPID,SLOWTERM,
+			    HASXYCRT,HASLCCRT,HAS8510A,HASCLOCK: BOOLEAN
+			  END;
+		CRTTYPE: INTEGER;
+		CRTCTRL: PACKED RECORD
+			   RLF,NDFS,ERASEEOL,ERASEEOS,HOME,ESCAPE: CHAR;
+			   BACKSPACE: CHAR;
+			   FILLCOUNT: 0..255;
+			   EXPANSION: PACKED ARRAY [0..3] OF CHAR
+			 END;
+		CRTINFO: PACKED RECORD
+			   WIDTH,HEIGHT: INTEGER;
+			   RIGHT,LEFT,DOWN,UP: CHAR;
+			   BADCH,CHARDEL,STOP,BREAK,FLUSH,EOF: CHAR;
+			   ALTMODE,LINEDEL: CHAR;
+			   EXPANSION: PACKED ARRAY [0..5] OF CHAR
+			 END
+	      END (*SYSCOM*);
+
+VAR (* I.4 Globals as of 30-Jan-78 *)
+  SYSCOM: ^SYSCOMREC;
+  TRASHY: ARRAY [0..5] OF INTEGER;
+  USERINFO: INFOREC;
+  TRASHYY: ARRAY [0..4] OF INTEGER;
+  SYVID,DKVID: VID;
+  THEDATE: DATEREC;
+
+
+(*$TEditor Segment*)
+SEGMENT PROCEDURE EDITOR;
+CONST
+  (* Unless otherwise noted all constants are upper bounds
+     from zero.					        *)
+
+  MAXBUFSIZE=32767;
+  MAXSW=84; (* Maximum allowable SCREENWIDTH *)
+  MAXSTRING=127;
+  MAXCHAR=1023;  (* The maximum number of characters on a line in the EBUF *)
+  TIDLENG=15;  (* From SYSCOM *)
+  CHARINBUF=2048;  (* For final version. Not used. *)
+  MAXOFFSET=1023; (* Maximum offset in a page *)
+  MAXPAGE=255; (* Ridiculous upper bound! *)
+
+  (* The following ASCII characters are hard-wired in *)
+  BSPCE=8; HT=9; LF=10; EOL=13; DLE=16; SP=32;
+  DC1=17; BELL=7; RUBOUT=127; CR=13;
+
+
+TYPE
+  PTRTYPE=0..MAXBUFSIZE;
+  BUFRTYPE=PACKED ARRAY [0..0] OF CHAR;
+  BLOCKTYPE=PACKED ARRAY [0..511] OF CHAR;
+  ERRORTYPE=(FATAL,NONFATAL);
+  TABATTRIBUTE=(NONE,LEFTJUST,RIGHTJUST,DECIMALSTOP);
+  OFFSET=0..MAXOFFSET;
+  PAGE=0..MAXPAGE;
+  NAME=PACKED ARRAY [0..7] OF CHAR;
+  PTYPE=PACKED ARRAY [0..MAXSTRING] OF CHAR;
+  COMMANDS=(ILLEGAL, ADJUSTC, BANISHC, COPYC, DELETEC, FINDC, INSERTC, JUMPC,
+	    LISTC, MACRODEFC, NEXTC, PARAC, QUITC, REPLACEC, SETC, VERIFYC,
+	    XECUTEC, ZAPC, REVERSEC, FORWARDC, UP, DOWN, LEFT, RIGHT, TAB,
+	    DIGIT, DUMPC, ADVANCE, SPACE, EQUALC, SLASHC);
+  CTYPE=(FS,GOHOME,ETOEOL,ETOEOS,US);
+  LEFTRIGHT=(LEFTSTACK,RIGHTSTACK);
+
+  HEADER=    (* Page Zero layout changed 20-Jun-78 *)
+    RECORD CASE BOOLEAN OF
+      TRUE: (BUF: PACKED ARRAY[0..MAXOFFSET] OF CHAR);
+      FALSE:(DEFINED:    INTEGER; (* New file => 0; Old file => 1 *)
+	     COUNT:      INTEGER;  (* The count of valid markers *)
+	     NAME:       ARRAY [0..19] OF PACKED ARRAY [0..7] OF CHAR;
+	     PAGEN:      PACKED ARRAY [0..19] OF INTEGER;
+	     POFFSET:    PACKED ARRAY [0..19] OF OFFSET;
+	     TABSTOP:    PACKED ARRAY [0..127] OF TABATTRIBUTE;
+	     AUTOINDENT: BOOLEAN; (* Environment stuff follows *)
+	     FILLING:    BOOLEAN;
+	     TOKDEF:     BOOLEAN;
+	     LMARGIN:    0..MAXSW;
+	     RMARGIN:    0..MAXSW;
+	     PARAMARGIN: 0..MAXSW;
+	     RUNOFFCH:   CHAR;
+	     CREATED:    DATEREC;
+	     LASTUPD:    DATEREC;
+	     REVISION:   INTEGER;
+	     FILLER:     ARRAY [0..91] OF INTEGER)
+    END;
+
+
+
+VAR
+  CURSOR: 0..MAXBUFSIZE;
+  BUFCOUNT: 0..MAXBUFSIZE;       (* Number of valid characters in the EBUF *)
+  STUFFSTART: 0..MAXBUFSIZE;     (* GETLEADING            *)
+  LINESTART: 0..MAXBUFSIZE;      (*            sets       *)
+  BYTES,BLANKS: INTEGER;         (*                 these *)
+  CH: CHAR;
+  DIRECTION: CHAR;               (* '>' or '<' *)
+  REPEATFACTOR: INTEGER;
+  BUFSIZE: INTEGER;
+  SCREENWIDTH: INTEGER;          (* Moved to var 26-Jan *)
+  SCREENHEIGHT: INTEGER;         (*   "    "  "    "    *)
+  COMMAND: COMMANDS;
+  LASTPAT: 0..MAXBUFSIZE;
+  EBUF: ^BUFRTYPE;
+  KIND: ARRAY [CHAR] OF INTEGER; (* for token find *)
+  LINE1PTR: 0..MAXBUFSIZE;
+  MIDDLE: INTEGER;               (* Middle line on the screen *)
+  NEEDPROMPT: BOOLEAN;
+  ETX,BS,DEL,ESC: INTEGER;       (* Moved from CONST 30-Jan-78 *)
+  FLENGTH: INTEGER;              (* The length of the workfile in pages *)
+  LPAGE,RPAGE: INTEGER;          (* Left and Right stack pointers *)
+  TRASH: INTEGER;                (* Totally without redeeming social value *)
+  TARGET: PTYPE;
+  SUBSTRING: PTYPE;
+  SLENGTH,TLENGTH: INTEGER;      (* Length of target and substring *)
+  SDEFINED,TDEFINED: BOOLEAN;    (* Whether the strings are valid *)
+  COPYLENGTH,COPYSTART: PTRTYPE; (* For Copyc *)
+  COPYLINE,COPYOK: BOOLEAN;      (*    "      *)
+  INFINITY: BOOLEAN;             (* for slashc *)
+  THEFILE: FILE;
+  PR: FILE;                      (* DEBUG *)
+  TRANSLATE: ARRAY [CHAR] OF COMMANDS;
+  PAGEZERO: HEADER;
+  MSG: STRING;
+  PROMPTLINE: STRING;
+  SAVETOP: STRING;               (* Dumb terminal patch - for BLANKCRT(1) *)
+  PAGEBUFFER: PACKED ARRAY [0..1023] OF CHAR;
+  BLANKAREA: PACKED ARRAY [0..MAXSW] OF CHAR;
+  WFNAME,BACKFNAME: STRING;
+
+SEGMENT PROCEDURE NUM2; BEGIN END;      SEGMENT PROCEDURE NUM3; BEGIN END;
+SEGMENT PROCEDURE NUM4; BEGIN END;      SEGMENT PROCEDURE NUM5; BEGIN END;
+SEGMENT PROCEDURE NUM6; BEGIN END;      SEGMENT PROCEDURE NUM7; BEGIN END;
+SEGMENT PROCEDURE NUM8; BEGIN END;      SEGMENT PROCEDURE NUM9; BEGIN END;
+
+
+
+
+(* Forward declared procedures.. all procedures are in MISC and UTIL *)
+
+PROCEDURE ERROR(S:STRING;HOWBAD:ERRORTYPE); FORWARD;
+PROCEDURE ERASETOEOL(X,LINE:INTEGER); FORWARD;
+FUNCTION  GETCH:CHAR; FORWARD;
+PROCEDURE CLEARSCREEN; FORWARD;
+PROCEDURE ERASEOS(X,LINE:INTEGER); FORWARD;
+PROCEDURE CLEARLINE(Y:INTEGER); FORWARD;
+FUNCTION  MAPTOCOMMAND(CH:CHAR): COMMANDS; FORWARD;
+FUNCTION  UCLC(CH:CHAR): CHAR; FORWARD;
+PROCEDURE PROMPT; FORWARD;
+PROCEDURE REDISPLAY; FORWARD;
+FUNCTION  MIN(A,B:INTEGER): INTEGER; FORWARD;
+FUNCTION  MAX(A,B:INTEGER): INTEGER; FORWARD;
+PROCEDURE CONTROL(CH:CTYPE); FORWARD;
+PROCEDURE PUTMSG; FORWARD;
+PROCEDURE HOME; FORWARD;
+PROCEDURE ERRWAIT; FORWARD;
+PROCEDURE BLANKCRT(Y: INTEGER); FORWARD;
+FUNCTION  LEADBLANKS(PTR:PTRTYPE;VAR BYTES: INTEGER): INTEGER; FORWARD;
+PROCEDURE CENTERCURSOR(VAR LINE: INTEGER; LINESUP: INTEGER; NEWSCREEN:BOOLEAN);
+  FORWARD;
+PROCEDURE FINDXY(VAR INDENT,LINE: INTEGER); FORWARD;
+PROCEDURE SHOWCURSOR; FORWARD;
+FUNCTION  GETNUM: INTEGER; FORWARD;
+PROCEDURE GETLEADING; FORWARD;
+FUNCTION  OKTODEL(CURSOR,ANCHOR:PTRTYPE):BOOLEAN; FORWARD;
+PROCEDURE LINEOUT(VAR PTR:PTRTYPE; BYTES,BLANKS,LINE: INTEGER); FORWARD;
+PROCEDURE UPSCREEN(FIRSTLINE,WHOLESCREEN:BOOLEAN; LINE: INTEGER); FORWARD;
+PROCEDURE READJUST(CURSOR: PTRTYPE; DELTA: INTEGER); FORWARD;
+PROCEDURE THEFIXER(PARAPTR: PTRTYPE;RFAC: INTEGER;WHOLE: BOOLEAN); FORWARD;
+PROCEDURE GETNAME(MSG:STRING; VAR M:NAME); FORWARD;
+PROCEDURE GETPAGES(WHICH:LEFTRIGHT); FORWARD;
+PROCEDURE PUTPAGES(WHICH:LEFTRIGHT); FORWARD;
+FUNCTION  READIT(WHICH:LEFTRIGHT): BOOLEAN; FORWARD;
+FUNCTION  WRITEIT(WHICH:LEFTRIGHT): BOOLEAN; FORWARD;
+PROCEDURE CHECKINDENT(VAR CURSOR:PTRTYPE); FORWARD;
+
+(*$TI n i t i a l i z e*)
+SEGMENT PROCEDURE INITIALIZE;
+LABEL 1;
+TYPE PHYLE=FILE;
+VAR 
+  BLOCK: ^BLOCKTYPE;
+  ONEWD: ^INTEGER;
+  DONE,OVFLW: BOOLEAN;
+  CH: CHAR;
+  I,QUIT,GAP,BLKS,PAGE,NOTNULS: INTEGER;
+  FILENAME: STRING;
+  BUFFER: PACKED ARRAY [0..1023] OF CHAR;
+  FIBAREA: ARRAY [0..17] OF INTEGER;
+
+PROCEDURE MAP(CH:CHAR; C:COMMANDS);
+BEGIN
+  TRANSLATE[CH]:=C;
+  IF CH IN ['A'..'Z'] THEN TRANSLATE[CHR(32+ORD(CH))]:=C; (* LC TOO *)
+END;
+
+PROCEDURE CLEANTITLE(VAR T:STRING);
+(* Attaches the default '.TEXT' to the end of the filename if necessary. *)
+BEGIN
+  FOR I:=1 TO LENGTH(T) DO T[I]:=UCLC(T[I]);
+  IF (POS('.TEXT',T)=LENGTH(T)-4) AND (LENGTH(T)>=5) THEN
+    DELETE(T,LENGTH(T)-4,5);
+  WFNAME:=CONCAT(T,'.TEXT');
+  BACKFNAME:=CONCAT(T,'.BACK');
+END;
+
+PROCEDURE DEFAULTPZ;
+BEGIN
+  WITH PAGEZERO DO
+    IF DEFINED<>2 THEN 
+      BEGIN
+	FILLCHAR(BUF,1024,CHR(0));
+	TOKDEF:=TRUE; (* Default mode is T(oken *)
+	FILLING:=FALSE; AUTOINDENT:=TRUE; RUNOFFCH:='^';
+	LMARGIN:=0; PARAMARGIN:=5; RMARGIN:=SCREENWIDTH;
+	(* Initialize Tabstops - 20-Jun-78 *)
+	FOR I:=0 TO 15 DO TABSTOP[I*8]:=LEFTJUST;
+	CREATED:=THEDATE; REVISION:=-1; LASTUPD:=THEDATE;
+	DEFINED:=2;
+      END;
+END;
+
+PROCEDURE CHANGENAME(VAR F:PHYLE; T:STRING);
+(* Change the title of F to T.  Note: (1) The file F must be closed with
+   CLOSE(F,LOCK), and (2) this code relies on a "special feature" in the
+   I/O subsystem, namely when the year is set to 100 the title gets updated
+   when the file is closed *)
+VAR
+  COLON: INTEGER;
+  D: DATEREC;
+  FIBPA: PACKED ARRAY [0..57] OF CHAR;
+BEGIN
+  (* Make sure that the filename doesn't include the volume name (or "*") *)
+  COLON:=POS(':',T);
+  IF COLON>0 THEN DELETE(T,1,COLON);
+  IF T[1]='*' THEN DELETE(T,1,1);
+  MOVELEFT(F,FIBPA,58); (* Transfers the FIB for the file F to FIBPA *)
+  MOVELEFT(T,FIBPA[38],16);
+  WITH D DO BEGIN DAY:=2; MONTH:=3; YEAR:=100 END;
+  MOVELEFT(D,FIBPA[56],2);
+  MOVELEFT(FIBPA,F,58)
+END;
+
+FUNCTION FINDLENGTH(VAR F:PHYLE):INTEGER;
+BEGIN
+  (* KLUDGE logic.  Returns the length of the file in pages! *)
+  MOVELEFT(F,FIBAREA,36);
+  FINDLENGTH:=(FIBAREA[17]-FIBAREA[16]) DIV 2;
+END;
+
+PROCEDURE BACKUP;
+(* Copies the file to be edited to another file, names the original .BACK, and
+   names the copy .TEXT *)
+VAR
+  INBNUM,OUTBNUM,OUTFSIZE,BLKSREAD,MAXBLOCKINBUF: INTEGER;
+  CH: CHAR;
+  F: FILE;
+BEGIN
+  REWRITE(F,BACKFNAME);
+  IF IORESULT<>0 THEN ERROR('Can''t open backup file!  ',FATAL);
+  OUTFSIZE:=FINDLENGTH(F);
+  IF OUTFSIZE<FLENGTH THEN ERROR('Not enough room for backup!  ',FATAL);
+  WRITELN('Copying to ',BACKFNAME);
+  RPAGE:=OUTFSIZE-FLENGTH+1;                    (* Push text to the right *)
+  INBNUM:=2;                        (* First valid page in the input file *)
+  OUTBNUM:=RPAGE+RPAGE; (* First block to copy stuff to - right justified *)
+  (* Copy over the page zero *)
+  IF BLOCKREAD(THEFILE,PAGEZERO,2,0)<>2 THEN
+    ERROR('Reading Page Zero',FATAL);
+  (* Compensate for shift in file *)
+  WITH PAGEZERO DO
+    FOR I:=0 TO COUNT-1 DO
+      PAGEN[I]:=PAGEN[I]+RPAGE-1;
+  IF BLOCKWRITE(F,PAGEZERO,2,0)<>2 THEN
+    ERROR('Writing Page Zero',FATAL);
+  MAXBLOCKINBUF:=BUFSIZE DIV 512;
+  REPEAT
+    BLKSREAD:=BLOCKREAD(THEFILE,EBUF^,MAXBLOCKINBUF,INBNUM);
+    IF IORESULT<>0 THEN ERROR('Bad input file.',FATAL);
+    IF BLKSREAD<>0 THEN
+      BEGIN
+	IF BLOCKWRITE(F,EBUF^,BLKSREAD,OUTBNUM)<>BLKSREAD THEN
+	  ERROR('Ran out of room.',FATAL);
+	IF IORESULT<>0 THEN ERROR('On backup file.',FATAL);
+      END;
+    OUTBNUM:=OUTBNUM+BLKSREAD;
+    INBNUM:=INBNUM+BLKSREAD
+  UNTIL BLKSREAD=0;
+  CHANGENAME(THEFILE,BACKFNAME);
+  CLOSE(THEFILE,LOCK);
+  CHANGENAME(F,WFNAME);
+  CLOSE(F,LOCK);
+  FLENGTH:=OUTFSIZE;    (* Copy over the length attribute,      *)
+  RESET(THEFILE,WFNAME) (* and make the file you copied the workfile! *)
+END;
+
+PROCEDURE READFILE;
+BEGIN
+  CLEARSCREEN;          (* Dumb terminal patch *)
+  WRITELN('>Edit:');
+  WRITE('Reading');
+  RESET(THEFILE);       (* Was potentially closed by BACKUP *)
+  IF BLOCKREAD(THEFILE,PAGEZERO,2)<>2 THEN ERROR('Reading file',FATAL);
+  WRITE('.');
+  GETPAGES(RIGHTSTACK)
+END;
+
+
+(* People with word machines -- L O O K   A T   M E  ! ! *)
+
+FUNCTION BYTESLEFT: INTEGER;
+(* Returns the number of bytes between BLOCK and LASTMP *)
+BEGIN
+  BYTESLEFT:=(* DOUBLE FOR WORD MACHINES *) (ORD(SYSCOM^.LASTMP)-ORD(BLOCK))
+END;
+
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+
+      (* Init the translate table *)
+
+      FILLCHAR(TRANSLATE,SIZEOF(TRANSLATE),ILLEGAL);
+
+      MAP('A',ADJUSTC);   MAP('B',BANISHC);   MAP('C',COPYC);   
+      MAP('D',DELETEC);   MAP('F',FINDC);     MAP('I',INSERTC);
+      MAP('J',JUMPC);     MAP('L',LISTC);     MAP('M',MACRODEFC);
+      MAP('N',NEXTC);     MAP('P',PARAC);     MAP('Q',QUITC);
+      MAP('R',REPLACEC);  MAP('S',SETC);      MAP('V',VERIFYC);
+      MAP('X',XECUTEC);   MAP('Z',ZAPC);
+
+      MAP(',',REVERSEC);  MAP('>',FORWARDC);  MAP('.',FORWARDC);
+      MAP('+',FORWARDC);  MAP('-',REVERSEC);  MAP('?',DUMPC);
+      MAP('/',SLASHC);    MAP('=',EQUALC);    MAP('<',REVERSEC);
+
+
+      (* Arrows *)
+
+      (* NEXTCOMMAND and GETNUM handle VT-52 style vector keys *)
+      IF SYSCOM^.CRTCTRL.ESCAPE=CHR(0) THEN
+	BEGIN
+	  MAP(SYSCOM^.CRTINFO.LEFT,LEFT);
+	  MAP(SYSCOM^.CRTINFO.DOWN,DOWN);
+	  MAP(SYSCOM^.CRTINFO.RIGHT,RIGHT);
+	  MAP(SYSCOM^.CRTINFO.UP,UP);
+	END;
+      MAP(SYSCOM^.CRTINFO.CHARDEL,LEFT);
+      MAP(CHR(EOL),ADVANCE); (* CR IS ADVANCE *)
+      MAP(CHR(HT),TAB);
+      MAP(CHR(SP),SPACE);
+
+
+      (* Digits *)
+
+      FOR CH:='0' TO '9' DO MAP(CH,DIGIT);
+
+
+      (* Variable buffer sizing... added 17-Jan-78 *)
+
+      QUIT:=11000+       (* Sizeof(editcore)-Sizeof(initialize) *)
+	    512;        (* Slop! *)
+      MARK(EBUF);
+      BLKS:=0;
+      REPEAT
+	NEW(BLOCK);
+	BLKS:=BLKS+1;
+	GAP:=BYTESLEFT-512      (* Bytesleft returns the # of bytes between
+				   the pointers BLOCK and LASTMP *)
+      UNTIL ((GAP>0) AND (GAP<QUIT)) OR (BLKS=63);
+      BUFSIZE:=BLKS*512-1;
+      IF BUFSIZE<0 THEN BUFSIZE:=32767;
+      NEW(ONEWD); ONEWD^:=0;  (* Sentinel for end of buffer - for M(unch *)
+
+
+      (* Open the workfile *)
+
+      LPAGE:=0; (* Left stack empty *)
+      RPAGE:=1; (* Right stack contains all of the workfile *)
+      BUFCOUNT:=1;
+      CURSOR:=1;
+      CLEARSCREEN;
+      WRITELN('>Edit:');
+      IF USERINFO.GOTSYM THEN
+	BEGIN
+	  FILENAME:=CONCAT(USERINFO.SYMVID,':',USERINFO.SYMTID);
+	  CLEANTITLE(FILENAME);
+	  RESET(THEFILE,WFNAME);
+	  IF IORESULT<>0 THEN ERROR('Workfile lost.',FATAL)
+	END
+      ELSE
+	BEGIN
+	  MSG:='No workfile is present. File? ( <ret> for no file ) ';
+	  REPEAT
+	    WRITE(MSG);
+	    READLN(INPUT,FILENAME);
+	    IF LENGTH(FILENAME)=0 THEN (* Open up good ol' SYSTEM.WRK.TEXT! *)
+	      BEGIN
+		FILENAME:='*SYSTEM.WRK.TEXT';
+		CLEANTITLE(FILENAME);
+		FILLCHAR(EBUF^,BUFSIZE+1,CHR(0));
+		EBUF^[0]:=CHR(EOL);
+		FILLCHAR(PAGEZERO,SIZEOF(PAGEZERO),CHR(0)); 
+		REWRITE(THEFILE,WFNAME);
+		BACKFNAME:='';
+		IF IORESULT<>0 THEN ERROR('System volume not on line',FATAL);
+		(* Establish the length of the file and lock the file
+		   to be the maximum even length *)
+		FLENGTH:=FINDLENGTH(THEFILE);
+		IF ODD(FLENGTH) THEN FLENGTH:=FLENGTH-1;
+		IF BLOCKWRITE(THEFILE,BUFFER,1,2*FLENGTH-1)<>1
+		  THEN ERROR('File system terminal error',FATAL);
+		CLOSE(THEFILE,LOCK);
+		WITH USERINFO DO
+		  BEGIN
+		    SYMVID:=SYVID; SYMTID:='SYSTEM.WRK.TEXT'; GOTSYM:=TRUE;
+		    OPENOLD(THEFILE,'*SYSTEM.WRK.CODE'); CLOSE(THEFILE,PURGE);
+		    GOTCODE:=FALSE; CODETID:=''
+		  END;
+		RESET(THEFILE,'*SYSTEM.WRK.TEXT');
+		RPAGE:=FLENGTH;
+		GOTO 1;
+	      END;
+	    CLEANTITLE(FILENAME);
+	    OPENOLD(THEFILE,WFNAME);
+	    MSG:='Not present. File? ';
+	  UNTIL IORESULT=0;
+	END;
+
+
+      (* Find out the length of the workfile *)
+
+      FLENGTH:=FINDLENGTH(THEFILE);
+
+
+      (* If desired, copy the workfile (maximizing editing room) *)
+
+      BACKUP;
+
+
+      (* Read in the file *)
+
+      FILLCHAR(EBUF^,BUFSIZE+1,CHR(0));
+      EBUF^[0]:=CHR(EOL);
+      READFILE;
+      1: IF (EBUF^[BUFCOUNT-1]<>CHR(EOL)) OR (BUFCOUNT=1) THEN
+	BEGIN
+	  EBUF^[BUFCOUNT]:=CHR(EOL);
+	  BUFCOUNT:=BUFCOUNT+1;
+	END;
+
+
+      (* Initialize everything else! *)
+
+      DIRECTION:='>';
+      LASTPAT:=1; (* Init to the beginning of the buffer (for equalc) *)
+      COPYOK:=FALSE;
+      LINE1PTR:=1;
+      WITH SYSCOM^.CRTINFO DO
+	BEGIN
+	  ESC:=ORD(ALTMODE);
+	  ETX:=ORD(EOF);
+	  BS:=ORD(CHARDEL);
+	  DEL:=ORD(LINEDEL);
+	  SCREENWIDTH:=WIDTH-1;
+	  SCREENHEIGHT:=HEIGHT-1;
+	  MIDDLE:=(SCREENHEIGHT DIV 2) + 1;
+	END;
+      SYSCOM^.MISCINFO.NOBREAK := TRUE;
+      SDEFINED:=FALSE; TDEFINED:=FALSE; (* No substring or target *)
+
+
+      (* Set up Pagezero if nec. *)
+
+      DEFAULTPZ;
+      REVISION:=REVISION+1;
+
+
+    END(* WITH *);
+
+
+  (* Initialize the KIND array for token find *)
+
+  FOR CH:=CHR(0) TO CHR(255) DO KIND[CH]:=ORD(CH);  (* Make them all unique *)
+  FOR CH:='A' TO 'Z' DO KIND[CH]:=ORD('A');
+  FOR CH:='a' TO 'z' DO KIND[CH]:=ORD('A');
+  FOR CH:='0' TO '9' DO KIND[CH]:=ORD('A');
+  KIND[CHR(EOL)]:=ORD(' '); KIND[CHR(HT)] :=ORD(' ');
+  FILLCHAR(BLANKAREA,SIZEOF(BLANKAREA),' '); (* For unitwriting blanks *)
+  SAVETOP:=' ';  (* for BLANKCRT(1) - saves the prompt or msg line *)
+
+END(* INITIALIZE *);
+
+
+(*$TO u t*)
+SEGMENT FUNCTION OUT: BOOLEAN;
+LABEL 1,2;
+TYPE
+  PHYLE=FILE;
+VAR
+  SAVE: PTRTYPE;
+  RBNUM,LBNUM,MAXBLKSINBUF,BLKSREAD,I: INTEGER;
+  BUF: PACKED ARRAY [0..1023] OF CHAR;
+  FN: STRING;
+
+PROCEDURE CHANGENAME(VAR F:PHYLE; T:STRING);
+(* Change the title of F to T.  Note: (1) The file F must be closed with
+   CLOSE(F,LOCK), and (2) this code relies on a "special feature" in the
+   I/O subsystem, namely when the year is set to 100 the title gets updated
+   when the file is closed *)
+VAR
+  COLON: INTEGER;
+  D: DATEREC;
+  FIBPA: PACKED ARRAY [0..57] OF CHAR;
+BEGIN
+  (* Make sure that the filename doesn't include the volume name (or "*") *)
+  COLON:=POS(':',T);
+  IF COLON>0 THEN DELETE(T,1,COLON);
+  IF T[1]='*' THEN DELETE(T,1,1);
+  MOVELEFT(F,FIBPA,58); (* Transfers the FIB for the file F to FIBPA *)
+  MOVELEFT(T,FIBPA[38],16);
+  WITH D DO BEGIN DAY:=2; MONTH:=3; YEAR:=100 END;
+  MOVELEFT(D,FIBPA[56],2);
+  MOVELEFT(FIBPA,F,58)
+END;
+
+PROCEDURE SETLASTBLOCK(LASTBLOCK:INTEGER);
+(* KLUDGE code to remove blocks from the end of the workfile *)
+VAR FIBAREA:ARRAY [0..12] OF INTEGER;
+BEGIN
+  MOVELEFT(THEFILE,FIBAREA,26);
+  FIBAREA[12]:=LASTBLOCK;
+  MOVELEFT(FIBAREA,THEFILE,26);
+END;
+
+BEGIN
+  OUT:=FALSE;
+  REPEAT
+    CLEARSCREEN;     (* Dumb terminal patch *)
+    SAVETOP:='>Quit:';
+    WRITELN(SAVETOP);
+    WRITELN('     U(pdate the workfile and leave');
+    WRITELN('     E(xit (but workfile not updated)');
+    WRITELN('     R(eturn to the editor without doing anything');
+    CH:=UCLC(GETCH);
+  UNTIL CH IN ['U','E','R'];
+  IF CH='R' THEN GOTO 2;
+  IF CH='E' THEN
+    BEGIN
+      OUT:=TRUE;
+      CLEARSCREEN;
+      CLOSE(THEFILE,PURGE);
+      IF LENGTH(BACKFNAME)>0 THEN
+	BEGIN
+	  RESET(THEFILE,BACKFNAME);
+	  IF IORESULT=0 THEN
+	    BEGIN
+	      CHANGENAME(THEFILE,WFNAME);
+	      CLOSE(THEFILE,LOCK);
+	    END
+	  ELSE
+	    WRITELN('Backup file not present (tried to remove it).');
+	  GOTO 2
+	END
+      ELSE GOTO 2;
+    END;
+  BLANKCRT(1);
+  CURSOR:=BUFCOUNT+199;  (* Takes care of the slop! *)
+  WRITE('Writing');
+  PUTPAGES(LEFTSTACK);
+  PAGEZERO.LASTUPD:=THEDATE; (* Reset last update date *)
+  IF LPAGE+1=RPAGE THEN BEGIN OUT:=TRUE; CLEARSCREEN; GOTO 2 END;
+  IF LPAGE+1>RPAGE THEN ERROR('LPAGE+1>RPAGE',FATAL);
+  LBNUM:=2*(LPAGE+1);
+  RBNUM:=2*RPAGE;
+  MAXBLKSINBUF:=BUFSIZE DIV 512;
+  REPEAT
+    WRITE('*');
+    BLKSREAD:=BLOCKREAD(THEFILE,EBUF^,MAXBLKSINBUF,RBNUM);
+    IF IORESULT<>0 THEN GOTO 1;
+    IF BLKSREAD<>0 THEN
+      BEGIN
+	IF BLOCKWRITE(THEFILE,EBUF^,BLKSREAD,LBNUM)<>BLKSREAD THEN GOTO 1;
+	IF IORESULT<>0 THEN GOTO 1
+      END;
+    LBNUM:=LBNUM+BLKSREAD;
+    RBNUM:=RBNUM+BLKSREAD
+  UNTIL BLKSREAD=0;
+  SETLASTBLOCK(2*(LPAGE+1+FLENGTH-RPAGE));
+  (* Compensate for gap filled in *)
+  WITH PAGEZERO DO
+    BEGIN
+      FOR I:=0 TO COUNT-1 DO
+	IF PAGEN[I]>=RPAGE THEN PAGEN[I]:=PAGEN[I]-(RPAGE-LPAGE)+1;
+    END;
+  IF BLOCKWRITE(THEFILE,PAGEZERO,2,0)<>2 THEN GOTO 1;
+  OUT:=TRUE;
+  WRITELN;
+  WRITELN('The workfile, ',WFNAME,
+	  ', is ',2*(LPAGE+1+FLENGTH-RPAGE),' blocks long.');
+  IF LENGTH(BACKFNAME)>0 THEN WRITE('The backup file is ',BACKFNAME);
+  CLOSE(THEFILE,LOCK);
+  GOTO 2;
+1:ERROR('Writing out the file',FATAL);
+2:END;
+
+
+
+(*$TC o p y f i l e*)
+SEGMENT PROCEDURE COPYFILE;
+VAR
+  STARTPAGE,STOPPAGE,STARTOFFSET,STOPOFFSET,
+  LEFTPART,PAGE,NOTNULLS,THEREST,LMOVE: INTEGER;
+  DONE,OVFLW: BOOLEAN;
+  BUFR: PACKED ARRAY [0..1023] OF CHAR;
+  STARTMARK,STOPMARK: PACKED ARRAY [0..7] OF CHAR;
+  FN: STRING;
+  F: FILE;
+
+PROCEDURE ERRMARKER;
+BEGIN
+  ERROR('Improper marker specification.',NONFATAL);
+  EXIT(COPYFILE)
+END;
+
+PROCEDURE UNSPLITBUF;
+(* Stich the buffer back together again. *)
+VAR BOGOSITY: PTRTYPE;
+BEGIN
+  MOVELEFT(EBUF^[THEREST],EBUF^[CURSOR],LMOVE);
+  READJUST(LEFTPART+1,CURSOR-(LEFTPART+1));
+  BUFCOUNT:=BUFCOUNT+CURSOR-(LEFTPART+1);
+  (* Check that two DLE's in a row haven't been generated *)
+  CHECKINDENT(CURSOR);
+  BOGOSITY:=LEFTPART+1;
+  CHECKINDENT(BOGOSITY);
+END;
+
+PROCEDURE READERR;
+BEGIN
+  ERROR('Marker exceeds file bounds.',NONFATAL);
+  UNSPLITBUFF;
+  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  EXIT(COPYFILE)
+END;
+
+PROCEDURE SPLITBUF;
+(* Split the buffer at the Cursor.  Therest points to the right part, Lmove
+   is the length of the right part, Leftpart points to the end of the 'left
+   part', and Cursor remains unchanged. *)
+BEGIN
+  THEREST:=BUFSIZE-(BUFCOUNT-CURSOR);
+  LMOVE:=BUFCOUNT-CURSOR+1;
+  LEFTPART:=CURSOR-1;
+  MOVERIGHT(EBUF^[CURSOR],EBUF^[THEREST],LMOVE)
+END;
+
+PROCEDURE PARSEFN;
+VAR I,LPTR,RPTR,COMMA: INTEGER;
+    MARK: STRING;
+BEGIN
+  LPTR:=POS('[',FN);
+  IF LPTR=0 THEN
+    BEGIN (* whole file *)
+      STARTMARK:='        ';
+      STOPMARK:= '        '
+    END
+  ELSE
+    BEGIN
+      RPTR:=POS(']',FN);
+      IF (RPTR=0) OR (RPTR<LPTR) OR (RPTR<>LENGTH(FN)) THEN ERRMARKER;
+      MARK:=COPY(FN,LPTR+1,RPTR-LPTR-1); (* stuff between the brackets *)
+      FN:=COPY(FN,1,LPTR-1);
+      COMMA:=POS(',',MARK);
+      IF COMMA=0 THEN ERRMARKER;
+      I:=LENGTH(MARK)-COMMA; (* second marker ptr *)
+      MOVELEFT(MARK[1],STARTMARK,MIN(8,COMMA-1));
+      FILLCHAR(STARTMARK[COMMA-1],MAX(0,8-(COMMA-1)),' ');
+      MOVELEFT(MARK[COMMA+1],STOPMARK,MIN(I,8));
+      FILLCHAR(STOPMARK[I],MAX(0,8-I),' ')
+    END;
+  FOR I:=0 TO 7 DO STARTMARK[I]:=UCLC(STARTMARK[I]);
+  FOR I:=0 TO 7 DO STOPMARK [I]:=UCLC(STOPMARK[I]);
+  FOR I:=1 TO LENGTH(FN) DO FN[I]:=UCLC(FN[I]);
+  IF ((POS('.TEXT',FN)<>LENGTH(FN)-4) OR 
+     (LENGTH(FN)<=4)) AND (FN[LENGTH(FN)]<>'.') THEN
+    FN:=CONCAT(FN,'.TEXT');
+  IF FN[LENGTH(FN)]='.' THEN DELETE(FN,LENGTH(FN),1);
+END;
+
+PROCEDURE STUFFIT(START,STOP:INTEGER);
+(* Put the contents of BUFR into EBUF.  OVFLW is set to true when there is
+   no more room in the buffer. *)
+VAR AMOUNT: INTEGER;
+BEGIN
+  IF START<=STOP THEN
+    BEGIN
+      AMOUNT:=STOP-START+1;
+      IF CURSOR+AMOUNT+250(*slop*)>=THEREST THEN
+	BEGIN
+	  ERROR('Buffer overflow.',NONFATAL);
+	  CURSOR:=LEFTPART+1;
+	  UNSPLITBUFF;
+	  EXIT(COPYFILE)
+	END
+      ELSE
+	BEGIN
+	  MOVELEFT(BUFR[START],EBUF^[CURSOR],AMOUNT);
+	  CURSOR:=CURSOR+AMOUNT
+	END
+    END
+END;
+
+PROCEDURE GETNEXT;
+BEGIN
+  DONE:=BLOCKREAD(F,BUFR,2,PAGE+PAGE)<>2;
+  IF IORESULT<>0 THEN
+    BEGIN
+      ERROR('Bad disk transfer',NONFATAL);
+      CURSOR:=LEFTPART+1;
+      UNSPLITBUF;
+      EXIT(COPYFILE)
+    END;
+  WRITE('.');
+  IF NOT DONE THEN NOTNULLS:=SCAN(-1024,<>CHR(0),BUFR[1023])+1024
+  ELSE NOTNULLS:=0;
+  PAGE:=PAGE+1;
+END;
+
+PROCEDURE CHKOVFLW;
+BEGIN
+  IF (STOPOFFSET>=NOTNULLS) AND (STOPPAGE<PAGE) THEN
+    BEGIN
+      STOPPAGE:=STOPPAGE+1;
+      STOPOFFSET:=STOPOFFSET-NOTNULLS;
+    END;
+END;
+
+PROCEDURE FINDMARKERS;
+(* Given STARTMARK and STOPMARK find out their page numbers and offsets *)
+VAR
+  PZ: HEADER;
+
+  PROCEDURE SEARCH(MNAME:NAME;VAR OFF,PNUM: INTEGER);
+  VAR
+    I: INTEGER;
+  BEGIN
+    I:=0;
+    WHILE (I<PZ.COUNT) AND (MNAME<>PZ.NAME[I]) DO I:=I+1;
+    IF MNAME<>PZ.NAME[I] THEN
+      BEGIN
+	ERROR('Marker not there.',NONFATAL);
+	UNSPLITBUFF;
+	EXIT(COPYFILE)
+      END;
+    OFF:=PZ.POFFSET[I];
+    PNUM:=PZ.PAGEN[I];
+    IF PNUM=0 THEN
+      BEGIN OFF:=OFF-1; PNUM:=1 END; (* Kludge to maintain compatibility *)
+  END;
+
+BEGIN(* findmarkers *)
+  STARTPAGE:=1;    STARTOFFSET:=0;   (* default values *)
+  STOPPAGE:=32767; STOPOFFSET:=32767;
+  IF (STARTMARK<>'        ') OR (STOPMARK<>'        ') THEN
+    BEGIN
+      IF BLOCKREAD(F,PZ,2,0)<>2 THEN READERR;
+      IF STARTMARK<>'        ' THEN SEARCH(STARTMARK,STARTOFFSET,STARTPAGE);
+      IF STOPMARK<>'        ' THEN SEARCH(STOPMARK,STOPOFFSET,STOPPAGE)
+    END
+END;
+
+BEGIN
+  PROMPTLINE:=' Copy: From what file[marker,marker]? ';
+  REPEAT
+    PROMPT;
+    READLN(FN);
+    IF LENGTH(FN)=0 THEN EXIT(COPYFILE);
+    PARSEFN;
+    RESET(F,FN);
+    PROMPTLINE:=' Copy: File not present. Filename? ';
+  UNTIL IORESULT=0;
+  PROMPTLINE:=' Copy'; PROMPT;
+  SPLITBUF;
+  FINDMARKERS;
+  PAGE:=STARTPAGE;
+  GETNEXT;
+  WHILE (STARTOFFSET>=NOTNULLS) AND NOT DONE DO
+    BEGIN
+      CHKOVFLW;
+      STARTOFFSET:=STARTOFFSET-NOTNULLS;
+      GETNEXT;
+    END;
+  IF (STOPPAGE<PAGE) AND (STOPOFFSET<NOTNULLS) THEN
+    STUFFIT(STARTOFFSET,MIN(NOTNULLS-1,STOPOFFSET-1))
+  ELSE
+    STUFFIT(STARTOFFSET,NOTNULLS-1);
+  WHILE ((STOPPAGE>=PAGE) OR (STOPOFFSET>=NOTNULLS)) AND NOT DONE DO
+    BEGIN
+      CHKOVFLW;
+      GETNEXT;
+      IF (STOPPAGE<PAGE) AND (STOPOFFSET<NOTNULLS) THEN
+	STUFFIT(0,MIN(NOTNULLS-1,STOPOFFSET-1))
+      ELSE
+	STUFFIT(0,NOTNULLS-1)
+    END;
+  IF IORESULT<>0 THEN ERROR('Disk Error.',NONFATAL);
+  UNSPLITBUF;
+  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  CLOSE(F);
+END;
+
+(*$TE n v i r o n m e n t*)
+SEGMENT PROCEDURE ENVIRONMENT;
+VAR
+  I: INTEGER;
+
+  PROCEDURE WRITEDATE(THEDATE:DATEREC);
+  (* Write out (in text) the date.  Please note the restraint involved in 
+     not putting in my birthday! (RSK) *)
+  VAR T: STRING;
+  BEGIN
+    WITH THEDATE DO
+      BEGIN
+	IF MONTH=0 THEN WRITE('NONE')
+	ELSE
+	  BEGIN
+	    IF (MONTH=12) AND (DAY=25) THEN
+	      WRITE('Christmas')
+	    ELSE
+	      IF (MONTH=1) AND (DAY=1) THEN
+		WRITE('New Years')
+	      ELSE
+		IF (MONTH=10) AND (DAY=31) THEN
+		  WRITE('Halloween')
+		ELSE
+		  BEGIN
+		    CASE MONTH OF 
+		     1: T:='January';
+		     2: T:='February';
+		     3: T:='March';
+		     4: T:='April';
+		     5: T:='May';
+		     6: T:='June';
+		     7: T:='July';
+		     8: T:='August';
+		     9: T:='September';
+		     10:T:='October';
+		     11:T:='November';
+		     12:T:='December'
+		    END;
+		    WRITE(T,' ',DAY);
+		  END;
+	    WRITE(', ',YEAR+1900);
+	  END;
+      END;
+  END;
+
+  PROCEDURE ERASE10;
+  VAR I: INTEGER;
+  BEGIN
+    WRITE(' ':10);
+    FOR I:=1 TO 10 DO WRITE(CHR(BSPCE));
+  END;
+
+  PROCEDURE BOOL(B:BOOLEAN);
+  BEGIN
+    IF B THEN WRITE('True') ELSE WRITE('False');
+    WRITELN
+  END;
+
+  FUNCTION GETBOOL: BOOLEAN;
+  VAR CH: CHAR;
+  BEGIN
+    ERASE10; CH:=UCLC(GETCH);
+    WHILE NOT (CH IN ['T','F']) DO
+      BEGIN
+	WRITE('T or F');
+	FOR TRASH:=0 TO 5 DO WRITE(CHR(BS));
+	CH:=UCLC(GETCH)
+      END;
+    IF CH='T' THEN
+      BEGIN
+	WRITE('True  ');
+	GETBOOL:=TRUE
+      END
+    ELSE
+      BEGIN
+	WRITE('False ');
+	GETBOOL:=FALSE
+      END;
+  END;
+
+  FUNCTION GETINT: INTEGER;
+  VAR
+    CH:CHAR;
+    N: INTEGER;
+  BEGIN
+    ERASE10;
+    N:=0;
+    REPEAT
+      REPEAT
+	CH:=GETCH;
+	IF NOT (CH IN ['0'..'9',CHR(SP),CHR(CR)]) 
+	  THEN WRITE('#',CHR(BELL),CHR(BS));
+      UNTIL CH IN ['0'..'9',CHR(SP),CHR(CR)];
+      IF CH IN ['0'..'9'] THEN
+	BEGIN
+	  WRITE(CH);
+	  IF N<1000 THEN N:=N*10+ORD(CH)-ORD('0')
+	END;
+    UNTIL CH IN [CHR(SP),CHR(CR)];
+    GETINT:=N; WRITE('  ')
+  END;
+
+PROCEDURE TABSET;
+VAR
+  X,I,NUMTIMES: INTEGER;
+
+  PROCEDURE SETIT(CH:CHAR);
+  (* Set the tabstop according to the character passed *)
+  BEGIN
+    WITH PAGEZERO DO
+      CASE CH OF
+	'N','-': BEGIN CH:='-'; TABSTOP[X]:=NONE; END;
+	'L':     TABSTOP[X]:=LEFTJUST;
+	'R':     TABSTOP[X]:=RIGHTJUST;
+	'D':     TABSTOP[X]:=DECIMALSTOP
+      END;
+    WRITE(CH);
+  END;
+
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      CLEARSCREEN;
+      WRITELN(
+'Set tabs: <right,left vectors>  C(ol#  {N(o R(ight L(eft D(ecimal stop}  <etx>'
+      );
+      WRITELN;
+      FOR I:=0 TO SCREENWIDTH DO
+	CASE TABSTOP[I] OF
+	  NONE: WRITE('-');
+	  LEFTJUST: WRITE('L');
+	  RIGHTJUST: WRITE('R');
+	  DECIMALSTOP: WRITE('D')
+	END;
+      X:=0;
+      GOTOXY(4,4); WRITE('Column #');
+      REPEAT
+	GOTOXY(12,4); WRITE(X+1:3);
+	GOTOXY(X,2);
+	CH:=UCLC(GETCH);
+	NUMTIMES:=GETNUM; (* Also sets COMMAND *)
+	IF CH IN ['N','D','L','R','-'] THEN SETIT(CH)
+	ELSE
+	  IF CH='C' THEN
+	    BEGIN
+	      GOTOXY(12,4);
+	      X:=MAX(0,MIN(GETINT,SCREENWIDTH+1)-1);
+	    END
+	  ELSE
+	    IF COMMAND=LEFT THEN X:=MAX(0,X-NUMTIMES)
+	    ELSE
+	      IF COMMAND=RIGHT THEN X:=MIN(X+NUMTIMES,SCREENWIDTH)
+	      ELSE
+		IF NOT (CH IN [CHR(ETX),' ']) THEN WRITE(CHR(BELL));
+      UNTIL CH=CHR(ETX);
+      CH:='$'; (* So we don't fall out all of the way! *)
+    END;
+END;
+
+PROCEDURE WRITEMENU;
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      WRITELN;
+      WRITE(       '    A(uto indent  '); BOOL(AUTOINDENT);
+      WRITE(       '    F(illing      '); BOOL(FILLING);
+      WRITE(       '    L(eft margin  '); WRITELN(LMARGIN+1);
+      WRITE(       '    R(ight margin '); WRITELN(RMARGIN+1);
+      WRITE(       '    P(ara margin  '); WRITELN(PARAMARGIN+1);
+      WRITE(       '    C(ommand ch   '); WRITELN(RUNOFFCH);
+      WRITE(       '    S(et tabstops '); WRITELN;
+      WRITE(       '    T(oken def    '); BOOL(TOKDEF);
+      WRITELN;
+      WRITELN(BUFCOUNT,' bytes used, ',BUFSIZE-BUFCOUNT+1,' available.');
+      WRITELN('There are ',LPAGE,' pages in the left stack, and ',
+	       FLENGTH-RPAGE,' pages in the right stack.');
+      WRITELN('You have ',RPAGE-LPAGE-1,' pages of room,',
+	   ' and at most ',(BUFCOUNT DIV 960)+1,' pages worth in the buffer.');
+      WRITELN; 
+    END;
+END;
+
+PROCEDURE WRITEINFO;
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      IF SDEFINED OR TDEFINED THEN
+	BEGIN
+	  WRITELN('    Patterns:');
+	  IF TDEFINED THEN WRITE('      <target>= ''',TARGET:TLENGTH,'''');
+	  IF SDEFINED THEN WRITE(', <subst>=  ''',SUBSTRING:SLENGTH,'''');
+	  WRITELN; WRITELN;
+	END;
+      IF COUNT>0 THEN WRITELN('    Markers:');
+      WRITE('  ');
+      FOR I:=0 TO COUNT-1 DO
+	BEGIN
+	  WRITE('   ');
+	  IF PAGEN[I]=-1 THEN
+	    WRITE(' ')
+	  ELSE
+	    IF PAGEN[I]<=LPAGE THEN WRITE('<') ELSE WRITE('>');
+	  WRITE(NAME[I]);
+	  IF (I<>COUNT-1) AND ((I+1) MOD 5=0) THEN
+	    BEGIN WRITELN; WRITE('  ') END
+	END;
+      WRITELN;
+      WRITELN;
+      WRITE('    Created '); WRITEDATE(CREATED);
+      WRITE('; Last updated '); WRITEDATE(LASTUPD); 
+      WRITE(' (Revision ',REVISION,').');
+    END;
+END;
+
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      CLEARSCREEN;
+      PROMPTLINE:= ' Environment: {options} <spacebar> to leave'; 
+      PROMPT; NEEDPROMPT:=TRUE;
+      WRITEMENU;
+      WRITEINFO;
+      GOTOXY(LENGTH(PROMPTLINE),0);
+      REPEAT
+	CH:=UCLC(GETCH);
+	IF NOT (CH IN ['A','C','F','L','P','R','S','T',' ',CHR(CR)])
+	THEN
+	  BEGIN ERROR('Not option',NONFATAL); PROMPT; END
+	ELSE
+	  CASE CH OF
+	   'A': BEGIN GOTOXY(18,1); AUTOINDENT:=GETBOOL END;
+	   'F': BEGIN GOTOXY(18,2); FILLING:=GETBOOL END;
+	   'L': BEGIN GOTOXY(18,3); LMARGIN:=MAX(0,GETINT-1) END;
+	   'R': BEGIN GOTOXY(18,4); RMARGIN:=MAX(0,GETINT-1) END;
+	   'P': BEGIN GOTOXY(18,5); PARAMARGIN:=MAX(0,GETINT-1) END;
+	   'C': BEGIN GOTOXY(18,6); READ(RUNOFFCH) END;
+	   'S': BEGIN
+		  TABSET; (* New Screen Displayed *)
+		  CLEARSCREEN;
+		  PROMPT;
+		  WRITEMENU;
+		  WRITEINFO;
+		  GOTOXY(LENGTH(PROMPTLINE),0)
+		END;
+	   'T': BEGIN GOTOXY(18,8); TOKDEF:=GETBOOL END
+	  END;
+	GOTOXY(LENGTH(PROMPTLINE),0);
+      UNTIL CH IN [' ',CHR(CR)];
+      REDISPLAY;
+    END;
+END;
+
+
+
+(*$TP u t s y n t a x*)
+SEGMENT PROCEDURE PUTSYNTAX;
+VAR
+  D0,D1,D2,BLK,PTR,COLON: INTEGER;
+  T,C:PACKED ARRAY [0..2] OF CHAR;
+  BUF:PACKED ARRAY [0..1023] OF CHAR;
+  F: FILE;
+
+PROCEDURE PUTNUM;
+BEGIN
+  MSG:='Syntax Error #'; PUTMSG;
+  WRITE(USERINFO.ERRNUM,'. Type <sp>');
+END;
+
+BEGIN (* putsyntax *)
+  WITH USERINFO DO
+    BEGIN
+      OPENOLD(F,'*SYSTEM.SYNTAX');
+      IF IORESULT<>0 THEN PUTNUM
+      ELSE
+	BEGIN
+	  IF ERRNUM<=109 THEN BLK:=2
+	  ELSE
+	    IF ERRNUM<=131 THEN BLK:=4
+	    ELSE
+	      IF ERRNUM<=156 THEN BLK:=6
+	      ELSE
+		IF ERRNUM<=254 THEN BLK:=8
+		ELSE BLK:=10;
+	  IF BLOCKREAD(F,BUF,2,BLK)<>2 THEN PUTNUM
+	  ELSE
+	    BEGIN
+	      IF BUF[0]=CHR(DLE) THEN PTR:=2 ELSE PTR:=0;
+	      D0:=ERRNUM DIV 100; (* convert error number to characters *)
+	      D1:=(ERRNUM-D0*100) DIV 10;
+	      D2:=ERRNUM MOD 10;
+	      T[0]:=CHR(D0+ORD('0')); T[1]:=CHR(D1+ORD('0'));
+	      T[2]:=CHR(D2+ORD('0'));
+	      REPEAT
+		FILLCHAR(C,3,'0');
+		COLON:=SCAN(MAXCHAR,=':',BUF[PTR]);
+		MOVELEFT(BUF[PTR],C[3-COLON],COLON);
+		COLON:=COLON+PTR;
+		PTR:=SCAN(MAXCHAR,=CHR(EOL),BUF[PTR])+PTR+3
+	      UNTIL (T=C) OR (BUF[PTR]=CHR(0));
+	      IF BUF[PTR]=CHR(0) THEN PUTNUM
+	      ELSE
+		BEGIN
+		  MOVELEFT(BUF[COLON+1],MSG[1],(PTR-COLON)-4);
+		  MSG[0]:=CHR(MIN(68,(PTR-COLON)-4)); (* R- required *)
+		  HOME; CLEARLINE(0); WRITE(MSG,'.  Type <sp>');
+		END
+	    END
+	  END(* if ioresult<>0 *);
+	SHOWCURSOR;
+	REPEAT UNTIL GETCH=' ';
+	ERRBLK:=0; ERRSYM:=0; ERRNUM:=0; (*  Only yell once!!! *)
+      END(* with userinfo *)
+END(* putsyntax *);
+
+
+(*$TE d i t c o r e  -  Basic Commands*)
+
+SEGMENT PROCEDURE EDITCORE;
+
+(* Core procedures.  Execute these commands until either a set environment
+   comes along or a quit command. *)
+
+
+
+PROCEDURE NEXTCOMMAND; FORWARD;
+
+PROCEDURE FIXDIRECTION;
+BEGIN
+  IF COMMAND=FORWARDC THEN DIRECTION:='>' ELSE DIRECTION:='<';
+  HOME; WRITE(DIRECTION); (* Update prompt line *)
+  SHOWCURSOR; NEXTCOMMAND
+END;
+
+PROCEDURE BANISH;
+VAR
+ CH: CHAR;
+BEGIN
+  PROMPTLINE:=' Banish: To the L(eft or Right  <esc>';
+  PROMPT; NEEDPROMPT:=TRUE;
+  SHOWCURSOR;
+  REPEAT CH:=UCLC(GETCH) UNTIL CH IN ['L','R',CHR(ESC)];
+  IF CH<>CHR(ESC) THEN BEGIN GOTOXY(7,0); ERASETOEOL(7,0) END;
+  IF CH='L' THEN
+    PUTPAGES(LEFTSTACK)
+  ELSE
+    IF CH='R' THEN
+      PUTPAGES(RIGHTSTACK);
+  IF CH<>CHR(ESC) THEN CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  NEXTCOMMAND
+END;
+
+PROCEDURE NEXT;
+VAR
+  CH: CHAR;
+BEGIN
+  PROMPTLINE:=
+' Next: F(orwards, B(ackwards in the file; S(tart, E(nd of the file.  <esc>';
+  PROMPT; NEEDPROMPT:=TRUE;
+  SHOWCURSOR;
+  REPEAT CH:=UCLC(GETCH) UNTIL CH IN ['F','B','S','E',CHR(ESC)];
+  IF CH<>CHR(ESC) THEN BEGIN GOTOXY(5,0); ERASETOEOL(5,0) END;
+  IF CH='F' THEN
+    BEGIN
+      PUTPAGES(LEFTSTACK);
+      GETPAGES(RIGHTSTACK)
+    END
+  ELSE
+    IF CH='B' THEN
+      BEGIN
+	PUTPAGES(RIGHTSTACK);
+	GETPAGES(LEFTSTACK)
+      END
+    ELSE
+      IF CH='S' THEN
+	BEGIN
+	  WHILE LPAGE>0 DO
+	    BEGIN
+	      GOTOXY(5,0); ERASETOEOL(5,0);
+	      CURSOR:=1;
+	      PUTPAGES(RIGHTSTACK);
+	      GETPAGES(LEFTSTACK)
+	    END;
+	  CURSOR:=1
+	END
+      ELSE
+	IF CH='E' THEN
+	  BEGIN
+	    WHILE RPAGE<FLENGTH DO
+	      BEGIN
+		GOTOXY(5,0); ERASETOEOL(5,0);
+		CURSOR:=BUFCOUNT-1;
+		PUTPAGES(LEFTSTACK);
+		GETPAGES(RIGHTSTACK)
+	      END;
+	    CURSOR:=BUFCOUNT-1;
+	  END;
+  IF CH<>CHR(ESC) THEN CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  NEXTCOMMAND
+END;
+
+PROCEDURE COPY;
+BEGIN
+  PROMPTLINE:=' Copy: B(uffer  F(rom file  <esc>';
+  PROMPT; NEEDPROMPT:=TRUE;
+  REPEAT
+    CH:=UCLC(GETCH);
+  UNTIL CH IN ['B','F',CHR(ESC)];
+  IF CH='B' THEN
+    BEGIN
+      IF NOT COPYOK OR ((BUFCOUNT+COPYLENGTH+10>COPYSTART)
+			AND (COPYSTART>=BUFCOUNT))
+	THEN ERROR('Invalid copy.',NONFATAL)
+	ELSE
+	  IF BUFCOUNT+COPYLENGTH>=BUFSIZE THEN ERROR('No room',NONFATAL)
+	  ELSE
+	    BEGIN
+	      IF COPYLINE THEN
+		BEGIN
+		  GETLEADING;
+		  CURSOR:=LINESTART
+		END;
+	      MOVERIGHT(EBUF^[CURSOR],EBUF^[CURSOR+COPYLENGTH],BUFCOUNT-CURSOR+1);
+	      IF (COPYSTART>=CURSOR) AND (COPYSTART<BUFCOUNT) THEN
+		MOVELEFT(EBUF^[COPYSTART+COPYLENGTH],EBUF^[CURSOR],COPYLENGTH)
+	      ELSE
+		MOVELEFT(EBUF^[COPYSTART],EBUF^[CURSOR],COPYLENGTH);
+	      BUFCOUNT:=BUFCOUNT+COPYLENGTH;
+	      READJUST(CURSOR,COPYLENGTH);
+	      CHECKINDENT(CURSOR);      (* Check the border for two DLE's *)
+	      LASTPAT:=CURSOR;          (* For equalc *)
+	      CURSOR:=CURSOR+COPYLENGTH;
+	      CHECKINDENT(CURSOR);  (* ... and also check the other border *)
+	      GETLEADING;
+	      CURSOR:=MAX(CURSOR,STUFFSTART);
+	      CENTERCURSOR(TRASH,MIDDLE,TRUE)
+	    END;
+    END (* CH='B' *)
+  ELSE
+    IF CH='F' THEN EXIT(EDITCORE);
+  SHOWCURSOR;
+  NEXTCOMMAND;
+END(*COPY*);
+
+PROCEDURE DUMP;
+BEGIN
+  NEXTCOMMAND;
+END(* DUMP *);
+
+PROCEDURE FIND; FORWARD;
+
+PROCEDURE INSERTIT; FORWARD;
+
+PROCEDURE JUMP;
+VAR CH: CHAR;
+
+PROCEDURE JUMPMARKER;
+VAR
+  MUSTREDISP: BOOLEAN;
+  I: INTEGER;
+  MNAME: PACKED ARRAY [0..7] OF CHAR;
+
+PROCEDURE SHUFFLE;
+BEGIN
+  (* Must redisplay the screen *)
+  MUSTREDISP:=TRUE;
+  WITH PAGEZERO DO
+    BEGIN
+      CLEARLINE(0);
+      WRITE('Leaping');
+      IF PAGEN[I]<=LPAGE THEN
+	WHILE (LPAGE>0) AND (PAGEN[I]<>-1) DO
+	  BEGIN
+	    GOTOXY(7,0); ERASETOEOL(7,0);
+	    CURSOR:=1;
+	    PUTPAGES(RIGHTSTACK);
+	    GETPAGES(LEFTSTACK)
+	  END
+      ELSE
+	WHILE (RPAGE<FLENGTH) AND (PAGEN[I]<>-1) DO
+	  BEGIN
+	    GOTOXY(7,0); ERASETOEOL(7,0);
+	    CURSOR:=BUFCOUNT-1;
+	    PUTPAGES(LEFTSTACK);
+	    GETPAGES(RIGHTSTACK)
+	  END
+    END
+END;
+
+BEGIN
+  MUSTREDISP:=FALSE;
+  WITH PAGEZERO DO
+    BEGIN
+      GETNAME('Jump to',MNAME);
+      IF MNAME<>'        ' THEN
+	BEGIN
+	  I:=0;
+	  WHILE (I<COUNT) AND (MNAME<>NAME[I]) DO I:=I+1;
+	  IF MNAME<>NAME[I] THEN
+	    ERROR('Not there.',NONFATAL)
+	  ELSE
+	    BEGIN
+	      (* If text pointed to isn't in the buffer, load it in *)
+	      IF PAGEN[I]<>-1 THEN SHUFFLE;
+	      IF PAGEN[I]<>-1 THEN ERROR('Marker all messed up.',NONFATAL)
+	      ELSE
+		CURSOR:=POFFSET[I];
+	      GETLEADING;
+	      CURSOR:=MAX(CURSOR,STUFFSTART);
+	      CENTERCURSOR(TRASH,MIDDLE,MUSTREDISP)
+	    END;
+	END;
+    END;
+END; (* jumpmarker *)
+
+BEGIN (* jump *)
+  PROMPTLINE:=' JUMP: B(eginning E(nd M(arker <esc>';
+  PROMPT;
+  NEEDPROMPT:=TRUE;  (* Need to redisplay EDIT: promptline! *)
+  REPEAT
+    CH:=UCLC(GETCH);
+    IF CH='B' THEN
+      BEGIN 
+	CURSOR:=1;
+	GETLEADING;
+	CURSOR:=STUFFSTART;
+	CENTERCURSOR(TRASH,1,FALSE)
+      END
+    ELSE
+      IF CH='E' THEN
+	BEGIN
+	  CURSOR:=BUFCOUNT-1;
+	  CENTERCURSOR(TRASH,SCREENHEIGHT-1,FALSE);
+	END
+      ELSE
+	IF CH='M' THEN JUMPMARKER
+	ELSE IF CH<>CHR(ESC) THEN ERRWAIT;
+  UNTIL (CH IN ['B','E','M',CHR(ESC)]);
+  NEXTCOMMAND;
+END;
+
+PROCEDURE DEFMACRO;
+BEGIN
+  WITH PAGEZERO DO IF FILLING AND NOT AUTOINDENT THEN
+    BEGIN
+      BLANKCRT(1);
+      THEFIXER(CURSOR,REPEATFACTOR,TRUE);
+      CENTERCURSOR(TRASH,MIDDLE,TRUE);
+    END
+  ELSE ERROR('Inappropriate environment',NONFATAL);
+  COPYOK:=FALSE;
+  SHOWCURSOR;
+  NEXTCOMMAND;
+END;
+
+PROCEDURE SETMARKER;
+LABEL 1;
+VAR
+  I,SLOT: INTEGER;
+  MNAME: PACKED ARRAY [0..7] OF CHAR;
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      NEEDPROMPT:=TRUE;
+      COUNT:=MIN(20,COUNT);
+      IF COUNT=20 THEN
+	BEGIN
+	  BLANKCRT(1);
+	  FOR I:=0 TO COUNT-1 DO
+	    BEGIN
+	      WRITE(CHR(ORD('a')+I),') ',NAME[I],'   ');
+	      IF (I+1) MOD 4 = 0 THEN WRITELN;
+	    END;
+	  MSG:=
+    'Marker overflow.  Which one to replace? (Type in the letter or <sp>) ';
+	  PUTMSG; CH:=UCLC(GETCH);
+	  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+	  IF CH IN ['A'..'T'] THEN SLOT:=ORD(CH)-ORD('A')
+	  ELSE
+	    GOTO 1;
+	END
+      ELSE
+	SLOT:=COUNT;
+      GETNAME('Set',MNAME);
+      IF MNAME<>'        ' THEN
+	BEGIN
+	  FOR I:=0 TO COUNT-1 DO
+	    IF NAME[I]=MNAME THEN SLOT:=I;
+	  NAME[SLOT]:=MNAME;
+	  POFFSET[SLOT]:=CURSOR;
+	  PAGEN[SLOT]:=-1;
+	  IF SLOT=COUNT THEN COUNT:=COUNT+1
+	END;
+    END;
+1:END;
+
+PROCEDURE SETSTUFF;
+VAR CH: CHAR;
+BEGIN
+  PROMPTLINE:=' Set: E(nvironment M(arker <esc>';
+  PROMPT; NEEDPROMPT:=TRUE;
+  REPEAT
+    CH:=UCLC(GETCH);
+    IF CH='E' THEN EXIT(EDITCORE)
+    ELSE
+      IF CH='M' THEN SETMARKER
+      ELSE IF CH<>CHR(ESC) THEN ERRWAIT;
+  UNTIL CH IN ['E','M',CHR(ESC)];
+  SHOWCURSOR;
+  NEXTCOMMAND;
+END(* SETSTUFF *);
+
+PROCEDURE VERIFY;
+BEGIN
+  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  SHOWCURSOR;
+  NEXTCOMMAND
+END (* VERIFY *);
+
+PROCEDURE XMACRO;
+VAR
+  SAVEC,I: INTEGER;
+  SAVE:PACKED ARRAY [0..MAXSTRING] OF CHAR;
+BEGIN
+  PROMPTLINE:=' eXchange: TEXT {<bs> a char} [<esc> escapes; <etx> accepts]';
+  PROMPT; NEEDPROMPT:=TRUE;
+  SHOWCURSOR;
+  SAVEC:=CURSOR;
+  I:=0;
+  REPEAT
+    CH:=GETCH;
+    IF MAPTOCOMMAND(CH)=LEFT THEN
+      BEGIN
+	IF (CURSOR>SAVEC) THEN
+	  BEGIN
+	    I:=I-1; CURSOR:=CURSOR-1; (* Decrement both ptrs *)
+	    EBUF^[CURSOR]:=SAVE[I]; (* Restore buffer *)
+	    WRITE(CHR(BSPCE),EBUF^[CURSOR],CHR(BSPCE));
+	  END
+      END
+    ELSE
+      IF CH=CHR(EOL) THEN BEGIN ERRWAIT; SHOWCURSOR END
+      ELSE
+	IF NOT (CH IN [CHR(ETX),CHR(ESC)]) AND (EBUF^[CURSOR]<>CHR(EOL)) THEN
+	  BEGIN
+	    IF NOT (CH IN [' '..'~']) THEN CH:='?';
+	    SAVE[I]:=EBUF^[CURSOR];
+	    EBUF^[CURSOR]:=CH;
+	    I:=I+1; CURSOR:=CURSOR+1;
+	    WRITE(CH)
+	  END;
+  UNTIL CH IN [CHR(ETX),CHR(ESC)];
+  IF CH=CHR(ESC) THEN
+    BEGIN
+      CURSOR:=SAVEC;
+      MOVELEFT(SAVE[0],EBUF^[CURSOR],I);
+      SHOWCURSOR; WRITE(SAVE:I); SHOWCURSOR
+    END;
+  NEXTCOMMAND;
+END (* XMACRO *);
+
+PROCEDURE ZAPIT;
+BEGIN
+  IF ABS(LASTPAT-CURSOR)>80 THEN 
+    BEGIN
+      PROMPTLINE:=
+' WARNING! You are about to zap more than 80 chars, do you wish to zap? (y/n)';
+      PROMPT;
+      NEEDPROMPT:=TRUE;
+      IF UCLC(GETCH)<>'Y' THEN
+	BEGIN
+	  SHOWCURSOR;
+	  NEXTCOMMAND;
+	  EXIT(ZAPIT)
+	END;
+    END;
+  IF OKTODEL(MIN(CURSOR,LASTPAT),MAX(CURSOR,LASTPAT)) THEN
+    BEGIN
+      COPYLINE:=FALSE;
+      READJUST(MIN(CURSOR,LASTPAT),-ABS(CURSOR-LASTPAT));
+      IF CURSOR>LASTPAT THEN
+	MOVELEFT(EBUF^[CURSOR],EBUF^[LASTPAT],BUFCOUNT-CURSOR)
+      ELSE
+	MOVELEFT(EBUF^[LASTPAT],EBUF^[CURSOR],BUFCOUNT-LASTPAT);
+      BUFCOUNT:=BUFCOUNT-ABS(CURSOR-LASTPAT);
+      CURSOR:=LASTPAT;
+      CENTERCURSOR(TRASH,MIDDLE,TRUE);
+    END;
+  SHOWCURSOR;
+  NEXTCOMMAND;
+END;
+
+(*$TI n s e r t   C o m m a n d*)
+
+PROCEDURE INSERTIT;
+CONST
+  FUDGEFACTOR=10;
+VAR
+  THEREST,LEFTPART,SAVEBUFCOUNT: PTRTYPE;
+  CLEARED,WARNED,OK,NOTEXTYET,EXITPROMPT,FIRSTLINE: BOOLEAN;
+  SPACES,LMOVE,X,LINE,EOLDIST,RJUST: INTEGER;
+  CONTEXT: PACKED ARRAY [0..MAXSTRING] OF CHAR;
+
+PROCEDURE SLAMRIGHT;
+(* Move (slam) the portion of the EBUF^ to the right of (and including)
+   the cursor so that the last NUL in the file (EBUF^[BUFCOUNT]) is now at
+   EBUF^[BUFSIZE].  THEREST points to the beginning of the right-justified
+   text. *)
+BEGIN
+  GETLEADING;
+  THEREST:=BUFSIZE-(BUFCOUNT-CURSOR);
+  LMOVE:=BUFCOUNT-CURSOR+1;
+  MOVERIGHT(EBUF^[CURSOR],EBUF^[THEREST],LMOVE);
+  GETLEADING; (* Set blanks *)
+  IF THEREST-CURSOR<MAXSTRING THEN
+    BEGIN
+      ERROR('No room to insert.',NONFATAL);
+      SHOWCURSOR;
+      NEXTCOMMAND;
+      EXIT(INSERTIT)
+    END;
+  (* Optional indentation *)
+  EBUF^[THEREST-2]:=CHR(DLE); EBUF^[THEREST-1]:=CHR(BLANKS+32);
+END;
+
+PROCEDURE WRAPUP;
+(* Given the new value of the cursor (one past the last valid character
+   inserted into the buffer), put back together the two halves of the 
+   buffer.  Then, to polish it off, update the screen so that the rest of
+   the editor can cope *)
+VAR PTR: PTRTYPE;
+    LNGTH: INTEGER;
+BEGIN
+  WITH PAGEZERO DO 
+    IF NOTEXTYET AND (NOT FIRSTLINE) AND 
+       ((NOT FILLING) OR AUTOINDENT) AND (CH<>CHR(ESC))
+    THEN (* We want the blanks before THEREST *)
+      BEGIN
+	BUFCOUNT:=BUFCOUNT+2;
+	THEREST:=THEREST-2; LMOVE:=LMOVE+2;
+	CURSOR:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[CURSOR-1])+CURSOR;
+      END;
+  MOVELEFT(EBUF^[THEREST],EBUF^[CURSOR],LMOVE);
+  READJUST(LEFTPART+1,CURSOR-(LEFTPART+1));
+  BUFCOUNT:=BUFCOUNT+CURSOR-(LEFTPART+1); 
+  WITH PAGEZERO DO
+    IF FILLING AND NOT AUTOINDENT AND (CH=CHR(ETX)) THEN
+      BEGIN THEFIXER(CURSOR,1,FALSE); FIRSTLINE:=FALSE; FINDXY(X,LINE) END;
+  UPSCREEN(FIRSTLINE,EXITPROMPT OR (CH=CHR(ESC)),LINE);
+  GETLEADING;
+  CURSOR:=MAX(CURSOR,STUFFSTART);
+  LASTPAT:=LEFTPART+1;
+  COPYOK:=TRUE; COPYSTART:=LASTPAT; COPYLENGTH:=CURSOR-LASTPAT;
+  NEXTCOMMAND
+END;
+
+FUNCTION CHECK(VALUE:INTEGER): BOOLEAN;
+  (* VALUE is the potential value of the cursor.  If it is not in legal
+     range then CHECK is false.  This function also warns the user if
+     s/he is getting too close to overflowing the buffer *)
+BEGIN
+  CHECK:=TRUE;
+  IF VALUE<=LEFTPART THEN
+    BEGIN
+      OK:=FALSE;  CHECK:=FALSE;
+      ERROR('No insertion to back over.',NONFATAL); PROMPT;
+      GOTOXY(X,LINE)
+    END
+  ELSE
+    IF VALUE>=THEREST-MAXCHAR THEN
+      BEGIN
+	IF NOT WARNED THEN
+	  BEGIN
+	    ERROR('Please finish up the insertion',NONFATAL); PROMPT;
+	    GOTOXY(X,LINE);
+	    WARNED:=TRUE
+	  END;
+	IF VALUE>THEREST-FUDGEFACTOR THEN
+	  BEGIN
+	    ERROR('Buffer Overflow!!!!',NONFATAL);
+	    WRAPUP;
+	    EXIT(INSERTIT);
+	  END
+      END
+END;
+
+PROCEDURE SPACEOVER;
+(* This procedure handles spaces and tabs inserted into the buffer *)
+VAR NEWX: INTEGER;
+BEGIN
+  IF CH=CHR(HT) THEN
+    BEGIN
+      NEWX:=X+1;
+      WITH PAGEZERO DO
+	WHILE (TABSTOP[NEWX]=NONE) AND (NEWX<SCREENWIDTH) DO NEWX:=NEWX+1;
+      SPACES:=NEWX-X
+    END
+  ELSE
+    SPACES:=1;
+  IF CHECK(CURSOR+SPACES) THEN
+    BEGIN
+      FILLCHAR(EBUF^[CURSOR],SPACES,' ');
+      CURSOR:=CURSOR+SPACES
+    END
+END;
+
+PROCEDURE FIXUP; FORWARD;
+
+PROCEDURE ENDLINE;
+(* First, if there was no text inserted on the current line, then convert
+   all of the spaces to blank compression codes.  Then insert an <EOL> into
+   the buffer followed by the appropriate number of spaces for the
+   indentation. *)
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      IF NOTEXTYET THEN FIXUP;
+      EBUF^[CURSOR]:=CHR(EOL);
+      IF AUTOINDENT THEN GETLEADING
+      ELSE
+	IF FILLING THEN
+	  BEGIN
+	    GETLEADING;
+	    IF EBUF^[STUFFSTART]=CHR(EOL) THEN (* Empty line *)
+	      BLANKS:=PARAMARGIN
+	    ELSE BLANKS:=LMARGIN
+	  END
+	ELSE BLANKS:=0; 
+      IF CHECK(CURSOR+BLANKS+1) THEN
+	BEGIN
+	  FILLCHAR(EBUF^[CURSOR+1],BLANKS,' ');
+	  CURSOR:=CURSOR+BLANKS+1
+	END;
+      NOTEXTYET:=TRUE;
+    END;
+END;
+
+PROCEDURE BACKUP;
+(* If the CH is a backspace then decrement cursor by 1.  If this would
+   result in backing over an <EOL> or a blank compression code, then fall
+   into the code for a <DEL> (also changing the CH to <DEL> for communication
+   to the outer block)  *)
+VAR PTR: PTRTYPE;
+BEGIN
+  IF CH=CHR(DC1) THEN
+    BEGIN GETLEADING; IF CHECK(LINESTART) THEN CURSOR:=LINESTART END
+  ELSE
+    IF (CH=CHR(BS)) AND
+       NOT( (EBUF^[CURSOR-2]=CHR(DLE)) OR (EBUF^[CURSOR-1]=CHR(EOL)) ) THEN
+      BEGIN
+	IF CURSOR<LEFTPART+2 THEN OK:=FALSE ELSE CURSOR:=CURSOR-1;
+      END
+    ELSE
+      BEGIN (* A <DEL> or equivalent *)
+	CH:=CHR(DEL); (* Tell the CRT driver that the line has changed *)
+	GETLEADING;
+	IF CHECK(LINESTART-1) THEN CURSOR:=LINESTART-1;
+	NOTEXTYET:=FALSE; (* thank you shawn! *)
+      END
+END;
+
+PROCEDURE FIXUP;
+(* Convert the indentation spaces into blank compression codes, and move
+   the current line around accordingly *)
+BEGIN
+  (* First compress the current line *)
+  EBUF^[CURSOR]:=CHR(EOL); (* Fool Getleading *)
+  GETLEADING;
+  IF BYTES >= 2 THEN (* OK to put in <DLE> # as it stands *)
+    MOVELEFT(EBUF^[STUFFSTART],EBUF^[LINESTART+2],CURSOR-STUFFSTART)
+  ELSE
+    IF CHECK(CURSOR+2-BYTES) THEN
+      MOVERIGHT(EBUF^[STUFFSTART],EBUF^[STUFFSTART+2-BYTES],CURSOR-STUFFSTART)
+    ELSE BEGIN OK:=FALSE; EXIT(FIXUP) END;
+  CURSOR:=CURSOR-(BYTES-2);
+  EBUF^[LINESTART]:=CHR(DLE); EBUF^[LINESTART+1]:=CHR(32+BLANKS);
+END;
+
+PROCEDURE INSERTCH;
+  (* This procedure inserts a single character into the buffer. It also
+     handles all of the control codes (EOL,BS,DEL) and buffer over- and
+     under- flow conditions.  INSERTCH is called by the CRT handler *)
+BEGIN
+  REPEAT
+  OK:=TRUE; (* No errors that invalidate the current character have occured *)
+  CH:=GETCH;
+  IF MAPTOCOMMAND(CH)=LEFT THEN CH:=CHR(BS);
+  IF ORD(CH) IN [SP,HT,EOL,BS,DEL,ETX,ESC,DC1] THEN
+    BEGIN
+      (* <etx> and <esc> are handled in the body of insertit *)
+      IF ORD(CH) IN [SP,HT] THEN SPACEOVER
+      ELSE
+	IF ORD(CH)=EOL THEN ENDLINE
+	ELSE
+	  IF ORD(CH) IN [DC1,BS,DEL] THEN BACKUP;
+    END
+  ELSE
+    BEGIN (* A character to insert! *)
+      IF (CH<'!') OR (CH>'~') THEN CH:='?'; (* No non-printing characters *)
+      IF NOTEXTYET THEN FIXUP;
+      IF CHECK(CURSOR+1) AND OK THEN
+	BEGIN
+	  NOTEXTYET:=FALSE;
+	  EBUF^[CURSOR]:=CH;
+	  CURSOR:=CURSOR+1
+	END;
+    END;
+ UNTIL OK;
+END;
+
+PROCEDURE POPDOWN;
+(* Displays CONTEXT, doing an implied scrollup if nec. *)
+BEGIN
+  IF CLEARED THEN ERASETOEOL(X,LINE)
+  ELSE BEGIN CLEARED:=TRUE; ERASEOS(X,LINE) END;
+  GOTOXY(RJUST,LINE);
+  ERASETOEOL(RJUST,LINE);
+  WRITE(CHR(LF));
+  IF LINE=SCREENHEIGHT THEN BEGIN EXITPROMPT:=TRUE; LINE:=SCREENHEIGHT-1 END;
+  WRITE(CONTEXT:EOLDIST);
+  FIRSTLINE:=FALSE; (* Says that the whole screen has been affected. *)
+END;
+
+PROCEDURE WRITESP(CH:CHAR;HOWMANY:INTEGER);
+BEGIN
+  IF X+HOWMANY<=SCREENWIDTH THEN WRITE(CH:HOWMANY);
+  IF X+HOWMANY>=SCREENWIDTH THEN
+    BEGIN
+      GOTOXY(SCREENWIDTH,LINE);
+      IF X+HOWMANY>SCREENWIDTH THEN
+	BEGIN WRITE('!'); GOTOXY(SCREENWIDTH,LINE) END
+    END;
+  X:=MIN(SCREENWIDTH,X+HOWMANY)
+END;
+
+PROCEDURE CLEANSCREEN;
+(* Code to, if possible, only erase the line, otherwise clear
+   the screen.  Then call popdown *)
+BEGIN
+  FIRSTLINE:=FALSE;
+  IF CLEARED THEN
+    BEGIN
+      IF X<SCREENWIDTH THEN ERASETOEOL(X,LINE)
+    END
+  ELSE
+    BEGIN
+      CLEARED:=TRUE; ERASEOS(X,LINE);
+    END;
+  LINE:=LINE+1;
+  IF LINE>SCREENHEIGHT THEN
+    BEGIN
+      LINE:=LINE-1;
+      WRITELN;
+      EXITPROMPT:=TRUE
+    END;
+  IF EOLDIST<>0 THEN POPDOWN
+END;
+
+PROCEDURE POPOV;
+(* When in filling mode, this procedure is called when a line is overflowed
+   (X >= rightmargin).  The word is scanned off and "popped" down to the 
+   next line. *)
+VAR
+  WLENGTH: INTEGER;
+  SAVE,PTR: PTRTYPE;
+  WORD: PACKED ARRAY [0..MAXSW] OF CHAR;
+BEGIN
+  IF NOTEXTYET THEN FIXUP;
+  PTR:=MAX(SCAN(-MAXCHAR,='-',EBUF^[CURSOR-1]),
+	   SCAN(-MAXCHAR,=' ',EBUF^[CURSOR-1]))+CURSOR;
+  WLENGTH:=CURSOR-PTR;
+  WITH PAGEZERO DO IF WLENGTH>=RMARGIN-LMARGIN THEN
+    BEGIN
+      WRITESP(CH,1);
+      EXIT(POPOV)
+    END;
+  IF CH='-' THEN WRITE('-');
+  GOTOXY(X-WLENGTH+1,LINE);
+  ERASETOEOL(X-WLENGTH+1,LINE);
+  MOVERIGHT(EBUF^[PTR],EBUF^[PTR+3],WLENGTH);
+  MOVELEFT(EBUF^[PTR+3],WORD,WLENGTH);
+  CURSOR:=CURSOR+3;
+  EBUF^[PTR]:=CHR(EOL);
+  EBUF^[PTR+1]:=CHR(DLE);
+  WITH PAGEZERO DO IF AUTOINDENT THEN
+    BEGIN
+      SAVE:=CURSOR; (* Set blanks to the indentation of the line above *)
+      CURSOR:=PTR;
+      GETLEADING;
+      CURSOR:=SAVE
+    END
+  ELSE
+    BLANKS:=LMARGIN;
+  EBUF^[PTR+2]:=CHR(BLANKS+32);
+  CLEANSCREEN;
+  X:=BLANKS;
+  GOTOXY(X,LINE); WRITE(WORD:WLENGTH);
+  X:=X+WLENGTH;
+  NOTEXTYET:=FALSE
+END;
+
+BEGIN (* INSERT *)
+  CLEARED:=FALSE;
+  EOLDIST:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR]);
+  MOVELEFT(EBUF^[CURSOR],CONTEXT[0],EOLDIST);
+  RJUST:=SCREENWIDTH-EOLDIST;
+  SLAMRIGHT;
+  SAVEBUFCOUNT:=BUFCOUNT;
+  PROMPTLINE:=
+' Insert: Text {<bs> a char,<del> a line}  [<etx> accepts, <esc> escapes]';
+  PROMPT;
+  EXITPROMPT:=FALSE;  NEEDPROMPT:=TRUE;
+  LEFTPART:=CURSOR-1;
+  NOTEXTYET:=FALSE;
+  FINDXY(X,LINE);  GOTOXY(X,LINE);
+  ERASETOEOL(X,LINE);
+  FIRSTLINE:=TRUE;
+  IF EOLDIST<>0 THEN (* A context needs to be displayed *)
+    IF RJUST>X THEN (* and it will fit on the current line ... *)
+      BEGIN
+	GOTOXY(RJUST,LINE); WRITE(CONTEXT:EOLDIST); GOTOXY(X,LINE)
+      END
+    ELSE (* and it won't fit on the current line *)
+      BEGIN 
+	FIRSTLINE:=FALSE;
+	ERASEOS(X,LINE);(* Clear the screen *)
+	WRITELN;
+	IF LINE=SCREENHEIGHT THEN
+	  BEGIN LINE:=SCREENHEIGHT-1; EXITPROMPT:=TRUE END;
+	GOTOXY(RJUST,LINE+1); WRITE(CONTEXT:EOLDIST); GOTOXY(X,LINE)
+      END;
+  REPEAT
+    INSERTCH;
+    IF NOT (ORD(CH) IN [EOL,ETX,ESC,DEL,DC1]) THEN
+      BEGIN
+	IF TRANSLATE[CH]=LEFT THEN
+	  BEGIN IF X<=SCREENWIDTH THEN WRITE(CHR(BSPCE),' ',CHR(BSPCE)); X:=X-1 END
+	ELSE
+	  IF CH=CHR(HT) THEN WRITESP(' ',SPACES)
+	  ELSE
+	    IF PAGEZERO.FILLING AND (X+1>=PAGEZERO.RMARGIN) THEN POPOV
+	    ELSE WRITESP(CH,1);
+	IF NOT PAGEZERO.FILLING AND (X=SCREENWIDTH-8) AND (CH<>CHR(BS))
+	  THEN WRITE(CHR(BELL));
+	IF (EOLDIST<>0) AND
+	   (X>=RJUST) AND FIRSTLINE THEN  (*ran into context *)
+	  BEGIN
+	    POPDOWN;
+	    GOTOXY(X,LINE)
+	  END;
+      END
+    ELSE (* ch in [eol,etx,esc,del,dc1] *)
+      BEGIN
+	IF CH=CHR(EOL) THEN
+	  BEGIN
+	    CLEANSCREEN;
+	    X:=BLANKS;
+	    GOTOXY(X,LINE);
+	  END
+	ELSE
+	  IF CH=CHR(DEL) THEN
+	    BEGIN
+	      IF LINE<=1 THEN  (* Rubbed out all of what was on the screen *)
+		BEGIN
+		  BUFCOUNT:=CURSOR+1;
+		  EBUF^[CURSOR]:=CHR(EOL);
+		  CENTERCURSOR(LINE,MIDDLE,TRUE);
+		  IF EOLDIST<>0 THEN POPDOWN;
+		  IF EXITPROMPT THEN BEGIN PROMPT; EXITPROMPT:=FALSE END
+		END
+	      ELSE
+		BEGIN GOTOXY(0,LINE); CLEARED:=FALSE;
+		      ERASETOEOL(0,LINE); LINE:=LINE-1 END;
+	      GETLEADING;
+	      X:=BLANKS-BYTES+CURSOR-LINESTART;
+	      GOTOXY(X,LINE)
+	    END
+	  ELSE
+	    IF CH=CHR(DC1) THEN
+	      BEGIN
+		X:=0; GOTOXY(X,LINE); ERASETOEOL(X,LINE)
+	      END;
+      END;
+  UNTIL CH IN [CHR(ETX),CHR(ESC)];
+  IF CH=CHR(ESC) THEN CURSOR:=LEFTPART+1;
+  BUFCOUNT:=SAVEBUFCOUNT;
+  WRAPUP;
+END;
+
+(*$TM o v e i t   -   Cursor Movement, Page, Adjust, Delete *)
+
+PROCEDURE MOVEIT;
+VAR
+  SCROLLMARK,X,LINE,I: INTEGER;
+  EXITPROMPT: BOOLEAN; (* PROMPT AFTER LEAVING MOVEIT! *)
+  OLDLINE,OLDX: INTEGER;
+  NEWDIST,DIST: INTEGER;
+  DOFFSCREEN,ATEND,INREPLACE,INDELETE: BOOLEAN;
+  PTR,ANCHOR,OLDCURSOR: PTRTYPE;
+
+PROCEDURE SCROLLUP(BOTTOMLINE:PTRTYPE; HOWMANY: INTEGER); 
+(* bottomline is the "linestart" of the line to be scrolled up *)
+VAR
+  PTR: PTRTYPE;
+  I: INTEGER;
+BEGIN
+  (* DISPLAY THE NEXT LINE ON THE BOTTOM OF THE SCREEN *)
+  I:=0;
+  PTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[LINE1PTR])+LINE1PTR+1;
+  WHILE (I<HOWMANY) AND (PTR<BUFCOUNT) DO
+    BEGIN
+      LINE1PTR:=PTR; PTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[PTR])+PTR+1;
+      I:=I+1
+    END;
+  I:=0;
+  GOTOXY(0,SCREENHEIGHT);
+  REPEAT
+    I:=I+1;
+    BLANKS:=LEADBLANKS(BOTTOMLINE,BYTES);
+    WRITE(CHR(LF));
+    LINEOUT(BOTTOMLINE,BYTES,BLANKS,SCREENHEIGHT);
+    LINE:=LINE-1;
+  UNTIL (I>=HOWMANY) OR (BOTTOMLINE>=BUFCOUNT-1);
+  EXITPROMPT:=TRUE;
+END(* SCROLLUP *);
+
+PROCEDURE CLEAR(X1,Y1,X2,Y2: INTEGER); FORWARD;
+
+PROCEDURE CENTER;
+BEGIN
+  IF INDELETE THEN
+    BEGIN
+      IF LINE>=SCREENHEIGHT THEN
+	BEGIN
+	  CENTERCURSOR(LINE,2,TRUE);
+	  IF ABS(CURSOR-ANCHOR) > ABS(DIST) THEN CLEAR(0,1,MAX(X-1,0),LINE)
+	END
+      ELSE
+	BEGIN
+	  CENTERCURSOR(LINE,SCREENHEIGHT-1,TRUE);
+	  GOTOXY(X,LINE);
+	  IF ABS(CURSOR-ANCHOR) > ABS(DIST) THEN WRITE(CHR(11))
+	END;
+      DOFFSCREEN:=TRUE;
+    END
+  ELSE
+    IF (COMMAND=PARAC) AND ((DIRECTION='<') OR (LINE MOD SCREENHEIGHT=OLDLINE))
+      THEN CENTERCURSOR(LINE,OLDLINE,TRUE)
+      ELSE CENTERCURSOR(LINE,MIDDLE,TRUE);
+  IF EXITPROMPT AND (COMMAND<>QUITC) THEN
+    BEGIN
+      PROMPT; EXITPROMPT:=FALSE
+    END;
+  OLDLINE:=LINE; OLDX:=X;
+END;
+
+PROCEDURE UPMOVE;
+VAR I:INTEGER;
+BEGIN
+  I:=1;
+  GETLEADING;
+  (* FIND THE LINE FIRST *)
+  WHILE (I<=REPEATFACTOR) AND (LINESTART>1) DO
+    BEGIN
+      CURSOR:=LINESTART-1; (* LAST CHAR OF LINE ABOVE *)
+      GETLEADING;
+      LINE:=LINE-1;  I:=I+1;
+    END;
+  (* If possible set the cursor at the same x coord we came from.  Otherwise,
+     set it either to the beginning of the buffer, the beginning of text
+     on that line, or the end of the text on that line *)
+  CURSOR:=
+	   MAX(1,     (* The beginning of the buffer *)
+	       MAX(STUFFSTART,  (* The beginning of the text *)
+		   MIN(X-BLANKS+BYTES+LINESTART, (* same col *)
+		       SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR (* eol *)
+		      )
+		   )
+	       );
+  IF LINE<1 THEN CENTER;
+END(* UPALINE *);
+
+PROCEDURE DOWNMOVE;
+VAR 
+  I: INTEGER;
+  NEXTEOL: PTRTYPE;
+BEGIN
+  I:=1;
+  NEXTEOL:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR;
+  WHILE (NEXTEOL<BUFCOUNT-1) AND (I<=REPEATFACTOR) DO
+    BEGIN
+      CURSOR:=NEXTEOL+1;
+      NEXTEOL:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR;
+      IF NEXTEOL<BUFCOUNT THEN
+	BEGIN
+	  LINE:=LINE+1;
+	  I:=I+1;
+	  IF LINE=SCREENHEIGHT+1 THEN
+	    BEGIN
+	      SCROLLMARK:=CURSOR;
+	    END;
+	END;
+    END;
+  IF LINE>SCREENHEIGHT THEN
+    IF (LINE-SCREENHEIGHT>=SCREENHEIGHT) OR (INDELETE) THEN
+      CENTER
+    ELSE
+      SCROLLUP(SCROLLMARK,LINE-SCREENHEIGHT);
+  GETLEADING;
+  (* If possible set the cursor at the same x coord we came from.  Otherwise,
+     set it either to the end of the buffer, the beginning of text
+     on that line, or the end of the text on that line *)
+  CURSOR:=MIN(BUFCOUNT-1,      (* End of the buffer *)
+		 MAX(STUFFSTART,    (* Not in the indentation *)
+		     MIN(X-BLANKS+BYTES+LINESTART (* Where it wants to be *)
+			,SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR 
+			)
+		     )
+	      );
+END(* DOWNMOVE *);
+
+PROCEDURE LEFTMOVE;
+BEGIN
+  GETLEADING; (* SET LINESTART AND STUFFSTART *)
+  WHILE (STUFFSTART>CURSOR-REPEATFACTOR) AND (CURSOR>REPEATFACTOR) DO
+    BEGIN
+      REPEATFACTOR:=REPEATFACTOR-(CURSOR-STUFFSTART+1); (* CHARS MOVED OVER *)
+      IF EBUF^[CURSOR]=CHR(EOL) THEN CURSOR:=CURSOR-1;
+      CURSOR:=MAX(SCAN(-MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR,1);
+      LINE:=LINE-1;
+      GETLEADING; (* RESET LINESTART AND STUFFSTART *)
+    END;
+  CURSOR:=MAX(STUFFSTART,MAX(CURSOR-REPEATFACTOR,1));
+  IF LINE<1 THEN CENTER;
+  FINDXY(X,LINE);
+END (* LEFTMOVE *);
+
+PROCEDURE RIGHTMOVE;
+VAR
+  EOLPTR: PTRTYPE;
+BEGIN
+  EOLPTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR;
+  WHILE (EOLPTR<CURSOR+REPEATFACTOR) AND (EOLPTR<BUFCOUNT-1) DO
+    BEGIN
+      REPEATFACTOR:=REPEATFACTOR-(EOLPTR-CURSOR+1);
+      CURSOR:=EOLPTR+1; (* BEGINNING OF THE LINE BELOW *)
+      GETLEADING;
+      CURSOR:=STUFFSTART;
+      LINE:=LINE+1;
+      IF LINE=SCREENHEIGHT+1 THEN SCROLLMARK:=LINESTART;
+      EOLPTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR
+    END;
+  IF LINE>SCREENHEIGHT THEN
+    IF (LINE-SCREENHEIGHT>=SCREENHEIGHT) OR (INDELETE) THEN
+      CENTER
+    ELSE
+      SCROLLUP(SCROLLMARK,LINE-SCREENHEIGHT);
+  CURSOR:=MIN(BUFCOUNT-1,CURSOR+REPEATFACTOR);
+  FINDXY(X,LINE);
+END(* RIGHTMOVE *);
+
+PROCEDURE LINEMOVE(REPEATFACTOR: INTEGER);
+VAR I: INTEGER;
+BEGIN
+  I:=1;
+  IF DIRECTION='<' THEN
+    BEGIN
+      WHILE (I<=REPEATFACTOR) AND (CURSOR>1) DO 
+	BEGIN
+	  IF EBUF^[CURSOR]=CHR(EOL) THEN CURSOR:=CURSOR-1; (* NULL LINE CASE *)
+	  CURSOR:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR; (* 1 UP *)
+	  IF CURSOR>=1 THEN BEGIN LINE:=LINE-1; I:=I+1 END;
+	END;
+      CURSOR:=MAX(1,CURSOR); (* BACK INTO REALITY *)
+      ATEND:= (CURSOR=1);
+      IF LINE<1 THEN CENTER
+    END
+  ELSE
+    BEGIN (* DIRECTION='>' *)
+      WHILE (I<=REPEATFACTOR) AND (CURSOR<BUFCOUNT-1) DO
+	BEGIN
+	  CURSOR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+CURSOR+1; (*1 DOWN *)
+	  IF CURSOR<BUFCOUNT THEN
+	    BEGIN
+	      I:=I+1; LINE:=LINE+1;
+	      IF LINE=SCREENHEIGHT+1 THEN SCROLLMARK:=CURSOR;
+	    END
+	END;
+      ATEND:= (CURSOR>=BUFCOUNT-1);
+      IF LINE>SCREENHEIGHT THEN
+	IF (LINE-SCREENHEIGHT>=SCREENHEIGHT) OR 
+	   INREPLACE OR (COMMAND=PARAC) OR INDELETE
+	 THEN 
+	  CENTER
+	ELSE
+	  SCROLLUP(SCROLLMARK,LINE-SCREENHEIGHT);
+      CURSOR:=MIN(CURSOR,BUFCOUNT-1)
+    END;
+  GETLEADING;
+  CURSOR:=STUFFSTART; (* FORCED TO BEGINNING OF STUFF *)
+  X:=BLANKS;
+END(* LINEMOVE *);
+
+PROCEDURE JUMPBEGIN;
+BEGIN
+  CURSOR:=1; CENTERCURSOR(TRASH,1,FALSE)
+END;
+
+PROCEDURE JUMPEND;
+BEGIN
+  CURSOR:=BUFCOUNT-1; CENTERCURSOR(TRASH,SCREENHEIGHT,FALSE)
+END;
+
+PROCEDURE ADJUSTING;
+LABEL 1;
+TYPE
+  MODES=(RELATIVE,LEFTJ,RIGHTJ,CENTER);
+VAR
+  LLENGTH,TDELTA,I: INTEGER;
+  SAVEDIR: CHAR;
+  MODE: MODES;
+
+PROCEDURE DOIT(DELTA:INTEGER);
+VAR
+  EOLDIST: INTEGER;
+  T: PACKED ARRAY [0..MAXSTRING] OF CHAR;
+BEGIN
+  GETLEADING; (* Set linestart, stuffstart, and blanks *)
+  IF BLANKS+DELTA<0 THEN DELTA:=-BLANKS;
+  IF (EBUF^[LINESTART]=CHR(DLE)) AND (STUFFSTART-LINESTART=2) THEN
+    X:=ORD(EBUF^[LINESTART+1])+DELTA-32
+  ELSE
+    BEGIN
+      IF STUFFSTART-LINESTART>2 THEN
+	MOVELEFT(EBUF^[STUFFSTART],EBUF^[LINESTART+2],BUFCOUNT-STUFFSTART)
+      ELSE
+	BEGIN
+	  IF BUFCOUNT>BUFSIZE-100 THEN
+	    BEGIN
+	      ERROR('Buffer overflow',NONFATAL);
+	      EXIT(ADJUSTING)
+	    END
+	  ELSE
+	    MOVERIGHT(EBUF^[STUFFSTART],EBUF^[LINESTART+2],BUFCOUNT-STUFFSTART);
+	END;
+      IF LINESTART+2<>STUFFSTART THEN
+	BEGIN
+	  READJUST(LINESTART,LINESTART+2-STUFFSTART);
+	  BUFCOUNT:=BUFCOUNT+LINESTART+2-STUFFSTART;
+	END;
+      EBUF^[LINESTART]:=CHR(DLE);
+      X:=BLANKS+DELTA;
+    END;
+  EBUF^[LINESTART+1]:=CHR(X+32);
+  CURSOR:=LINESTART+2; GETLEADING;
+  GOTOXY(0,LINE); ERASETOEOL(0,LINE); (* erase the line *)
+  LINEOUT(LINESTART,BYTES,BLANKS,LINE); GOTOXY(X,LINE);
+END(* DOIT *);
+
+BEGIN (* adjusting *)
+  WITH PAGEZERO DO
+    BEGIN
+      SAVEDIR:=DIRECTION; EXITPROMPT:=FALSE; INDELETE:=FALSE; LASTPAT:=CURSOR;
+      INREPLACE:=TRUE;
+      PROMPTLINE:=
+  ' Adjust: L(just R(just C(enter <left,right,up,down-arrows> {<etx> to leave}';
+      PROMPT; NEEDPROMPT:=TRUE;
+      MODE:=RELATIVE;
+      SHOWCURSOR;
+      FINDXY(X,LINE);
+      TDELTA:=0;
+      REPEAT
+	CH:=GETCH;
+	COMMAND:=MAPTOCOMMAND(CH);
+	INFINITY:=FALSE;
+	IF COMMAND=SLASHC THEN
+	  BEGIN
+	    REPEATFACTOR:=1; INFINITY:=TRUE; CH:=GETCH; COMMAND:=TRANSLATE[CH]
+	  END
+	ELSE
+	  IF COMMAND=DIGIT THEN REPEATFACTOR:=GETNUM ELSE REPEATFACTOR:=1;
+	IF COMMAND IN [UP,DOWN] THEN
+	  BEGIN
+	    IF COMMAND=UP THEN DIRECTION:='<' ELSE DIRECTION:='>';
+	    I:=1;
+	    ATEND:=FALSE;
+	    WHILE NOT ATEND AND ((I<=REPEATFACTOR) OR INFINITY) DO
+	      BEGIN
+		I:=I+1;
+		LINEMOVE(1);
+		IF NOT ATEND THEN
+		  BEGIN
+		    IF MODE=RELATIVE THEN DOIT(TDELTA)
+		    ELSE
+		      BEGIN
+			LLENGTH:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[STUFFSTART]);
+			CASE MODE OF
+			  LEFTJ:  DOIT(LMARGIN-BLANKS);
+			  RIGHTJ: DOIT((RMARGIN-LLENGTH+1)-BLANKS);
+			  CENTER:
+			  DOIT(((RMARGIN-LMARGIN+1)-LLENGTH) DIV 2-BLANKS+LMARGIN)
+			END (* case *)
+		      END (* else *)
+		  END; (* if not atend *)
+	      END (* while ... *)
+	  END
+	ELSE
+	  IF COMMAND=LEFT THEN
+	    BEGIN
+	      DOIT(-REPEATFACTOR); TDELTA:=TDELTA-REPEATFACTOR; MODE:=RELATIVE
+	    END
+	  ELSE
+	    IF COMMAND=RIGHT THEN
+	      BEGIN
+		DOIT(REPEATFACTOR); TDELTA:=TDELTA+REPEATFACTOR; MODE:=RELATIVE
+	      END
+	    ELSE
+	      IF COMMAND IN [LISTC,REPLACEC,COPYC] THEN
+		BEGIN
+		  GETLEADING;
+		  LLENGTH:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[STUFFSTART]);
+		  IF COMMAND=LISTC THEN
+		    BEGIN MODE:=LEFTJ; DOIT(LMARGIN-BLANKS) END
+		  ELSE
+		    IF COMMAND=REPLACEC THEN
+		      BEGIN MODE:=RIGHTJ; DOIT((RMARGIN-LLENGTH+1)-BLANKS) END
+		    ELSE (* COMMAND=COPYC *)
+		      BEGIN
+			MODE:=CENTER;
+			DOIT(((RMARGIN-LMARGIN+1)-LLENGTH) DIV 2-BLANKS+LMARGIN)
+		      END
+		END
+	      ELSE
+	    IF CH<>CHR(ETX) THEN BEGIN ERRWAIT; SHOWCURSOR END;
+      1: UNTIL CH=CHR(ETX);
+      DIRECTION:=SAVEDIR;
+    END;
+END;
+
+PROCEDURE TABBY;
+(* Scan along the line until you either hit a tabstop or the end of the line *)
+VAR
+  NEWX,ENDX,I,NUMTODO: INTEGER;
+BEGIN
+  NUMTODO:=REPEATFACTOR;
+  FOR I:=1 TO NUMTODO DO
+  BEGIN
+    REPEATFACTOR:=1;
+    IF DIRECTION='>' THEN RIGHTMOVE ELSE LEFTMOVE;
+    NEWX:=X;
+    WITH PAGEZERO DO
+      BEGIN
+	IF DIRECTION='>' THEN
+	  BEGIN
+	    ENDX:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[CURSOR])+X;
+	    WHILE (TABSTOP[NEWX]=NONE) AND (NEWX<ENDX) DO NEWX:=NEWX+1;
+	  END
+	ELSE
+	  BEGIN
+	    GETLEADING;
+	    WHILE (TABSTOP[NEWX]=NONE) AND (NEWX>BLANKS) DO NEWX:=NEWX-1;
+	  END;
+	REPEATFACTOR:=ABS(NEWX-X);
+	IF DIRECTION='>' THEN RIGHTMOVE ELSE LEFTMOVE;
+      END; (* With *)
+  END (* For *)
+END;
+
+PROCEDURE MOVING;
+VAR
+  SAVEX: INTEGER;
+BEGIN
+  INDELETE:=FALSE;
+  INREPLACE:=FALSE;
+  EXITPROMPT:=FALSE;
+  IF INFINITY THEN
+    BEGIN
+      CASE COMMAND OF
+	UP,LEFT: JUMPBEGIN;
+	DOWN,RIGHT: JUMPEND;
+	PARAC,SPACE,ADVANCE,TAB: IF DIRECTION='<' THEN JUMPBEGIN ELSE JUMPEND
+      END;
+      NEEDPROMPT:=TRUE;
+      NEXTCOMMAND;
+      EXIT(MOVEIT)
+    END;
+  FINDXY(X,LINE);
+  REPEAT
+    OLDX:=X; OLDLINE:=LINE;
+    CASE COMMAND OF
+      LEFT: LEFTMOVE;
+      RIGHT: RIGHTMOVE;
+      SPACE: IF DIRECTION='<' THEN LEFTMOVE ELSE RIGHTMOVE;
+      UP: UPMOVE;
+      DOWN: DOWNMOVE;
+      ADVANCE: LINEMOVE(REPEATFACTOR);
+      PARAC: 
+	IF REPEATFACTOR>1000 THEN ERROR('Too many',NONFATAL)
+	ELSE LINEMOVE(SCREENHEIGHT*REPEATFACTOR);
+      TAB: TABBY
+    END;
+    IF EXITPROMPT OR (COMMAND=PARAC) THEN
+      GOTOXY(X,LINE)
+    ELSE
+      IF LINE=OLDLINE THEN 
+	BEGIN
+	  IF X=OLDX+1 THEN CONTROL(FS) ELSE IF X=OLDX-1 THEN WRITE(CHR(BSPCE))
+	  ELSE GOTOXY(X,LINE)
+	END
+      ELSE
+	IF X=OLDX THEN
+	  BEGIN
+	    IF LINE=OLDLINE+1 THEN WRITE(CHR(LF))
+	    ELSE IF LINE=OLDLINE-1 THEN CONTROL(US)
+	    ELSE GOTOXY(X,LINE);
+	  END
+	ELSE
+	  GOTOXY(X,LINE);
+    REPEATFACTOR:=1;
+    NEXTCOMMAND
+  UNTIL NOT (COMMAND IN [UP,DOWN,LEFT,RIGHT,ADVANCE,SPACE,TAB]);
+  IF EXITPROMPT THEN PROMPT;
+  SHOWCURSOR;
+END (* MOVING *);
+
+PROCEDURE PUTITBACK(C1,C2: PTRTYPE);
+VAR
+  PTR: PTRTYPE;
+  INDENT,LOFF: INTEGER;
+BEGIN
+  PTR:=C1;
+  WHILE PTR<=C2 DO
+    BEGIN
+      IF EBUF^[PTR]=CHR(EOL) THEN
+	BEGIN
+	  PTR:=PTR+1; WRITELN;
+	  INDENT:=LEADBLANKS(PTR,LOFF);
+	  IF (PTR<C2) AND (INDENT>0) THEN
+	    WRITE(' ':INDENT);
+	  PTR:=PTR+LOFF
+	END
+      ELSE
+	BEGIN WRITE(EBUF^[PTR]); PTR:=PTR+1 END;
+    END;
+END;
+
+PROCEDURE CLEAR(*X1,Y1,X2,Y2: INTEGER*);
+(* Screen co-ordinate (X1,Y1) is assumed to be before (X2,Y2).  This
+   procedure takes these co-ordinates and clears (writes blanks) over
+   the screen between them (inclusive)  *)
+VAR XX,I: INTEGER;
+BEGIN
+  GOTOXY(X1,Y1);
+  XX:=X1;
+  FOR I:=Y1 TO Y2-1 DO BEGIN IF I<>0 THEN ERASETOEOL(XX,I); XX:=0; WRITELN END;
+  IF Y1<>Y2 THEN FOR I:=0 TO X2 DO WRITE(' ')
+  ELSE FOR I:=X1 TO X2 DO WRITE(' ')
+END;
+
+PROCEDURE RESOLVESCREEN;
+VAR
+  X1,X2,Y1,Y2,SAVE: INTEGER;
+  C1,C2: PTRTYPE;
+BEGIN
+  X1:=X;    Y1:=LINE;
+  X2:=OLDX; Y2:=OLDLINE;
+  IF NEWDIST>DIST THEN
+    BEGIN C1:=CURSOR-1; C2:=OLDCURSOR; X1:=X1-1 END
+  ELSE
+    IF NEWDIST<DIST THEN
+      BEGIN C2:=OLDCURSOR-1; C1:=CURSOR; X2:=X2-1 END
+    ELSE
+      EXIT(RESOLVESCREEN);
+  IF (Y1>Y2) OR ((Y1=Y2) AND (X1>X2)) THEN
+    BEGIN
+      SAVE:=C1; C1:=C2; C2:=SAVE;
+      SAVE:=Y1; Y1:=Y2; Y2:=SAVE;
+      SAVE:=X1; X1:=X2; X2:=SAVE
+    END;
+  IF ABS(NEWDIST)>ABS(DIST) THEN
+    CLEAR(X1,Y1,X2,Y2)
+  ELSE
+    BEGIN
+      GOTOXY(X1,Y1);
+      PUTITBACK(C1,C2)
+    END;
+  GOTOXY(X,LINE)
+END;
+
+PROCEDURE DELETING;
+LABEL 1;
+VAR
+  ATBOL,ANCHOR,SAVE: PTRTYPE;
+  OK,ATBOT,NOMOVE: BOOLEAN;
+  STARTLINE: INTEGER;
+
+BEGIN
+  DOFFSCREEN:=FALSE; INDELETE:=TRUE; INREPLACE:=FALSE; EXITPROMPT:=FALSE;
+  ANCHOR:=CURSOR; NEWDIST:=0;
+  GETLEADING; ATBOL:=LINESTART; ATBOT:=(CURSOR=STUFFSTART);
+  PROMPTLINE:=
+' Delete: < > <Moving commands> {<etx> to delete, <esc> to abort}';
+  PROMPT; NEEDPROMPT:=TRUE;
+  SHOWCURSOR;
+  FINDXY(X,LINE);
+  STARTLINE:=LINE;
+  REPEAT
+    OLDCURSOR:=CURSOR;
+    DIST:=NEWDIST;
+    OLDX:=X; OLDLINE:=LINE;
+    CH:=GETCH;
+    COMMAND:=TRANSLATE[CH];
+    IF COMMAND=DIGIT THEN REPEATFACTOR:=GETNUM ELSE REPEATFACTOR:=1;
+    IF COMMAND IN [REVERSEC..DIGIT,ADVANCE,SPACE] THEN
+      BEGIN
+	CASE COMMAND OF
+	  LEFT: LEFTMOVE;
+	  RIGHT: RIGHTMOVE;
+	  SPACE: IF DIRECTION='<' THEN LEFTMOVE ELSE RIGHTMOVE;
+	  UP: UPMOVE;
+	  DOWN: DOWNMOVE;
+	  ADVANCE: LINEMOVE(REPEATFACTOR);
+	  REVERSEC,FORWARDC:
+	    BEGIN
+	      IF COMMAND=REVERSEC THEN
+		DIRECTION:='<'
+	      ELSE
+		DIRECTION:='>';
+	      GOTOXY(0,0); WRITE(DIRECTION); GOTOXY(X,LINE)
+	    END;
+	  TAB: TABBY
+	END;
+	NEWDIST:=CURSOR-ANCHOR;
+	RESOLVESCREEN;
+      END
+    ELSE
+      IF (CH<>CHR(ESC)) AND (CH<>CHR(ETX)) THEN 
+	BEGIN ERRWAIT; GOTOXY(X,LINE) END
+  UNTIL (CH IN [CHR(ETX),CHR(ESC)]);
+  IF CH=CHR(ETX) THEN 
+    BEGIN
+      GETLEADING; (* Indentation fixup *)
+      IF ATBOT AND (CURSOR=STUFFSTART) THEN
+	BEGIN CURSOR:=LINESTART; SAVE:=ANCHOR; ANCHOR:=ATBOL END;
+      IF OKTODEL(CURSOR,ANCHOR) THEN
+	BEGIN
+	  READJUST(MIN(CURSOR,ANCHOR),-ABS(CURSOR-ANCHOR));
+	  COPYLINE:=(CURSOR=LINESTART) AND ATBOT;
+	  IF ANCHOR<CURSOR THEN 
+	    MOVELEFT(EBUF^[CURSOR],EBUF^[ANCHOR],BUFCOUNT-CURSOR)
+	  ELSE
+	    MOVELEFT(EBUF^[ANCHOR],EBUF^[CURSOR],BUFCOUNT-ANCHOR);
+	  BUFCOUNT:=BUFCOUNT-ABS(CURSOR-ANCHOR);
+	  CURSOR:=MIN(CURSOR,ANCHOR);
+	  GETLEADING; CURSOR:=MAX(STUFFSTART,CURSOR)
+	END
+      ELSE
+	CURSOR:=SAVE
+    END
+  ELSE
+    BEGIN
+      COPYLINE:=FALSE; COPYOK:=TRUE;
+      COPYSTART:=MIN(CURSOR,ANCHOR);
+      COPYLENGTH:=ABS(CURSOR-ANCHOR);
+      CURSOR:=ANCHOR;
+    END;
+  1:INDELETE:=FALSE;
+  OK:=(LINE=STARTLINE) AND NOT DOFFSCREEN;
+  UPSCREEN(OK,NOT OK,LINE);
+  NEXTCOMMAND;
+END;
+
+BEGIN
+  IF COMMAND=DELETEC THEN
+    DELETING
+  ELSE
+    IF COMMAND=ADJUSTC THEN
+      BEGIN ADJUSTING; NEXTCOMMAND END
+    ELSE MOVING;
+END;
+
+
+(*$TF i n d   &   R e p l a c e*)
+
+PROCEDURE FIND;
+LABEL 1;
+VAR
+  ALREADYSAIDGO,THERE,FOUND,LASTPATTERN: BOOLEAN;
+  TRASH,COULDBE,PLENGTH,START,STOP,NEXTSTART: INTEGER;
+  NEXT,PTR: PTRTYPE;
+  MODE: (LITERAL,TOKEN);
+  I: INTEGER;
+  DELIMITER: CHAR;
+  JUSTIN: BOOLEAN;
+  POSSIBLE,PAT: PTYPE;
+  USEOLD,VERIFY: BOOLEAN;
+
+PROCEDURE NEXTCH;
+BEGIN
+  CH:=GETCH;
+  IF CH=CHR(ESC) THEN
+      BEGIN
+	IF NOT JUSTIN THEN REDISPLAY;
+	SHOWCURSOR; NEXTCOMMAND;
+	EXIT(FIND);
+      END;
+  IF (CH=CHR(EOL)) AND JUSTIN THEN
+    BEGIN
+      JUSTIN:=FALSE;
+      BLANKCRT(1)
+    END
+  ELSE
+    WRITE(CH);
+END;
+
+PROCEDURE SKIP;
+BEGIN
+  WHILE CH IN [CHR(SP),CHR(HT),CHR(EOL)] DO NEXTCH
+END;
+
+PROCEDURE OPTIONS;
+BEGIN
+  REPEAT
+    CH:=UCLC(CH);
+    IF CH='L' THEN
+      BEGIN MODE:=LITERAL; NEXTCH END
+    ELSE
+      IF CH='V' THEN 
+	BEGIN VERIFY:=TRUE; NEXTCH END
+      ELSE
+	IF CH='T' THEN
+	  BEGIN MODE:=TOKEN; NEXTCH END;
+    CH:=UCLC(CH);
+  UNTIL NOT ((CH='V') OR (CH='T') OR (CH='L'));
+  SKIP;
+  IF (CH='S') OR (CH='s') THEN USEOLD:=TRUE;
+END;
+
+PROCEDURE PARSESTRING(VAR PATTERN: PTYPE; VAR PLENGTH: INTEGER);
+VAR I,J: INTEGER;
+BEGIN
+  SKIP;
+  IF CH IN ['A'..'Z','a'..'z','0'..'9',CHR(BS)] THEN
+    BEGIN
+      ERROR('Invalid delimiter.',NONFATAL);
+      IF NOT JUSTIN THEN REDISPLAY;
+      NEXTCOMMAND;
+      EXIT(FIND);
+    END;
+  DELIMITER:=CH;
+  I:=0;
+  REPEAT
+    NEXTCH;
+    IF CH=CHR(BS) THEN
+      BEGIN
+	IF (PATTERN[I]<>CHR(EOL)) AND (I>0) THEN (* Don't go overboard! *)
+	  BEGIN
+	    WRITE(' ',CHR(BS));
+	    I:=I-1
+	  END
+	ELSE CONTROL(FS); (* Make up for the <BS> NEXTCH wrote out *)
+      END
+    ELSE
+      BEGIN
+	PATTERN[I]:=CH;
+	I:=I+1
+      END;
+  UNTIL (CH=DELIMITER) OR (I>=MAXSTRING);
+  IF I>=MAXCHAR THEN
+    BEGIN 
+      ERROR('Your pattern is too long',NONFATAL);
+      IF NOT JUSTIN THEN REDISPLAY;
+      NEXTCOMMAND; EXIT(FIND)
+    END;
+  PLENGTH:=I-1;
+END (* PARSESTRING *);
+
+FUNCTION OK(PTR: PTRTYPE): BOOLEAN;
+(* Compare PAT against the buffer *)
+VAR I: INTEGER;
+BEGIN
+  I:=0;
+  WHILE (I<PLENGTH) AND (EBUF^[PTR+I]=PAT[I]) DO I:=I+1;
+  OK:= I=PLENGTH;
+END;
+
+PROCEDURE SKIPKIND3(VAR CURSOR: PTRTYPE); 
+BEGIN
+  (* Skip over kind3 characters in the ebuf.  Update the cursor
+     to the first non-kind3 character                           *)
+  WHILE EBUF^[CURSOR] IN [CHR(SP),CHR(HT),CHR(DLE),CHR(EOL)] DO
+    IF EBUF^[CURSOR]=CHR(DLE) THEN CURSOR:=CURSOR+2
+    ELSE CURSOR:=CURSOR+1;
+END;
+
+PROCEDURE SCANBACKWARD;
+LABEL 1;
+VAR
+  LOC: PTRTYPE;
+  CHTHERE: BOOLEAN;
+BEGIN
+  CHTHERE:=TRUE;
+  THERE:=FALSE;
+  FILLCHAR(PAT[0],SIZEOF(PAT),' ');
+  MOVELEFT(TARGET[START],PAT[0],PLENGTH);
+  WHILE CHTHERE AND NOT THERE DO 
+    BEGIN
+      1: IF PTR>=PLENGTH THEN (* Possibly there *)
+	LOC:=SCAN(-PTR,=PAT[0],EBUF^[PTR])
+      ELSE
+	LOC:=-PTR;
+      IF LOC=-PTR THEN (* Not there! *)
+	BEGIN
+	  CHTHERE:=FALSE; THERE:=FALSE
+	END
+      ELSE
+	BEGIN
+	  PTR:=PTR+LOC; NEXT:=PTR-1;
+	  IF EBUF^[PTR-1]=CHR(DLE) THEN BEGIN PTR:=NEXT; GOTO 1 END;
+	  IF OK(PTR) THEN THERE:=TRUE ELSE PTR:=NEXT
+	END
+    END;
+END;
+
+PROCEDURE SCANFORWARD;
+LABEL 1;
+VAR
+  MAXSCAN,LOC: INTEGER;
+  CHTHERE: BOOLEAN;
+BEGIN
+  CHTHERE:=TRUE;
+  THERE:=FALSE;
+  FILLCHAR(PAT[0],SIZEOF(PAT),' ');
+  MOVELEFT(TARGET[START],PAT[0],PLENGTH);
+  WHILE CHTHERE AND NOT THERE DO
+   BEGIN
+    1: MAXSCAN:=(BUFCOUNT-PLENGTH)-PTR+1;
+    IF MAXSCAN>0 THEN (* still stuff to scan *)
+      LOC:=SCAN(MAXSCAN,=PAT[0],EBUF^[PTR])
+    ELSE
+      LOC:=MAXSCAN; (* Dummy up 'not found' condition *)
+    IF LOC=MAXSCAN THEN
+      BEGIN CHTHERE:=FALSE; THERE:=FALSE END
+    ELSE
+      BEGIN
+	PTR:=LOC+PTR; NEXT:=PTR+1;
+	IF EBUF^[PTR-1]=CHR(DLE) THEN BEGIN PTR:=NEXT; GOTO 1 END;
+	IF OK(PTR) THEN THERE:=TRUE ELSE PTR:=NEXT
+      END
+   END;
+END;
+
+PROCEDURE GOFORIT;
+
+PROCEDURE NEXTLINE;
+(* Given NEXTSTART, calculate the START and STOP for the next line *)
+BEGIN
+  LASTPATTERN:=FALSE;
+  START:=NEXTSTART;
+  STOP:=MIN(TLENGTH-1,START+SCAN(TLENGTH-START,=CHR(EOL),TARGET[START]));
+  IF STOP=TLENGTH-1 THEN BEGIN STOP:=MAX(STOP,0); LASTPATTERN:=TRUE END;
+  NEXTSTART:=STOP+1;
+END;
+
+PROCEDURE NEXTTOKEN;
+(* Given NEXTSTART, calculate START and STOP *)
+BEGIN
+  LASTPATTERN:=FALSE;
+  START:=NEXTSTART;
+  (* Skip over leading kind3 characters *)
+  WHILE (TARGET[START] IN [CHR(SP),CHR(EOL),CHR(HT)]) AND (START<TLENGTH-1) DO
+    START:=START+1;
+  STOP:=START;
+  (* Get the next token *)
+  WHILE (KIND[TARGET[START]]=KIND[TARGET[STOP+1]]) AND (STOP<TLENGTH-1) DO
+    STOP:=STOP+1;
+  STOP:=MIN(STOP,TLENGTH-1);
+  (* To accurately test for the last token, scan off the trailing kind3
+     characters *)
+  NEXTSTART:=STOP+1;
+  WHILE (TARGET[NEXTSTART] IN [CHR(EOL),CHR(SP),CHR(HT)]) AND
+	(NEXTSTART<TLENGTH) DO NEXTSTART:=NEXTSTART+1;
+  IF NEXTSTART=TLENGTH THEN BEGIN STOP:=MAX(STOP,0); LASTPATTERN:=TRUE END;
+END;
+
+BEGIN(* goforit *)
+  FOUND:=FALSE;
+  NEXT:=PTR;
+  REPEAT
+    PTR:=NEXT; (* Set to next place to scan for *)
+    NEXTSTART:=0;  (* Fool NEXTLINE into giving us START and STOP for line 1 *)
+    IF MODE=LITERAL THEN NEXTLINE ELSE NEXTTOKEN;
+    PLENGTH:=STOP-START+1;
+    IF DIRECTION='>' THEN SCANFORWARD ELSE SCANBACKWARD;
+    IF THERE THEN
+      BEGIN
+	COULDBE:=PTR;
+	FOUND:=TRUE;
+	WHILE (NOT LASTPATTERN) AND FOUND DO
+	  BEGIN
+	    IF MODE=LITERAL THEN NEXTLINE ELSE NEXTTOKEN;
+	    PTR:=PTR+PLENGTH;
+	    SKIPKIND3(PTR); (* Go past the junk on the next line *)
+	    PLENGTH:=STOP-START+1; (* For the new line *)
+	    FILLCHAR(PAT[0],SIZEOF(PAT),' ');
+	    MOVELEFT(TARGET[START],PAT[0],PLENGTH);
+	    IF PTR+PLENGTH > BUFCOUNT THEN
+	      FOUND:=FALSE
+	    ELSE
+	      IF NOT OK(PTR) THEN FOUND:=FALSE;
+	  END;
+      END;
+    (* In token mode make sure the first and last characters
+       of the target are on 'token boundaries' *)
+    IF MODE=TOKEN THEN IF KIND[PAT[0]]=ORD('A') THEN IF FOUND THEN
+      BEGIN
+	IF ((COULDBE>2) AND (EBUF^[COULDBE-2]<>CHR(DLE))) OR
+	   (COULDBE<=2) THEN (* whew! *)
+	  IF KIND[EBUF^[COULDBE]]=KIND[EBUF^[COULDBE-1]] THEN
+	    FOUND:=FALSE; (* False find... don't count it. *)
+	IF (PTR+PLENGTH<=BUFCOUNT-1) AND 
+	   (KIND[EBUF^[PTR+PLENGTH-1]]=KIND[EBUF^[PTR+PLENGTH]]) THEN
+	  FOUND:=FALSE; (* Another false find *)
+     END;
+  UNTIL FOUND OR NOT THERE;
+END(* goforit *);
+
+PROCEDURE PUTPROMPT(LEFT,RIGHT:STRING; REPEATFACTOR:INTEGER; LORT:BOOLEAN);
+BEGIN
+  PROMPTLINE:=LEFT; PROMPT;
+  WRITE('[');
+  IF INFINITY THEN WRITE('/') ELSE WRITE(REPEATFACTOR);
+  WRITE(']: ');
+  IF LORT THEN IF MODE=TOKEN THEN WRITE('L(it') ELSE WRITE('T(ok');
+  WRITE(RIGHT)
+END;
+
+PROCEDURE REPLACEIT;
+LABEL 1;
+BEGIN
+  IF VERIFY THEN
+    BEGIN
+      CENTERCURSOR(TRASH,MIDDLE,NOT JUSTIN);
+      PUTPROMPT(' Replace','<esc> aborts, ''R'' replaces, '' '' doesn''t',
+		REPEATFACTOR-I+2,FALSE);
+      SHOWCURSOR;
+      CH:=GETCH;
+      IF CH=CHR(ESC) THEN
+	BEGIN
+	  GETLEADING; CURSOR:=MAX(CURSOR,STUFFSTART);
+	  NEXTCOMMAND; EXIT(FIND)
+	END;
+      IF (CH<>'R') AND (CH<>'r') THEN 
+	BEGIN
+	  REPEATFACTOR:=REPEATFACTOR+1;  (* 20-Jun-78 Don't count false hits *)
+	  GOTO 1;
+	END;
+    END;
+    (* Replace TARGET with SUBSTRING *)
+      IF SLENGTH>CURSOR-LASTPAT THEN
+	IF SLENGTH-(CURSOR-LASTPAT)+BUFCOUNT>BUFSIZE-200 THEN
+	    BEGIN
+	      ERROR('Buffer full.  Aborting Replace',NONFATAL);
+	      GETLEADING; CURSOR:=MAX(CURSOR,STUFFSTART);
+	      NEXTCOMMAND; EXIT(FIND);
+	    END
+	ELSE
+	  MOVERIGHT(EBUF^[CURSOR],EBUF^[LASTPAT+SLENGTH],BUFCOUNT-CURSOR)
+      ELSE
+	IF SLENGTH<CURSOR-LASTPAT THEN
+	  MOVELEFT(EBUF^[CURSOR],EBUF^[LASTPAT+SLENGTH],BUFCOUNT-CURSOR);
+      MOVELEFT(SUBSTRING[0],EBUF^[LASTPAT],SLENGTH);
+      IF SLENGTH<>CURSOR-LASTPAT THEN
+	READJUST(LASTPAT,SLENGTH-(CURSOR-LASTPAT));
+      BUFCOUNT:=BUFCOUNT+SLENGTH-(CURSOR-LASTPAT);
+      CURSOR  :=CURSOR  +SLENGTH-(CURSOR-LASTPAT);
+      JUSTIN:=FALSE;
+1:END;
+
+BEGIN
+  ALREADYSAIDGO:=FALSE; (* OK to go on without asking! *)
+  JUSTIN:=TRUE;
+  USEOLD:=FALSE;
+  VERIFY:=FALSE;
+  IF PAGEZERO.TOKDEF THEN MODE:=TOKEN ELSE MODE:=LITERAL;
+  IF COMMAND=FINDC THEN
+    PUTPROMPT(' Find',' <target>  =>',REPEATFACTOR,TRUE)
+  ELSE
+    PUTPROMPT(' Replace',' V(fy <targ> <sub>  =>',REPEATFACTOR,TRUE);
+  NEEDPROMPT:=TRUE; 
+  NEXTCH; SKIP;
+  OPTIONS;
+  IF NOT USEOLD THEN 
+    BEGIN
+      PARSESTRING(TARGET,TLENGTH);
+      TDEFINED:=TRUE
+    END;
+  IF COMMAND=REPLACEC THEN
+    BEGIN
+      NEXTCH; SKIP;
+      USEOLD:=FALSE;
+      OPTIONS;
+      IF NOT USEOLD THEN
+	BEGIN
+	  PARSESTRING(SUBSTRING,SLENGTH);
+	  SDEFINED:=TRUE
+	END
+    END;
+  HOME;
+  CLEARLINE(0);
+  IF ((COMMAND=FINDC) AND TDEFINED) 
+     OR ((COMMAND=REPLACEC) AND SDEFINED AND TDEFINED) THEN 
+    BEGIN
+      I:=1;
+      FOUND:=TRUE;
+      PTR:=CURSOR;
+      WHILE ((I<=REPEATFACTOR) OR INFINITY) AND FOUND DO
+	BEGIN
+	  GOFORIT; (* Find the target (handles token and literal mode) *)
+	  I:=I+1;
+	  IF FOUND THEN
+	    BEGIN
+	      CURSOR:=PTR+PLENGTH; LASTPAT:=COULDBE; (*Set up for next time*)
+	      IF COMMAND=REPLACEC THEN REPLACEIT;
+	      IF DIRECTION='<' THEN PTR:=COULDBE-1 ELSE PTR:=CURSOR;
+	    END
+	  ELSE
+	    BEGIN
+	      IF (DIRECTION='>') AND (RPAGE<FLENGTH)
+	      OR (DIRECTION='<') AND (LPAGE>0) THEN
+		BEGIN
+		  IF ALREADYSAIDGO THEN CH:='Y'
+		  ELSE
+		    BEGIN
+		 MSG:='End of Buffer encountered. Get more from disk? (Y/N)';
+		      PUTMSG;
+		      ALREADYSAIDGO:=TRUE;
+		      REPEAT CH:=UCLC(GETCH) UNTIL CH IN ['Y','N'];
+		    END;
+		  IF CH='Y' THEN
+		    BEGIN
+		      JUSTIN:=FALSE; (* FORCES REDISPLAY!!! *)
+		      MSG:='Finding'; PUTMSG;
+		      FOUND:=TRUE;
+		      I:=I-1; (* Really haven't found anything *)
+		      IF DIRECTION='>' THEN
+			BEGIN
+			  CURSOR:=BUFCOUNT-1;
+			  PUTPAGES(LEFTSTACK);
+			  GETPAGES(RIGHTSTACK);
+			END
+		      ELSE
+			BEGIN
+			  CURSOR:=1;
+			  PUTPAGES(RIGHTSTACK);
+			  GETPAGES(LEFTSTACK)
+			END;
+		      PTR:=CURSOR
+		    END
+		  ELSE
+		    GOTO 1;
+		END (* ... or ... *)
+	    END (* if found then ... else ... *)
+	END; (* While ... *)
+      IF NOT FOUND THEN
+	IF NOT( INFINITY AND (I>2) ) THEN
+	  BEGIN
+	    IF ALREADYSAIDGO THEN
+	      BEGIN (* Cursor invalid *)
+		CURSOR:=1;
+		JUSTIN:=FALSE;
+	      END;
+	    ERROR('Pattern not in the file',NONFATAL) 
+	  END;
+    END
+  ELSE 
+    ERROR('No old pattern.',NONFATAL);
+  1: GETLEADING;
+  CURSOR:=MAX(STUFFSTART,CURSOR);
+  CENTERCURSOR(TRASH,MIDDLE,NOT JUSTIN);
+  SHOWCURSOR;
+  NEXTCOMMAND
+END;
+
+(*$TC o m m a n d   I n t e r f a c e*)
+
+PROCEDURE NEXTCOMMAND;
+BEGIN
+  IF NEEDPROMPT THEN
+    BEGIN
+      PROMPTLINE:=
+' Edit: A(djst C(py D(lete F(ind I(nsrt J(mp R(place Q(uit X(chng Z(ap  [L.2]';
+      PROMPT;
+      NEEDPROMPT:=FALSE;
+      SHOWCURSOR
+    END;
+  CH:=GETCH;
+  COMMAND:=MAPTOCOMMAND(CH);
+END(* NEXTCOMMAND *);
+
+PROCEDURE COMMANDER;
+BEGIN
+  INFINITY:=FALSE;
+  IF COMMAND=SLASHC THEN 
+    BEGIN REPEATFACTOR:=1; INFINITY:=TRUE; NEXTCOMMAND END
+  ELSE
+    IF COMMAND=DIGIT THEN REPEATFACTOR:=GETNUM ELSE REPEATFACTOR:=1;
+  CASE COMMAND OF 
+    ILLEGAL: BEGIN ERRWAIT; SHOWCURSOR; NEXTCOMMAND END;
+    REVERSEC,FORWARDC: FIXDIRECTION;
+    BANISHC: BANISH;
+    COPYC: COPY;
+    DUMPC: DUMP;
+    FINDC: FIND;
+    INSERTC: INSERTIT;
+    JUMPC: JUMP;
+    LISTC: NEXTCOMMAND; (* NOT YET, DEPENDS ON TERAK PAN *)
+    MACRODEFC: DEFMACRO;
+    NEXTC: NEXT;
+    QUITC: ; (* EXIT HANDLED IN OUTER BLOCK *)
+    REPLACEC: FIND;
+    SETC: SETSTUFF;
+    VERIFYC: VERIFY;
+    XECUTEC: XMACRO;
+    ZAPC: ZAPIT;
+    EQUALC: BEGIN
+      CURSOR:=LASTPAT;
+      GETLEADING;
+      CURSOR:=MAX(CURSOR,STUFFSTART);
+      CENTERCURSOR(TRASH,MIDDLE,FALSE); 
+      SHOWCURSOR; NEXTCOMMAND 
+    END;
+    ADJUSTC,DELETEC,PARAC,UP,DOWN,LEFT,RIGHT,ADVANCE,TAB,SPACE: MOVEIT
+  END (* BIG LONG CASE STATEMENT *);
+END (* COMMANDER *);
+
+BEGIN (* Editcore *)
+  NEXTCOMMAND;
+  WHILE COMMAND<>QUITC DO COMMANDER
+END;
+
+
+(*$TM i s c.  P r o c e d u r e s  (Incl. Screen Control) *)
+
+FUNCTION MIN(* (A,B:INTEGER):INTEGER *);
+BEGIN
+  IF A<B THEN MIN:=A ELSE MIN:=B
+END;
+
+FUNCTION MAX (*(A,B:INTEGER):INTEGER*);
+BEGIN
+  IF A>B THEN MAX:=A ELSE MAX:=B
+END;
+
+FUNCTION GETCH(*:CHAR*);
+VAR GCH: CHAR;
+BEGIN
+  READ(KEYBOARD,GCH);
+  IF EOLN(KEYBOARD) THEN GCH:=CHR(EOL);
+  GETCH:=GCH;
+END;
+
+FUNCTION MAPTOCOMMAND(* (CH:CHAR): COMMANDS *);
+BEGIN
+  IF (CH=SYSCOM^.CRTCTRL.ESCAPE) AND (CH<>CHR(0)) THEN
+    BEGIN
+      CH:=GETCH;
+      IF CH=SYSCOM^.CRTINFO.LEFT THEN MAPTOCOMMAND:=LEFT
+      ELSE
+	IF CH=SYSCOM^.CRTINFO.RIGHT THEN MAPTOCOMMAND:=RIGHT
+	ELSE
+	  IF CH=SYSCOM^.CRTINFO.UP THEN MAPTOCOMMAND:=UP
+	  ELSE
+	    IF CH=SYSCOM^.CRTINFO.DOWN THEN MAPTOCOMMAND:=DOWN
+	    ELSE
+	      MAPTOCOMMAND:=ILLEGAL
+    END
+  ELSE
+    MAPTOCOMMAND:=TRANSLATE[CH];
+END;
+
+FUNCTION UCLC(*(CH:CHAR):CHAR*); (* Map Lower Case to Upper Case *)
+BEGIN
+  IF CH IN ['a'..'z'] THEN UCLC:=CHR(ORD(CH)-32) ELSE UCLC:=CH
+END;
+
+PROCEDURE CONTROL(*CH:CTYPE*);
+(* Based on the parameter passed, use crtctrl to put out the
+   appropriate control code for the host terminal *)
+BEGIN
+  WITH SYSCOM^.CRTCTRL DO
+    BEGIN
+      IF ESCAPE<>CHR(0) THEN WRITE(ESCAPE);
+      CASE CH OF
+	FS:     WRITE(NDFS);
+	GOHOME: WRITE(HOME);
+	ETOEOL: WRITE(ERASEEOL);
+	ETOEOS: WRITE(ERASEEOS);
+	US:     WRITE(RLF)
+      END
+    END
+END;
+
+(* LOOK AT ME! LOOK AT ME! LOOK AT ME! LOOK AT ME! LOOK AT ME! LOOK AT ME!  *)
+PROCEDURE CLEARSCREEN;
+(* Set the screen to all blanks and leave the cursor in the upper left-hand
+   corner (0,0).  Note that the control code for this operation is hard-
+   wired (i.e. it doesn't go through SYSCOM), and thus entails a recomp-
+   ilation to change terminals.  P.S. 12 is a FF.  *)
+BEGIN
+  WRITE(CHR(12))
+END;
+
+PROCEDURE CLEARLINE(*Y:INTEGER*);
+(* If your terminal has an ERASELINE capability; that is a control code 
+   that will clear the line the cursor is on, and leave the cursor at
+   the first column (0,Y) then substitute this code with a single character
+   write *)
+BEGIN
+  (*
+  IF Y<>SCREENHEIGHT THEN UNITWRITE(2,BLANKAREA,SCREENWIDTH+1)
+  ELSE UNITWRITE(2,BLANKAREA,SCREENWIDTH);
+  GOTOXY(0,Y);
+  *)
+  GOTOXY(0,Y); CONTROL(ETOEOL);
+END;
+
+PROCEDURE PUTMSG;
+BEGIN
+  CONTROL(GOHOME);
+  CLEARLINE(0);
+  SAVETOP:=MSG;
+  WRITE(MSG);
+END;
+
+PROCEDURE HOME; BEGIN CONTROL(GOHOME) END;
+
+PROCEDURE ERASETOEOL(*X,LINE:INTEGER*);
+BEGIN
+  (*
+  IF X=0 THEN CLEARLINE(LINE)
+  ELSE
+    BEGIN
+      IF LINE=SCREENHEIGHT THEN
+	UNITWRITE(2,BLANKAREA,SCREENWIDTH-X)
+      ELSE
+	UNITWRITE(2,BLANKAREA,SCREENWIDTH-X+1)
+    END;
+  GOTOXY(X,LINE);
+  *)
+  CONTROL(ETOEOL);
+END;
+
+PROCEDURE ERASEOS(*X,LINE*);
+VAR I: INTEGER;
+BEGIN
+  (*
+  ERASETOEOL(X,LINE);
+  FOR I:=LINE+1 TO SCREENHEIGHT DO BEGIN WRITELN; CLEARLINE(I) END;
+  *)
+  CONTROL(ETOEOS);
+END;
+
+PROCEDURE PROMPT;
+BEGIN
+  PROMPTLINE[1]:=DIRECTION;
+  SAVETOP:=PROMPTLINE;
+  CONTROL(GOHOME);
+  CLEARLINE(0);
+  WRITE(PROMPTLINE)
+END;
+
+PROCEDURE ERRWAIT;
+BEGIN
+  WRITE(CHR(BELL));
+  PROMPT;
+END;
+
+PROCEDURE BLANKCRT(*Y: INTEGER*);
+BEGIN
+  (*
+  IF Y=1 THEN
+    BEGIN
+      CLEARSCREEN;
+      WRITELN(SAVETOP)
+    END
+  ELSE
+    BEGIN
+      GOTOXY(0,Y);
+      ERASEOS(0,Y);
+    END;
+  *)
+  GOTOXY(0,Y);
+  CONTROL(ETOEOS)
+END;
+
+PROCEDURE ERROR(*S: STRING;HOWBAD: ERRORTYPE*);
+BEGIN
+  UNITCLEAR(1); (* Throw away all characters queued up *)
+  IF HOWBAD=FATAL THEN
+    BLANKCRT(1)
+  ELSE
+    BEGIN HOME; CLEARLINE(0) END;
+  WRITE('ERROR: ',S);
+  IF HOWBAD=FATAL THEN
+    EXIT(EDITOR)
+  ELSE
+    BEGIN
+      WRITE('  Please press <spacebar> to continue.');
+      REPEAT UNTIL GETCH=' '; NEEDPROMPT:=TRUE
+    END;
+END;
+
+(*$TU t i l i t y   P r o c e d u r e s*)
+
+FUNCTION LEADBLANKS(* (PTR: PTRTYPE; VAR BYTES: INTEGER): INTEGER *);
+(* On entry-
+      PTR points to the beginning of a line
+   On exit-
+      function returns the number of leading blanks on that line.
+      bytes has the offset into the line of the first non-blank character *) 
+VAR
+  OLDPTR: PTRTYPE;
+  INDENT: INTEGER;
+BEGIN
+  OLDPTR:=PTR; INDENT:=0;
+  WHILE ORD(EBUF^[PTR]) IN [HT,SP,DLE] DO
+    BEGIN
+      IF EBUF^[PTR]=CHR(DLE) THEN
+	BEGIN PTR:=PTR+1; INDENT:=INDENT+ORD(EBUF^[PTR])-32 END
+      ELSE
+	IF ORD(EBUF^[PTR])=SP THEN INDENT:=INDENT+1
+	ELSE 
+	  (*HT*) INDENT:=((INDENT DIV 8)+1)*8;  (* KLUDGE FOR COLUMNAR TAB! *)
+      PTR:=PTR+1
+    END;
+  BYTES:=PTR-OLDPTR;
+  LEADBLANKS:=INDENT;
+END(*LEADBLANKS*);
+
+PROCEDURE REDISPLAY;
+(* Do a total update of the screen.  Note that this code is partially a
+   duplicate of lineout/upscreen for reasons of speed.  This procedure is
+   called only from centercursor *)
+VAR
+  LINEDIST,EOLDIST,LINE: INTEGER;
+  PTR: PTRTYPE;
+  T: PACKED ARRAY [0..MAXSW] OF CHAR;
+BEGIN
+  BLANKCRT(1);
+  LINE:=1;
+  PTR:=LINE1PTR;
+  REPEAT
+    BLANKS:=MIN(LEADBLANKS(PTR,BYTES),SCREENWIDTH);
+    GOTOXY(BLANKS,LINE);
+    PTR:=PTR+BYTES;
+    EOLDIST:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[PTR]);
+    LINEDIST:=MAX(0,MIN(EOLDIST,SCREENWIDTH-BLANKS+1));
+    MOVELEFT(EBUF^[PTR],T[0],LINEDIST);
+    IF EBUF^[PTR+LINEDIST]<>CHR(EOL) THEN (* Line truncation *)
+      T[MAX(0,LINEDIST-1)]:='!';
+    WRITE(T:LINEDIST);
+    PTR:=PTR+EOLDIST+1; LINE:=LINE+1
+  UNTIL (LINE>SCREENHEIGHT) OR (PTR>=BUFCOUNT)
+END;
+
+PROCEDURE CENTERCURSOR
+(*VAR LINE: INTEGER; LINESUP: INTEGER; NEWSCREEN: BOOLEAN*);
+(* Figure out if the cursor is still on the screen.  If it is, and
+   newscreen is false, then no redisplay is done.  Otherwise an attempt
+   is made to position the cursor at line "linesup".  line is then updated
+   to the actual line the cursor was forced to. *)
+VAR
+  MARK: INTEGER;
+  PTR: PTRTYPE;
+BEGIN
+  IF EBUF^[CURSOR]=CHR(EOL) THEN PTR:=CURSOR ELSE PTR:=CURSOR+1;
+  LINE:=0;
+  REPEAT
+    PTR:=PTR-1;
+    PTR:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[PTR])+PTR;
+    LINE:=LINE+1;
+    IF LINE=LINESUP THEN MARK:=PTR;
+  UNTIL (LINE>SCREENHEIGHT) OR ((LINE1PTR=PTR+1) AND NOT NEWSCREEN) OR (PTR<1);
+  IF LINE>SCREENHEIGHT THEN (* Off the screen *)
+    BEGIN LINE1PTR:=MARK+1; REDISPLAY; LINE:=LINESUP END
+  ELSE
+    IF LINE1PTR=PTR+1 THEN 
+      BEGIN
+	IF NEWSCREEN THEN REDISPLAY
+      END
+    ELSE
+      BEGIN
+	LINE1PTR:=1; REDISPLAY
+      END;
+END;
+
+PROCEDURE FINDXY(*VAR INDENT,LINE: INTEGER*);
+VAR
+  I,LEAD: INTEGER;
+  PTR,EOLPTR: PTRTYPE;
+BEGIN
+  (* Place CRT cursor on the screen at the position corresponding
+     to the logical cursor. *)
+  LINE:=1;
+  PTR:=LINE1PTR;
+  EOLPTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[PTR])+PTR;
+  WHILE EOLPTR<CURSOR DO
+    BEGIN
+      LINE:=LINE+1; PTR:=EOLPTR+1; (* Set up for the next line *)
+      EOLPTR:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[PTR])+PTR
+    END;
+  (* Now find the indentation on that line of the cursor *)
+  LEAD:=LEADBLANKS(PTR,I);
+  INDENT:=MIN(SCREENWIDTH,(LEAD-I)+(CURSOR-PTR));
+			  (* (extra spaces) + (offset into line) *)
+END;(* FINDXY *)
+
+PROCEDURE SHOWCURSOR;
+VAR
+  X,Y: INTEGER;
+BEGIN
+  FINDXY(X,Y);
+  GOTOXY(X,Y)
+END(* SHOWCURSOR *);
+
+FUNCTION GETNUM(*:INTEGER*);
+VAR 
+  N: INTEGER;
+  OVERFLOW: BOOLEAN;
+BEGIN
+  N:=0;
+  OVERFLOW:=FALSE;
+  IF NOT (CH IN ['0'..'9']) THEN N:=1
+  ELSE
+    REPEAT
+      IF N > 1000 THEN OVERFLOW:=TRUE
+      ELSE
+	BEGIN
+	  N:=N*10+ORD(CH)-ORD('0');
+	  CH:=GETCH
+	END
+    UNTIL (NOT (CH IN ['0'..'9'])) OR OVERFLOW;
+  IF OVERFLOW THEN
+    BEGIN
+      ERROR('Repeatfactor > 10,000',NONFATAL);
+      GETNUM:=0;
+    END
+  ELSE
+    GETNUM:=N;
+  COMMAND:=MAPTOCOMMAND(CH); (* Takes CH and maps it to a command *)
+END;
+
+PROCEDURE GETLEADING;
+BEGIN
+  (* Sets:
+	LINESTART ......... A pointer to the beginning of the line
+	STUFFSTART ........ A pointer to the beginning of the text on the line 
+	BYTES ............. The number of bytes between LINESTART and
+			    STUFFSTART
+	BLANKS ............ The indentation of the line    *)
+  LINESTART:=CURSOR;
+  IF EBUF^[LINESTART]=CHR(EOL) THEN LINESTART:=LINESTART-1; (* for scan! *)
+  LINESTART:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[LINESTART])+LINESTART+1;
+  BLANKS:=LEADBLANKS(LINESTART,BYTES);
+  STUFFSTART:=LINESTART+BYTES
+END (* GETLEADING *);
+
+FUNCTION OKTODEL (* (CURSOR,ANCHOR: PTRTYPE):BOOLEAN *) ;
+BEGIN
+  IF ABS(CURSOR-ANCHOR)>(BUFSIZE-BUFCOUNT)+10 THEN
+    BEGIN
+      MSG:=
+'There is no room to copy the deletion.  Do you wish to delete anyway? (y/n)';
+      PUTMSG;
+      IF UCLC(GETCH)='Y' THEN OKTODEL:=TRUE ELSE OKTODEL:=FALSE;
+    END
+  ELSE
+    BEGIN
+      (* COPYLINE is set by the caller *)
+      COPYOK:=TRUE; COPYLENGTH:=ABS(CURSOR-ANCHOR);
+      COPYSTART:=BUFSIZE-COPYLENGTH+1;
+      MOVELEFT(EBUF^[MIN(CURSOR,ANCHOR)],EBUF^[COPYSTART],COPYLENGTH);
+      OKTODEL:=TRUE
+    END;
+END;
+
+
+PROCEDURE LINEOUT(*VAR PTR:PTRTYPE; BYTES,BLANKS,LINE:INTEGER*);
+(* Write a line out *)
+VAR 
+  LINEDIST,EOLDIST: INTEGER;
+  T: PACKED ARRAY [0..MAXSW] OF CHAR;
+BEGIN
+  GOTOXY(BLANKS,LINE);
+  PTR:=PTR+BYTES;
+  EOLDIST:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[PTR]);
+  LINEDIST:=MAX(0,MIN(EOLDIST,SCREENWIDTH-BLANKS+1));
+  MOVELEFT(EBUF^[PTR],T[0],LINEDIST);
+  IF EBUF^[PTR+LINEDIST]<>CHR(EOL) THEN (* Line truncation *)
+    BEGIN
+      LINEDIST:=MAX(LINEDIST,1);
+      T[LINEDIST-1]:='!';
+    END;
+  WRITE(T:LINEDIST);
+  PTR:=PTR+EOLDIST+1
+END;
+
+PROCEDURE UPSCREEN(*FIRSTLINE,WHOLESCREEN: BOOLEAN; LINE: INTEGER*);
+(* Zap, Insert and Delete call this procedure to update (possibly partially)
+   the screen.  FIRSTLINE means only the line that the cursor is on need
+   be updated.  WHOLESCREEN means that everything must be updated.  If 
+   neither of these is true then only the part of the screen that's after
+   the cursor is updated *)
+VAR
+  PTR: PTRTYPE;
+
+BEGIN (* Upscreen *)
+  IF FIRSTLINE THEN
+    BEGIN
+      GETLEADING;
+      GOTOXY(0,LINE); ERASETOEOL(0,LINE); (* Clean the line *)
+      LINEOUT(LINESTART,BYTES,BLANKS,LINE) (* Just this line *)
+    END
+  ELSE
+    IF WHOLESCREEN THEN
+      CENTERCURSOR(TRASH,MIDDLE,TRUE)
+    ELSE (* Only update the part of the screen after the cursor *)
+      BEGIN
+	GOTOXY(0,LINE); ERASEOS(0,LINE);
+	GETLEADING;
+	PTR:=LINESTART;
+	REPEAT
+	  BLANKS:=MIN(LEADBLANKS(PTR,BYTES),SCREENWIDTH);
+	  LINEOUT(PTR,BYTES,BLANKS,LINE); (* Writes out the line at ptr *)
+	  LINE:=LINE+1
+	UNTIL (LINE>SCREENHEIGHT) OR (PTR>=BUFCOUNT)
+      END;
+END;
+
+PROCEDURE READJUST(*CURSOR:PTRTYPE; DELTA: INTEGER*);
+(* if DELTA<0 then move all affected markers to CURSOR.  Also adjust all
+   markers >= CURSOR by DELTA *)
+VAR
+  I: INTEGER;
+BEGIN
+  WITH PAGEZERO DO
+    FOR I:=0 TO COUNT-1 DO
+      IF PAGEN[I]=-1 THEN
+	IF POFFSET[I]>=CURSOR THEN
+	  BEGIN
+	    POFFSET[I]:=MAX(POFFSET[I]+DELTA,CURSOR);
+	  END;
+  IF (COPYSTART>=CURSOR) AND (COPYSTART<BUFCOUNT) THEN
+    COPYSTART:=MAX(COPYSTART+DELTA,CURSOR);
+END;
+
+PROCEDURE THEFIXER(*PARAPTR:PTRTYPE;RFAC:INTEGER;WHOLE:BOOLEAN*);
+(* PARAPTR points somewhere in a paragraph.  If WHOLE is true then the
+   entire paragraph is filled, otherwise only that directly after the cursor
+   is filled.  RFAC, when implemented will tell how many paragraphs to be
+   filled.  Note: A paragraph is defined as lines of text delimited by a line
+   with no text on it whatsoever, or a line of a text whose first character is
+   RUNOFFCH *)
+
+VAR
+  SAVE,PTR,WPTR: INTEGER;
+  WLENGTH,X: INTEGER;
+  DONE: BOOLEAN;
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      SAVE:=CURSOR;
+      CURSOR:=PARAPTR;
+      GETLEADING;
+      IF EBUF^[STUFFSTART] IN [CHR(EOL),RUNOFFCH] THEN EXIT(THEFIXER);
+      IF WHOLE THEN (* Scan backwards for the beginning of the paragraph *)
+	BEGIN
+	  REPEAT
+	    CURSOR:=LINESTART-1;
+	    GETLEADING
+	  UNTIL (LINESTART<=1) OR (EBUF^[STUFFSTART] IN [RUNOFFCH,CHR(EOL)]);
+	  IF EBUF^[STUFFSTART] IN [RUNOFFCH,CHR(EOL)] THEN
+	    PTR:=CURSOR+1
+	  ELSE
+	    PTR:=1;
+	  X:=PARAMARGIN;
+	END
+      ELSE
+	BEGIN
+	  PTR:=LINESTART;
+	  IF BLANKS=PARAMARGIN THEN X:=PARAMARGIN ELSE X:=LMARGIN
+	END;
+      CURSOR:=BUFSIZE-(BUFCOUNT-PTR)+1; (* Split the buffer *)
+      MOVERIGHT(EBUF^[PTR],EBUF^[CURSOR],BUFCOUNT-PTR);
+      (* Now dribble back the (rest of the) paragraph *)
+      EBUF^[PTR]:=CHR(DLE);
+      EBUF^[PTR+1]:=CHR(X+32);
+      PTR:=PTR+2;
+      EBUF^[CURSOR-1]:=CHR(EOL); (* sentinel for getleading *)
+      DONE:=FALSE;
+      REPEAT
+	WHILE EBUF^[CURSOR] IN [CHR(HT),CHR(SP),CHR(DLE)] DO
+	  IF EBUF^[CURSOR]=CHR(DLE) THEN CURSOR:=CURSOR+2 ELSE CURSOR:=CURSOR+1;
+	WPTR:=CURSOR;
+	(* Skip over a token *)
+	WHILE NOT (EBUF^[CURSOR] IN [CHR(EOL),' ','-']) DO CURSOR:=CURSOR+1;
+	(* Special cases for ".<sp><sp>" and "-<sp>" *)
+	IF EBUF^[CURSOR]='-' THEN IF EBUF^[CURSOR+1]=' ' THEN CURSOR:=CURSOR+1;
+	IF (EBUF^[CURSOR-1] IN ['.','?','!','"']) THEN IF 
+	   (EBUF^[CURSOR]=' ') AND (EBUF^[CURSOR+1]=' ') THEN CURSOR:=CURSOR+1;
+	WLENGTH:=CURSOR-WPTR+1; (* Including the delimiter *)
+	IF (X+WLENGTH>RMARGIN) OR (RMARGIN-LMARGIN+1<=WLENGTH) THEN
+	  BEGIN
+	    IF EBUF^[PTR-1]=' ' THEN PTR:=PTR-1;
+	    EBUF^[PTR]:=CHR(EOL); EBUF^[PTR+1]:=CHR(DLE); 
+	    EBUF^[PTR+2]:=CHR(LMARGIN+32); 
+	    PTR:=PTR+3;
+	    X:=LMARGIN
+	  END;
+	CURSOR:=CURSOR+1;
+	MOVELEFT(EBUF^[WPTR],EBUF^[PTR],WLENGTH);
+	IF EBUF^[CURSOR-1]=CHR(EOL) THEN
+	  BEGIN
+	    IF EBUF^[CURSOR]=CHR(0) THEN DONE:=TRUE
+	    ELSE
+	      BEGIN
+		GETLEADING;
+		DONE:=(EBUF^[STUFFSTART]=CHR(EOL)) 
+		      OR (EBUF^[STUFFSTART]=RUNOFFCH);
+		(* The last transfer will move 
+		   over the <eol> for the paragraph *)
+		IF NOT DONE THEN
+		  BEGIN
+		    EBUF^[PTR+WLENGTH-1]:=' ';
+		    (* If <eol> <sp>, map to one space only *)
+		    IF EBUF^[CURSOR-2]=' ' THEN PTR:=PTR-1;
+		  END
+	      END
+	  END;
+	X:=X+WLENGTH;
+	PTR:=PTR+WLENGTH;
+      UNTIL DONE;
+      READJUST(PARAPTR,(BUFSIZE-CURSOR+PTR+1)-BUFCOUNT);
+      BUFCOUNT:=BUFSIZE-CURSOR+PTR+1;
+      MOVELEFT(EBUF^[CURSOR],EBUF^[PTR],BUFSIZE-CURSOR+1);
+      EBUF^[BUFCOUNT]:=CHR(0);
+      CURSOR:=MIN(BUFCOUNT-1,SAVE);
+      GETLEADING;
+      CURSOR:=MAX(CURSOR,STUFFSTART)
+   END;
+END;
+
+PROCEDURE GETNAME(*MSG:STRING; VAR M:NAME*);
+VAR
+  I: INTEGER;
+  S: STRING;
+BEGIN
+  NEEDPROMPT:=TRUE; HOME; CLEARLINE(0); WRITE(MSG,' what marker? ');
+  READLN(S);
+  FOR I:=1 TO LENGTH(S) DO S[I]:=UCLC(S[I]);
+  MOVELEFT(S[1],M[0],MIN(8,LENGTH(S)));
+  FILLCHAR(M[LENGTH(S)],MAX(0,8-LENGTH(S)),' ')
+END;
+
+
+PROCEDURE DISKERR;
+BEGIN
+  ERROR('Bad disk transfer.',NONFATAL);
+END;
+
+FUNCTION WRITEIT(*WHICH:LEFTRIGHT):BOOLEAN*);
+VAR
+  FULL: BOOLEAN;
+BEGIN
+  FULL:=(LPAGE+1>=RPAGE);
+  IF NOT FULL THEN
+    BEGIN
+      IF WHICH=LEFTSTACK THEN
+	BEGIN
+	  LPAGE:=LPAGE+1;
+	  IF BLOCKWRITE(THEFILE,PAGEBUFFER,2,LPAGE+LPAGE)<>2 THEN DISKERR
+	END
+      ELSE
+	BEGIN
+	  RPAGE:=RPAGE-1;
+	  IF BLOCKWRITE(THEFILE,PAGEBUFFER,2,RPAGE+RPAGE)<>2 THEN DISKERR
+	END
+    END;
+  WRITEIT:=NOT FULL
+END;
+
+FUNCTION READIT(*WHICH:LEFTRIGHT): BOOLEAN*);
+VAR
+  TAPCITY: BOOLEAN;
+BEGIN
+  TAPCITY:=((WHICH=LEFTSTACK) AND (LPAGE<=0)) OR
+	    ((WHICH=RIGHTSTACK) AND (RPAGE>=FLENGTH));
+  IF NOT TAPCITY THEN
+    BEGIN
+      IF WHICH=LEFTSTACK THEN
+	BEGIN
+	  IF BLOCKREAD(THEFILE,PAGEBUFFER,2,LPAGE+LPAGE)<>2 THEN DISKERR;
+	  LPAGE:=LPAGE-1
+	END
+      ELSE
+	BEGIN
+	  IF BLOCKREAD(THEFILE,PAGEBUFFER,2,RPAGE+RPAGE)<>2 THEN DISKERR;
+	  RPAGE:=RPAGE+1
+	END
+    END;
+  READIT:=NOT TAPCITY;
+END;
+
+PROCEDURE GETPAGES(*WHICH:LEFTRIGHT*);
+(*WHICH is which stack you want to read from.  Stopping condition: approximately
+  2000 characters of slop left in the buffer or no more stuff to read *)
+VAR
+  I,START,STUFFCOUNT,THEREST,NOTNULLS: INTEGER;
+  NOTDONE: BOOLEAN;
+BEGIN
+  IF COPYSTART>BUFCOUNT THEN COPYOK:=FALSE; (* Trash copy buffer *)
+  NOTDONE:=TRUE;
+  IF WHICH=RIGHTSTACK THEN
+    BEGIN
+      START:=BUFCOUNT;
+      WHILE (START<BUFSIZE-3000) AND NOTDONE DO
+	BEGIN
+	  NOTDONE:=READIT(WHICH);
+	  IF NOTDONE THEN
+	    BEGIN
+	      NOTNULLS:=SCAN(-1024,<>CHR(0),PAGEBUFFER[1023])+1024;
+	      MOVELEFT(PAGEBUFFER,EBUF^[START],NOTNULLS);
+	      WITH PAGEZERO DO (* Swap in markers *)
+		FOR I:=0 TO COUNT-1 DO
+		  IF PAGEN[I]=RPAGE-1 THEN
+		    BEGIN
+		      PAGEN[I]:=-1;
+		      POFFSET[I]:=POFFSET[I]+START;
+		    END;
+	      START:=START+NOTNULLS;
+	      WRITE('.')
+	    END
+	END;
+      BUFCOUNT:=START;
+      EBUF^[BUFCOUNT]:=CHR(0);
+    END
+  ELSE
+    BEGIN (* leftstack *)
+      THEREST:=BUFSIZE-BUFCOUNT+1;
+      START:=THEREST-1;
+      READJUST(1,START);
+      MOVERIGHT(EBUF^[1],EBUF^[THEREST],BUFCOUNT);
+      WHILE (START>=3000) AND NOTDONE DO
+	BEGIN
+	  NOTDONE:=READIT(WHICH);
+	  IF NOTDONE THEN
+	    BEGIN
+	      NOTNULLS:=SCAN(-MAXCHAR,<>CHR(0),PAGEBUFFER[1023])+1024;
+	      MOVELEFT(PAGEBUFFER,EBUF^[START-NOTNULLS+1],NOTNULLS);
+	      START:=START-NOTNULLS;
+	      WITH PAGEZERO DO (* Swap in markers *)
+		FOR I:=0 TO COUNT-1 DO
+		  IF PAGEN[I]=LPAGE+1 THEN
+		    BEGIN
+		      PAGEN[I]:=-1;
+		      POFFSET[I]:=POFFSET[I]+START+1;
+		    END;
+	      WRITE('.');
+	    END
+	END;
+      STUFFCOUNT:=BUFSIZE-START;
+      CURSOR:=CURSOR+STUFFCOUNT-BUFCOUNT;
+      READJUST(1,-START);
+      BUFCOUNT:=STUFFCOUNT;
+      MOVELEFT(EBUF^[START+1],EBUF^[1],STUFFCOUNT);
+    END;
+  EBUF^[BUFCOUNT]:=CHR(0);
+END;
+
+PROCEDURE PUTPAGES(*WHICH:LEFTRIGHT*);
+(* If WHICH=LEFTSTACK then swap out to the left stack otherwise swap out to the
+   right stack.  *)
+VAR
+  I,STOPMARK,SAVE,ONEPAGE,PTR,LAST: INTEGER;
+  OK: BOOLEAN;
+
+FUNCTION MOVEITOUT(START,STOP:INTEGER): BOOLEAN;
+VAR I: INTEGER;
+BEGIN
+  IF STOP>=START THEN
+    BEGIN
+      MOVELEFT(EBUF^[START],PAGEBUFFER,STOP-START+1);
+      FILLCHAR(PAGEBUFFER[STOP-START+1],1023-(STOP-START),CHR(0));
+      MOVEITOUT:=WRITEIT(WHICH);
+      WITH PAGEZERO DO (* Swap out markers *)
+	FOR I:=0 TO COUNT-1 DO
+	  IF (PAGEN[I]=-1) AND (POFFSET[I]>=START) AND (POFFSET[I]<=STOP) THEN
+	    BEGIN
+	      IF WHICH=LEFTSTACK THEN PAGEN[I]:=LPAGE
+	      ELSE PAGEN[I]:=RPAGE;
+	      POFFSET[I]:=POFFSET[I]-START;
+	    END;
+      WRITE('.')
+    END
+  ELSE
+    MOVEITOUT:=FALSE
+END;
+
+BEGIN (* putpages *)
+  IF WHICH=LEFTSTACK THEN
+    BEGIN
+      LAST:=MAX(CURSOR-200,1); (* Slop is 200 *)
+      PTR:=1;
+      REPEAT
+	ONEPAGE:=MIN(PTR+1022,LAST);
+	STOPMARK:=SCAN(-MAXCHAR,=CHR(EOL),EBUF^[ONEPAGE])+ONEPAGE;
+	IF PTR < STOPMARK THEN
+	  BEGIN
+	    OK:=MOVEITOUT(PTR,STOPMARK);
+	    IF OK THEN
+	      PTR:=STOPMARK+1
+	    ELSE
+	      ERROR('Ran out of disk room',NONFATAL);
+          END
+	ELSE
+	  OK:=FALSE;
+      UNTIL NOT OK OR (ONEPAGE=LAST);
+      (* PTR now points to the first valid character in the buffer *)
+      IF COPYSTART<PTR THEN COPYOK:=FALSE
+      ELSE
+	IF COPYOK AND (COPYSTART<BUFCOUNT) THEN COPYSTART:=COPYSTART-PTR+1;
+      BUFCOUNT:=BUFCOUNT-PTR+1;
+      MOVELEFT(EBUF^[PTR],EBUF^[1],BUFCOUNT-1);
+      EBUF^[BUFCOUNT]:=CHR(0);
+      (* Now shift over the markers that are still in -
+	 Note that READJUST can't be used here because the
+	 markers want to get shifted past PTR *)
+      WITH PAGEZERO DO
+	FOR I:=0 TO COUNT-1 DO
+	  IF PAGEN[I]=-1 THEN
+	    BEGIN
+	      POFFSET[I]:=MAX(1,POFFSET[I]-PTR+1);
+	    END;
+      CURSOR:=CURSOR-PTR+1;
+    END
+  ELSE
+    BEGIN (* Right *)
+      PTR:=BUFCOUNT-1;
+      SAVE:=CURSOR;
+      CURSOR:=MIN(CURSOR+200,BUFCOUNT-1);
+      GETLEADING;
+      LAST:=LINESTART;
+      REPEAT
+	ONEPAGE:=MAX(PTR-1022,LAST);
+	IF ONEPAGE=LAST THEN
+	  STOPMARK:=ONEPAGE
+	ELSE
+	  STOPMARK:=SCAN(MAXCHAR,=CHR(EOL),EBUF^[ONEPAGE])+ONEPAGE+1;
+	IF STOPMARK < PTR THEN
+	  BEGIN
+	    OK:=MOVEITOUT(STOPMARK,PTR);
+	    IF OK THEN
+	      PTR:=STOPMARK-1
+	    ELSE
+	      ERROR('Ran out of disk room',NONFATAL);
+          END
+	ELSE
+	  OK:=FALSE;
+      UNTIL (ONEPAGE=LAST) OR NOT OK;
+      COPYOK:=(COPYOK AND (COPYSTART>BUFCOUNT)) OR
+	      (COPYOK AND (COPYSTART+COPYLENGTH<LAST));
+      BUFCOUNT:=LAST;
+      EBUF^[BUFCOUNT]:=CHR(0);
+      CURSOR:=MIN(BUFCOUNT-1,SAVE)
+    END
+END;
+
+PROCEDURE CHECKINDENT(*VAR CURSOR:PTRTYPE*);
+(* Check to make sure that the line pointed to by CURSOR has a legitimate
+   (according to the compiler, i.e. only one DLE) indentation part.  If not
+   then make it so *)
+BEGIN
+  GETLEADING;
+  IF STUFFSTART-LINESTART>2 THEN (* Potentially trouble! *)
+    BEGIN
+      MOVELEFT(EBUF^[STUFFSTART],EBUF^[LINESTART+2],BUFCOUNT-STUFFSTART);
+      READJUST(LINESTART,LINESTART+2-STUFFSTART);
+      CURSOR:=CURSOR+LINESTART+2-STUFFSTART;
+      BUFCOUNT:=BUFCOUNT+LINESTART+2-STUFFSTART;
+      EBUF^[LINESTART]:=CHR(DLE);
+      EBUF^[LINESTART+1]:=CHR(BLANKS+32)
+    END;
+END;
+
+(*$TE d i t o r*)
+
+BEGIN (* Segment procedure EDITOR *)
+  INITIALIZE; GETLEADING; CURSOR:=MAX(CURSOR,STUFFSTART);
+  REPEAT
+    CENTERCURSOR(TRASH,(SCREENHEIGHT DIV 2)+1,TRUE);
+    NEEDPROMPT:=TRUE;
+    IF USERINFO.ERRBLK>0 THEN PUTSYNTAX;
+    REPEAT
+      HOME; CLEARLINE(0);
+      EDITCORE;
+      IF COMMAND=SETC THEN ENVIRONMENT
+      ELSE IF COMMAND=COPYC THEN COPYFILE
+    UNTIL COMMAND=QUITC;
+  UNTIL OUT;
+  SYSCOM^.MISCINFO.NOBREAK := FALSE  (* 28 SEPT 77*)
+END;
+
+BEGIN END.
+

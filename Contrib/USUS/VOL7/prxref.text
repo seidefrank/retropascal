@@ -1,0 +1,278 @@
+(************************************************************************)
+(*                                                                      *)
+(* PRXref -- Pascal program printer and cross-referencer                *)
+(*                                                                      *)
+(* Version 2.0 -- 1980 July                                             *)
+(*   submitted to UCSD Pascal System Users Society, 1980 July 14        *)
+(*                                                                      *)
+(* program and documentation written by David J. Lewis                  *)
+(*                                                                      *)
+(*        Digicomp Research Corporation,                                *)
+(*        Terrace Hill,                                                 *)
+(*        Ithaca, N.Y. 14850                                            *)
+(*        607-273-5900                                                  *)
+(*    and                                                               *)
+(*        Department of Mathematics,                                    *)
+(*        Ithaca College,                                               *)
+(*        Ithaca, N.Y.  14850                                           *)
+(*        607-274-3108                                                  *)
+(*                                                                      *)
+(* Copyright (C) 1980, David J. Lewis                                   *)
+(*                                                                      *)
+(* Permission is granted to use and copy this program and its           *)
+(* documentation under the terms of the UCSD Pascal Users' Group        *)
+(* as of 1980 July 14.  Use or copying of this program or               *)
+(* documentation under any other circumstances or terms is              *)
+(* prohibited without the prior, written consent of the author.         *)
+(* In particular, any resale or distribution for profit is prohibited.  *)
+(*                                                                      *)
+(* "UCSD Pascal" is a registered trademark of the Regents of the        *)
+(*  University of California.                                           *)
+(*                                                                      *)
+(************************************************************************)
+(*#P*)
+PROGRAM PRXREF;
+
+LABEL
+  2; (* for escaping upon keyboard request *)
+
+CONST
+
+  (* constants describing and controlling printer output *)
+  PAGELINES = 66; (* lines per printed page *)
+  TOPMARGIN = 2; (* margin above header *)
+  BOTMARGIN = 4; (* margin at bottom of page *)
+  HEADERMARGIN = 1; (* margin after header *)
+  HEADERSIZE = 80; (* columns in hdr *)
+  HEADERCHAR = '-'; (* character for header separater *)
+  LNUMWIDTH = 5; (* cols for line number print *)
+  LINELENGTH = 130; (* total print columns *)
+  NUMPRNULLS = 0; (* how many nulls to send on CR to printer *)
+  REFSPERLINE = 14; (* refs per print line; 14 is right for 80 columns *)
+  SYMPRLENGTH = 8; (* width of printed symbol *)
+  INITPAGE = 1;  (* initial page number *)
+  PRFORMFEED = 0; (* printer form feed char (0 ==> it has none) *)
+
+  (* miscellaneous ascii characters *)
+  BS = 8; DLE = 16;  CR = 13;  NULL = 0;  ETX = 3; ESC = 27; BELL = 7;
+
+  (* locations of items on the display; the picture: *)
+
+  (*  +---------------------------------------------+                *)
+  (*  | prompt line                                 | <--PRROW       *)
+  (*  |                                             |                *)
+  (*  |   option       :response    error message   | <--PRROWA      *)
+  (*  |   option       :response    error message   |                *)
+  (*  |    .             .           .              |                *)
+  (*  |     .             .           .             |                *)
+  (*  |      .             .           .            |                *)
+  (*  |   option       :response    error message   |                *)
+  (*  |                                             | <--PRGAP lines *)
+  (*  | message: main file name & copy count        |      here      *)
+  (*  | message: included file name                 |                *)
+  (*  | miscellaneous messages                      |                *)
+  (*  |                                             |                *)
+  (*  +---------------------------------------------+                *)
+  (*    ^PRCOL                                                       *)
+  (*      ^PRCOLA      ^PRCOLB      ^PRCOLC                          *)
+
+  PRCOL  = 0;  (* column for prompt line and messages *)
+  PRCOLA = 2;  (* column for options *)
+  PRCOLB = 17; (* column for colon for user response *)
+  PRCOLC = 36; (* column for option error messages *)
+  PRROW  = 0;  (* row for prompt *)
+  PRROWA = 2;  (* top row of options *)
+  PRGAP  = 1;  (* gap between bottom option and 3 lines for messages *)
+  (* These values should fit on a 18 x 64 screen. *)
+  (* Those unfortunates with only 16 lines should set PRROWA=1; PRGAP=0. *)
+
+  (* minimum dimensions of display; to be checked against SYSTEM.MISCINFO *)
+  MINSCRWIDTH = 64;  MINSCRHEIGHT = 18;
+
+  (* constants describing the scatter storage table and hash headers *)
+  P  = 863; (* size of hash table; must be a prime number *)
+  ALFALEN  =  8; (* characters per identifier *)
+  REFSPERITEM =  5; (* # refs in a table item *)
+
+  (* constants controlling shape of xref overflow to disk *)
+  DREFSPER = 5; (* # refs per item in disk overflow *)
+  MAXNHUNKS = 10; (* maximum number of hunks overflowed to disk *)
+  HBUFFSIZE = 100; (* size of merge buffer to process disk overflow *)
+  MEMTHRESH = 600; (* ovflow xref when <= MEMTHRESH bytes left in stack/heap *)
+  LOADFACTOR = 0.9; (* overflow xref when table is this fraction full *)
+  INTSPERALFA = 4; (* num of integers in 8 bytes *)
+
+  (* codes to enter in xref indicating a keyword and proc/func *)
+  KWCODE = -9998;  PROCCODE = -9999;
+  EREFCODE = -9997; (* code to mark end of disk xref item *)
+
+  BUFFMAX = 647; (* 512+linelength+3 (for indent, CR): buffer size needed *)
+                 (* ok to leave this large; now accomodates 132 char line *)
+TYPE
+
+  (* input buffer *)
+  BINDX = 1..BUFFMAX; BINDXZ = 0..BUFFMAX;
+  BUFFER = PACKED ARRAY[ BINDX] OF CHAR;
+
+  (* scatter storage table types *)
+  ALFA = PACKED ARRAY[ 1..ALFALEN] OF CHAR; (* for identifiers *)
+  INDEX = 0..P; (* index for hash table *)
+  ITEMPTR = ^ITEM;
+  WORD = RECORD (* hash table entry *)
+    KEY: ALFA; (* the identifier its very self *)
+    FIRST, LAST: ITEMPTR; (* point to chain of item arrays *)
+    END ;
+  REFINDEX = 1..REFSPERITEM;
+  REFTYPE = ( COUNT, PTR);
+  ITEM = RECORD (* array of references; link these together *)
+    REF: ARRAY[ REFINDEX] OF INTEGER; (* the array *)
+    CASE REFTYPE OF
+       COUNT: ( REFNUM: REFINDEX); (* size of array *)
+       PTR: ( NEXT: ITEMPTR) (* or a pointer to next item array *)
+    END;
+
+  (* disk records for xref overflow *)
+  HUNKPINDEX = 1..MAXNHUNKS;
+  HUNKQINDEX = 0..MAXNHUNKS;
+  DINDEX = 1..DREFSPER;
+  DRCDS = RECORD CASE BOOLEAN OF (* a disk record *)
+    TRUE: ( JUNK: INTEGER;  KEY: ALFA);
+    FALSE: ( REF: ARRAY[ DINDEX] OF INTEGER)
+    END;
+
+  PTABLETYPE = ( PRINTER, DISK, MERGE); (* instruct PRINTTABLE *)
+  BIGSTRING = STRING[ 255];
+  CTLSTRING = STRING[ 13]; (* for ERASEEOL and ERASEEOS's strings *)
+
+VAR
+
+  (* output file names *)
+  PRINTUNIT: INTEGER; PRINTTITLE: STRING;
+  UNITOUT: BOOLEAN; (* true ==> output to a unit; false ==> to a file *)
+
+  (* variables for user options         *)
+  (* PRINTING     <==> P(rinting: Yes   *)
+  (* XREFFING     <==> X(ref: Yes       *)
+  (* INCLU        <==> I(nclude: Yes    *)
+  (* PAGESKIP     <==> S(kip pages: Yes *)
+  (* SPACING       =   L(ine spacing    *)
+  (* NUMBERING    <==> N(umbering: Yes  *)
+  (* INCLSKIPPING <==> K( inclsKip: Yes *)
+  (* TIMES         =   #( of copies     *)
+  (* CMDCHAR       =   C(ommand char    *)
+  (* VFORMATTING  <==> V(ert format: Yes*)
+
+  INCLSKIPPING, PRINTING, NUMBERING, XREFFING: BOOLEAN;
+  VFORMATTING, INCLU, PAGESKIP: BOOLEAN;
+  SPACING, TIMES: INTEGER;
+  CMDCHAR: CHAR;
+
+  (* scatter storage variables *)
+  T: ARRAY [ INDEX] OF WORD; (* hash header table *)
+  TOP: INDEX; (* top of chain linking all entries in T *)
+
+  (* stuff for statistics *)
+  NUMKWREFS: INTEGER; (* total number of kw references *)
+  LNUMENTRIES: INTEGER; (* local to a hunk: # tbl entries, kws *)
+
+  (* stuff for overflow to disk *)
+  DF: FILE OF DRCDS; (* file for xref overflow *)
+  NHUNKS: HUNKQINDEX; (* counts disk hunks in DF *)
+  DFCOUNT: INTEGER; (* counts records put to DF *)
+  HEAPPOINT: ^INTEGER; (* for cutting back heap after writing disk hunk *)
+  MAXNUMENTRIES: INTEGER; (* overflow to disk when # entries exceeds this *)
+  (* record and line numbers delimitting disk hunks *)
+  HUNKSTART, HUNKLINE: ARRAY[ HUNKQINDEX] OF INTEGER;
+  GLOBLOCK: INTEGER;  (* to report block num in PUT error *)
+
+  (* misc vbls controlling printed output *)
+  OUTFILE: TEXT;  (* output file (if not a unit) *)
+  CURLINE: INTEGER; (* where on page are we printing now *)
+  NULLS: PACKED ARRAY[ 0..NUMPRNULLS] OF CHAR;  (* for printer nulls *)
+  LINENUMBER: INTEGER; (* line number in file, for output *)
+  FININCL: BOOLEAN; (* helps control include page skipping *)
+  PRINTLAST: INTEGER;  (* last print line to print on before page eject *)
+  FIRSTPAGE: BOOLEAN; (* ==> first page not printed yet, for page eject *)
+
+  (* misc vbls for print heading *)
+  LPAGE, GPAGE: INTEGER; (* for print page numbering *)
+  HEADER: STRING; (* for print headers *)
+  HEADERSEP: STRING[ HEADERSIZE]; (* separator after standard header *)
+  TITLEHDRS, HDRS: BOOLEAN; (* control type of hdrs *)
+  TODAY: STRING; (* today's date -- printable *)
+
+  (* misc main prog and global work vbls *)
+  MAINNAME, LNAME: STRING;  (* input file and included file names *)
+  INXREF: BOOLEAN; (* ==> in xref phase of pgm *)
+  REPETITION: INTEGER; (* for repeating file processing TIMES times *)
+  IOERR: INTEGER; (* for reporting i/o errors *)
+  C: CHAR; (* for kb hit checking *)
+  MSGLINE: INTEGER; (* where on display for msgs *)
+  CMDCHARSET: SET OF CHAR; (* for checking format directives *)
+  EOLSTRING, EOSSTRING: CTLSTRING; (* for ERASEEOL, -EOS *)
+  ESCAPING: BOOLEAN; (* ==> keyboard escape requesting abort *)
+  GOAHEAD: BOOLEAN; (* kludge for escape and finish up skip *)
+
+(**************************************************************************)
+
+PROCEDURE SKIP( NUM: INTEGER);  FORWARD; (* line skip *)
+PROCEDURE TOPOFPAGE;  FORWARD;  (* page eject *)
+PROCEDURE ERASEEOL;  FORWARD;  (* erase display to end of line *)
+PROCEDURE ERASEEOS;  FORWARD;  (* ...ditto end of screen *)
+PROCEDURE SEARCH( IDX: ALFA);  FORWARD; (* xref tbl lookup/enter *)
+FUNCTION FILECHECK( VAR S: STRING): BOOLEAN;  FORWARD; (* check input file *)
+PROCEDURE UCFOLD( VAR C: CHAR);  FORWARD; (* fold lower case to upper *)
+PROCEDURE MSG( S: STRING; L: INTEGER);  FORWARD; (* display message *)
+PROCEDURE IOE( I: INTEGER;  S: STRING); FORWARD; (* i/o err msg and abort *)
+FUNCTION ESCAPEHIT: BOOLEAN; FORWARD;  (* checks KB, holds up, T iff esc *)
+
+(*$I PRXREF.TBL*)
+(*$I PRXREF.OPT*)
+(*$I PRXREF.INI*)
+(*$I PRXREF.UTL*)
+(*$I PRXREF.PFI*)
+
+(*******************************************************************)
+(*$G+*)
+
+BEGIN {main program}
+  INITIALIZE( TRUE); (* first initialization of almost everything *)
+  REPEAT (* forever -- until user says Q(uit *)
+    (* solicit options from user *) OPTIONS;
+    (* process the file the requested number of times *)
+    REPETITION := 1;  GOAHEAD := TRUE;
+    WHILE (REPETITION <= TIMES) AND GOAHEAD DO BEGIN
+      INITIALIZE( FALSE); (* init for a repitition *)
+      MSG( 'file: ', 0);
+      WRITE( MAINNAME, ', copy ', REPETITION, ' of ', TIMES);
+      LNAME := MAINNAME;
+      ESCAPING := FALSE; (* assume not escaping yet *)
+      PFILE( MAINNAME);  (* do the read/print work *)
+      (* all done printing *)
+      IF ESCAPING THEN (* immediately back to options *) GOTO 2;
+      IF XREFFING THEN BEGIN (* xref was requested; print the table *)
+        IF NOT PAGESKIP THEN SKIP( 1);
+        IF NHUNKS = 0 THEN (* disk wasn't used for xref *) BEGIN
+          PRINTTABLE( PRINTER);
+          IF ESCAPING THEN GOTO 2
+            END
+        ELSE BEGIN  (* disk was used for xref *)
+          (* write last piece to disk, then print whole mess from disk *)
+          PRINTTABLE( DISK);
+          IF ESCAPING THEN GOTO 2;
+          PRINTTABLE( MERGE);
+          IF ESCAPING THEN GOTO 2
+          END
+        END;
+      2: (* escape point *) IF ESCAPING THEN BEGIN
+        ESCAPING := FALSE; (* so final page skip will work *)
+        GOAHEAD := FALSE  (* but loop will stop *)
+        END;
+      (* final page skip *)
+      IF PAGESKIP THEN  PLAINSKIP( PAGELINES - CURLINE + 1);
+      REPETITION := REPETITION + 1
+      END;
+    IF UNITOUT OR ESCAPING THEN CLOSE( OUTFILE)  ELSE CLOSE( OUTFILE, LOCK)
+    UNTIL FALSE
+  END.
+  (*$G-*)

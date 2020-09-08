@@ -1,0 +1,119 @@
+
+ PROCEDURE BLOCK(*FSYS: SETOFSYS*);
+ LABEL 1;
+ VAR BFSYFOUND: BOOLEAN;
+
+   PROCEDURE FINDFORW(FCP: CTP);
+     BEGIN
+       IF FCP <> NIL THEN
+         WITH FCP^ DO
+           BEGIN
+             IF KLASS IN [PROC,FUNC] THEN
+               IF PFDECKIND = DECLARED THEN
+                 IF PFKIND = ACTUAL THEN
+                   IF FORWDECL THEN
+                     BEGIN
+                       USERINFO.ERRNUM := 117; WRITELN(OUTPUT);
+                       WRITE(OUTPUT,NAME,' undefined')
+                     END;
+             FINDFORW(RLINK); FINDFORW(LLINK)
+           END
+     END (*FINDFORW*) ;
+
+   BEGIN (*BLOCK*)
+      IF (NOSWAP) AND (STARTINGUP) THEN
+        BEGIN
+          BODYPART(FSYS,NIL);
+          EXIT(BLOCK);
+        END;
+      IF (SY IN [UNITSY,SEPARATSY]) AND (NOT INMODULE) THEN
+        BEGIN
+          UNITPART(FSYS + [UNITSY,INTERSY,IMPLESY,ENDSY]);
+          IF SY = PERIOD THEN EXIT(BLOCK)
+        END;
+      NEWBLOCK:=TRUE;
+      REPEAT
+        IF NOT NEWBLOCK THEN
+          BEGIN
+            DP := FALSE; STMTLEV := 0; IC := 0; LINEINFO := 0;
+            IF (NOT SYSCOMP) OR (LEVEL>1) THEN FINDFORW(DISPLAY[TOP].FNAME);
+            IF INMODULE THEN
+              IF TOS^.PREVLEXSTACKP^.DFPROCP = OUTERBLOCK THEN
+                IF (SY = ENDSY) THEN
+                  BEGIN FINISHSEG; EXIT(BLOCK) END
+                ELSE IF (SY = BEGINSY) THEN
+                  BEGIN ERROR(13); FINISHSEG; EXIT(BLOCK) END;
+            IF SY = BEGINSY THEN INSYMBOL ELSE ERROR(17);
+            REPEAT
+              BODYPART(FSYS + [CASESY] - [ENDSY], TOS^.DFPROCP);
+              BFSYFOUND := (SY = TOS^.BFSY) OR (INMODULE AND (SY = ENDSY));
+              IF NOT BFSYFOUND THEN
+                BEGIN
+                  IF TOS^.BFSY = SEMICOLON THEN
+                    ERROR(14)  (*SEMICOLON EXPECTED*)
+                  ELSE  ERROR(6);  (* PERIOD EXPECTED *)
+                  SKIP(FSYS + [TOS^.BFSY]);
+                  BFSYFOUND := (SY = TOS^.BFSY) OR (INMODULE AND (SY = ENDSY))
+              END
+            UNTIL (BFSYFOUND) OR (SY IN BLOCKBEGSYS);
+            IF NOT BFSYFOUND THEN
+              BEGIN
+                IF TOS^.BFSY = SEMICOLON THEN ERROR(14)
+                ELSE ERROR(6); (*PERIOD EXPECTED*)
+                DECLARATIONPART(FSYS);
+              END
+            ELSE
+              BEGIN
+                IF SY = SEMICOLON THEN INSYMBOL;
+                IF (NOT(SY IN [BEGINSY,PROCSY,FUNCSY,PROGSY])) AND
+                   (TOS^.BFSY = SEMICOLON) THEN
+                  IF NOT (INMODULE AND (SY = ENDSY)) THEN
+                    BEGIN
+                      ERROR(6); SKIP(FSYS);
+                      DECLARATIONPART(FSYS);
+                    END
+                  ELSE GOTO 1
+                ELSE
+          1:      BEGIN
+                    WITH TOS^ DO
+                      BEGIN
+                        IF DFPROCP <> NIL THEN
+                          DFPROCP^.INSCOPE:=FALSE;
+                        IF ISSEGMENT THEN
+                          BEGIN
+                            IF CODEINSEG THEN FINISHSEG;
+                            IF DLINKERINFO AND (LEVEL = 1) THEN
+                              BEGIN SEGTABLE[SEG].SEGKIND := 2;
+                                WRITELINKERINFO(TRUE)
+                              END
+                            ELSE
+                              IF CLINKERINFO THEN
+                                BEGIN SEGTABLE[SEG].SEGKIND := 2;
+                                  WRITELINKERINFO(FALSE)
+                                END;
+                            NEXTPROC:=SOLDPROC;
+                            SEG:=DOLDSEG;
+                          END;
+                        LEVEL:=DOLDLEV;
+                        TOP:=DOLDTOP;
+                        LC:=DLLC;
+                        CURPROC:=POLDPROC;
+                      END;
+                    RELEASE(TOS^.DMARKP);
+                    TOS:=TOS^.PREVLEXSTACKP;
+                    NEWBLOCK:=(SY IN [PROCSY,FUNCSY,PROGSY]);
+                  END
+              END
+          END
+        ELSE
+          BEGIN DECLARATIONPART(FSYS);
+            IF LEVEL = 0 THEN
+              IF SY IN [UNITSY,SEPARATSY] THEN
+                BEGIN
+                  UNITPART(FSYS + [UNITSY,INTERSY,IMPLESY,ENDSY]);
+                  IF SY IN [PROCSY,FUNCSY,PROGSY] THEN DECLARATIONPART(FSYS)
+                END
+          END;
+      UNTIL TOS = NIL;
+      FINISHSEG;
+  END (*BLOCK*) ;

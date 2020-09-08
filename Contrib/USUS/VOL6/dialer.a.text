@@ -1,0 +1,68 @@
+        .PROC   DIALER,1
+        .PRIVATE DIGIT,RETADDR
+
+TPORT   .EQU    0C0H            ;UART CONTROL/STATUS PORT
+RPORT   .EQU    TPORT+2         ;RATE GEN PORT
+D10PP   .EQU    250             ;10 PULSES PER SECOND
+TRATE   .EQU    250             ;VALUE FOR .1 SECOND DELAY
+TMPUL   .EQU    80H             ;TIMER PULSES MASK
+MAKEM   .EQU    01H             ;TEL LINE MAKE (OFF HOOK)
+BRKM    .EQU    00H             ;TEL LINE ON HOOK
+INTER   .EQU    7               ;INTER DIGIT TIME INTERVAL
+
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL
+        LD      A,L             ; GET DIGIT
+        AND     0FH             ;CONVERT TO BINARY
+        CP      0H              ; IF 0 CONVERT TO 10
+        JP      NZ,DIALS
+        LD      A,0AH
+DIALS   LD      C,A
+; LOAD TIMER WITH DIAL RATE
+        LD      A,D10PP
+        OUT     (RPORT),A
+; WAIT IF TIMER PULSE NOT ZERO
+DIALC   IN      A,(RPORT)      ;GET TIMER PULSE
+        AND     TMPUL
+        JP      NZ,DIALC
+;WAIT UNTIL TRANSITION TO 1 TO SYNCHRONIZE DIALER
+DIALB   IN      A,(RPORT)
+        AND     TMPUL
+        JP      Z,DIALB
+;
+MAKEP   LD      A,MAKEM         ;START WITH A MAKE
+        OUT     (TPORT),A
+TIMEM   IN      A,(RPORT)
+        AND     TMPUL           ;WAIT FOR MAKE INTERVAL
+        JP      NZ,TIMEM
+;
+        LD      A,BRKM
+        OUT     (TPORT),A       ;NOW DO A BREAK
+;
+TIMEB   IN      A,(RPORT)
+        AND     TMPUL           ;WAIT FOR BREAK INTERVAL
+        JP      Z,TIMEB
+;
+        DEC     C               ;ANY MORE PULSES IN THIS DIGIT
+        JP      NZ,MAKEP        ;IF SO LOOP FOR NEXT PULSE
+;
+; LAST PULSE WAIT FOR INTERDIGIT TIME
+        LD      A,MAKEM
+        OUT     (TPORT),A
+        LD      B,INTER
+; TIMER
+TIMER   LD      A,TRATE
+        OUT     (RPORT),A
+TIMES   IN      A,(RPORT)
+        AND     TMPUL
+        JP      Z,TIMES
+TIMEE   IN      A,(RPORT)
+        AND     TMPUL
+        JP      NZ,TIMEE
+        DEC     B
+        JP      NZ,TIMES
+DONE    LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

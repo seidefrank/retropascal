@@ -1,0 +1,50 @@
+
+{ MOUSEDRAW -- sample to get mouse position from PADDLE() and BUTTON() }
+{ Frank Seide, 2013 }
+
+program mousedraw;
+  uses turtlegraphics, applestuff;
+  var x1, y1, x2, y2 : integer;
+      width, height : integer;
+      down, wasdown, second : boolean;
+      message : string;
+
+  function min(a : integer; b : integer) : integer;
+  begin if (a < b) then min := a else min := b end;
+
+  function max(a : integer; b : integer) : integer;
+  begin max := -min(-a,-b) end;
+
+  function controller(index: integer): integer;
+    var range: integer;
+  begin
+    if odd(index) then range := height else range := width;
+    controller := trunc(paddle(index)/256.0*range);
+  end;
+
+begin
+  viewport(0,MAXINT,0,MAXINT);      { enable native resolution }
+  initturtle;
+  width := TURTLEX * 2; height := TURTLEY * 2;    { now we know the resolution }
+  message := 'Draw with the mouse or with your finger. Press any key to exit.';
+  pencolor(none); moveto((width - 7 * LENGTH(message)) div 2, 10); wstring(message);    { centered }
+  down := false;
+  repeat
+    wasdown := down;
+    down := button(0);
+    second := button(3);
+    x1 := controller(0);
+    y1 := controller(1);
+    if (second) then begin
+      x2 := controller(2);
+      y2 := controller(3);
+      viewport(min(x1,x2), max(x1,x2), min(y1,y2), max(y1,y2));
+      fillscreen(orange);
+    end else begin
+      viewport(0,width-1,0,height-1);
+      if (down and wasdown) then pencolor(white) else pencolor(none);
+      moveto(x1, y1);
+    end;
+  until keypress;
+  textmode
+end.

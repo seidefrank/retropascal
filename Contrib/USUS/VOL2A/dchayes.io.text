@@ -1,0 +1,117 @@
+        .FUNC   SRECSTAT,0
+        .PRIVATE RETADDR
+STAT    .EQU    81H
+RECRDY  .EQU    1H
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;CORRECT STACK
+        POP     HL
+        LD      HL,1            ;TRUE
+        PUSH    HL
+        IN      A,(STAT)          ;READ STATUS
+        AND     RECRDY          ;CHECK SER READ STATUS
+        JP      NZ,DONE         ;REC NOT RDY
+        POP     HL
+        LD      HL,0            ;FALSE
+        PUSH    HL
+DONE    LD      HL,(RETADDR)
+        JP      (HL)
+
+
+        .FUNC   SERREAD,0
+        .PRIVATE RETADDR
+STAT    .EQU    81H             ;STATUS PORT
+DATA    .EQU    80H             ;DATA PORT
+
+RECRDY  .EQU    01H             ;REC BUF FULL
+        POP     HL
+        LD      (RETADDR),HL    ;SAVE RET ADDR
+        POP     HL              ;CORRECT STACK
+        POP     HL              ;CORRECT STACK
+WAIT:   IN      A,(STAT)        ;READ STATUS WORD
+        AND     RECRDY          ;IS REC FULL
+        JP      Z,WAIT
+        IN      A,(DATA)
+        AND     07FH            ;CLEAR PARITY BIT
+        LD      L,A             ;STORE FOR RETURN
+        PUSH    HL              ;RETURN VALUE ON STACK
+        LD      HL,(RETADDR)
+        JP      (HL)
+
+
+        .PROC   SERWRITE,1
+        .PRIVATE OUTC,RETADDR
+STAT    .EQU    81H             ;STATUS PORT
+DATA    .EQU    80H             ;DATA PORT
+
+TRE     .EQU    02H             ;XMIT REG EMPTY    
+
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL
+        LD      (OUTC),HL
+WAIT:   IN      A,(STAT)        ;GET STATUS
+        AND     TRE             ;CK STATUS        
+        JP      Z,WAIT          ;XMIT BUSY 
+        LD      A,(OUTC)
+        OUT     (DATA),A        ;SEND DATA
+        LD      HL,(RETADDR)
+        JP      (HL)
+
+
+; THIS IS A VERY CRUDE D C HAYES INITIALIZER FOR THE PURPOSE
+;OF CHECKING OUT THE REST OF THE PROGRAM CERTAINLY MUCH MORE
+;WORK WILL NEED TO BE DONE ON THIS ROUTINE
+
+        .PROC   MODEMINIT,1 
+        .PRIVATE DIR,RETADDR
+ANSW300 .EQU    83H             ;300 BAUD, ANSWER, OFFHOOK, XMITTER ON
+ORIG300 .EQU    87H             ;300 BAUD, ORGINATE, OFFHOOK, XMITTER ON
+WORD    .EQU    17H             ;8 BITS, NO PARITY, 1 START
+RNGMASK .EQU    080H            ;RING DETECT MASK
+
+STAT    .EQU    081H            ;STATUS PORT
+MODE    .EQU    082H            ;MODE PORT
+        
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL
+        LD      (DIR),HL
+        LD      A,(DIR)
+        AND     01H             ;LOOK AT ANS BIT
+        OR      A
+        JP      Z,ORIG
+;ANSWER MODE
+;WAIT FOR PHONE TO RING
+RNGCK:  IN      A,(STAT)        ;READ STATUS
+        AND     RNGMASK         ;ISOLATE RING DETECT
+        JP      NZ,RNGCK        ;WAIT FOR RING LOW 
+;SET ANSWER MODE AND ANSWER PHONE
+        LD      A,ANSW300       ;SET MODEM TO ANSWER 300 BAUD AND OFFHOOK
+        OUT     (MODE),A          
+        JP      DONE
+;ORIGINATE MODE
+ORIG    LD      A,ORIG300       ;SET MODEM TO ORIGNATE 300 BAUD
+        OUT     (MODE),A
+DONE    LD      A,WORD          ;SET MODEM TO WORD FORMAT
+        OUT     (STAT),A
+        LD      HL,(RETADDR)
+        JP      (HL)
+
+
+; HANGUP FOR D C HAYES     
+
+        .PROC   HANGUP,0 
+        .PRIVATE RETADDR
+MODE    .EQU    82H             ;MODE PORT
+ONHOOK  .EQU    0H              ;ON HOOK
+
+        POP     HL
+        LD      (RETADDR),HL
+        LD      A,ONHOOK
+        OUT     (MODE),A
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+
+

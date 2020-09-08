@@ -1,0 +1,339 @@
+ (*------------------------------------------------------------------*)
+ PROCEDURE fixpointer (VAR f : btree; pgnbr, prntpage : btpointer;
+                         prntent : bpagesize);
+ (*       Read  page pointed to by pgnbr, and make backpointers
+          point to prntpage, prntent*)
+ 
+ 
+ BEGIN
+ 
+ 
+ IF pgnbr > 0 THEN BEGIN
+ 
+         bread (f, pgnbr);
+         f^.pg.prntpage := prntpage;
+         f^.pg.prntentry := prntent;
+         bwrite (f,pgnbr);
+ 
+ END; (*If pgnbr*)
+ 
+ END; (*PROCEDURE fixpointer*)
+ (*------------------------------------------------------------------*)
+ PROCEDURE bshiftr (VAR f : btree; VAR thispage : bpage;
+                 thispgnbr : btpointer; pagepart : bpagesize);
+ 
+ (*IF pagepart points to a full space in thispage, move it and everythin
+ to it's right one place to the right, creating a space. In any event,
+ increment the counter.Calling routine must know that thispage isn't full,
+ bshiftr doesn't check. Bshiftr doesn't actually blank the space either. 
+ Calling routine should write something there, or you're in a heap of trouble*)
+ 
+ VAR subscript : 0..btree2k;
+ 
+ BEGIN
+ 
+ IF thispage.count < btree2k THEN BEGIN
+ 
+ 
+         FOR subscript := thispage.count DOWNTO pagepart DO BEGIN
+ 
+         thispage.bentry[subscript+1] := thispage.bentry[subscript];
+         thispage.bpointer[subscript+1] := thispage.bpointer[subscript];
+         fixpointer (f, thispage.bpointer[subscript], thispgnbr, (subscript+1));
+ 
+         END; (*For subscript*)
+         
+         thispage.count := thispage.count + 1;
+ 
+ END; (* IF count*)
+ 
+         
+ END; (*PROCEDURE bshiftr*)
+ (*------------------------------------------------------------------*)
+ PROCEDURE bshiftl (VAR f : btree; VAR thispage : bpage;
+                 thispgnbr : btpointer; pagepart : bpagesize);
+ 
+ 
+ (*Move everything to the right of pagepart one space to the left.
+ Calling routine must know that pagepart is empty (or that its okay
+ to overwrite it). Decrement the page counter.*)
+ 
+ VAR subscript : 0..btree2k;
+ 
+ BEGIN
+ 
+ 
+ FOR subscript := pagepart TO (thispage.count - 1) DO BEGIN
+ 
+         thispage.bentry[subscript] := thispage.bentry[subscript+1];
+         thispage.bpointer[subscript] := thispage.bpointer[subscript+1];
+         fixpointer (f, thispage.bpointer[subscript+1],thispgnbr,subscript);
+ 
+ END; (*For subscript*)
+ 
+ thispage.count := thispage.count - 1;
+ 
+ END; (*PROCEDURE bshiftl*)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE bbalance (VAR f : btree; parent_pointer : btpointer; 
+                     entry_pointer : bpagesize; 
+                 VAR markpage : btpointer; VAR markentry : bpagesize);
+ 
+ (*Balance entries (and pointers) among adjacent children of the parent indicate
+   by parent_pointer. Each child gets (total entries DIV number of children).
+   The first (total entries MOD number of children) get one more entry.
+   If deletion has dropped the avg page count to btreek or below,  will
+   balance over prnt page's count - 1 pages and return the extra page to freelis
+   Markpage and markentry mark the location of an entry to keep track of 
+   following the completion of balance. They are used by binsert. *)
+ 
+ 
+ VAR entries : ARRAY [0..maxentries] OF btentry;         (* holds entries *)
+     pointers : ARRAY [0..maxentries] OF btpointer;      (* holds pointers *)
+     parent, child : brecord;
+     place : -1..maxentries;     (*index into entries, position of markentry*)
+     first, last : 0..btree2kp;          (*begin and end of fill-arrays*)
+     temp_index,
+     ep_index : 0..maxentries;   (*index to entry and pointer arrays*)
+     inner,                      (*index to loop for one child*)
+     outer,                      (*index to loop for all children of parent*)
+     newcount,                   (*num of entries per child*)
+     extras : 0..btree2kp;       (*num of children w extra entry*)
+     continue, moved_marker : BOOLEAN;
+ 
+ (*-------------------------------*)
+ 
+ 
+    PROCEDURE fill_arrays;       (* Local to bbalance*)
+ 
+    BEGIN
+ 
+      FOR outer := first TO last DO BEGIN        (*For each child of parent*)
+      
+         bread (f,parent.pg.bpointer[outer]);            (*read a child*)
+         child := f^;
+      
+         FOR inner := 1 TO child.pg.count DO BEGIN (*For each entry in child.*)
+      
+         (*stick the entries into big array of entries, ditto pointers*)
+      
+         temp_index := ep_index + inner;
+         entries[temp_index] := child.pg.bentry[inner];
+         pointers[temp_index - 1] := child.pg.bpointer[inner - 1];
+ 
+         IF (parent.pg.bpointer[outer] = markpage) AND
+            (inner = markentry) THEN place := temp_index;
+      
+         END; (*For inner*)
+ 
+      
+         IF outer < last THEN BEGIN
+            ep_index := temp_index + 1;
+         
+            (*now put parent's entry into big array*)
+            entries[ep_index] := parent.pg.bentry[outer + 1]; END
+      
+         ELSE ep_index := temp_index;
+ 
+         (* put last pointer in big array*)
+         pointers[temp_index] := child.pg.bpointer[child.pg.count];
+ 
+      END; (*For outer*)
+ 
+    END; (*PROCEDURE fill_array*)
+ 
+ (*--------------------------------*)
+    PROCEDURE condense; (*Local to  bbalance *)
+ 
+    BEGIN
+ 
+      IF (parent.pg.prntentry = 0) AND (parent.pg.count = 1) THEN BEGIN
+         parent.pg.count := ep_index;
+         freepage(f,parent.pg.bpointer[0]);
+         freepage(f,parent.pg.bpointer[1]);
+         parent.pg.bpointer[0] := pointers[0];
+         fixpointer(f, pointers[0],parent_pointer,0);
+         FOR outer := 1 TO ep_index DO BEGIN
+            parent.pg.bentry[outer] := entries[outer];
+            parent.pg.bpointer[outer] := pointers[outer];
+            fixpointer(f,pointers[outer],parent_pointer,outer); END;
+         continue := FALSE; END
+ 
+      ELSE BEGIN
+         freepage (f,parent.pg.bpointer[last]); 
+         bshiftl(f,parent.pg,parent_pointer,last);
+         last := last - 1;
+         newcount := (ep_index - (last-first)) DIV ((last-first)+1);
+         continue := TRUE; END;
+ 
+    END; (*Local PROCEDURE condense*)
+ 
+ (*--------------------------------*)
+ 
+    PROCEDURE write_child (count:bpagesize); (*Local to bbalance*)
+ 
+    BEGIN
+ 
+       FOR inner := 1 TO count DO BEGIN
+ 
+         temp_index := ep_index + inner;
+         child.pg.bentry[inner] := entries[temp_index];
+         child.pg.bpointer[inner - 1] := pointers[temp_index - 1];
+         fixpointer (f, child.pg.bpointer[inner - 1],
+                         parent.pg.bpointer[outer], inner);
+ 
+         IF (temp_index = place) THEN BEGIN
+            markpage := parent.pg.bpointer[outer];
+            IF moved_marker THEN markentry := inner + 1
+            ELSE markentry := inner;  END;
+ 
+      END; (*For inner*)
+ 
+      ep_index := temp_index + 1;
+   
+      IF outer < last THEN BEGIN 
+         parent.pg.bentry[outer + 1] := entries[ep_index];
+         IF ep_index = place THEN 
+            IF moved_marker THEN BEGIN
+              markpage := parent.pg.bpointer[outer+1];
+              markentry := 1;  END
+            ELSE BEGIN 
+               markpage := parent.pg.bpointer[outer];
+               markentry := count+ 1; END; END;
+ 
+      child.pg.prntentry := outer;
+ 
+      child.pg.bpointer[count] := pointers[temp_index];
+      fixpointer(f,pointers[temp_index],parent.pg.bpointer[outer],count);
+      child.pg.count := count;
+   
+      (*now write the child. we didn't disturb the pointers on the parent*)
+   
+      f^ := child;
+      bwrite(f,parent.pg.bpointer[outer]);
+ 
+    END; (*PROCEDURE write_child*)
+ 
+ (*--------------------------------*)
+ 
+ 
+ BEGIN  (*PROCEDURE bbalance*)
+ 
+ 
+ IF parent_pointer = 0 THEN exit(bbalance);
+ 
+ bread(f,parent_pointer);
+ parent := f^;
+ 
+ ep_index := 0;
+ place := 0;
+ continue := TRUE;
+ 
+ (*if marker is at count+1,glue it to count*)
+ 
+ moved_marker := FALSE;
+ IF markentry > btree2k THEN BEGIN
+    markentry := btree2k;
+    moved_marker := TRUE; END;
+ 
+ (*Calculate begin and end for balance *)
+ 
+ IF (parent.pg.count + 1) <= bal THEN BEGIN
+         first := 0;
+         last := parent.pg.count; END
+ ELSE IF entry_pointer - halfbal < 0 THEN BEGIN
+         first := 0;
+         last := bal - 1; END
+ ELSE IF entry_pointer + halfbal > parent.pg.count THEN BEGIN
+         first := parent.pg.count - (bal-1);
+         last := parent.pg.count; END
+ ELSE BEGIN
+         first := entry_pointer - halfbal;
+         last := entry_pointer + halfbal; END;
+      
+ fill_arrays; 
+ 
+ (* Calculate entries per child *)
+ 
+ newcount := (ep_index - (last-first)) DIV ((last-first)+1);
+ 
+ (* IF deletion has caused # entries to go below k, decrement
+    parent count, return a page to free list, and recalc newcount *)
+ 
+ IF newcount < btreek THEN condense;
+ 
+ (* Calculate # of children w an extra entry *)
+ 
+ extras := (ep_index - (last-first)) MOD ((last-first)+1);
+ 
+ (*Since we have entries and entries per child, we reverse the process*)
+ 
+ 
+ IF continue THEN BEGIN
+    
+    ep_index := 0;
+    
+    IF extras > 0 THEN BEGIN
+       FOR outer := first TO (first+(extras-1)) DO write_child(newcount+1);
+       FOR outer := (first + extras) TO last DO write_child(newcount); END 
+    
+    ELSE FOR outer := first TO last DO write_child(newcount); END;
+ 
+ f^ := parent;
+ bwrite(f,parent_pointer);       (*Now write the parent*)
+ 
+ IF parent.pg.count < btreek THEN
+     bbalance (f,parent.pg.prntpage,parent.pg.prntentry,pointers[0],newcount);
+                 (*pointers and newcount above are dummies*)
+ 
+ END; (*PROCEDURE bbalance*)
+ 
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION bpgscan (VAR f: bpage; VAR testkey : bkey; VAR i : INTEGER) : BOOLEAN;
+ 
+ (*      Given a page (f), searches for testkey. i is place in page
+         where found (if found), or place where insert would take
+         place if not found. Boolean function result indicates found(T) 
+         not found (F).*)
+ 
+ VAR first, last : bpagesize;
+     found : BOOLEAN;
+ 
+ BEGIN
+         
+ first := 1;
+ last := f.count;
+ bpgscan := FALSE;
+ 
+ IF (testkey < f.bentry[first].key) OR (last = 0) THEN BEGIN
+ 
+        i := first;     EXIT(bpgscan);  END;
+        
+ IF testkey > f.bentry[last].key THEN BEGIN
+ 
+        i := last + 1;  EXIT(bpgscan);  END;
+        
+ i := (last + first) DIV 2;
+ found := (f.bentry[i].key = testkey);
+ 
+ WHILE NOT found AND (i > first) DO BEGIN
+         
+         IF (f.bentry[i].key > testkey) THEN last := i;
+         IF (f.bentry[i].key < testkey) THEN first := i;
+                 
+         i := (last + first) DIV 2;
+         found := (f.bentry[i].key = testkey);
+                 
+ END; (*While*)
+
+IF NOT found THEN i := last;
+found := (f.bentry[i].key = testkey);
+bpgscan := found;
+
+END; (* FUNCTION bpgscan *)
+
+
+
+

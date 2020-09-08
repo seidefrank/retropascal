@@ -1,0 +1,273 @@
+PROCEDURE SETCOMMUNICATIONS(
+                      PARITY        : boolean ;
+                      EVEN          : boolean ;
+                      RATE          : integer ;
+                      CHARBITS      : integer ;
+                      STOPBITS      : integer ;
+                      DIR           : CR_WHOAMI ;
+                      MODEL         : string ;
+                  var RESULT        : CR_BAUD_RESULT ) ;
+
+
+begin
+
+  MODEL_ID := '' ;
+
+  BAUD_SETTABLE := false ;
+  
+  RESULT := CR_SELECT_NOT_SUPPORTED ;
+
+  if length( MODEL )>2 then if (copy(MODEL,1,3) = '990')
+    then
+      RESULT := CR_SET_OK ;
+  
+  CONTROL := 12 ;
+end ; { SETCOMMUNICATIONS }
+
+PROCEDURE COMMINIT(  DIR             : CR_WHOAMI ;
+                     ATTENTION_CHAR  : CHAR ;
+                 VAR REMOTE_EXISTS   : BOOLEAN ;
+                 VAR DIALER_EXISTS   : BOOLEAN ) ;
+VAR
+  C                     : CHAR ;
+  RESULT                : CR_BAUD_RESULT ;
+
+PROCEDURE NOT_THERE( WHICH : INTEGER ) ;
+BEGIN
+  GOTOXY( 0, 10 ) ;
+  WRITELN(' ':20, 'Required unit #', WHICH, 
+          ' failed UNITCLEAR!') ;
+  REMOTE_EXISTS := FALSE ;
+END ;
+
+BEGIN
+  
+  { Check that the required units exist. }
+  REMOTE_EXISTS := TRUE ;
+  
+  UNITCLEAR( REMIN_UNIT ) ;
+  IF IORESULT <> 0
+    THEN
+      NOT_THERE( REMIN_UNIT ) ;
+  
+  UNITCLEAR( REMOUT_UNIT ) ;
+  IF IORESULT <> 0
+    THEN
+      NOT_THERE( REMOUT_UNIT ) ;
+  
+  IF NOT SM_ATTENTION
+    THEN
+      IF NOT SM_ATTENTION
+        THEN
+          CR_HOOK( HUNG_UP ) ;
+  
+  DIALER_EXISTS := CHECK_SMARTMODEM_THERE ;
+
+  MODEL_ID      := '' ;
+  DTR_STATE     := CR_AUTO ;
+  RTS_STATE     := CR_AUTO ;
+  CR_HOOK( HUNG_UP ) ;
+  CR_ATTENCHAR  := ATTENTION_CHAR ;
+
+  SETCOMMUNICATIONS(
+                        DEFAULT_MODE,
+                        DEFAULT_PARITY,
+                        DEFAULT_RATE,
+                        DEFAULT_CHARBITS,
+                        DEFAULT_STOPBITS,
+                        CR_ORIG,
+                        DEFAULT_KIND,
+                        RESULT ) ;
+  BAUD_SETTABLE := RESULT = CR_SELECT_NOT_SUPPORTED ;
+END ; { COMMINIT }
+
+
+PROCEDURE COMMQUIT ;
+VAR
+  C             : CHAR ;
+  RESULT        : CR_BAUD_RESULT ;
+BEGIN
+  IF UNIT_CARRIER { If we think we are communicating, }
+    THEN
+      IF NOT SM_ATTENTION { . . . get the Smartmodem's attention, }
+        THEN
+          IF NOT SM_ATTENTION
+            THEN
+              { Null } ;
+  IF SM_ATTENTION
+    THEN
+      CR_HOOK( HUNG_UP ) ; { Now hang up the phone. }
+  IF BAUD_SETTABLE  { If we were able to change the baud rate, }
+    THEN
+      SETCOMMUNICATIONS(     { . . . reset to the default. }
+                        DEFAULT_MODE,
+                        DEFAULT_PARITY,
+                        DEFAULT_RATE,
+                        DEFAULT_CHARBITS,
+                        DEFAULT_STOPBITS,
+                        CR_ORIG,
+                        DEFAULT_KIND,
+                        RESULT ) ;
+  IF SM_ATTENTION
+    THEN
+      { "Z" is a software reset of the Smartmodem. }
+      C := SM_EXECUTE_COMMAND( 'Z', SM_SHORT_WAIT ) ;
+END ; { COMMQUIT }
+
+{ End of procedures set up for change to Segment Procedures. }
+
+PROCEDURE CR_SETADDRESS{   HIGHADDR        : INTEGER ;
+                           LOWADDR         : INTEGER ;
+                           VECTOR          : INTEGER } ;
+BEGIN
+  SETADDRESS( HIGHADDR, LOWADDR, VECTOR ) ;
+END ;
+
+PROCEDURE CR_SETCOMMUNICATIONS{
+                      PARITY        : boolean ;
+                      EVEN          : boolean ;
+                      RATE          : integer ;
+                      CHARBITS      : integer ;
+                      STOPBITS      : integer ;
+                      DIR           : CR_WHOAMI ;
+                      MODEL         : string ;
+                  var RESULT        : CR_BAUD_RESULT } ;
+BEGIN
+  SETCOMMUNICATIONS(
+                      PARITY,
+                      EVEN,
+                      RATE,
+                      CHARBITS,
+                      STOPBITS,
+                      DIR,
+                      MODEL,
+                      RESULT ) ;
+END ;
+
+PROCEDURE CR_SETDTR ;
+BEGIN
+END ;
+
+PROCEDURE CR_SETRTS ;
+BEGIN
+END ;
+
+PROCEDURE CR_COMMINIT{  DIR             : CR_WHOAMI ;
+                        ATTENTION_CHAR  : CHAR ;
+                    VAR REMOTE_EXISTS   : BOOLEAN ;
+                    VAR DIALER_EXITST   : BOOLEAN } ;
+BEGIN
+   COMMINIT(  DIR,
+              ATTENTION_CHAR,
+              REMOTE_EXISTS,
+              DIALER_EXISTS ) ;
+END ;
+
+PROCEDURE CR_COMMQUIT ;
+BEGIN
+  COMMQUIT ;
+END ;
+{$P+}
+{  ---------------------------------------------------------  }
+{               Internal Subroutines                          }
+{  ---------------------------------------------------------  }
+FUNCTION  SM_EXECUTE_COMMAND{ CMD        : STRING ;
+                              WAIT_COUNT : INTEGER ) : CHAR } ;
+VAR
+  CH    : CHAR ;
+  I     : INTEGER ;
+  
+BEGIN
+  CR_DELAY( 2 ) ;
+  WHILE CR_REMSTAT DO CH := CR_GETREM ; { Flush trash }
+  { "AT" is what the Smartmodem requires at the start of 
+         each command line. }
+  CR_PUTREM( 'A' ) ;
+  CR_PUTREM( 'T' ) ;
+  CR_PUTREM( ' ' ) ;
+  FOR I := 1 TO LENGTH( CMD ) DO { Output each command char. }
+    CR_PUTREM( CMD[I] ) ;
+  CR_PUTREM( CHR(13) ) ; { Terminate command with <return> }
+  I := WAIT_COUNT ;
+  REPEAT                 { Wait for a response. }
+    I := I - 1 ;
+    IF CR_KBSTAT         { This allows a manual exit, using  }
+      THEN               { <attention character> from the    }
+        IF CR_GETKB = CR_ATTENCHAR { keyboard.               }
+          THEN
+            I := 0 ;
+  UNTIL (I <= 0) OR CR_REMSTAT ; { Loop until the counter goes
+                                   to zero or something comes in
+                                   from the Remote line. }
+  IF CR_REMSTAT { If something came from the remote line, }
+    THEN
+      BEGIN
+      CH := CR_GETREM ; { fetch character from Remote. }
+      IF ORD( CH ) > 127
+        THEN
+          CH := CHR( ORD( CH ) - 128 ) ;
+      CR_DELAY( 2 ) ;
+      END
+    ELSE
+      BEGIN
+      CH := SM_ERROR ; { If we timed out, return an error. }
+      CR_DELAY( 2 ) ;
+      END ;
+  SM_EXECUTE_COMMAND := CH ;
+  WHILE CR_REMSTAT DO CH := CR_GETREM ; { Flush trash }
+END ;
+
+
+FUNCTION  CHECK_SMARTMODEM_THERE { : BOOLEAN } ;
+{ This function returns TRUE if the Smartmodem responds to
+  a simple command.  It returns FALSE if the Smartmodem does
+  not understand the command or if no response is generated
+  (such as when the Smartmodem is not connected or the unit
+  is being used with some other type of modem.) }
+VAR
+  B     : BOOLEAN ;
+  C     : CHAR ;
+BEGIN
+  { The command sent has the following effects:
+    "E" causes the Smartmodem to suppress echoing command
+        characters
+    "V" causes the Smartmodem to use abbreviated command 
+        responses
+  }
+  C := SM_EXECUTE_COMMAND( SM_DEFAULTS, SM_SHORT_WAIT ) ;
+  IF ORD( C ) > 127
+    THEN
+      C := CHR( ORD( C ) - 128 ) ;
+  B := SM_OK = C ; 
+  CR_DELAY( 2 ) ;
+  CHECK_SMARTMODEM_THERE := B ;
+END ;
+      
+FUNCTION  SM_ATTENTION { : BOOLEAN } ;
+{ This function will get the Smartmodem's attention, irregardless
+  of the modem's state. }
+VAR
+  B : BOOLEAN ;
+BEGIN
+  CR_SETDTR( CR_OFF ) ; { If the user has implemented this 
+                          routine, setting DTR low will get 
+                          the Smartmodem's attention. }
+  CR_SETDTR( CR_AUTO ) ;
+  B := CHECK_SMARTMODEM_THERE ;
+  IF NOT B
+    THEN
+      BEGIN
+      CR_DELAY( 2 ) ;
+      CR_DELAY( 12 ) ;   { Delay just over 1 second }
+      CR_PUTREM( '+' ) ; { "+++" is the default attention getter. }
+      CR_PUTREM( '+' ) ;
+      CR_PUTREM( '+' ) ;
+      CR_DELAY( 12 ) ;   { Delay just over 1 second }
+      CR_PUTREM( CHR( CR ) ) ;
+      B := CHECK_SMARTMODEM_THERE ;
+      END ;
+  CR_DELAY( 2 ) ;
+  SM_ATTENTION := B ;
+END ;
+
+

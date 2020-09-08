@@ -1,0 +1,157 @@
+{This file describes three units which are extensively used in the other 
+programs on this disk.  They are FILEUNIT, SCREENUNIT, and PRINTERUNIT.
+
+     Unit FILEUNIT is a collection of procedures intended to aid in the error
+free opening of files for input and output.  The procedures are very modular
+so that use and modification of the unit is straight-forward.
+
+     OPENDSKREAD and OPNDSKWRT are the most general procedures.  They act as
+"one-liner" file openers in the calling program.  These procedures are the
+normal entry point to this unit and they in turn call other procedures to
+actually do the work.  The parameters they require are the fileid (type text
+or file), a prompt string, and the x and y coordinates (type integer) where
+the prompt string is to be displayed on the console.  They will return the
+filename (type string) that was actually opened or a null string if no file
+was opened.  OPNDSKWRT always opens a text file.  If you want any other kind
+of file, then call REWRT_DISK directly.
+
+     Procedure GETFILNAME is a routine which is called by OPNDSKREAD and
+OPNDSKWRT. This procedure actually outputs the prompt and reads a filename.
+It then calls REMOVE_SPACES to (naturally) remove any spaces.  It then calls
+LEGALNAME to check for the occurance of any illegal characters. GETFILNAME
+will continue to loop until LEGALNAME says that the filename is is legal in
+its construction.  GETFILENAME then returns the legal filename to OPNDSKREAD
+or OPNDSKWRT.  The boolean GOTNAME indicates a valid name. GETFILNAME will
+allow the user to look through his directorys if desired.  To do this, it
+calls DIR.
+
+     Procedure LEGALNAME actually tries to reset the file and if the operating
+system says that the name is legal (IORESULT=7), it exits.  If the name is not
+legal the procedure IO_ERROR is called to display an error message at the
+bottom of the screen and then it exits to GETFILNAME with a boolean variable
+indicating whether or not the name was legal.  If the name was legal and the
+file existed it is now open, so LEGALNAME closes the file so that later
+procedures won't get confused. 
+
+     Procedure LEGALUNIT checks for legal volume names.  It is used by DIR,
+GET_FILE_DATE, and LEGALNAME.  This procedure prevents the possibility of 
+reading from REMOUT: for example and causing the system to hang.  One 
+exception is made.  The user is allowed to reference PRINTER: ( but not #6:) 
+to allow the printer to be opened for output instead of a file.  You can, of 
+course, use this loophole to intentally screw up the system, but I couldn't 
+think of a better way to do it.
+
+     Procedure IO_ERROR, in SCREENUNIT, simply displays an entry from the
+table of I/O error messages which is found the UCSD System Users Guide.  It is
+helpful in determining the actual cause of the error. If no error is indicated
+when this procedure is called (IORESULT=0), then the procedure exits to the
+caller with no action.  To save codefile space, the text of the messages are
+contained in a structured file on disk instead of in-line in the procedure. 
+While this method is slower, it is one block smaller in each program in which
+FILEUNIT is used. The disk file is named ERRORDATA and if not present, the
+value of IORESULT is displayed instead.  There are some extra error messages
+and corresponding values of IORESULT in the file.  These are for additional
+error messages than the UCSD system has because FILEUNIT is more picky about
+characters in filenames than the system.  The new values of IORESULT start at
+128 so that there will (probably) never be a conflict in the numbering.
+
+     Procedures RESET_DISK and REWRT_DISK actually do the work of opening a
+file. These procedures are declared to be global so that they may be called 
+directly by the user in the case where a good filename is already known.
+
+     RESET_DISK tries to reset the file with the filename as is and if
+successful it exits with the value of ioresult.  If it is not successful it
+calls ADD_TEXT to append '.TEXT' to the filename (only if it doesn't have a
+'.TEXT' extension) and tries again.  If it is successful it leaves the file
+open and exits with the new filename and the value of ioresult.  If the reset
+fails a second time, it then exits with a non-zero ioresult.
+
+     REWRT_DISK first tries to reset the file to see if it already exists and
+if so it prompts the user to be sure that he really wants to rewrite an
+existing file.  If the user says yes it goes ahead and rewites the file and
+the previous file of the same name is forever lost. If the file to be
+rewritten is not found it is then rewritten.  The variable REWROTE is then set
+true to indicate that an attempt was made.  If any errors occur in rewriting
+the file then the procedure exits with the value if ioresult.  OPNDSKWRT
+detects the value of ioresult, calls IO_ERROR to disply a message and then
+calls GETFILNAME to get another name. If the rewrite was successful then the
+file is left open for use by the calling program and REWRT_DISK exits with the
+filename actually opened and IORESLT=0. It is the users responsibility to
+close and lock the file when he is through writing to it.
+
+     An isolated procedure ,BAD_IO (also found in SCREENUNIT), exists which is
+not used in the opening of files.  This procedure is used with the I/O
+statements used in reading or writing files.  It receives as parameters the
+fileid, the filename, a boolean (RSET), and IORESULT.  It passes back out the
+boolean IO_OK to indicate if the value of IORESULT was zero or not.  If
+IORESULT was non-zero it calls IO_ERROR to display the type of error and
+prompt for a course of action.  The action taken depends on the value of
+RSET.  If RSET is true the file can be reset to start over at the beginning. 
+If RSET is false then the file will not be reset.  This allows the user who
+has been keeping track of the exact blocks he has been accessing to restart at
+the beginning of the block where the error occured.  If the user feels that
+the error was fatal to his program he, can immediatly EXIT(PROGRAM).  This
+procedure should be used in conjunction with I/O checking ( the (*$I-*) )
+compiler option and a repeat loop around the read or write startment in
+question.  For example, if a file was opened sucessfully and the user pulls
+out the floppy before it has been completely read, this procedure will allow
+the user to re-insert the disk and continue without a run- time error which
+would normally bomb the program.  If the file was being written, and the user
+elects to exit the program, BAD_IO closes his file with the LOCK option so
+that whatever was already written is saved.  
+     
+     Procedure DIR will display the contents of a directory on one screen.
+Only the filenames are shown as this procedure is intended to aid in the 
+selection of a file to be opened by OPNDSKREAD and OPNDSKWRT.  The procedure
+is a combination of Monaco's and Gagne's work on Volume 5 and a neat quicksort 
+procedure taken from a SYBEX book by Alan Miller.
+
+     Procedure GET_FILE_DATE will get the date of the last update of any file
+on any disk.  You pass it the file name and it passes back the date and the
+filename with the volume id of the volume prefixed.  If you pass it a string
+variable containing a star(*), it will pass back the volume id of the root
+volume and the current system date.  If you pass it the volume id of any other
+volume or a non-existant filename, a null string will be returned for the
+date. GET_FILE_DATE is declared to be global so that is can be called by the
+user.
+
+     Some degree of terminal independance is possible by the use of two 
+procedures by Roger Soles.  These procedures, GETCRTINFO and CRT (found in 
+SCREENUNIT), were taken from the unit UNIT.GOOD found on Volume 5 of the USUS
+library.  If you have a standard size screen, no screen formatting changes
+are required to the unit. SCREENUNIT must be compiled and available before
+FILEUNIT is compiled. No attempt has been made to accomadate terminals with
+screens smaller than 80 x 24.  Since many of the procedures write messages to
+absolute screen positions, major surgery may be required to make the unit fit
+a smaller-than-standard format.  GETCRTINFO has been slightly modified to 
+allow the direct access to individual bits in a given byte.
+        
+     Note that the name, revision number, and date of last revision is in a
+procedure called VER_FILEUNIT.  When this procedure is called, the version
+number and last revision date are written to the screen, so that the unit can
+identify itself.  This is also done in SCREENUNIT and PRINTERUNIT. If you
+update the unit, remember to update the version and date.
+
+     This unit is rather large.  You will find that it will make even the most
+trivial program at least fourteen (count 'em 14) blocks long, but as the
+saying goes, "there ain't no free lunch".  If you have any comments,
+suggestions, or improvements concerning the unit, I would appreciate hearing
+them.
+
+     George Schreyer
+     412 North Maria Ave.
+     Redondo Beach, Ca.
+     90277
+     (213-376-9348)
+
+     P.S.  This unit has been tested and works on version 4 of the UCSD 
+system.  EXCEPT, you must add a dummy termination section to the SCREENUNIT as
+shown
+
+     BEGIN
+     ***;
+     END.
+
+ or the EXIT(PROGRAM) in BAD_IO will do some mighty strange things.  I 
+understand that this is a genuine bug and will be fixed.
+

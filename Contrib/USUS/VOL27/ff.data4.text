@@ -1,0 +1,464 @@
+SEGMENT PROCEDURE INIT;
+VAR
+     FINALC_COL, FINALC_ROW, INITC_COL, INITC_ROW, THEMAX, DESCLENGTH,
+       FORMATLEN, I: INTEGER;
+
+SEGMENT PROCEDURE OPENUPDATAFILES;
+(* If a WORK_PAGE condition exists then the real file will be opened as
+   TRUE_DAT_FILE and the workfile as FORM_DAT_FILE. *)
+VAR
+     I: INTEGER;
+     AWINDOW: WINDOWTYPE;
+
+PROCEDURE LEAVE;
+BEGIN
+  ERROR(11);
+  VARDISPOSE( CALC_LIST,  SIZE_CALC_LIST  );
+  VARDISPOSE( CROSS_CALC, SIZE_CROSS_CALC );
+  CLOSE(FORM_DAT_FILE, PURGE);  DAT_OPEN := FALSE;
+  CLOSE(TRUE_DAT_FILE);
+  CLOSE(FORM_CTL_FILE);         CTL_OPEN := FALSE;
+  EXIT(DATAIN)
+END;   (* of leave *)
+
+BEGIN  (* OPENUPDATAFILES *)
+  ONEMOMENT('Opening Data File');
+  IF WORK_PAGE THEN
+    BEGIN
+      RESET(TRUE_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+      IF IORESULT <> 0 THEN
+        BEGIN  ERROR(5);  EXIT(DATAIN)  END;
+      REWRITE(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',TEMP_FILE_NAME,'.DAT'));
+      IF IORESULT <> 0 THEN LEAVE;
+      FOR I := 0 TO WINDOWSIZE DO AWINDOW[I] := EMPTY;
+      WITH FORM_DAT_DESC, DIRECTORY^ DO BEGIN
+        BLKSPERPAGE := ( (THEMAXROW*THEMAXCOL) + WINDOWSIZE ) DIV
+                                  ( WINDOWSIZE + 1 );
+        FOR I := 1 TO BLKSPERPAGE DO
+          IF BLOCKWRITE(FORM_DAT_FILE,AWINDOW,1) <> 1 THEN LEAVE
+      END;
+      CLOSE(FORM_DAT_FILE,LOCK);
+      IF OPEN_DAT(TEMP_FILE_NAME,FORM_DAT_FILE,
+               FORM_DAT_DESC,'DATAIN,MATH,LISTORZERO,FIGURE,NUMTOSTR',TRUE) THEN
+    END
+  ELSE
+    IF NOT OPEN_DAT(REQUESTED_FORM,FORM_DAT_FILE,FORM_DAT_DESC,
+                             'DATAIN,MATH,LISTORZERO,FIGURE,NUMTOSTR',TRUE) THEN
+      BEGIN  ERROR(5);  EXIT(DATAIN)  END
+END;   (* of open up data files *)
+
+FUNCTION MAX( X, Y: INTEGER ): INTEGER;
+BEGIN
+  IF X > Y THEN MAX := X ELSE MAX := Y;
+END;
+
+(*$R- *)
+PROCEDURE COUNT_CALCS(CTL_TYPE: TYPE_CTL;  DOINGROW: BOOLEAN;  OFFSET: INTEGER);
+BEGIN
+  CASE CTL_TYPE OF
+    HEADING, DATA: CALC_LIST^[ OFFSET ] := NO_C;
+    INITIALC: BEGIN
+                CALC_LIST^[ OFFSET ] := INIT_C;
+                IF DOINGROW THEN INITC_ROW := INITC_ROW + 1
+                            ELSE INITC_COL := INITC_COL + 1
+              END;
+    FINALC:   BEGIN
+                CALC_LIST^[ OFFSET ] := FINL_C;
+                IF DOINGROW THEN FINALC_ROW := FINALC_ROW + 1
+                            ELSE FINALC_COL := FINALC_COL + 1
+              END
+  END
+END;   (* of count_calcs *)
+(*$R^ *)
+
+BEGIN
+  WITH DIRECTORY^, FORM_CTL_FILE^ DO BEGIN
+    (* 
+       NOTE:
+         You may wonder why on earth there is a plus 2 on both of the
+         expressions below.  Well I will tell you!  Some genius at
+         Softech Microsystems decided that you cannot Dispose of less
+         than two words but allocating just one with a Varnew is a ok.
+         So for forms where just one word was needed below things
+         would be FUBARed when the Vardispose was done.  I have a word
+         for the person who coded the Varnew and Vardispose routines
+         but I will keep it to myself.
+                                                          SDA  9/28/81
+    *)
+    SIZE_CROSS_CALC := VARNEW( CROSS_CALC, (( NO_ROWS+NO_COLS ) DIV 16 ) + 2 );
+    SIZE_CALC_LIST  := VARNEW( CALC_LIST , (( NO_ROWS+NO_COLS ) DIV 8  ) + 2 );
+    IF (SIZE_CROSS_CALC = 0) OR (SIZE_CALC_LIST = 0) THEN
+      BEGIN
+        PRESSRETURN('*** Not Enough Memory.  Aborting,',MSG_LINE);
+        FINISH_UP;
+        EXIT(DATAIN)
+      END;
+    
+    (* Additions Below  SDA 5/5/81 *)
+    PLANE := NOTSET;
+    REPEAT
+      IF YESNO('Access Data by Pages','N')   THEN PLANE := ROWCOL  ELSE
+      IF YESNO('Access Data by Columns','N') THEN PLANE := ROWPAGE ELSE
+      IF YESNO('Access Data by Rows','N')    THEN PLANE := PAGECOL
+    UNTIL PLANE <> NOTSET;
+    
+    IF PLANE <> ROWCOL THEN WORK_PAGE := FALSE
+    ELSE WORK_PAGE := YESNO('Use a Work File','Y');
+      
+    OPENUPDATAFILES;
+    
+    GETPNUM(1,REAL_PAGE);    (* This sets MAP_PAGE boolean *)
+    
+    ONEMOMENT('Setting Up'); (* Addition  SDA 6/26/81      *)
+    
+    CASE PLANE OF
+      ROWCOL:  BEGIN
+                 NUM_COLS := NO_COLS;     NUM_ROWS := NO_ROWS;
+                 IF WORK_PAGE THEN SET_WORK_PAGE
+               END;
+      PAGECOL: BEGIN
+                 NUM_COLS := NO_COLS;     NUM_ROWS := NO_PAGES
+               END;
+      ROWPAGE: BEGIN
+                 NUM_COLS := NO_PAGES;    NUM_ROWS := NO_ROWS
+               END
+    END;
+  
+    IF NOT WORK_PAGE THEN CUR_PAGE := REAL_PAGE;
+  
+    (* Initialize Col pos array, COL_POS[ I-1 ] contains position of Col I
+       Also set num of calculated Rows and Cols, both Initial and Final if
+       PLANE is ROWCOL
+    *)
+    THEMAX := 0;
+    INITC_ROW := 0;  FINALC_ROW := 0;  INITC_COL := 0;  FINALC_COL := 0;
+    IF PLANE = PAGECOL THEN
+      THEMAX := 8               (* All descs are of the form 'Page xxx'      *)
+    ELSE
+      FOR I := 1 TO NO_ROWS DO  (* set col pos 0 by finding biggest row desc *)
+        BEGIN                   (* cnt number of initial and final row calcs *)
+          GETCTLREC( FALSE, I );
+          THEMAX := MAX( THEMAX, LENGTH( CTL_DESC ) );
+          IF PLANE = ROWCOL THEN
+            BEGIN
+              (*$R- *) CROSS_CALC^[ I ] := CTL_CROSS; (*$R^ *)
+              COUNT_CALCS(CTL_TYPE, TRUE, I)
+            END
+        END;
+    COL_POS[0] := THEMAX + GAP;
+    IF FORMAT = FROW THEN  (* spacing determined by row with biggest format *)
+      BEGIN                (* and the size of each column description.      *)
+        THEMAX := 0;
+        FOR I := 1 TO NO_ROWS DO  (* find biggest format *)
+          BEGIN
+            GETCTLREC( FALSE, I );
+            THEMAX := MAX( THEMAX, LENGTH( CTL_FORMAT ) )
+          END;
+        THEMAX := THEMAX + 1;  (* add one for the sign *)
+        FOR I := 1 TO NUM_COLS DO   (* set pos to max of format and desc *)
+          BEGIN                     (* cnt number of column calcs too    *)
+            IF PLANE = ROWPAGE THEN
+              DESCLENGTH := 8       (* Descs are of the form 'Page xxx'  *)
+            ELSE
+              BEGIN
+                GETCTLREC( TRUE, I );
+                DESCLENGTH := LENGTH( CTL_DESC );
+                IF PLANE = ROWCOL THEN
+                  BEGIN
+                    (*$R- *) CROSS_CALC^[ I + NO_ROWS ] := CTL_CROSS; (*$R^ *)
+                    COUNT_CALCS(CTL_TYPE, FALSE, I + NO_ROWS)
+                  END
+                END;
+            COL_POS[I] := COL_POS[I-1] + GAP + MAX( THEMAX, DESCLENGTH )
+          END
+      END
+    ELSE      (* formatting by columns *)
+      BEGIN
+        IF PLANE = ROWPAGE THEN (* If PLANE is ROWPAGE then find the largest *)
+          BEGIN                 (* col format and use it for the comparisons *)
+            FORMATLEN := 0;     (* below.         SDA 5/5/81                 *)
+            FOR I := 1 TO NO_COLS DO
+              BEGIN
+                GETCTLREC(TRUE,I);
+                FORMATLEN := MAX( FORMATLEN, LENGTH(CTL_FORMAT) )
+              END;
+            DESCLENGTH := 8     (* All col descs are of the form 'Page xxxx' *)
+          END;
+        FOR I := 1 TO NUM_COLS DO (* set pos to max of col format and desc   *)
+          BEGIN                   (* cnt number of column calcs too          *)
+            IF PLANE <> ROWPAGE THEN
+              BEGIN
+                GETCTLREC( TRUE, I );
+                FORMATLEN := LENGTH(CTL_FORMAT);
+                DESCLENGTH := LENGTH(CTL_DESC);
+                IF PLANE = ROWCOL THEN
+                  BEGIN
+                    (*$R- *) CROSS_CALC^[ I + NO_ROWS ] := CTL_CROSS; (*$R^ *)
+                    COUNT_CALCS(CTL_TYPE, FALSE, I + NO_ROWS)
+                  END
+              END;
+            COL_POS[I] := COL_POS[I-1] + GAP + MAX ( DESCLENGTH, FORMATLEN + 1 )
+          END
+      END
+  END;  (* of with directory^, form_ctl_file^ *)
+  
+  (* initialize CALC_CASE *)
+  IF (INITC_COL  = 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 0  ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 1  ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 2  ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 3  ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 4  ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 5  ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 6  ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW = 0)  THEN CALC_CASE := 7  ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 8  ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 9  ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 10 ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL = 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 11 ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 12 ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  = 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 13 ELSE
+  IF (INITC_COL  = 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 14 ELSE
+  IF (INITC_COL  > 0)  AND (INITC_ROW  > 0)  AND
+     (FINALC_COL > 0)  AND (FINALC_ROW > 0)  THEN CALC_CASE := 15;
+
+  SET_TITLE;
+  
+  CUR_COL := 1;   ST_COL := 1;
+  CUR_ROW := 1;   ST_ROW := 1;
+
+  DIDDLED := FALSE;
+  
+  TITLE1  := '';
+  TITLE2  := '';
+  TITLE3  := '';
+  FOOTING := '';
+  LISTROW := '';
+  LISTCOL := '';
+END;   (* of init *)
+
+SEGMENT PROCEDURE UPDATE;
+VAR  LASTCH: CHAR;
+     OLD_ROW, OLD_COL, POSROW, POSCOL, POSPG, L, X, Y, TRASH: INTEGER;
+     PROMPTLINE: STRING[63];
+     which_key : sc_key_command;
+
+PROCEDURE SETBEFOREAFTER( INDEX: INTEGER );
+BEGIN
+  WITH THEFORMAT[ INDEX ] DO BEGIN
+    BEFORE := BEF;
+    AFTER :=  AFT;
+    L :=      BEF + AFT + 1;    (* Add 1 for a decimal point       *)
+    IF AFT = 0 THEN L := L - 1  (* No decimal point so knock off 1 *)
+  END
+END;   (* of setbefore after *)
+
+PROCEDURE MOVEHOME;
+BEGIN
+  CUR_COL := ST_COL;  CUR_ROW := ST_ROW;
+  OLD_COL := 0;       OLD_ROW := 0;
+  WHILE NOT LEGAL[ CUR_ROW - YOFFSET ] DO
+    BEGIN
+      CUR_COL := CUR_COL + 1;
+      IF CUR_COL > LAST_COL THEN
+        BEGIN
+          CUR_COL := ST_COL;
+          CUR_ROW := CUR_ROW + 1;
+          IF CUR_ROW > LAST_ROW THEN  (* no legal place to put cursor *)
+            BEGIN
+              (*$B 40COL- *)
+              PRESSRETURN('*** Re-Anchor, no place to put Cursor,',MSG_LINE);
+              (*$E 40COL  *)
+              (*$B 40COL+ *)
+              PRESSRETURN('*** Re-Anchor,',MSG_LINE);
+              (*$E 40COL  *)
+              EXIT(UPDATE)
+            END
+        END
+    END;
+END;   (* of movehome *)
+
+PROCEDURE UP;
+BEGIN
+  REPEAT
+    CUR_ROW := CUR_ROW - 1;
+    IF CUR_ROW < ST_ROW THEN
+      BEGIN
+        CUR_ROW := LAST_ROW;
+        CUR_COL := CUR_COL - 1;
+        IF CUR_COL < ST_COL THEN CUR_COL := LAST_COL
+      END
+  UNTIL LEGAL[ CUR_ROW - YOFFSET ];
+END;
+
+PROCEDURE DOWN;
+BEGIN
+  REPEAT
+    CUR_ROW := CUR_ROW + 1;
+    IF CUR_ROW > LAST_ROW THEN
+      BEGIN
+        CUR_ROW := ST_ROW;
+        CUR_COL := CUR_COL + 1;
+        IF CUR_COL > LAST_COL THEN CUR_COL := ST_COL
+      END
+  UNTIL LEGAL[ CUR_ROW - YOFFSET ];
+END;
+
+PROCEDURE RIGHT;
+BEGIN
+  REPEAT
+    CUR_COL := CUR_COL + 1;
+    IF CUR_COL > LAST_COL THEN
+      BEGIN
+        CUR_COL := ST_COL;
+        CUR_ROW := CUR_ROW + 1;
+        IF CUR_ROW > LAST_ROW THEN CUR_ROW := ST_ROW
+      END
+  UNTIL LEGAL[ CUR_ROW - YOFFSET ];
+END;
+
+PROCEDURE LEFT;
+BEGIN
+  REPEAT
+    CUR_COL := CUR_COL - 1;
+    IF CUR_COL < ST_COL THEN
+      BEGIN
+        CUR_COL := LAST_COL;
+        CUR_ROW := CUR_ROW - 1;
+        IF CUR_ROW < ST_ROW THEN CUR_ROW := LAST_ROW
+      END
+  UNTIL LEGAL[ CUR_ROW - YOFFSET ];
+END;
+
+BEGIN
+  CASE PLANE OF
+    ROWCOL:  PROMPTLINE := 'Row       Col       Pg ';
+    PAGECOL: PROMPTLINE := 'Pg        Col       Row';
+    ROWPAGE: PROMPTLINE := 'Row       Pg        Col';
+  END;
+  (*$B 40COL- *)
+  PROMPTLINE := CONCAT('Update    ',PROMPTLINE,'         Press ENTER to leave');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PROMPTLINE := CONCAT('Update    ',PROMPTLINE);
+  (*$E 40COL  *)
+  
+  (* set the positions to write at in the promptline  *)
+  POSROW := POS( 'Row', PROMPTLINE ) + 3;
+  POSCOL := POS( 'Col', PROMPTLINE ) + 3;
+  POSPG  := POS( 'Pg ', PROMPTLINE ) + 3;
+  
+  PROMPT(PROMPTLINE,MSG_LINE-1);
+  
+  (*$B 40COL+ *)
+  PROMPT('Press ENTER to leave',MSG_LINE);
+  (*$E 40COL  *)
+  
+  MEMORY;
+  
+  MOVEHOME;
+  REPEAT
+    (* initialize X,Y coordinates on the screen for the field to put
+       the cursor in, and set L which is the length of a number allowed
+       to be entered there and set BEFORE and AFTER for that number *)
+    X := COL_POS[ CUR_COL-1 ] - XOFFSET;
+    Y := CUR_ROW - YOFFSET;
+    IF DIRECTORY^.FORMAT = FROW THEN
+      SETBEFOREAFTER( CUR_ROW - ST_ROW )     (* Two Bug fixes  SDA 3/5/81 *)
+    ELSE                                     (* Was minus Y- and X-OFFSET *)
+      SETBEFOREAFTER( CUR_COL - ST_COL );
+    
+    (* Get a number and/or a movement *)
+    REPEAT
+      GOTOXY(POSROW,MSG_LINE-1);  WRITE(OUTPUT,CUR_ROW:5);
+      GOTOXY(POSCOL,MSG_LINE-1);  WRITE(OUTPUT,CUR_COL:5);
+      GOTOXY(POSPG, MSG_LINE-1);  WRITE(OUTPUT,REAL_PAGE:5);
+      GOTOXY(X,Y);
+      ACCEPTNUM(TRUE,L,IS,LASTCH,which_key);
+    UNTIL IS <> 'INVALID';
+    
+    IF IS <> '' THEN  (* Got a number, display it *)
+      BEGIN
+        DIDDLED := TRUE;
+        VALUE(FALSE,IS,ANUMBER,TRASH);
+        CALLNUMBER(CUR_PAGE,CUR_ROW,CUR_COL,ANDPUT);   (* Change  SDA 5/6/81 *)
+        WRITENUM(CUR_ROW,CUR_COL);
+      END;
+    
+    (* perform movement *)
+    {
+    IF LASTCH = CURSOR_UP THEN UP ELSE
+    IF LASTCH = CURSOR_DOWN THEN DOWN ELSE
+    IF LASTCH = CURSOR_RIGHT THEN RIGHT ELSE
+    IF LASTCH = CURSOR_LEFT THEN LEFT ELSE
+    IF LASTCH = HOME THEN MOVEHOME ELSE
+    IF LASTCH IN [SPACE,TAB] THEN
+      }
+    if which_key = sc_up_key then up else
+    if which_key = sc_down_key then down else
+    if which_key = sc_right_key then right else
+    if which_key = sc_left_key then left else
+    {screenops don't support home key - gws }
+    IF LASTCH IN [SPACE,TAB] THEN
+      IF DIRECTORY^.FORMAT = FROW THEN RIGHT ELSE DOWN ELSE
+    IF LASTCH IN ['A','a'] THEN
+      BEGIN
+        ST_COL := CUR_COL;  ST_ROW := CUR_ROW;
+        DISPLAY(TRUE);
+        PROMPT(PROMPTLINE,MSG_LINE-1);
+      END
+  UNTIL which_key = sc_etx_key;
+END;   (* of update *)
+
+SEGMENT PROCEDURE ANCHOR;
+(* Sets CUR_PAGE, ST_COL, ST_ROW, CUR_COL and CUR_ROW and calls display if a
+   new page is asked for.
+*)
+VAR 
+     WAS_MAP: BOOLEAN;
+     PAGE: INTEGER;
+
+BEGIN  (* ANCHOR *)
+  PROMPT('Anchor',MSG_LINE-1);
+  WITH DIRECTORY^ DO BEGIN
+    WAS_MAP := MAP_PAGE;           (* Save MAP_PAGE boolean *)
+    GETPNUM(REAL_PAGE, PAGE);
+    IF PAGE <> REAL_PAGE THEN
+      BEGIN
+        IF WORK_PAGE THEN
+          BEGIN
+            IF DIDDLED THEN
+              IF YESNO('Save the current Page','Y') THEN SAVEPAGE;
+            REAL_PAGE := PAGE;
+            SET_WORK_PAGE   (* Sets Cur_Page to one *)
+          END
+        ELSE
+          BEGIN  REAL_PAGE := PAGE;  CUR_PAGE := PAGE  END;
+        SET_TITLE;
+        DIDDLED := FALSE
+      END
+    ELSE                                (* Stayed on same page *)
+      IF WAS_MAP THEN MAP_PAGE := TRUE; (* Stay in Map mode if you were in it *)
+    IF PLANE = PAGECOL THEN IS := 'Page' ELSE IS := 'Row';
+    GETNUM(1,NUM_ROWS,ST_ROW,CONCAT('Enter ',IS,' #'),ST_ROW);
+    IF PLANE = ROWPAGE THEN IS := 'Page' ELSE IS := 'Column';
+    GETNUM(1,NUM_COLS,ST_COL,CONCAT('Enter ',IS,' #'),ST_COL)
+  END;
+  CUR_COL := ST_COL;  CUR_ROW := ST_ROW;
+  DISPLAY(TRUE)
+END;   (* of anchor *)
+

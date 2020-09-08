@@ -1,0 +1,153 @@
+
+     DOCUMENTATION FOR THE FILES ON VOLUME 2B: (nominally) CP/M FORMAT
+
+     I packed the CP/M format disk with the maximum number of files that would 
+fit, so documentation resides in this file and elsewhere on this disk as noted 
+below.
+
+     
+     BOOTER.ASM
+     DFOCO.ASM
+     PGEN.ASM
+     MACRO.LIB
+     SAMPLEIO.ASM These programs are all documented within 512.DOC.TEXT,
+elsewhere on this disk.  They form the CP/M portion of the 512-byte BIOS al-
+terations for the UCSD system and require CP/M software (principally the
+Digital Research macroassembler) to be assembled (unless modified).  Specific 
+documentation regarding DFOCO is contained in DFOCO.DOC.TEXT on this disk.
+
+     UCSD2CPM.MAC
+     UCSD2CPM.COM This assembly-language program translates UCSD-format
+textfiles to the CP/M format.  It runs under CP/M.  It is written for the
+Microsoft assembler with Zilog memnomics, and will run on a Z-80 only, I
+believe, though it should not be hard to modify for an 8080 if you so desire. 
+One bug:  the utility sometimes can't find UCSD files even though you typed 
+the filename correctly.  To overcome this problem, keep typing the correct 
+name until the program finds the file.
+
+     
+     I have filled up the rest of the disk with my favorite CP/M utilities,
+including some quite helpful for disk maintenance in a UCSD system:
+
+     CAT.COM
+     CAT.SUB
+     FMAP.COM
+     UCAT.COM These utilities form Ward Christensen's CP/M disk cataloging
+package from the CP/M Users' Group, Volume 25, and available in source form
+from me or them.  To use, insert a dummy filename on each disk of the format  
+"-xxxxxxx.nnn", where "xxxxxxx" is any name relevant to the purpose of
+that disk (one to seven alphanumeric characters) and "nnn" is the unique
+serial or volume number of that disk (e.g., 001, 010, 289, etc.).  The hyphen
+in front of the disk name ensures that it comes first in an alphabetical
+listing of directory entries, and is required for the cataloging program to
+function.  Next, create a file with your favorite CP/M editor called
+"MAST.CAT", and include within this file a list of all files you do NOT wish
+listed in the master catalog (such as ED.COM, ASM.COM, and other fairly
+universal files) in the following format: each filename must be on a separate
+line in alphabetic order.  The first name is preceeded by a left parenthesis,
+and the last followed by a right parenthesis, in the following manner:
+
+(ASM.COM
+ED.COM
+STAT.COM)
+
+     Next pick a disk which will contain your master catalog, MAST.CAT, and 
+add the dummy directory entry "-xxxxxxx.nnn" to each disk as noted above.  To 
+add the directory data on a disk to the catalog, first make a file of the 
+directory data by typing "FMAP <diskletter>: F", where diskletter is one of
+"A" through "D".  Then type "UCAT" to merge the "NAMES.SUB" file created by
+FMAP with the catalog file.  You can follow this procedure each time a disk
+is created or significantly changed, since UCAT automatically deletes catalog
+entries not present on the updated directory file and adds any new entries it
+finds.  To delete an entire volume, create a "NAMES.SUB" file consisting only
+of the volume name you wish to delete (in the usual "-xxxxxxx.nnn" format)
+and run UCAT.
+
+     Finally, to use the catalog, there is CAT.COM, which is invoked like the
+DIR command in the CP/M distribution system (same types of wildcard
+references) except that there is another pair of parameters, the volume name
+and number: CAT <filename>.<filetype> <diskname>.<disknumber> <return> (note
+that the hyphen in front of the diskname is DELETED once it's within the
+catalog).  So typical commands would be: 
+
+CAT <return> --> list entire catalog; 
+CAT *.ASM --> list all ASM files on all disks; 
+CAT *.* *.002 --> list all the files on volume 002; 
+CAT A*.* --> list all files starting with "A"; 
+CAT *.ASM UCSD.* --> list all .ASM files on disks with volumename UCSD.
+
+     For those of us with a large number of CP/M disks, this VERY much helps
+to locate files.  As you may imagine, I would be quippled tink if someone
+would write a similar program for the UCSD system (without, I would hope, the
+necessity to write a separate file of filenames before combining a disk
+directory's contents with the master file).
+
+
+     CLEAN.COM  This utility is a super-PIP, allowing rapid copying of one or 
+more files from one disk to another.  It is simple and self-documenting.
+
+     
+     D.COM  This program replaces CP/M's DIR, providing an alphabetized 
+display of all the files on a CP/M disk.  File size is displayed, as well as 
+the remaining number of bytes of room on a disk.  The display is in three 
+columns for the viewing of up to 57 files of a disk on the screen at one time.
+In addition to typing just "D <return>" when at the CP/M command level, you 
+can type "D <diskname>: <return)", where <diskname> consists of one of the
+letters A through D, to see the contents of a disk other than the one
+currently logged.  If you have a terminal smaller than 80 x 24, you will have
+to send a blank disk with return postage to Sam Singer (address in the DFOCO
+listing) or get the CP/M Users Group volume #24, which contains the source
+(named XDIR). Earlier versions of D, however, add up the remaining room on
+the disk incorrectly and report one more Kbyte then really exists.
+
+     NOTE:  We BADLY need a utility of this sort in the UCSD system, which 
+would allow us to read the contents of a disk directory WITHOUT invoking the 
+filer and fitting one or two columns of filenames on a screen at once, all in 
+alphabetical order.  If you take on this one, write the directory-reading 
+portion of the utility in such a manner that it is generally usable.
+
+     
+     DUMP.ASM  This is Sam's disk dumping utility, allowing you access to hex 
+and ASCII listings (in a format like DDT's D command) of files, tracks, 
+sectors, and the CP/M logical groups.  The Map facility gives you a picture of 
+disk usage by viewing the occupied groups (CP/M's way of organizing disk 
+data).  If you ignore the CP/M features, this program will work just fine for
+UCSD- format disks.  Note that it works only with 3740-compatible disks
+(single density, each track with 26 sectors of 128 bytes); you'll have to put
+up with UCSD's Patch utility to fix 512-byte sectored disks.  This is a nice
+utility, but I prefer my program:
+
+     
+     SPAT.ASM  This is heavily modified from the version published in the 
+first CP/M Users Group and is designed specifically to write to a 16 x 64
+memory-mapped video terminal.  If you want to use it with a conventional 
+terminal (i.e., accessed via I/O ports), you'll have to write the display to a
+buffer at the end of the program, then write out the buffer to your terminal
+via the CONSLOUT vector in the BIOS jump table.  In addition, some means of
+GOTOXY should be included to obtain data entry instead of the direct screen
+entry utilized when data is requested.  Look at the code carefully before you
+try to assemble it; there are hardware-specific features (such as an ASCII
+formfeed character to clear the screen) that are moderately well documented. 
+VDMLC is the memory address of the terminal; VDMPG is the number of 256-byte 
+pages within the terminal memory.
+
+     SPAT has a number of nice features.  It works with a single 128-byte 
+sector at a time, displaying the hex and ASCII data separately and laid out so 
+you can see what data is where within the sector.  Fixes are easily made, and 
+there is a STATUS byte at the top of the screen, so you can check out the 1771-
+type status word directly from the chip.  I've added direct access to the CP/M 
+logical units of "Group" (the series of 8 logically contiguous 128-byte
+sectors which makes up the logical unit of disk storage) and "Fraction" (my
+name for the relative logical sector within a group, ranging from 0 to 7). 
+If you type "M", the screen fills up with the contents of the entire group
+written in ASCII, speeding your access to troubled source or other
+textfiles.  I find SPAT of enormous use in fixing disk problems ranging from 
+restoring an erroneously erased directory entry (change the first byte of the
+entry from E5 hex to 00), to marking bad sectors as a file GARBAGE.BAD within 
+the directory (first, discover the logical Group number corresponding to the 
+physical sector you have found to be bad, then create the directory entry and
+stick the correct group number therein), to actually repairing a damaged 
+sector.  NOTE WELL:  if you are a beginner to CP/M, GET HELP before fooling 
+around with a disk directory, as you can REALLY make a MESS!!!  This brief 
+description does not constitute adequate instructions in how to proceed.
+

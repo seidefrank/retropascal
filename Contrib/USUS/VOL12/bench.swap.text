@@ -1,0 +1,53 @@
+PROGRAM benchswap;
+
+(* Process swap benchmark - a VAX does >6000 swaps/sec *)
+
+CONST nswap           =10000;
+        
+VAR sem1,sem2,main : SEMAPHORE;
+    c : CHAR;
+    pid : PROCESSID;
+    t11,t12,t21,t22 : INTEGER;
+
+PROCESS one;
+VAR i : INTEGER;
+BEGIN
+  FOR i := 1 TO nswap DIV 2 DO BEGIN
+    SIGNAL(sem2);
+    WAIT(sem1);
+  END;
+  SIGNAL(main);
+END;
+  
+PROCESS two;
+VAR i : INTEGER;
+BEGIN
+  FOR i := 1 TO nswap DIV 2 DO BEGIN
+    SIGNAL(sem1);
+    WAIT(sem2);
+  END;
+  SIGNAL(main);
+END;
+  
+BEGIN
+
+  WRITELN('Type <space> to go');
+  READ(c);
+  
+  TIME(t11,t12);
+  SEMINIT(sem1,0);
+  SEMINIT(sem2,0);
+  SEMINIT(main,0);
+  START(one,pid);
+  START(two,pid);
+  WAIT(main);
+  WAIT(main);
+  TIME(t21,t22);
+  
+  WRITELN('Done');
+  t22:=t22-t12;
+  IF t22 > 0 THEN
+     WRITELN((t22+30)DIV 60 ,' seconds ',ROUND((60/t22)*nswap),' swaps/sec');
+  
+END.
+

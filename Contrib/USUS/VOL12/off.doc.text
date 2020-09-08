@@ -1,0 +1,331 @@
+~Overview~
+
+OffLoad is a collection of administrative aids which are
+made available on a microcomputer.  The system is intended
+for those users who require a general purpose microcomputer
+system for some aspect of their work and who wish to use
+the system for additional administrative functions.
+
+The individual components of the OffLoad system have been
+made as compatible as possible to provide a
+straightforward, uniform set of facilities to the user. 
+Extensive use is made of "menus" from which choices of
+action may be made and help information is provided by the
+system.
+
+         +-------------+
+         |   Computer  |
+         |   Network   |
+         +-------------+
+                ^
+                |
+                v
+         +-------------+         +-----------+
+         |   OffLoad   | ------> |  Printer  |
+         | workstation |         +-----------+
+         +-------------+
+                ^
+                |
+                v
+               user
+                            
+The design of the OffLoad workstation allows
+straightforward integration with facilities available over
+a computer network. This will enable interpersonal
+communication facilities (such as electronic mail, viewdata
+and document transfers) as well as access to more powerful
+computer based facilities, document archives, printing,
+etc.
+
+~System Requirements~
+
+The full OffLoad system will run on the UCSD p-System
+Version IV and it has initially been provided on the
+Intertec SuperBrain QD microcomputer. Many of the
+individual components of OffLoad are available as part of
+the WORDSET Word Processing Facilities or other packages
+available from the ERCC for UCSD based microcomputers. 
+
+
+
+
+
+
+
+
+~OffLoad Command Level~
+
+The components of the OffLoad system are arranged in a
+hierarchy. At all levels you are presented with a prompt
+line giving the options available to you and inviting you
+to press a key to select one of them.  Options are
+indicated by a form such as E(dit or S(et.  Type the letter
+to the left of the parenthesis to make the appropriate
+selection. You may return to a higher choice level by
+typing Q to Q(uit.
+
+~OffLoad Components~
+
+E(ditor        to create and modify documents
+F(iler         to examine disk contents, manipulate disks
+L(ist          to print out documents
+P(rose         to format documents
+S(can          to list a document to the screen for review
+T(ty           to communicate with other computers
+D(iskAids      to copy and tidy disks
+H(elp          to provide assistance in the use of OffLoad
+X(ecute        to execute other utilities and programs
+               Crackup       splits up large documents and 
+                             rejoins parts
+               Compact       reduce space used by document
+               Calc          Desktop arithmetic calculator
+               Compare       two documents
+               Sort/Merge
+               Mail          Mailing label manager and
+                             form letters
+               Configure     workstation environment
+               Fund,Enuf,etc Cashflow analysis,
+                             Data base management system, etc
+               + others
+
+~OffLoad Parameter Text~
+
+Instead of making arbitrary choices for the default action
+of the various components of OffLoad, the system will check
+for the presence of setup information in a text file held
+on the system disk (*PARAM.INFO).  This is set to general,
+useful values but may be altered by the user with the
+Editor. An appendix to this document describes the various
+features which may be set up.  Suitable general purpose
+defaults have already been chosen for the OffLoad system as
+it is distributed.
+
+
+
+
+
+
+
+
+
+~Help~
+
+The OffLoad workstation provides help on several topics. 
+You can get a summary of the OffLoad commands, recall the
+special keystrokes needed for editor functions, get a list
+of the Utilities available, etc.
+
+A document *HELP.HINT may be created by a user of OffLoad
+to hold any useful information and this can be recalled in
+the OffLoad Help facility at any time.
+
+
+~Editor~
+
+A screen oriented editor is used for the entry of text to
+the system and for its subsequent modification.  The editor
+displays a screen image which shows a "window" onto the
+text being edited.  The screen image is as close as
+possible to the current state of the part of the text being
+entered or modified.  Cursor moving keys may be used to
+move to any position on the screen or to move through the
+text to cause a different "window" to be shown on the
+screen.
+
+~DiskAids~
+
+A set of commonly needed disk operations has been provided
+in an easy to use manner via the DiskAids component of
+OffLoad.  These simplify the copying of entire disks and
+the setting up of new user disks.  Normally these
+operations would each consist of several steps and
+necessitate otherwise unnecessary background knowledge of
+the computer system being used.  The DiskAid facilities
+are:
+
+B(ackup-#4    create a backup of the OffLoad System Disk
+C(opy-#5      create a copy of the User Disk
+N(ew-#5       create a new, formatted, blank, User Disk
+T(idy         compact unused space on the disks in drives
+
+
+~Filer~
+
+The Filer is a collection of facilities to examine the list
+of documents or files on disks (known as disk directories),
+to copy files, remove files, change the names of files,
+copy entire disks, etc. Floppy disks are prone to damage
+from dust, grease, etc, so there are aids for checking
+disks are sound and recovering parts of disks found to be
+faulty (see the appendix on handling floppy disks for more
+information on disk handling and recovering from errors).
+
+The "DiskAids" facilities in OffLoad are intended to
+provide a straightforward method of manipulating entire
+disks, to take back-up copies of disks, etc.
+
+~LIST~
+
+LIST is a utility for listing text to a printer.  Simple
+paginated output is possible using a format which you may
+specify in the OffLoad parameter information text. However,
+the OffLoad workstation is set up so that, by default, A4
+paginated output will be produced. The document to be
+listed may consist of several separate parts.  These can be
+given to LIST by separating them by commas.
+
+Text may be underlined and characters printed in an
+alternative font using the LIST utility.
+
+
+~PROSE - Text Formatter~
+
+More sophisticated text formatting is possible using the
+text formatter PROSE.  Directives may be placed in the text
+to produce a wide variety of output styles.  Without
+directives PROSE will attempt to produce a reasonably
+formatted document according to a default description.
+
+Sample directive texts for PROSE are provided with the
+OffLoad System.
+
+
+~Scan - review a long text~
+
+The S(can) option of OffLoad is a simple method of
+reviewing a text file which is too long to edit.  It lists
+the document on the screen.
+
+
+~TTY - Communications~
+
+TTY can be used to enable the microcomputer to act as a
+video terminal to a host computer.  The microcomputer is
+connected to the network via a Terminal Control Processor,
+either directly or via an accoustic coupler and telephone
+to the host computer. The normal conventions for logging on
+to and using the host computer should then be followed.
+
+It is possible to enter a "local mode" of the TTY program
+and to P(ut documents to the host computer from the micro-
+computer's disks or to G(et documents back from the host
+computer to the microcomputer's disks. The F(iler option
+allows the microcomputer's disk directories to be examined,
+documents removed, etc. from within TTY.
+
+TTY forms a part of the ERCC X-Talk communication
+facilities.
+
+
+
+~X(execute)~
+
+Less commonly used components of the OffLoad system do not
+appear on the main options menu list.  These can be used by
+typing X and giving the component name.
+
+~CRACKUP~
+
+CRACKUP can be used to break up a large document into
+several manageable pieces suitable for editing.  This may
+be necessary where a document is brought onto the
+workstation from elsewhere (e.g., from another computer).
+
+In addition, should it ever be desirable to put together
+all the separate sections of a large document (e.g., for
+sending to someone on a different computer) CRACKUP will
+also perform that operation.
+
+
+~COMPACT~
+
+The Editor and some other OffLoad utilities represent
+documents in a reduced form.  In some cases, such as
+receipt of documents from a host computer via the G(et
+document) facilities of the TTY communication package, the
+document created will be larger than strictly necessary. 
+If this causes inconvenience, such as making the document
+too large to edit, perform a COMPACT operation on the
+document and the leading spaces will be converted to their
+reduced form, and all trailing spaces on lines will be
+removed.
+
+~CALC~
+
+CALC enables simple arithmetic calculations to be
+performed. A display can be maintained showing the current
+values of a set of "variables" which can be used to hold
+intermediate results.  Help information is available in the
+utility.
+
+~COMPARE~
+
+This is a utility to compare 2 similar documents and to
+produce a report of the differences between them.  It is
+normally used to compare a revision of a document against
+an original.
+
+~SORT/MERGE~
+
+SORT/MERGE is a general package which is able to perform a
+number of operations on lines of text (usually in some
+fixed format or list) or on other types of files.  The
+OffLoad system includes one version of this facility which
+allows a document consisting of single line records to be
+sorted according to up to 6 'keys' or ordering fields.
+     
+~MAIL~
+
+MAIL is a utility to manage a data base of name, address
+and other information.  The data base may be added to,
+changed and entries deleted.  It is possible to search
+through the data base for records satisfying certain
+criteria.  Mailing labels may be produced and record
+entries merged into standard letters to produce "form"
+letters.
+
+
+~CONFIGURE~
+
+CONFIGURE can be used to set characteristics of the OffLoad
+workstation hardware.  Normally, information for the ports
+for connection to a printer and to other computers can be
+set in CONFIGURE. See the manual for the particular
+hardware in use for details.
+
+
+~FUND (Cash Flow Analysis), ENUF (database), etc.~
+
+FUND, ENUF, etc. are systems provided on the UCSD p-System
+in which OffLoad operates.  They are not provided directly
+in OffLoad due to limitations on disk space.  However, they
+may be used as separate systems.
+
+FUND is a utility to maintain a list of transactions by
+Cost Centres (e.g., grants or departmental groupings) and
+Cost Codes (e.g., expenditure headings).  Transactions may
+be entered and later examined. Reports may be generated to
+the screen or to a printer giving income, expenditure, cash
+balances and committed expenditure for various cost centres
+or cost codes.
+
+ENUF - the Edinburgh User Friendly Data Base Management
+System - is a flexible, easy to use, general purpose data
+base management system.  It may be used in many situations
+where record processing is required.
+
+~FORMATDISK, BOOTER, etc~
+
+These utilities are normally called via the OffLoad
+DiskAids component.  However, they can be called
+separately if required to format disks or to copy the
+bootstrap area of disks.
+
+~User Provided Programs~
+
+There are several general purpose tools to aid in providing
+programs suitable for administrative functions. In
+particular, there are facilities to provide ISAM (Indexed
+Sequential Access Method) file support and "electronic
+form" oriented front ends to programs.
+

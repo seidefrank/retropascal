@@ -1,0 +1,594 @@
+
+{ MAP-B }
+
+procedure gettok;
+
+  procedure readname;
+  begin { readname }
+    getch; ch := toupper(ch); lextyp := lexalpha; 
+    fillchar(lexstr[2], alfaleng, space);
+    while ch in ['A'..'Z', '0'..'9'] do
+      begin putc(ch); getch; ch := toupper(ch) end;
+    if lexlen > alfaleng then lexlen := alfaleng;
+  end;  { readname }
+  
+  procedure readnumber;
+  begin { readnumber }
+    getch; lextyp := lexint;
+    while ch in ['0'..'9'] do
+      begin putc(ch); getch end;
+    if ch = period then
+      begin getch;
+        if ch = period then pushback
+        else
+          begin lextyp := lexreal; putc(period);
+            while ch in ['0'..'9'] do
+              begin putc(ch); getch end
+          end
+      end;
+    ch := toupper(ch);
+    if ch = lettere then
+      begin lextyp := lexreal; putc(ch); getch;
+        if ch in [plus,minus] then
+          begin putc(ch); getch end;
+        while ch in ['0'..'9'] do
+          begin putc(ch); getch end;
+      end;
+  end;  { readnumber }
+  
+  procedure readc1;
+    { handle comment }
+  begin { readc1 }
+    getch;
+    if ch = dollar then
+      begin lexlen := 0; putc('('); putc('*'); putc('$');
+        repeat
+          repeat
+            getch; putc(ch);
+          until ch = star;
+          getch; putc(ch);
+        until ch = rparen;
+        getch;
+      end
+    else
+      begin lexlen := 0;
+        repeat
+          while ch <> star do getch;
+          getch;
+        until ch = rparen;
+        getch
+      end
+  end;  { readc1 }
+  
+  procedure readc2;
+    { handle comment }
+  begin { readc2 }
+    getch;
+    if ch = dollar then
+      begin lexlen := 0; putc('{'); putc(dollar);
+        repeat
+          getch; putc(ch);
+        until ch = '}';
+        getch;
+      end
+    else
+      begin lexlen := 0;
+        repeat
+          getch;
+        until ch = '}';
+        getch;
+      end;
+  end;  { readc2 }
+  
+  procedure readmacro;
+  begin { readmacro }
+    getch; ch := toupper(ch);
+    if not (ch in ['A'..'Z']) then
+      begin error('readmacro-  illegal macro name'); lexlen := 0 end
+    else
+      begin lextyp := lexmac; 
+        fillchar(lexstr[lexlen+1], alfaleng-lexlen, space);
+        while ch in ['A'..'Z', '0'..'9'] do
+          begin putc(ch);
+            getch; ch := toupper(ch);
+          end;
+        if lexlen > alfaleng then lexlen := alfaleng;
+      end;
+  end;  { readmacro }
+  
+  procedure readstring;
+  begin { readstring }
+    lexlen := 0;
+    repeat
+      over(lexlen, maxline); putc(ch);
+      repeat
+        getch;
+        if ch = newline then
+          begin error('readstring-  string exceeds source line'); pushback;
+            ch := quote { supply missing quote }
+          end;
+        over(lexlen, maxline); putc(ch)
+      until lexstr[lexlen] = quote;
+      getch;
+    until ch <> quote;
+    lextyp := lexst;
+  end;  { readstring }
+  
+  procedure readlop;
+  begin { readlop }
+    getch;
+    if ch = equal then
+      begin lexlen := 2; lexstr[2] := equal; lextyp := lexle; getch end
+    else if ch = greater then
+      begin lexlen := 2; lexstr[2] := greater; lextyp := lexne; getch end
+    else lextyp := lexlt
+  end;  { readlop }
+  
+  procedure readgop;
+  begin { readgop }
+    getch;
+    if ch = equal then
+      begin lexlen := 2; lexstr[2] := equal; lextyp := lexge; getch end
+    else lextyp := lexgt
+  end;  { readgop }
+  
+begin { gettok }
+  lexlen := 0;
+  while lexlen = 0 do
+    begin
+      while ch = blank do getch;
+      ch := toupper(ch); lexlen := 1; lextyp := lexother;
+      lexstr[1] := ch;
+      if ch = newline then
+        if (ftop = 0) and (fstack[ftop].ffcb.endfile) then
+          lextyp := lexeof
+        else begin getch; ch := toupper(ch); lexlen := 0 end
+      else if ch in ['A'..'Z'] then
+        readname
+      else if ch in ['0'..'9'] then
+        readnumber
+      else
+        case ch of
+          '+': begin lextyp := lexadd; getch end;
+          '-': begin lextyp := lexsub; getch end;
+          '*': begin lextyp := lexmult; getch end;
+          '/': begin lextyp := lexdvd; getch end;
+          '(': begin getch;
+                 if ch <> star then lextyp := lexlparen
+                 else
+                   readc1;
+               end;
+          '{': readc2;
+          ')': begin lextyp := lexrparen; getch; end;
+          '$': readmacro;
+          '=': begin lextyp := lexeq; getch end;
+          ',': begin lextyp := lexcommac; getch end;
+          '.': begin getch;
+                 if ch = period then
+                   begin lexstr[2] := period; lexlen := 2; getch end;
+               end;
+          '''': readstring;
+          ':': begin
+                 getch;
+                 if ch = equal then
+                   begin putc('='); getch end
+               end;
+          '<': readlop;
+          '>': readgop;
+          ';': begin lextyp := lexsemi; getch end;
+          '[', ']', '^', '_', '?': getch { all other characters }
+       end;
+   end;
+end;  { gettok }
+
+procedure need{L: pgrng};
+begin { need }
+  if (linectr + 1) > pagesize then
+    begin linectr := 1; newpg end
+  else linectr := linectr + l;
+end;  { need }
+
+procedure newpg;
+begin { newpg }
+end;  { newpg }
+
+procedure open{name: lfnstring}; { file name to open }
+  var
+    f   : flrng;
+begin { open }
+  over(ftop, maxfiles);
+  fstack[ftop+1].ffcb.inlfn := name;
+  f := 0;
+  while fstack[f].ffcb.inlfn <> name do f := f + 1;
+  if f <= ftop then error('open- recursive includes ignored')
+  else
+    begin
+      ftop := ftop + 1;
+      with fstack[ftop] do
+        begin
+          openfile(ffcb, infile, name);
+          fline := 0;
+          last := 0;
+          next := 1;
+          inline := ' ';
+          inline[next] := newline;
+          mtop := 0;
+          getch
+        end
+    end;
+end;  { open }
+
+procedure over{i: integer; maxval: integer};
+begin { over }
+  if i >= maxval then
+    begin error('over-  table overflow'); exit(map) end;
+end;  { over }
+
+procedure parse{top: crng; tok: lex};
+begin { parse }
+  getkey;
+  while not (lextyp in [lexeof,lexend,lexfwd]) do
+    if lextyp in [lexrec,lexfun,lexproc,lexcon,lexmcon,lexbeg,lexcas] then
+      case lextyp of
+        lexbeg:
+          begin
+            puttok;
+            if tok in [lexproc,lexfun] then
+              begin tok := lexbeg; getkey; end
+            else parse(ctop, lexbeg)
+          end;
+        lexcas:
+          begin puttok;
+            if tok = lexrec then getkey else parse(ctop, lexcas)
+          end;
+        lexcon:
+          begin puttok; if expropt then parsecon else getkey end;
+        lexfun:
+          begin puttok; scanheader; parse(ctop, lexfun) end;
+        lexmcon: parsemcon;
+        lexproc:
+          begin puttok; scanheader; parse(ctop, lexproc) end;
+        lexrec: begin puttok; parse(ctop, lextyp) end;
+      end { case }
+    else begin puttok; getkey end;
+    puttok;
+    if (lextyp = lexeof) and (tok <> lexeof) then
+      begin error('parse-  unexpected end of file'); exit(map) end
+    else
+      if (lextyp = lexend) and not (tok in [lexbeg,lexcas,lexrec]) then
+        error('parse-  unmatched end')
+      else
+        if (lextyp = lexfwd) and not (tok in [lexproc,lexfun]) then
+          error('parse- unmatched forward');
+    if lextyp <> lexeof then getkey;
+    ctop := top; cvalid := top
+end;  { parse }
+
+procedure parsecon;
+  var 
+    savtyp      : lex;
+    savstr      : strng;
+    savlen      : lnrng;
+    svalid      : boolean;
+    consnam     : alfa;
+begin { parsecon }
+  getkey;
+  while lextyp = lexalpha do
+    begin puttok; over(ctop,maxcons); ctop := ctop + 1;
+      moveleft(lexstr[1], consnam[1], alfaleng);
+      getkey;
+      if lextyp <> lexeq then
+        begin error('parsecon-  equal sign needed');
+          ctab[ctop].ctyp := terr; flush; getkey;
+        end
+      else
+        begin puttok; getkey; while ch = blank do getch;
+          if (ch = semi) and (lextyp in [lexint,lexreal,lexother]) then
+            begin savstr := lexstr; savlen := lexlen; savtyp := lextyp;
+              svalid := true
+            end
+          else svalid := false;
+          expression;
+          if (lextyp <> lexsemi) and (not typeis([terr])) then
+            begin experror('parsecon-  semi colon expected');
+              ctab[ctop].ctyp := terr
+            end;
+          if ctab[ctop].ctyp <> terr then
+            begin
+              if svalid then
+                begin lexstr := savstr; lextyp := savtyp;
+                  lexlen := savlen
+                end
+              else convrt;
+              puttok; lextyp := lexsemi; lexstr[1] := semi;
+              lexlen := 1; puttok;
+              ctab[ctop].cname := consnam;
+              cvalid := ctop;
+            end
+          else
+            begin lexstr[1] := zero; lexstr[2] := semi;
+              lextyp := lexst; lexlen := 2; puttok;
+            end
+        end;
+      if ctab[ctop].ctyp in [terr,tot] then ctop := ctop - 1;
+      getkey
+    end
+end;  { parsecon }
+
+procedure parsemcon;
+  var
+    consnam     : alfa;
+begin { parsemcon }
+  getkey;
+  while lextyp = lexalpha do
+    begin over(ctop, maxcons); ctop := ctop + 1;
+      moveleft(lexstr[1], consnam, alfaleng);
+      getkey;
+      if lextyp <> lexeq then
+        begin error('parsemcon-  equal sign needed');
+          ctab[ctop].ctyp := terr; flush;
+          getkey
+        end
+      else
+        begin getkey; while ch = blank do getch;
+          expression;
+          if (lextyp <> lexsemi) and (not typeis([terr])) then
+            begin error('parsemcon-  semi colon expected');
+              ctab[ctop].ctyp := terr
+            end;
+          if ctab[ctop].ctyp <> terr then
+            begin ctab[ctop].cname := consnam; cvalid := ctop end;
+        end;
+      if ctab[ctop].ctyp in [terr,tot] then ctop := ctop - 1;
+      getkey
+    end
+end;  { parsemcon }
+
+procedure pushback;
+begin { pushback }
+  if mtop > 0 then
+    with mstack[mtop] do mnext := mnext - 1
+  else next := next - 1
+end;  { pushback }
+
+procedure putc{ch: char};
+begin { putc }
+  lexlen := lexlen + 1; lexstr[lexlen] := ch
+end;  { putc }
+
+procedure puttok;
+begin { puttok }
+  if (lastlex in confl) and (lextyp in confl) then
+    begin write(psource, blank); outpos := outpos + 1 end;
+  if lextyp = lexeof then
+    begin writeln(psource); outpos := 0 end
+  else
+    begin
+      if (outpos+lexlen) > prcopt then
+        begin pline := pline + 1; writeln(psource); outpos := 0;
+          if lexlen > prcopt then
+            begin error('puttok-  token too large'); lexlen := prcopt end
+        end;
+      write(psource, lexstr:lexlen);
+      outpos := outpos + lexlen; lastlex := lextyp
+    end;
+end;  { puttok }
+
+procedure relate;
+  var
+    op  : lex;
+    i   : integer;
+    r   : real;
+    c1,
+    c2  : csrng;
+begin { relate }
+  arith;
+  while (lextyp in [lexlt..lexne]) and (not typeis([terr])) do
+    begin over(ctop, maxcons); ctop := ctop + 1; op := lextyp;
+      getkey; arith;
+      if typesmatch then
+        with ctab[ctop-1] do
+          case ctyp of
+            tin:
+              begin i := ci; ctyp := tbl;
+                case op of
+                  lexlt: cb := i <  ctab[ctop].ci;
+                  lexle: cb := i <= ctab[ctop].ci;
+                  lexeq: cb := i =  ctab[ctop].ci;
+                  lexge: cb := i >= ctab[ctop].ci;
+                  lexgt: cb := i >  ctab[ctop].ci;
+                  lexne: cb := i <> ctab[ctop].ci;
+                end;
+              end;
+            tre:
+              begin r := cr; ctyp := tbl;
+                case op of
+                  lexlt: cb := r <  ctab[ctop].cr;
+                  lexle: cb := r <= ctab[ctop].cr;
+                  lexeq: cb := r =  ctab[ctop].cr;
+                  lexge: cb := r >= ctab[ctop].cr;
+                  lexgt: cb := r >  ctab[ctop].cr;
+                  lexne: cb := r <> ctab[ctop].cr;
+                end;
+              end;
+            tbl:
+              begin
+                case op of
+                  lexlt: cb := cb <  ctab[ctop].cb;
+                  lexle: cb := cb <= ctab[ctop].cb;
+                  lexeq: cb := cb =  ctab[ctop].cb;
+                  lexge: cb := cb >= ctab[ctop].cb;
+                  lexgt: cb := cb >  ctab[ctop].cb;
+                  lexne: cb := cb <> ctab[ctop].cb;
+                end;
+              end;
+            tot:
+              begin experror('relate-  illegal type for rel. op');
+                ctyp := terr
+              end;
+            tch:
+              begin
+                c1 := cfirst; c2 := ctab[ctop].cfirst; i := 1;
+                while (i < clen) and (cstr[c1] = cstr[c2]) do
+                  begin i := i + 1; c1 := c1 + 1; c2 := c2 + 1 end;
+                cstop := cstop - clen - ctab[ctop].clen;
+                ctyp := tbl;
+                case op of
+                  lexlt: cb := cstr[c1] <  cstr[c2];
+                  lexle: cb := cstr[c1] <= cstr[c2];
+                  lexeq: cb := cstr[c1] =  cstr[c2];
+                  lexge: cb := cstr[c1] >= cstr[c2];
+                  lexgt: cb := cstr[c1] >  cstr[c2];
+                  lexne: cb := cstr[c1] <> cstr[c2];
+                end;
+              end;
+          end
+      else
+        if ctab[ctop].ctyp <> terr then
+          begin experror('relate-  type conflict in relation');
+            ctab[ctop].ctyp := terr
+          end;
+      ctop := ctop - 1;
+    end;
+end;  { relate }
+
+procedure scanheader;
+  var
+    ctr : integer;
+begin { scanheader }
+  getkey { get name }; puttok;
+  getkey { get paren if parameters };
+  if lextyp <> lexlparen then puttok
+  else
+    begin ctr := 1; puttok;
+      repeat
+        getkey; if lextyp = lexlparen then ctr := ctr + 1;
+        if lextyp = lexrparen then ctr := ctr - 1; puttok;
+      until ctr = 0;
+    end;
+end;  { scanheader }
+
+procedure term;
+ var
+   op   : lex;
+begin { term }
+ factor;
+ if (lextyp in [lexand..lexmod]) and (not typeis([terr])) then
+   if (typeis([tbl]) and (lextyp = lexand)) or
+       (typeis([tre]) and (lextyp in [lexmult..lexmax])) or
+       (typeis([tin]) and (lextyp in [lexmult..lexmod])) then
+     while lextyp in [lexand..lexmod] do
+       begin ctop := ctop + 1; op := lextyp; getkey; factor;
+         with ctab[ctop-1] do
+           if (op = lexand) and (ctyp = tbl) then
+             cb := cb and ctab[ctop].cb
+           else
+             if (op in [lexdiv..lexmod]) and (ctyp = tin) then
+               case op of
+                 lexdiv: ci := ci div ctab[ctop].ci;
+                 lexmod: ci := ci mod ctab[ctop].ci;
+               end { case }
+             else
+               if (op in [lexmult..lexmax]) and typeis([tin,tre]) then
+                 begin
+                   if (ctyp = tin) and (typeis([tin])) and (op <> lexdvd) then
+                     case op of
+                       lexmult: ci := ci * ctab[ctop].ci;
+                       lexmin:
+                         if ctab[ctop].ci < ci then
+                           ci := ctab[ctop].ci;
+                       lexmax:
+                         if ctab[ctop].ci > ci then
+                           ci := ctab[ctop].ci;
+                     end { case }
+                   else
+                     begin forcereal;
+                       case op of
+                         lexmult: cr := cr * ctab[ctop].cr;
+                         lexdvd:  cr := cr / ctab[ctop].cr;
+                         lexmin:
+                           if ctab[ctop].cr < cr then
+                             cr := ctab[ctop].cr;
+                         lexmax:
+                           if ctab[ctop].cr > cr then
+                             cr := ctab[ctop].cr;
+                       end { case }
+                     end
+                 end
+               else
+                 if ctab[ctop].ctyp <> terr then
+                   experror('term-  invalid operand type');
+          ctop := ctop - 1;
+        end
+    else error('term-  invalid operand type');
+end;  { term }
+
+procedure terminate;
+begin { terminate }
+  close(psource, lock);
+end;  { terminate }
+
+function toupper{ch: char): char};
+begin { toupper }
+  if (ch >= 'a') then
+    if (ch <= 'z') then
+      toupper := chr(ord(ch)-ord('a')+ord('A'))
+    else toupper := ch
+  else toupper := ch;
+end;  { toupper }
+
+function typeis{c: cset): boolean};
+begin { typeis }
+ typeis := ctab[ctop].ctyp in c
+end;  { typeis }
+
+function typesmatch{: boolean};
+begin { typesmatch }
+  typesmatch := false;
+  with ctab[ctop-1] do
+    if ctyp = ctab[ctop].ctyp then
+      if ctyp <> tch then typesmatch := true
+      else if clen = ctab[ctop].clen then typesmatch := true
+end;  { typesmatch }
+
+procedure variable;
+  var
+    name        : alfa;
+    found       : boolean;
+    fun         : fns;
+begin { variable }
+  if not (lextyp in [lexalpha,lexint,lexreal,lexst]) then
+    begin experror('variable-  value or name expected');
+      ctab[ctop].ctyp := terr
+    end
+  else
+    case lextyp of
+      lexint:   begin convrti; getkey end;
+      lexreal:  begin convrtr; getkey end;
+      lexst:    begin convrts; getkey end;
+      lexalpha:
+                begin moveleft(lexstr[1], name[1], alfaleng); getkey;
+                  found := false;
+                  if lextyp <> lexlparen then
+                    begin findcon(name,found);
+                      if not found then
+                        with ctab[ctop] do
+                          begin ctyp := tot; co := name end
+                     end
+                   else
+                     begin flookup(name, fun, found); { function call }
+                       if not found then
+                         experror('variable-  unknown function. 0 used')
+                       else
+                         begin getkey; expression;
+                           if lextyp <> lexrparen then
+                             experror('variable-  right paren expected')
+                           else
+                             begin getkey; evalfns(fun) end
+                         end
+                     end
+                end
+    end { case };
+end;  { variable }
+
+

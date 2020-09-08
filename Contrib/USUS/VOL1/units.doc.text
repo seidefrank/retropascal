@@ -1,0 +1,79 @@
+
+     
+                SOME DOCUMENTATION ABOUT UCSD SEGMENTS AND UNITS
+
+     Since the release of version 1.5 in early 1979, UCSD Pascal has supported 
+several very useful extensions to Standard Pascal (a la Jensen and Wirth) that 
+assist modular compilation and/or execution of programs.  These are:
+
+     1. Programs may declare procedures or functions EXTERNAL in the same way
+they may be declared FORWARD (ie, a full 1st procedure/function declaration
+line is required).  The program may not be run until it has been L(inked; the
+linker usually expects to find the missing code in the SYSTEM.LIBRARY.  
+EXTERNAL procedures are reserved for assembly language procedures; the entire
+process is well documented in the UCSD handout.  
+
+     One item that is not completely clear is the way parameters are passed.
+The called routine will find the following items on the stack, in descending
+(normal "POP xx" order): 1) the return address (this must be saved); 2) IF
+the called routine is a function, two words of zeros, which reserve space for
+the result of the function (these two words are skipped if the routine is a
+procedure); 3) the parameters being passed to the routine, in reverse order
+(ie, the last declared parameter is popped off first).
+
+     2. You can construct a separate UNIT, which contains text that performs
+some involved but functionally distinct process within your program.  This is
+then compiled separately, and the calling program merely states "USES
+<unitname A>, <unitname B>,...,<unitname N>;" at the second line of the
+program (right after the main program declaration).  Normally, you should
+incorporate the code from the correctly compiled UNIT into the SYSTEM.LIBRARY,
+where it is available to the linker.  The documentation is not clear about how
+common variables are actually declared: any constant, type, variable,
+procedure, or function declared in the INTERFACE portion of the unit is read
+first thing at the time of compilation of the main program, and these
+declarations are copied verbatim into the text of the main program by the
+compiler.  This means that you should NOT declare the same constants, types,
+etc., within the main program, even if you use them -- you will get an error,
+since they are already there.  (If this is not clear, try setting up a UNIT
+and a main program that uses it, then examine a listing of the main program
+after compilation.)
+
+     I have used the UNIT approach with great success for a complicated text 
+processing program, for two functions:  1) the program begins with a detailed 
+menu that reads in user requests for margins, page length, etc.  Not only is 
+this code quite long, it stands by itself (simply passing initialized 
+variables to the main program) and was best debugged by itself.  2) I added an 
+automatic hyphenation routine, which also was quite long and needed to be 
+debugged separately.
+
+     3. Finally, it is possible (but within the main program ONLY) to declare 
+certain procedures or functions SEGMENT procedures/functions.  The compilation 
+process is not changed, but when the program is actually run, the declared 
+procedures are drawn into memory only when required, and are overwritten by
+data or code at other times.  This approach is essential if you have a
+complicated program that uses a lot of memory and has one or more long
+procedures (most commonly an initialization routine) you expect to use rarely,
+before the memory fills up.  Unlike some other Pascal implementations, all 
+other code (not explicitly declared a SEGMENT procedure/function) is always 
+memory resident while the program is running.  
+
+     Further, there is no clean way for one program to load another and then
+pass execution to it.  (You have to have some way of fudging the console
+input buffer in the BIOS, then quit the execution of the present program,
+then trick the operating system with your phony console input.) However, I'll
+bet that someone familiar with the operating system could cook up a way of
+feeding data directly to the program execution section; it would require
+compiling your routine (usually simply a menu) at the 0th lex level with the
+(*$U-*) compiler command.  The reason this may be important is that many
+business programs use multiple separate procedures driven by a menu, and the
+Pascal system at present limits you to 6 procedure segments.
+
+     It is absolutely not mentioned anywhere, but although external UNITS are 
+given new segment numbers by the compiler, they are ALWAYS resident in memory 
+at run time.  If you want to have the code in a unit work as a SEGMENT 
+PROCEDURE or FUNCTION, you MUST include the source within the main file and 
+declare it a SEGMENT PROCEDURE or FUNCTION.
+
+
+     
+     

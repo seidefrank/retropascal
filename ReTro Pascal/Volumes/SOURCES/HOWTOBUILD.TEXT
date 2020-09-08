@@ -1,0 +1,34 @@
+
+How to build the Retro Pascal system disk (RETRO)
+=================================================
+
+The original RETRO: system disk contains the following files:
+
+ - SYSTEM.PASCAL    --[CODE] main shell and core system library
+ - SYSTEM.COMPILER  --[CODE] Pascal compiler              invoke by typing 'C'
+ - SYSTEM.SYNTAX    --[TEXT] Pascal compiler: texts of error messages
+ - SYSTEM.EDITOR    --[CODE] screen-oriented editor       invoke by typing 'E'
+ - SYSTEM.FILER     --[CODE] file manager                 invoke by typing 'F'
+ - SYSTEM.LINKER    --[CODE] linker                       invoke by typing 'L'
+ - SYSTEM.LIBRARY   --[CODE] system library, contains all units to link with
+ - LIBRARY.CODE     --[CODE] library editor tool          invoke by 'XLIBRARY'
+ - LIBMAP.CODE      --[CODE] linker                       invoke by 'XLIBMAP'
+ - SYSTEM.WRK.TEXT  --[TEXT] current work file
+
+How to build--general ideas:
+
+ - SYSTEM executables are built by compiling and renaming into place
+ - tool executables (LIBRARY, LIBMAP) likewise
+ - SYSTEM.LIBRARY is built by compiling units separately, then using LIBRARY
+
+Build process uses 'K(eypress injection' command; use these to build:
+
+ - BLDCOMPLR.TEXT   --build and place compiler
+ - BLDEDITOR.TEXT   --build and place editor
+ - BLDFILER.TEXT    --build and place filer
+ - BLDPASCAL.TEXT   --build SYSTEM.PASCAL  --remember to "Stop" after this
+ - BLDTOOLS.TEXT    --compile tools
+ - BLDLIB.TEXT      --compile libraries and create system.library
+
+Warning: These scripts will WIPE your current work file without warning.
+They will also set the system prefix to SOURCES:.

@@ -1,0 +1,73 @@
+{$s+}     
+{$i header }
+{$i globals } 
+{$i forwards }
+
+unit screencontrol; 
+
+interface
+  
+  type months = 0..12;
+       days   = 0..31;
+       years  = 0..99;
+  
+  procedure home; 
+  procedure cleareos;
+  procedure cleareol;
+  procedure date (var m: months; var d: days; var  y: years);
+  function  screenwidth: integer; 
+  function  screenheight: integer;  
+  
+implementation
+  
+  procedure home;
+  begin
+    homecursor;
+  end;
+
+  procedure cleareos;
+    var c: char;
+  begin 
+    with syscom^ do
+      begin
+        if crtctrl.eraseeos <> chr(0) then
+          begin
+            if crtctrl.prefixed[3] then
+              begin
+                c := crtctrl.escape; 
+                unitwrite(1,c,1,,4); {no DLE expansion}
+              end;
+            write(crtctrl.eraseeos); 
+            if length(filler) > 0 then write(filler); 
+          end;
+      end;
+  end {cleareos};    
+  
+  procedure cleareol; 
+  begin
+    clearline;
+  end;
+  
+  procedure date {var m: months; var d: days; var y: years}; 
+  begin
+    m := thedate.month;     
+    d := thedate.day; 
+    y := thedate.year;
+  end; 
+  
+  function screenwidth {: integer}; 
+  begin
+    screenwidth := syscom^.crtinfo.width;
+  end;
+  
+  function screenheight {: integer};  
+  begin
+    screenheight := syscom^.crtinfo.height; 
+  end;
+  
+end {screencontrol};
+
+begin { syscode } end;
+
+begin  { pascal system } end.
+

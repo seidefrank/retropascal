@@ -1,0 +1,660 @@
+program blackbox;
+
+     {  (C) Copyright 1980  Robert C. Hutchins   }
+         
+{screen control is "universal" although somewhat slow.  change it if you
+wish - gws}
+
+const 
+    Version = '[x4]';
+    xboardbase = 21;
+    yboardbase = 3;
+    xmarkerbase = 24;
+    ymarkerbase = 4;
+    debug = false;   
+    
+type 
+    direction = (toeast,towest,tonorth,tosouth); 
+    okset = set of char;
+
+var 
+    occupied: packed array[9..16,1..8] of boolean;    
+    table: array[17..32] of integer;
+    opposite,left,right: array[direction] of direction;
+    startpos,endpos: array[direction] of integer;
+    onboard,raydead: boolean;
+    guesspenalty: integer;
+    numguessed,numberballs,nummarkers: integer;  
+    raypos,rayline,startrayline: integer; 
+    letter: char;
+    inc: -1..1;
+    dir,startdir: direction; 
+    turned90: boolean;   
+    guess: array[1..5] of record
+                            xpos,
+                            ypos: integer;
+                            aguessmade: boolean;
+                          end;        
+    markers: packed array[1..32] of char; 
+    
+procedure cleartopline;   
+var line : packed array [ 1..79 ] of char;
+begin        
+  fillchar ( line, sizeof ( line ) , ' ' );
+  gotoxy(0,0);
+  unitwrite ( 2, line, sizeof ( line ) );
+  gotoxy ( 0, 0 );
+end;       
+        
+procedure clearscreen;
+var buf : packed array [ 1 .. 24 ] of char;
+begin  
+   gotoxy ( 0, 23 );
+   fillchar ( buf, sizeof ( buf ), chr ( 10 ) );
+   unitwrite ( 2, buf, sizeof ( buf ) );
+   gotoxy ( 0, 0 );
+end;
+        
+function getcommand(ok: okset): char;
+var tempch: char;
+begin
+  repeat
+    read(keyboard,tempch);  
+    if tempch in ['a'..'z'] then
+      tempch := chr(ord(tempch) - ord('a') + ord('A'));
+  until tempch in ok;  
+  getcommand := tempch;
+  writeln;
+end;   
+
+procedure needhelp; 
+var ch: char; 
+    f: text;
+    s: string; 
+
+procedure printhelp;
+begin
+  while not eof(f) do
+    begin
+      (*while not eoln(f) do
+        begin  read(f,ch);  write(ch); end;
+      readln(f); writeln;
+      *)
+      readln(f,s); writeln(s);
+    end;
+end;
+
+begin
+  write('Need help (Y or N) '); read(ch);
+  clearscreen;
+  if ch in ['Y','y'] then
+    begin
+      reset(f,'black.doc1.text'); 
+      printhelp;
+      close(f);
+      readln;
+      reset(f,'black.doc2.text');
+      printhelp;
+      readln;
+      clearscreen;
+    end;
+end;
+
+procedure initialize;    
+var i: integer;
+begin
+  table[17] := 8;  table[18] := 7;  table[19] := 6;  
+  table[20] := 5;  table[21] := 4;  table[22] := 3; 
+  table[23] := 2;  table[24] := 1;  table[25] := 16;   
+  table[26] := 15; table[27] := 14; table[28] := 13; 
+  table[29] := 12; table[30] := 11; table[31] := 10;
+  table[32] := 9;     
+  opposite[toeast] := towest; opposite[towest] := toeast;
+  opposite[tonorth] := tosouth; opposite[tosouth] := tonorth;    
+  right[toeast] := tosouth; right[towest] := tonorth;  
+  right[tonorth] := toeast; right[tosouth] := towest;      
+  left[toeast] := tonorth; left[towest] := tosouth;  
+  left[tonorth] := towest; left[tosouth] := toeast;      
+  startpos[toeast] := 8; startpos[towest] := 17; 
+  startpos[tonorth] := 9; startpos[tosouth] := 0;        
+  endpos[toeast] := 17; endpos[towest] := 8; 
+  endpos[tonorth] := 0; endpos[tosouth] := 9;        
+  for i := 1 to 32 do markers[i] := ' ';   
+  for i := 1 to 5 do guess[i].aguessmade := false;
+  raydead := false; numguessed := 0; nummarkers := 0;                         
+  letter := 'a';
+  guesspenalty := 0; 
+  clearscreen;
+  needhelp;
+end;         
+
+function convert(coord: integer): integer;      
+begin
+  if coord <= 16 then convert := coord 
+    else convert := -table[coord];
+end;  
+ 
+function unconvert(internal: integer): integer;
+var i: integer;
+begin
+  if internal >= 17 then unconvert := internal  
+  else                                  
+    begin
+      i := 16;
+      repeat
+        i := i + 1;
+      until table[i] = internal;
+      unconvert := i;
+    end;
+  if debug then
+    begin
+      gotoxy(0,0); writeln('unconvert i = ',i,' table[i] = ',table[i]); 
+    end;
+end;  
+
+procedure getcoord(var xcoord,ycoord: integer);          
+var error: boolean;
+    coord1,coord2:  integer;
+begin 
+  {$I-}
+  repeat
+    cleartopline;
+    write('Enter first coordinate (1..32) ');          
+    readln(coord1);
+  until (ioresult = 0) and (coord1 in [1..32]);                              
+  repeat    
+    repeat
+      cleartopline; 
+      write('Enter second coordinate (1..32) ');
+      readln(coord2);  
+    until (ioresult = 0) and (coord2 in [1..32]); 
+    coord1 := abs(convert(coord1));  coord2 := abs(convert(coord2));       
+    {Check if legal}
+    error := ((abs(coord1) in [9..16]) and not(abs(coord2) in [1..8]))
+                                       or
+             ((abs(coord1) in [1..8]) and not(abs(coord2) in [9..16])); 
+  until (ioresult = 0) and not error and (coord1 in [1..32]);   
+  {$I+}
+  if coord1 in [1..8] then
+    begin  xcoord := coord2;  ycoord := coord1 end                          
+  else 
+    begin xcoord := coord1;   ycoord := coord2 end;
+end;
+
+function poccupied(x,y: integer): boolean;
+begin
+  if not(x in [9..16]) then poccupied := false else                        
+  if not(y in [1..8] ) then poccupied := false else          
+    poccupied := occupied[x,y];      
+end;
+
+procedure markerdisplay;      
+var i: integer;
+begin
+  { Display top markers }  
+  for i := 32 downto 25 do 
+    begin
+      gotoxy(xmarkerbase + (33 - i) * 4,ymarkerbase);        
+      write(markers[i]); 
+    end;
+  { Display bottom markers }   
+  for i := 9 to 16 do  
+    begin
+      gotoxy(xmarkerbase + (i - 8)* 4,ymarkerbase + 18);
+      write(markers[i]);
+    end;
+  { Display left side markers }                         
+  for i := 1 to 8 do    
+    begin
+      gotoxy(xmarkerbase,ymarkerbase + i * 2);
+      write(markers[i]);
+    end;
+  { Display right side markers }          
+  for i := 17 to 24 do  
+    begin
+      gotoxy(xmarkerbase + 9*4,ymarkerbase + (25 - i) * 2);                       
+      write(markers[i]);
+    end;    
+end;   
+
+procedure boarddisplay;  
+begin
+      
+                   {12345678901234567890123456789012345678901234567890}
+    
+  gotoxy(xboardbase,yboardbase);
+  write('      32  31  30  29  28  27  26  25      ',nummarkers,' Markers');   
+  gotoxy(xboardbase,yboardbase + 1); 
+  if guesspenalty > 0 then
+    write('     |   |   |   |   |   |   |   |   |    ',guesspenalty * 5,' as Penalty')  
+  else 
+    write('     |   |   |   |   |   |   |   |   |    ');    
+  gotoxy(xboardbase,yboardbase + 2);
+  write('-----+---+---+---+---+---+---+---+---+------  '); 
+  gotoxy(xboardbase,yboardbase + 3);
+  write('1    |   |   |   |   |   |   |   |   |    24  ');       
+  gotoxy(xboardbase,yboardbase + 4); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');
+  gotoxy(xboardbase,yboardbase + 5); 
+  write('2    |   |   |   |   |   |   |   |   |    23  ');
+  gotoxy(xboardbase,yboardbase + 6); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');
+  gotoxy(xboardbase,yboardbase + 7); 
+  write('3    |   |   |   |   |   |   |   |   |    22  ');
+  gotoxy(xboardbase,yboardbase + 8); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');
+  gotoxy(xboardbase,yboardbase + 9); 
+  write('4    |   |   |   |   |   |   |   |   |    21  ');
+  gotoxy(xboardbase,yboardbase +10); 
+  write('-----+---+---+---+---+---+---+---+---+------  '); 
+  gotoxy(xboardbase,yboardbase +11); 
+  write('5    |   |   |   |   |   |   |   |   |    20  ');
+  gotoxy(xboardbase,yboardbase +12); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');
+  gotoxy(xboardbase,yboardbase +13); 
+  write('6    |   |   |   |   |   |   |   |   |    19  '); 
+  gotoxy(xboardbase,yboardbase +14); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');
+  gotoxy(xboardbase,yboardbase +15); 
+  write('7    |   |   |   |   |   |   |   |   |    18  ');  
+  gotoxy(xboardbase,yboardbase +16); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');                
+  gotoxy(xboardbase,yboardbase +17); 
+  write('8    |   |   |   |   |   |   |   |   |    17  ');
+  gotoxy(xboardbase,yboardbase +18); 
+  write('-----+---+---+---+---+---+---+---+---+------  ');      
+  gotoxy(xboardbase,yboardbase +19); 
+  write('     |   |   |   |   |   |   |   |   |        ');
+  gotoxy(xboardbase,yboardbase +20); 
+  write('       9  10  11  12  13  14  15  16          ');
+  gotoxy(0,4);  write('''*'' =  hit');
+  gotoxy(0,5);  write('''^'' =  reflection'); 
+  gotoxy(0,6);  write('''a'',''b'' ...'); 
+  gotoxy(0,7);  write('  pass through grid');
+end;  
+
+procedure marbledisplay(x,y: integer; mark: char);
+begin
+  gotoxy(xmarkerbase + (x - 8) * 4,ymarkerbase + y * 2);   
+  write(mark);     
+end;
+
+procedure removemarble(x,y: integer);                    
+begin
+  gotoxy(xmarkerbase + (x - 8) * 4,ymarkerbase + y * 2);                  
+  write(' ');
+end;
+    
+procedure displayall;
+var i,x,y: integer;
+begin
+  clearscreen;
+  boarddisplay;     
+  markerdisplay; 
+  if debug then 
+    for y := 1 to 8 do
+      for x := 9 to 16 do
+        if occupied[x,y] then marbledisplay(x,y,'O') ;    
+  if not debug then                  
+    for i := 1 to numberballs do
+      with guess[i] do
+        if aguessmade then marbledisplay(xpos,ypos,'O');
+end;     
+
+procedure setupmarbles;            
+var xcoord, ycoord: integer;      
+    i,j: integer;
+    seed: integer;
+    tempch: char; 
+
+  function random(var fseed: integer; range: integer): integer;  
+  begin
+    fseed := (fseed * 25 + 1009) mod 1048;
+    random := (fseed div 100) mod range;   
+   end; 
+
+begin  
+  for i := 9 to 16 do 
+    for j := 1 to 8 do occupied[i,j] := false;         
+  {$I-}       
+  repeat
+    cleartopline;  
+    write('Enter number of balls (4 or 5) ');          
+    readln(numberballs); 
+  until (ioresult = 0) and (numberballs in [4,5]);       
+  {$I+}
+  cleartopline;  
+  write('Do you want to place the balls? (Y or N)');                        
+  read(keyboard,tempch); writeln;
+  if tempch in ['n','N'] then
+    begin
+      repeat 
+        cleartopline;
+        write('Enter random number seed (0..999) ');
+        readln(seed);      
+      until (seed >= 0) and (seed <= 999);  
+      i := 0;
+      repeat
+        i := i + 1;
+        xcoord := random(seed,8) + 1 + 8;   ycoord := random(seed,8) + 1;
+        if occupied[xcoord,ycoord] then i := i -1   
+        else
+          occupied[xcoord,ycoord] := true;             
+      until i >= numberballs;
+    end
+  else
+    begin
+      i := 0;
+      repeat
+        i := i + 1;
+        getcoord(xcoord,ycoord);      
+        if occupied[xcoord,ycoord] then i := i -1 
+        else
+          occupied[xcoord,ycoord] := true;             
+      until i >= numberballs;
+    end; 
+end;   
+        
+procedure UserRayShot; 
+var tempch: char;
+begin      
+  {$I-}      
+  repeat
+    cleartopline;
+    write('Enter ray start column ');  
+    readln(startrayline);
+  until (ioresult = 0) and (startrayline in [1..32]);       
+  rayline := convert(startrayline);  
+  if rayline in [1..8] then dir := toeast else  
+  if rayline in [9..16] then dir := tonorth else 
+  if -rayline in [1..8] then dir := towest else       
+  if -rayline in [9..16] then dir := tosouth;       
+  rayline := abs(rayline);  
+  if dir in [toeast,tosouth] then inc := 1 else inc := -1;    
+  raypos := startpos[dir];                  
+  startdir := dir;      
+  turned90 := false; onboard := false;                
+end;  
+
+function marble: boolean;
+begin
+  if dir in [toeast,towest] then   
+    marble := poccupied(raypos+inc,rayline) 
+  else marble := poccupied(rayline,raypos+inc);
+end; 
+  
+procedure hit;
+begin
+  raydead := true;      
+  markers[startrayline] := '*';   
+  nummarkers := nummarkers + 1;
+end;  
+
+function corner: boolean;    
+begin
+  if dir in [toeast,towest] then 
+    corner := (poccupied(raypos+inc,rayline-1) or           
+               poccupied(raypos+inc,rayline+1))
+  else 
+    corner := (poccupied(rayline-1,raypos+inc) or             
+               poccupied(rayline+1,raypos+inc));    
+end;
+
+function  bothcorners: boolean;  
+begin
+  if dir in [toeast,towest] then         
+    bothcorners := (poccupied(raypos+inc,rayline-1) and          
+                    poccupied(raypos+inc,rayline+1))    
+  else
+    bothcorners := (poccupied(rayline-1,raypos+inc) and                  
+                    poccupied(rayline+1,raypos+inc));                    
+end;
+
+procedure turn90;                
+var temp: integer;    
+begin      
+  if dir in [toeast,towest] then  
+    begin
+      if poccupied(raypos+inc,rayline-1) then dir := tosouth 
+        else dir := tonorth
+    end
+  else { dir in [tonorth,tosouth] }
+    begin
+      if poccupied(rayline-1,raypos+inc) then dir := toeast
+        else dir := towest
+    end;
+  if dir in [toeast,tosouth] then inc := 1 else inc := -1;          
+  temp := rayline;  
+  rayline := raypos;
+  raypos := temp;
+  turned90 := true;    
+end;
+
+procedure reflect;      
+begin
+  dir := opposite[dir];  
+  inc := -inc;
+end; 
+
+procedure terminateray;        
+var reflection: boolean;
+    realcolumn: integer;    
+begin
+  reflection := false;      
+  if startdir <> dir then 
+    reflection := (rayline = abs(convert(startrayline))) 
+                  and (dir = opposite[startdir]);             
+  if reflection then
+    begin
+      markers[startrayline] := '^';  
+      nummarkers := nummarkers + 1;            
+    end
+  else
+    begin { pass thru }        
+      markers[startrayline] := letter;  
+      if (rayline in [1..8]) and (dir = toeast) then      
+        rayline := unconvert(rayline)
+      else if (rayline in [9..16]) and (dir = tonorth) then    
+        rayline := unconvert(rayline);
+      markers[rayline] := letter;   
+      nummarkers := nummarkers + 2;  
+      letter := succ(letter);
+    end;  
+end;
+
+procedure raydisplay;
+begin  
+  if debug then
+    begin
+      if dir in [toeast,towest] then
+        gotoxy(xmarkerbase + (raypos - 8) * 4, ymarkerbase + rayline * 2)     
+      else    
+        gotoxy(xmarkerbase + (rayline - 8) * 4, ymarkerbase + raypos * 2);    
+      write('.');  
+    end;
+end;   
+
+procedure moveray;   
+var reflection : boolean;
+begin
+  if debug then
+    begin
+      gotoxy(0,1); writeln('  raypos = ',raypos,' rayline = ',rayline,' dir = ',        
+                       ord(dir));  
+    end;
+  if turned90 then turned90 := false 
+  else
+    begin
+      raypos := raypos + inc;
+      raydisplay; 
+      raydead := ((inc > 0) and (raypos >= endpos[dir])) or 
+                 ((inc < 0) and (raypos <= endpos[dir])); 
+      if raydead then terminateray;  
+    end;
+  onboard := true;  
+end; 
+
+procedure endgame;          
+var ch: char;
+    i,x,y: integer;
+begin
+  cleartopline;
+  write('Do you want to end the game? (Y or N)');         
+  ch := getcommand(['Y','N']);
+  if ch = 'Y' then 
+    begin
+      displayall;
+      for y := 1 to 8 do 
+        for x := 9 to 16 do
+          if occupied[x,y] then marbledisplay(x,y,'X') ; 
+      for i := 1 to numberballs do  
+        with guess[i] do
+          if aguessmade then 
+            if occupied[xpos,ypos] then marbledisplay(xpos,ypos,'C')  
+              else marbledisplay(xpos,ypos,'O');  
+      exit(program);                
+    end;
+end;     
+
+procedure AskIfaGuess;    
+var ch: char;
+    i: integer;  
+    ok: boolean;
+begin 
+  cleartopline;
+  write('Does this represent your guess? (Y or N)');      
+  ch := getcommand(['Y','N']);
+  if ch = 'N' then endgame;
+  ok := true;     
+  for i := 1 to numberballs do  
+    if not poccupied(guess[i].xpos,guess[i].ypos) then         
+      ok := false;
+  if not ok then  
+    begin  
+      nummarkers := nummarkers + 5;       
+      guesspenalty := guesspenalty + 1;        
+      displayall; 
+      endgame;  
+    end 
+  else 
+    begin
+      displayall;  
+      cleartopline;
+      gotoxy(2,2);
+      writeln('You are correct ',nummarkers, ' used.');              
+      exit(program);   
+    end;
+end;  
+  
+procedure insert;    
+var i, guessindex: integer;  
+begin
+  if numguessed < numberballs then      
+    begin  
+      numguessed := numguessed + 1;
+      guessindex := 0;       
+      for i := 1 to numberballs do
+        if not guess[i].aguessmade then
+          guessindex := i;
+      with guess[guessindex] do      
+        begin
+          getcoord(xpos,ypos);
+          aguessmade := true;          
+        end;
+    end;
+end;    
+
+procedure delete;
+var i: integer;
+    x,y: integer;    
+    found: boolean;  
+begin
+  if numguessed > 0 then
+    begin
+      i := 0; 
+      getcoord(x,y);
+      repeat 
+        i := i + 1;
+        with guess[i] do
+          begin
+            if aguessmade then
+              found := (xpos = x) and (ypos = y) ;  
+          end;
+      until found or (i = numberballs);             
+      if found then     
+        begin
+          guess[i].aguessmade := false;        
+          numguessed := numguessed - 1;
+        end;
+    end;     
+end;  
+
+procedure marblemanipulate;  
+var mchar: char;  
+    x,y: integer;
+    endmanipulating : boolean;
+begin  
+  endmanipulating := false;  
+  cleartopline;
+  write('P(lace a marble  D(elete a marble  N(o move ');
+  mchar := getcommand(['P','D','N']);
+  case mchar of
+    'P','p': 
+        insert;  
+    'D','d': 
+        delete; 
+    'n','N':   
+      endmanipulating := true;     
+    end;  
+  displayall;
+end;  
+
+function Command: boolean;       
+var mchar : char;
+    endmoving : boolean; 
+begin { placeaball } 
+  displayall;       
+  command := true; 
+  endmoving := false;  
+  repeat
+    cleartopline;
+    write('M(arble manipulate  S(hoot ray  G(uess game');            
+    mchar := getcommand(['M','S','G']);    
+    case mchar of  
+      'M','m':
+        marblemanipulate;
+      'S','s':      
+        begin 
+          endmoving := true;
+          UserRayShot; 
+        end;
+      'G','g':       
+        AskIfaGuess;  
+      end;    
+  until endmoving; 
+end { placeaball }; 
+ 
+
+begin  {outerblock}   
+  initialize;   
+  setupmarbles;       
+  clearscreen;
+  while command do      
+    begin
+      repeat
+        if marble then hit
+        else 
+          begin
+            if corner then 
+              if onboard then    
+                begin
+                  if bothcorners then reflect  
+                  else turn90
+                end
+              else  { Not on the board so } reflect;  
+            moveray;  
+          end;
+      until raydead;
+    end; 
+end.
+

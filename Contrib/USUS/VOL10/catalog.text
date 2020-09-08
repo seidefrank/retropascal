@@ -1,0 +1,427 @@
+(*$L-#6:*)
+{************************************************************************
+*                                                                       *
+*  This program is filed as CATALOG.TEXT                                *
+*                                                                       * 
+************************************************************************}
+
+
+
+{  
+
+        program title:          CATALOG
+        written by:             R. M. Wilson 
+        date written:           7 May 1981
+        written for:            HI-COUNTRY DATA SYSTEMS
+                                        and
+                                WESTERN SOFTWARE DEVELOPMENT
+        
+        program function:       To provide a central catalog for the many
+                                files on the various disks.
+        
+        remarks:                This is an extensively modified version of  
+                                the program by Edward Heyman, 300 Center Hill
+                                Rd., Centerville, DL. 19807, published in the 
+                                May 1981 issue of "BYTE" magazine. There were
+                                MANY serious bugs in the original program.
+                                These have been corrected and the program
+                                works very well!!!!!
+                                
+                                Well, almost very well.  Some more things
+                                have been fixed, such as allowing lower case
+                                input and some kludges to get it to work 
+                                under IV.0 on my LSI-11.   I also changed
+                                a value in the main record to allow disks
+                                with more that 988 blocks.  - gws
+        
+
+            This program is furnished to the USUS group for unrestricted 
+            personal use.  Use of this program for commercial purposes  
+            is strictly prohibited.  
+     
+     Obligitory message from BYTE  (message added by gws)
+     
+     From CATALOG by Edward Heyman appearing in the May 1981 issue of Byte
+     magazine.  Copyright 1981 Byte Publications, Inc.  Used with the 
+     permission of Byte Publications, Inc.  
+
+     Note that if you had used CATALOG as it appeared in BYTE, your database
+     is still valid at, at least mine worked. gws}   
+
+program CATALOG;
+
+procedure dummy;
+{this kludge is necessary under IV.0 to allow the system to allocate
+ the global data.  It will not affect the operation under II.0.  gws}
+
+const BLANKS='                  ';
+      MAXREC=300 {400};       {may have to reduce for different computer}
+      MAXREC_1=301 {401};     {may have to reduce for different computer}
+      {I had to reduce these because of a STACK OVERFLOW! - gws}
+      NFILENAME='#5:MASTCAT.DATA';
+      OFILENAME='#5:BACKCAT.DATA';
+      PFILENAME='#5:CAT.POINT.DATA';
+      
+type  DATE_RECORD=packed record
+                    MONTH:0..12;
+                    DAY:0..31;
+                    YEAR:0..100
+                  end;
+      SETOFCHAR=set of char;  {for function READKEY}
+      ACTIVITY=string[26];
+      DIR_SIZE=0..77;
+      VOL_ID=string[7];
+      FILE_ID=string[15];
+      FILE_TYPE=(UNTYPED,XDISK,CODE,TEXT,INFO,DATA,GRAF,FOTO,SECUREDIR);
+      DIR_RECORD=record
+                   FIRST_BLOCK:integer;
+                   LAST_BLOCK:integer;
+                   case DIR_FILE_KIND:FILE_TYPE of
+                     SECUREDIR,UNTYPED:(DIR_VOL_NAME:VOL_ID;
+                                        ZERO_BLOCK,
+                                        NUM_OF_FILES,
+                                        TOTAL_BLOCKS:integer;
+                                        LAST_BOOT:DATE_RECORD);
+                     XDISK,CODE,TEXT,INFO,DATA,GRAF,FOTO:
+                                       (DIR_FILE_NAME:FILE_ID;
+                                        LASTBYTE:1..512;
+                                        DIR_FILE_DATE:DATE_RECORD)
+                 end;
+                 
+      CATALOG_RECORD=packed record
+                       VOL_NAME:VOL_ID;
+                       FILE_NAME:FILE_ID;
+                       FILE_KIND:FILE_TYPE;
+                       FILE_DATE:DATE_RECORD;
+                       FILE_SIZE:0..{988}maxint; {allow for big disk - gws}
+                     end;
+                     
+      DIRECTORY=array[DIR_SIZE] of DIR_RECORD;
+      CATARRAY=array[0..MAXREC] of CATALOG_RECORD;
+      FILEN=string[20];
+      RECNUM=0..MAXREC_1;
+      INDEX='A'..'Z';
+      INDEX_ARRAY=array[INDEX] of integer;
+      
+var   NREC,NLREC,OREC,OLREC,DREC,DLREC:RECNUM;
+      NTOTREC,OTOTREC:0..2047;
+      LEAVE,REMOV,NFILEEND,OFILEEND,DONE:boolean;
+      CH:char;
+      DEX:INDEX;
+      DEXRAY:INDEXARRAY;
+      P:file of char;  {used to swithch from console to printer} 
+      VOL:VOL_ID;
+      BOOT_VOL,TEST:string; 
+      CATFILE,OCATFILE,NCATFILE:file of CATALOG_RECORD; 
+      NCAT,OCAT:CATARRAY;
+      
+procedure CLEARSCREEN;forward; 
+procedure make_upper ( var strg : string ); forward;
+function READKEY(OKSET:SETOFCHAR):CHAR;forward;
+procedure PRINTAT(X,Y:INTEGER;S:STRING);forward;
+function YES:BOOLEAN;forward;
+procedure SPACEBAR;forward;
+procedure MEM(PN:string);forward;
+procedure QUIT;forward;
+procedure WRITECAT;forward;
+procedure READ_OLD_CAT;forward;
+procedure READ_NEW_CAT;forward; 
+procedure PRINT_RECORD(CAT1:CATALOG_RECORD);forward;
+procedure PRINT_KIND(FILE_KIND:FILE_TYPE);forward;
+procedure PRINT_DATE(REC:DATE_RECORD);forward;
+procedure ENTER_VOL_NAME;forward;
+procedure READDEX;forward; 
+function LOOKUP(FN:FILEN):boolean;forward; 
+
+procedure INITIALIZE;
+var   I:RECNUM;
+      DEXFILE:file of INDEXARRAY;
+begin
+  MEM('INITIALIZE');
+  if (not LOOKUP(NFILENAME)) then begin
+    writeln(chr(7),'There is no file named ',NFILENAME,' on this disk'); 
+    write('Do you want to create a ',NFILENAME,'?  ');
+    if not YES then begin
+      LEAVE:=true;
+      exit(INITIALIZE)
+    end;{if not YES}
+    writeln;
+    writeln('Filling array[0]'); 
+    with NCAT[0] do begin 
+      VOL_NAME:='       ';
+      FILE_NAME:='               ';
+      FILE_KIND:=UNTYPED;
+      FILE_DATE.MONTH:=0;
+      FILE_DATE.DAY:=0;
+      FILE_DATE.YEAR:=0;
+      FILE_SIZE:=0;
+    end;{with NCAT[0]}
+    for I:=1 to MAXREC do NCAT[I]:=NCAT[0];
+    writeln('Array is filled  ');
+    rewrite(CATFILE,NFILENAME);
+    for I:=0 to MAXREC do begin
+      CATFILE^:=NCAT[I];
+      PUT(CATFILE)
+end;{for I}
+    CLOSE(CATFILE,LOCK)
+  end {if (not LOOKUP(NFILENAME))}
+  else writeln('The file ',NFILENAME,' already exists on this volume  ');
+  writeln;
+  if not LOOKUP(PFILENAME) then begin
+    writeln(chr(7),'There is no file named ',PFILENAME,' on this disk  '); 
+    writeln('Do you want to create a ',PFILENAME,'?  ');
+    if not YES then begin
+      LEAVE:=true;
+      exit(INITIALIZE)
+    end;{if not YES}
+for DEX:='A' to 'Z' do DEXRAY[DEX]:=0; 
+    rewrite(DEXFILE,PFILENAME);
+    DEXFILE^:=DEXRAY;
+    PUT(DEXFILE);
+    CLOSE(DEXFILE,LOCK);
+    writeln(PFILENAME,' written to disk')
+  end {if not LOOKUP(PFILENAME)}
+  else writeln('File ',PFILENAME,' exists  ');
+  SPACEBAR;
+end;{INITIALIZE}
+
+procedure make_upper (*var strg : string*); {upper case conversion  - gws}
+var qq : integer;
+begin
+  if length ( strg ) > 0 then  
+     for qq := 1 to length ( strg ) do
+        if strg [ qq ] in [ 'a' .. 'z' ] then
+           strg [ qq ] := chr ( ord ( strg [ qq ] ) - 32 );
+end;
+
+procedure DISPLAY;  {writes the entire MASTCAT.DAT file to the console} 
+var   I:RECNUM;
+      HARDCOPY:boolean;
+begin
+  HARDCOPY:=false;
+  CLEARSCREEN;
+  write('Searching for CATALOG...'); 
+  if (LOOKUP(NFILENAME)) then begin 
+    writeln;
+    gotoxy(0,12);
+    write(chr(8),chr(27),chr(108));
+    write('Select desired option...',chr(27),chr(109));
+    writeln;
+    writeln;
+    writeln('1--> output to CRT');
+    writeln;
+    write('2--> output to PRINTER  ');
+    CH:=READKEY(['1','2']);
+    CLEARSCREEN; 
+    if CH='1' then rewrite(P,'CONSOLE:')
+    else begin
+      rewrite(P,'printer:');
+      PRINTAT(0,12,'Sending entire CATALOG to PRINTER...  '); 
+      for I:=1 to 5 do writeln(P); 
+      HARDCOPY:=true 
+    end;{else} 
+    NREC:=0; 
+    reset(NCATFILE,NFILENAME); 
+    repeat
+      READ_NEW_CAT;
+      for I:=1 to NREC do begin
+        PRINT_RECORD(NCAT[I]);
+        if (I mod 20=0) and not HARDCOPY then begin 
+          SPACEBAR;
+          CLEARSCREEN
+        end {if} 
+      end;{for I}
+    until NFILEEND; 
+    close(NCATFILE);
+  end {if (LOOKUP(NFILENAME))}
+  else writeln(NFILENAME,' not present');
+  writeln;
+  if HARDCOPY then writeln(P,'MASTCAT contains ',NTOTREC,' records')
+  else writeln('MASTCAT contains ',NTOTREC,' records'); 
+  close(P); 
+  if not HARDCOPY then SPACEBAR; 
+end;{DISPLAY}
+
+procedure BACKUP;
+{compares file names & reports files without backups} 
+var   HARDCOPY,PASS,UNBACK:boolean; 
+      CH:char;
+      I,C,N:RECNUM; 
+begin
+  PASS:=false;
+  UNBACK:=false;
+  HARDCOPY:=false;
+  CLEARSCREEN;
+  write('Searching for CATALOG...');
+  if (LOOKUP(NFILENAME)) then begin
+    gotoxy(0,12);
+    write(chr(8),chr(27),chr(108));
+    write('Select desired option...',chr(27),chr(109));
+    writeln;
+    writeln;
+    writeln('1--> output to CRT');
+    writeln;
+    write('2--> output to PRINTER  ');
+    CH:=READKEY(['1','2']);
+    CLEARSCREEN; 
+    if CH='1' then rewrite(P,'CONSOLE:') 
+    else begin
+      rewrite(P,'printer:');
+      PRINTAT(0,12,'Sending backup data to PRINTER...  '); 
+      for I:=1 to 5 do writeln(P); 
+      writeln(P,'The following files are not backed up...');
+      writeln(P);
+      HARDCOPY:=true
+    end;{else} 
+    C:=0; 
+    if not HARDCOPY then writeln('The following files are not backed up...');
+    reset(NCATFILE,NFILENAME); 
+    repeat
+      READ_NEW_CAT; 
+      if (PASS and UNBACK) then 
+        if (NCAT[0].FILE_NAME<>NCAT[1].FILE_NAME) then begin
+          PRINT_RECORD(NCAT[0]);
+          C:=C+1;
+          if (C mod 20=0) and not HARDCOPY then begin 
+            SPACEBAR;
+            CLEARSCREEN
+          end {if} 
+      end;{if (NCAT[0].FILE_NAME<>NCAT[1].FILE_NAME)}
+      for N:=1 to NREC-1 do 
+        if ((NCAT[N].FILE_NAME<>NCAT[N-1].FILE_NAME) and
+          (NCAT[N].FILE_NAME<>NCAT[N+1].FILE_NAME)) then begin
+            PRINT_RECORD(NCAT[N]);
+            C:=C+1; 
+            if (C mod 20=0) and not HARDCOPY then begin 
+              SPACEBAR;
+              CLEARSCREEN
+            end {if} 
+        end;{if((NCAT[N]>FILE}
+      PASS:=true;
+      if not NFILEEND and (NCAT[NREC].FILE_NAME<>NCAT[NREC-1].FILE_NAME) 
+        then UNBACK:=true
+        else UNBACK:=false;
+      NCAT[0]:=NCAT[NREC]; 
+      if NFILEEND then begin 
+        if NCAT[NREC].FILE_NAME<>NCAT[NREC-1].FILE_NAME then begin
+          PRINT_RECORD(NCAT[NREC]); 
+          C:=C+1;
+          if (C mod 20=0) and not HARDCOPY then begin 
+            SPACEBAR;
+            CLEARSCREEN
+          end {if} 
+        end {if}
+      end;{if NFILEEND}
+    until NFILEEND;
+    close(NCATFILE);
+  end {if (LOOKUP(NFILENAME))}
+  else writeln('CATALOG not present  '); 
+  close(P);
+  if not HARDCOPY then SPACEBAR; 
+end;{BACKUP}
+
+procedure UPDATE;
+var   DCAT:array[DIR_SIZE] of CATALOG_RECORD;
+      RN:RECNUM;
+      
+procedure RENAME;  {changes name of MASTCAT.DATA to BACKCAT.DATA}
+var   I:integer;
+      SPS:string[16];
+      VOL,AVOL:VOL_ID;
+      DIR:DIRECTORY;
+begin
+  unitread(5,DIR[0],2048,2);
+  VOL:=DIR[0].DIR_VOL_NAME;
+  SPS:=COPY(BLANKS,1,7-length(VOL));
+  AVOL:=concat(VOL,SPS);
+for I:=1 to DIR[0].NUM_OF_FILES do 
+    with DIR[I] do begin
+      if (DIR_FILE_NAME='MASTCAT.DATA') then DIR_FILE_NAME:='BACKCAT.DATA';
+    end;{with DIR[I]}
+  unitwrite(5,DIR[0],2048,2);
+end;{RENAME}
+    
+procedure WRITEDEX;
+{writes a file of pointers to the first occurrence of each letter in the 
+ alphabet}
+var   DEXFILE:file of INDEXARRAY;
+begin
+  rewrite(DEXFILE,PFILENAME);
+  DEXFILE^:=DEXRAY;
+  put(DEXFILE);
+  close(DEXFILE,LOCK);
+end;{WRITEDEX}
+
+(*$I catalog.1.text*)
+(*$I catalog.2.text*)
+
+begin  {dummy} {MAIN PROGRAM}  
+  CLEARSCREEN;
+  TITLE;
+  SPACEBAR;
+  CLEARSCREEN;
+  MEM('MAIN');
+  LEAVE:=false;
+  if ((not LOOKUP(NFILENAME)) or (not LOOKUP(PFILENAME))) then begin
+    PRINTAT(0,11,'Insert disk with CATALOG files on it into drive #5:  ');
+    SPACEBAR;
+    CLEARSCREEN;
+    if ((not LOOKUP(NFILENAME)) or (not LOOKUP(PFILENAME))) then INITIALIZE; 
+  end;{if}
+  if LEAVE then exit(program); 
+  writeln;
+  CLEARSCREEN;
+  DLREC:=MAXREC; 
+  OLREC:=MAXREC; 
+  NLREC:=MAXREC;
+  READDEX;  {load the pointer array} 
+  repeat
+    REMOV:=false;
+    NFILEEND:=false;
+    OFILEEND:=false;
+    DONE:=false;
+    NREC:=0; 
+    OREC:=0; 
+    DREC:=0; 
+    NTOTREC:=0;
+    OTOTREC:=0;
+    VOL:='       ';
+    CLEARSCREEN; 
+    {MEM('MAIN');}
+    write('Catalog: S)earch D)isplay B)ackup U)pdate R)emove Q)uit  '); 
+    CH:=READKEY(['S','D','B','U','R','Q','s','d','b','u','r','q']);
+    CLEARSCREEN; 
+    case CH of 
+      'U','u':UPDATE;
+      
+      'S','s':SEARCH;
+      
+      'D','d':DISPLAY;
+      
+      'R','r':begin 
+                REMOV:=true;
+                ENTER_VOL_NAME; 
+                UPDATE 
+              end;
+      
+      'B','b':BACKUP;
+      
+      'Q','q':begin
+                CLEARSCREEN;
+                PRINTAT(0,12,
+                    'Ensure that the "boot disk" is in the correct drive.');
+                PRINTAT(0,14,'If it is not, the system will CRASH!!!');
+                SPACEBAR;
+                QUIT
+              end;
+      
+    end;{case CH}
+  if LEAVE then exit(program);
+  until false
+end;
+
+begin
+   dummy
+end.
+
+

@@ -1,0 +1,455 @@
+SEGMENT PROCEDURE SETPREFIX;
+VAR  ANS: INTEGER;
+BEGIN
+  REPEAT
+    IF DISKDRIVE = '' THEN ANS := -1
+    ELSE VALUE(TRUE,COPY(DISKDRIVE,2,LENGTH(DISKDRIVE)-1),FAKE,ANS);
+    (*$B 40COL- *)
+    GETNUM(4,30,ANS,'Enter Prefix Disk Drive # ',ANS)
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETNUM(4,30,ANS,'Enter Prefix Drive # ',ANS)
+    (*$E 40COL  *)
+  UNTIL ANS IN [4,5,9..30];
+  ENCODE(ANS,DISKDRIVE);
+  DISKDRIVE := CONCAT('#',DISKDRIVE)
+END;   (* of setprefix *)
+
+SEGMENT PROCEDURE PRINT_MENU;     (* Prints main menu to screen *)
+BEGIN
+  {WRITE(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  
+  MEMORY;
+  
+  WRITELN(OUTPUT);
+  
+  WRITELN(OUTPUT);
+  WRITELN(OUTPUT);
+  (*$B 40COL- *)
+  WRITELN(OUTPUT,'F R E E F O R M   The Electronic Worksheet  [F.4reals]');
+  WRITELN(OUTPUT,'==========================================');
+  WRITELN(OUTPUT,'                              ',VERSIONDATE);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN(OUTPUT,'FREEFORM  The Electronic Worksheet [F.4]');
+  WRITELN(OUTPUT,'========================================');
+  WRITELN(OUTPUT,'                            ',VERSIONDATE);
+  (*$E 40COL  *)
+  WRITELN(OUTPUT);
+  WRITELN(OUTPUT);
+  WRITELN(OUTPUT,'    0. Data Entry Procedure');
+  WRITELN(OUTPUT,'    1. Define new FORM controls');
+  WRITELN(OUTPUT,'    2. Modify FORM controls');
+  WRITELN(OUTPUT,'    3. Display or List directory');
+  WRITELN(OUTPUT,'    4. Display or List FORM controls');
+  WRITELN(OUTPUT,'    5. Consolidate Procedure');
+  WRITELN(OUTPUT,'    6. Roll a FORM');
+  WRITELN(OUTPUT,'    7. Copy a FORM');
+  WRITELN(OUTPUT,'    8. Delete a FORM');
+  WRITELN(OUTPUT,'    9. Help and User''s Guide');
+END;     (* of print_menu *)
+
+
+SEGMENT PROCEDURE CHOOSE_OPTION;       (* Elect desired option *)
+BEGIN
+  REPEAT
+    (*$B 40COL- *)
+    GETRESPONSE(TRUE,'Enter desired option #  ','',
+                '       Press ESC to leave',1,IS);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETRESPONSE(TRUE,'Enter option #  ','','  Press ESC to exit',1,IS);
+    (*$E 40COL  *)
+    IF (IS='@') THEN IS := '10';       (* Debug switch, char is @  SDA 11/17 *)
+    IF (IS='P') OR (IS='p') THEN IS := '11';
+  UNTIL (IS='0') OR (IS='1') OR (IS='2') OR (IS='3') OR (IS='4')
+   OR (IS='5') OR (IS='6') OR (IS='7') OR (IS='8') OR (IS='9') OR (IS='10')
+     OR (IS='11') OR (IS='ESCAPE');
+  IF IS='ESCAPE' THEN 
+    BEGIN
+      PROMPT('Returning to Pascal O/S',MSG_LINE);
+      EXIT(FREEFORM);
+    END;
+  VALUE(TRUE,IS,FAKE,OPTION);
+END;     (* of choose_option *)
+
+(*$R- *)
+SEGMENT FUNCTION FIGURE{ VAR Z: NUMBERTYPE; X, Y: NUMBERTYPE;
+                                                           OP: CHAR ): BOOLEAN};
+(*                      Dale  Ander   May  28,  1980
+     This Function calculates Z given X and Y and the operation in Op.  If an
+     overflow occurs it returns false and sets Z to OVERFLOW.  Otherwise it
+     returns true.
+*)
+VAR
+     ANS: BIGNUMTYPE;
+     I, POWER: INTEGER;
+
+PROCEDURE LEAVE(ANS: NUMBERTYPE);
+BEGIN
+  Z := ANS;
+  FIGURE := ANS <> OVERFLOW;
+  EXIT(FIGURE)
+END;
+
+BEGIN
+  (* Look for special math cases  SDA 11/13/80 *)
+  IF (X = OVERFLOW) OR (Y = OVERFLOW) THEN LEAVE(OVERFLOW) ELSE
+  IF (X = EMPTY) AND (Y = EMPTY) THEN      LEAVE(EMPTY)    ELSE
+  IF Y = EMPTY THEN
+    IF (OP = '+') OR (OP = '-') THEN Y := 0 ELSE LEAVE(EMPTY) ELSE
+  IF X = EMPTY THEN
+    IF (OP = '+') OR (OP = '-') THEN X := 0 ELSE LEAVE(EMPTY);
+  
+  CASE OP OF
+    '=': ANS := Y;
+    '+': ANS := X + Y;
+    '-': ANS := X - Y;
+    '*': ANS := X * Y;
+    '/': IF Y <> 0 THEN ANS := X / Y ELSE ANS := MAX;
+    'S': ANS := SIN( Y );
+    'C': ANS := COS( Y );
+    'T': BEGIN
+           X := COS( Y );
+           IF X <> 0 THEN ANS := SIN( Y ) / X  ELSE  ANS := MAX
+         END;
+    'A': ANS := ATAN( Y );
+    'L': IF Y > 0 THEN ANS := LOG( Y ) ELSE ANS := MAX;
+    'N': IF Y > 0 THEN ANS := LN ( Y ) ELSE ANS := MAX;
+    '^': BEGIN
+           IF ABS(Y) > MAXINT THEN ANS := MAX (* Will not take power *)
+           ELSE
+             IF Y = 0 THEN ANS := 1
+             ELSE
+               BEGIN
+                 POWER := TRUNC( ABS(Y) );
+                 I := 1;
+                 ANS := X;
+                 WHILE (I < POWER) AND (ANS < MAX) DO
+                   BEGIN
+                     ANS := ANS * X;
+                     I := I + 1
+                   END;
+                 IF Y < 0 THEN ANS := 1 / ANS
+               END
+         END
+  END;
+  IF (ANS >= MAX) OR (-ANS >= MAX) THEN LEAVE (OVERFLOW) ELSE LEAVE (ANS)
+END  (* of figure *);
+(*$R^ *)
+
+(*$R- *)
+SEGMENT PROCEDURE NUMTOSTR { VAR ANS: ASTRING;  NUM: NUMBERTYPE;
+                       BEFORE, AFTER: INTEGER              };
+(*                   Dale  Ander    Mar  27,  1981
+     Numtostr takes the Real number in Num and creates a string representation
+     of it and puts this string into Ans.  The form of the string is dependant
+     upon the values of Before and After.  Before is the number of digits
+     to put before the decimal point and After is the number after.
+*)
+VAR
+     MAGNITUDE, ROUND: NUMBERTYPE;
+     I, L, PT, PLACES, ORDZERO: INTEGER;
+     NEGATIVE, MINUSZERO: BOOLEAN;
+     SIGN: CHAR;
+
+BEGIN
+  IF NOT (BEFORE IN [1..MAXWHOLE]) THEN BEFORE := MAXWHOLE;
+  BEFORE := BEFORE+1;  (* Allow room for Sign *)
+  IF NOT (AFTER  IN [0..MAXFRAC])  THEN AFTER  := MAXFRAC;
+
+  IF NUM = EMPTY THEN  (* return a dash !  SDA 11/13/80 *)
+    BEGIN
+    { Old way of doing things              SDA 04/02/81
+      ANS := COPY(BLANKS,1,BEFORE+AFTER+1);
+      IF AFTER > 0 THEN ANS := CONCAT(ANS,' ');  (* blank for dec pt    *)
+      ANS[LENGTH(ANS)-1] := '-';   (* put dash in next to last position *)
+      and the New way
+    } 
+      IF AFTER > 0 THEN PT := BEFORE + AFTER + 2 ELSE PT := BEFORE + AFTER + 1;
+      FILLCHAR(ANS[1],PT,' ');
+      ANS[PT - 1] := '-';
+      ANS[0] := CHR( PT );
+      
+      EXIT(NUMTOSTR)
+    END;
+  
+  NEGATIVE := NUM < 0;
+  
+  (* Round off NUM to precision neccessary, make NUM positive and set SIGN *)
+  ROUND := 0.5 / PWROFTEN( AFTER );
+  IF NEGATIVE THEN
+    BEGIN  SIGN := '-';  NUM := NUM - ROUND;  NUM := ABS( NUM )  END
+  ELSE
+    BEGIN  SIGN := ' ';  NUM := NUM + ROUND                      END;
+
+  (* Get all the significant digits to the left of the decimal point *)
+  NUM := NUM * PWROFTEN( AFTER );
+
+  (* Get NUMs order of magnitude *)
+  PLACES := MAXWHOLE + AFTER - 1;
+  WHILE ( PWROFTEN( PLACES ) > NUM ) AND ( PLACES > 0 ) DO PLACES := PLACES - 1;
+
+  ORDZERO := ORD('0');  PT := 1;
+  ANS[1] := SIGN;
+  FOR I := PLACES DOWNTO 0 DO
+    BEGIN
+      MAGNITUDE := PWROFTEN( I );
+      L := TRUNC( NUM / MAGNITUDE );  (* Get digit at that pwr of 10 *)
+      PT := PT + 1;
+      ANS[PT] := CHR( L + ORDZERO );  (* Put the digit into Ans      *)
+      NUM := NUM - ( L * MAGNITUDE)   (* Remove the digit from Num   *)
+    END;
+  ANS[0] := CHR(PT);                  (* Set the length byte in Ans  *)
+
+  L := LENGTH( ANS ) - AFTER;
+  PT := 2 - L;
+  IF PT > 0 THEN                      (* Need to insert leading zeros *)
+    BEGIN
+    { The old way                        SDA 4/2/81
+      INSERT( COPY( ZEROS, 1, 3-L ), ANS, 2);
+      and the new
+    }
+      PLACES := LENGTH( ANS );
+      MOVERIGHT(ANS[2],ANS[PT+2],PLACES);
+      FILLCHAR( ANS[2],PT,'0');
+      ANS[0] := CHR( PLACES + PT );
+
+      L := LENGTH( ANS ) - AFTER
+    END;
+
+  PT := BEFORE - L;
+  IF PT > 0 THEN                        (* insert leading blanks *)
+    BEGIN
+      { The old way
+      INSERT( COPY( BLANKS, 1, BEFORE-L+1), ANS, 1 )
+        and the new
+      }
+      PLACES := LENGTH( ANS );
+      MOVERIGHT(ANS[1],ANS[PT+1],PLACES);
+      FILLCHAR( ANS[1],PT,' ');
+      ANS[0] := CHR( PLACES + PT )
+    END
+  ELSE
+    (* if field given not wide enough for number then return *'s *)
+    IF PT < 0 THEN
+      BEGIN
+        { The old way
+        ANS := COPY( STARS, 1, BEFORE+AFTER );
+          and the New
+        }
+        FILLCHAR(ANS[1],BEFORE+AFTER,'*');
+        ANS[0] := CHR( BEFORE + AFTER )
+      END;
+
+  IF NEGATIVE THEN          (* look for -0 case *)
+    BEGIN
+      I := 1;
+      L := LENGTH(ANS);
+      REPEAT
+        I := I + 1;
+        MINUSZERO := ANS[I] In ['0',' ','-']
+      UNTIL (I=L) OR NOT MINUSZERO;
+      IF MINUSZERO THEN ANS[ POS('-',ANS) ] := ' '
+    END;
+
+  IF AFTER > 0 THEN        (* put in decimal point *)
+    BEGIN
+      { The old way
+      INSERT( '.', ANS, LENGTH( ANS )-AFTER+1 );
+        and the New
+      }
+      PT := LENGTH( ANS ) - AFTER + 1;
+      MOVERIGHT(ANS[PT],ANS[PT+1],AFTER);
+      ANS[PT] := '.';
+      ANS[0] := CHR( LENGTH( ANS ) + 1 )
+    END
+END;  (* of numtostr *)
+(*$R^  *)
+
+SEGMENT PROCEDURE MOVEFORMDATA { AROW: BOOLEAN;  PAGE, SOURCE, DEST: INTEGER };
+VAR
+     I: INTEGER;
+     ANUM: NUMBERTYPE;
+     ERR: BOOLEAN;
+
+BEGIN
+  WITH DIRECTORY^ DO
+    IF AROW THEN
+      FOR I := 1 TO NO_COLS DO
+        BEGIN
+          NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGE,SOURCE,I,ANUM,ANDGET,ERR);
+          NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGE,DEST  ,I,ANUM,ANDPUT,ERR)
+        END
+    ELSE
+      FOR I := 1 TO NO_ROWS DO
+        BEGIN
+          NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGE,I,SOURCE,ANUM,ANDGET,ERR);
+          NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGE,I,DEST,  ANUM,ANDPUT,ERR)
+        END
+END;   (* of moveformdata *)
+
+SEGMENT PROCEDURE SETPRINTER;
+BEGIN
+  IF NOT PRINTER_ON THEN
+    BEGIN
+      UNITCLEAR( 6 );              (* Addition  SDA  12/16/81 *)
+      REWRITE(PRINTER,'PRINTER:');
+      PRINTER_ON := IORESULT = 0;
+    END;
+  IF PRINTER_ON THEN
+    BEGIN
+      GETNUM(1,999,PAPER_LENGTH,'How many lines long is the paper ?',
+                     PAPER_LENGTH);
+      (*$B 40COL- *)
+      PRESSRETURN('Set Printer Alignment, then',MSG_LINE)
+      (*$E 40COL  *)
+      (*$B 40COL+ *)
+      PRESSRETURN('Align Printer paper then',MSG_LINE)
+      (*$E 40COL  *)
+    END
+  ELSE  ERROR(3)
+END;
+
+SEGMENT FUNCTION DISK_DIR{: BOOLEAN};
+(* Returns true if it finds a freeform directory and returns false and sets
+   Quit to true if it doesn't find a directory.
+*)
+VAR  ANS: INTEGER;
+BEGIN
+  REPEAT
+    QUIT := FALSE;
+    OPEN_DIR;
+    IF NOT FILEOPEN THEN
+      BEGIN
+        ERROR(6);
+        QUIT := NOT YESNO('Try another disk','Y');
+        IF NOT QUIT THEN
+          BEGIN     (* prompt to insert another disk *)
+            REPEAT  (* Changed range of legal drive numbers  SDA 4/6/81 *)
+              GETNUM(4,30,-1,'Enter Disk Drive # ',ANS)
+            UNTIL ANS IN [4,5,9..30];
+            ENCODE(ANS,DISKDRIVE);  DISKDRIVE := CONCAT('#',DISKDRIVE);
+            (*$B 40COL- *)
+            PRESSRETURN(CONCAT('Insert FREEFORM disk in drive ',DISKDRIVE,
+               ' and'),MSG_LINE);
+            (*$E 40COL  *)
+            (*$B 40COL+ *)
+            PRESSRETURN(CONCAT('Put disk in ',DISKDRIVE,' and'),MSG_LINE);
+            (*$E 40COL  *)
+            sc_clr_screen;
+            {WRITE(OUTPUT,CLEAR);}
+          END;
+      END;     (* IF NOT FILEOPEN *)
+  UNTIL FILEOPEN OR QUIT;
+  DISK_DIR := FILEOPEN
+END;     (* of disk_dir *)
+
+SEGMENT FUNCTION NAME_FORM{ VAR REQUESTED_FORM: STRING;
+                                  VAR RECNUMBER: INTEGER ): BOOLEAN };
+(* Prompts for a form name and sets REQUESTED_FORM.  If it finds the form it
+   returns true and sets RECNUMBER, otherwise it returns false and sets QUIT
+   to true.  If possible it leaves directory^ pointing to requested record.
+*)
+VAR  DIRINDEX: INTEGER;
+
+BEGIN
+  NAME_FORM := FALSE;
+  DIRINDEX := 0;
+  WITH DIRECTORY^ DO
+    REPEAT
+      REPEAT
+        (*$B 40COL- *)
+        GETRESPONSE(FALSE,'Form Name (8 alpha max.)  ',REQUESTED_FORM,
+        '                Press ESC to leave',L_NAME,REQUESTED_FORM);
+        (*$E 40COL  *)
+        (*$B 40COL+ *)
+        GETRESPONSE(FALSE,'Enter Form Name  ',REQUESTED_FORM,
+        '   ESC exits',L_NAME,REQUESTED_FORM);
+        (*$E 40COL  *)
+      UNTIL (REQUESTED_FORM<>'') AND (REQUESTED_FORM<>'INVALID');
+      IF REQUESTED_FORM = 'ESCAPE' THEN                 (* SDA 4/21/81 *)
+        BEGIN  REQUESTED_FORM := '';  QUIT := TRUE  END
+      ELSE
+        BEGIN  (* search for requested form *)
+          LCTOUC(REQUESTED_FORM);
+          QUIT := SEARCH(RECNUMBER,REQUESTED_FORM) AND (THEVERSION = VERSION);
+          IF QUIT THEN
+            BEGIN
+              NAME_FORM := TRUE;
+              PROMPT(CONCAT('Form Name is => ',REQUESTED_FORM),3);
+            END
+          ELSE
+            BEGIN
+              IF REQUESTED_FORM = '?' THEN   (* give a default from the dir *)
+                BEGIN
+                  QUIT := FALSE;
+                  REPEAT
+                    SEEKDIR(DIRINDEX,ANDGET);
+                    REQUESTED_FORM := FORM_NAME;
+                    IF REQUESTED_FORM = '' THEN DIRINDEX := 0
+                    ELSE DIRINDEX := DIRINDEX + 1
+                  UNTIL ( VERSION = THEVERSION ) OR ( REQUESTED_FORM = '' )
+                END
+              ELSE
+                BEGIN
+                  PROMPT(CONCAT('FORM named ',REQUESTED_FORM,' not found...'),
+                         MSG_LINE-1);
+                  QUIT := NOT YESNO('Try another FORM name','Y');
+                  ERASE(MSG_LINE-1)
+                END
+            END
+        END
+    UNTIL QUIT
+END;     (* of name_form *)
+
+SEGMENT FUNCTION GET_FORM_NAME{ VAR REQUESTED_FORM: STRING
+                                      VAR RECNUMBER: INTEGER): BOOLEAN };
+(* This function will return true if it gets a form name that can go into
+   the freeform directory.  It also returns the spot in the directory for
+   the entry to go into.  Also sets the variable REQUESTED_FORM.
+   If no form name is given or the directory is full then false is returned.
+*)
+VAR POS: INTEGER;
+  
+BEGIN    (* GET_FORM_NAME *)
+  GET_FORM_NAME := FALSE;
+  IF NOT SEARCH(RECNUMBER,'') THEN  (* no empty hole in directory *)
+    ERROR(1)
+  ELSE
+    BEGIN
+      REPEAT
+        (*$B 40COL- *)
+        GETRESPONSE(FALSE,'Form Name (8 alpha max.)  ',REQUESTED_FORM,
+        '                Press ESC to leave',L_NAME,REQUESTED_FORM);
+        (*$E 40COL  *)
+        (*$B 40COL+ *)
+        GETRESPONSE(FALSE,'Enter Form Name  ',REQUESTED_FORM,
+        '   ESC exits',L_NAME,REQUESTED_FORM);
+        (*$E 40COL  *)
+      UNTIL (REQUESTED_FORM<>'') AND (REQUESTED_FORM<>'INVALID') AND
+                         (REQUESTED_FORM<>'?');
+      QUIT := REQUESTED_FORM = 'ESCAPE';       (* BUG FIX SDA 8/28/80 *)
+      IF QUIT THEN REQUESTED_FORM := ''        (* SDA  4/21/81        *)
+      ELSE
+        BEGIN
+          GET_FORM_NAME := TRUE;
+          LCTOUC(REQUESTED_FORM);  (* make form name uppercase *)
+          PROMPT(CONCAT('Form Name is => ',REQUESTED_FORM),3);
+          (* Check for duplicate form on current diskette *)
+          IF SEARCH(POS,REQUESTED_FORM) THEN  (* found duplicate *)
+            BEGIN
+              PROMPT(CONCAT('A FORM named ',REQUESTED_FORM,' already exists'),
+                      MSG_LINE-1);
+              IF YESNO('*** Replace existing FORM','N') THEN
+                RECNUMBER := POS
+              ELSE 
+                GET_FORM_NAME := FALSE;
+              ERASE(MSG_LINE-1)
+            END
+        END
+    END
+END;     (* of get_form_name *)
+
+

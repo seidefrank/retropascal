@@ -1,0 +1,701 @@
+{     Permission to copy or distribute this software or documen-      }
+{     tation in hard or soft copy granted only by written license     }
+{     obtained from the Institute for Information Systems.	      }
+
+
+    PROCEDURE PREFIXER;
+    BEGIN { PREFIXER }
+      IF CHECKFILE('Prefix titles by','',1,FALSE,FALSE,[NOVOL,BADDIR,OKDIR,
+			      UNBLKDVOL],86,0) THEN
+	BEGIN
+	  DKVID := GVID;
+	  WRITE(OUTPUT,'Prefix is ',DKVID,':');
+	  CLEARLINE
+	END
+    END {PREFIXER} ;
+    
+    
+    PROCEDURE LISTDIR(DETAIL: BOOLEAN);
+    VAR
+      OUT : TEXT;
+      SAVEVID : VID;
+      LINE,LARGEST,FREEBLKS,USEDAREA,USEDBLKS: INTEGER;
+      
+      PROCEDURE WRITELINE(FIRSTCALL: BOOLEAN);
+      BEGIN
+	IF FIRSTCALL OR (LINE = SYSCOM^.CRTINFO.HEIGHT) THEN
+	  BEGIN { May need to wait or write out heading }
+	    IF OK THEN
+	      BEGIN { Listing to console }
+		IF NOT (FIRSTCALL OR QUESTION) THEN
+		  BEGIN { Must wait before continuing }
+		    HOMECURSOR;
+		    CLEARLINE;
+		    IF SPACEWAIT(FALSE) THEN EXIT(LISTDIR);
+		  END;
+		CLEARSCREEN;
+		LINE := 2;
+		WRITELN(OUT);
+		WRITE(OUT,SAVEVID,':')
+	      END
+	    ELSE
+	      IF FIRSTCALL THEN
+		BEGIN { Not listing to console }
+		  IF NOT DONE THEN { Listing to unblocked device }
+		    CLEARSCREEN;
+		  HOMECURSOR;
+		  WRITELN(OUT);
+		  WRITE(OUT,SAVEVID,':')
+		END;
+	    IF FIRSTCALL AND DONE THEN { Corrects cursor positioning }
+	      BEGIN
+		HOMECURSOR;
+		IF NOT WILDCARD THEN
+		  CLWRITELN('')
+	      END
+	  END;
+	IF NOT (OK AND FIRSTCALL AND WILDCARD) THEN { For cursor positioning }
+	  WRITELN(OUT);
+	LINE := LINE+1
+      END {WRITELINE} ;
+  
+      PROCEDURE FREECHECK(FIRSTOPEN,NEXTUSED: INTEGER);
+	
+      VAR
+	FREEAREA: INTEGER;
+      
+      BEGIN
+	FREEAREA := NEXTUSED-FIRSTOPEN; { Finds space bet. last & next file }
+	IF FREEAREA > LARGEST THEN LARGEST := FREEAREA; { Is this the biggest }
+	IF FREEAREA > 0 THEN { There is a space between these files }
+	  BEGIN
+	    FREEBLKS := FREEBLKS+FREEAREA; { Running totla of free blocks }
+	    IF DETAIL THEN { Extended listing }
+	      BEGIN
+		WRITE(OUT,'< UNUSED >	   ',
+			  FREEAREA:4,' ':11,FIRSTOPEN:6);
+		WRITELINE(FALSE)
+	    END
+	  END;
+    END {FREECHECK} ;
+
+
+    PROCEDURE SHOWDIR;
+    
+    BEGIN
+      IF DONE AND (NOT QUESTION) THEN { Listing to a file }
+	BEGIN
+	  IF X = 0 THEN { First call to procedure }
+	    BEGIN
+	      WRITE(OUTPUT,'Writing');
+	      CLEARLINE
+	    END
+	  ELSE
+	    WRITE(OUTPUT,'.') { Show progress of listing }
+	END;
+      X := X + 1;
+      WITH GDIR^[I] DO
+	BEGIN
+	  FREECHECK(GDIR^[I-1].DLASTBLK,DFIRSTBLK); { Check for free blocks }
+	  USEDAREA := DLASTBLK-DFIRSTBLK; { Area used }
+	  USEDBLKS := USEDBLKS+USEDAREA;  { Running total of used blocks }
+	  WRITE(OUT,DTID,' ':TIDLENG-LENGTH(DTID)+1,USEDAREA:4);
+	  IF DACCESS.MONTH > 0 THEN
+	    WRITE(OUT,' ':2,DACCESS.DAY:2,'-',
+		    MONTHS[DACCESS.MONTH],'-',DACCESS.YEAR:2);
+	  IF DETAIL THEN { Extended listing }
+	    BEGIN
+	      IF DACCESS.MONTH = 0 THEN WRITE(OUT,' ':11);
+	      WRITE(OUT,DFIRSTBLK:6,DLASTBYTE:6);
+	      GS := 'ILLEGAL';
+	      CASE DFKIND OF
+		XDSKFILE: GS := 'Bad disk';
+		CODEFILE: GS := 'Codefile';
+		TEXTFILE: GS := 'Textfile';
+		INFOFILE: GS := 'Infofile';
+		DATAFILE: GS := 'Datafile';
+		GRAFFILE: GS := 'Graffile';
+		FOTOFILE: GS := 'Fotofile'
+	      END;
+	      WRITE(OUT,' ':2,GS)
+	    END;
+	  WRITELINE(FALSE)
+	END;
+    END;
+  
+    
+  BEGIN {LISTDIR}
+    DONE := FALSE;
+    X := 0;
+    OK := TRUE;
+    IF CHECKFILE('Dir listing of','',-1,TRUE,FALSE,[OKDIR,OKFILE],84,84) THEN
+      BEGIN
+	FOUND := TRUE;
+	SAVEVID := GVID;
+	IF TOWHERE = '' THEN { Default destination is console }
+	  GS := 'CONSOLE:'
+	ELSE
+	  IF SCANINPUT(TOWHERE,[BADFILE,OKFILE,UNBLKDVOL],83,1) THEN
+	    BEGIN { Not listing to default volume }
+	      DONE := UNITABLE [GUNIT].UISBLKD;
+	      OK := FALSE;
+	      GS := TOWHERE
+	    END
+	  ELSE
+	    GS := ''; { Bad destination name, abort LISTDIR }
+	IF GS <> '' THEN
+	  BEGIN
+	    REWRITE(OUT,GS); { Change output to appropriate device }
+	    IF NOT CHECKRSLT(IORESULT) THEN { Bad I/O result }
+	      GS := ''
+	  END;
+	IF GS = '' THEN
+	  EXIT(LISTDIR);
+	FREEBLKS := 0;
+	USEDBLKS := 0;
+	LARGEST := 0;
+	LINE := 0;
+	IF FILENAM1 = '' THEN
+	  WRITELINE(TRUE);
+	I := 0;
+	IF SCANINPUT(FROMWHERE,[OKDIR,OKFILE],84,-1) THEN
+	  IF WILDCARD THEN
+	    WHILE SEARCHDIR('List ',I,TRUE,FALSE) DO { Get file to be listed }
+	      SHOWDIR
+	  ELSE
+	    FOR I := 1 TO GDIR^[0].DNUMFILES DO
+	      BEGIN
+		IF FILENAM1 = '' THEN { List all the files }
+		  SHOWDIR
+		ELSE
+		  IF GDIR^[I].DTID = FILENAM1 THEN { List only this file }
+		    SHOWDIR
+	      END;
+	OK := FALSE;
+	IF FOUND THEN
+	  BEGIN
+	    IF (FILENAM1 = '') OR WILDCARD THEN
+	    BEGIN
+	      FREECHECK(GDIR^[I-1].DLASTBLK,GDIR^[0].DEOVBLK);
+	      WRITE(OUT,X,'/',GDIR^[0].DNUMFILES,' files');
+	      IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+		WRITE(OUT,'<listed/in-dir>');
+	      WRITE(OUT,', ',USEDBLKS);
+	      IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+		WRITE(OUT,' blocks');
+	      WRITE(OUT,' used, ',FREEBLKS,' unused');
+	      IF DETAIL THEN
+		WRITE(OUT,', ',LARGEST,' in largest area');
+	      IF DONE THEN
+		BEGIN
+		WRITELN(OUTPUT);
+		WRITELN(OUT)
+	      END
+	    END;
+	    IF CHECKRSLT(IORESULT) THEN
+	      BEGIN
+		OK := TRUE;
+		CLOSE(OUT,LOCK)
+	      END
+	  END;
+	IF NOT OK THEN
+	  CLOSE(OUT,NORMAL)
+      END
+  END {LISTDIR} ;
+
+
+  PROCEDURE LISTVOLS;
+  
+  BEGIN { LISTVOLS }
+    GUNIT := VOLSEARCH(GVID,TRUE,GDIR); { Update unitable }
+    CLEARSCREEN;
+    WRITELN(OUTPUT);
+    WRITELN(OUTPUT,'Volumes on-line:');
+    FOR GUNIT := 1 TO MAXUNIT DO
+     WITH UNITABLE[GUNIT] DO
+      IF UVID <> '' THEN { Volume is on-line }
+	BEGIN
+	  WRITE(OUTPUT,GUNIT:3);
+	  IF UVID = SYVID THEN
+	    WRITE(OUTPUT,' * ') { This volume is the booted device }
+	  ELSE
+	    IF UISBLKD THEN
+	      WRITE(OUTPUT,' # ') { Blocked unit }
+	    ELSE
+	      WRITE(OUTPUT,'   '); { Unblocked unit }
+	  WRITELN(OUTPUT,UVID,':')
+	END;
+    WRITELN(OUTPUT,'Prefix is - ',DKVID,':') { Prefix }
+  END {LISTVOLS} ;
+
+  PROCEDURE BADBLOCKS;
+  
+  VAR
+    A: PACKED ARRAY [0..FBLKSIZE] OF CHAR;
+  
+  BEGIN { BADBLOCKS }
+    CLEARSCREEN;
+    IF CHECKFILE('Bad blocks scan of','',1,FALSE,FALSE,
+			  [OKDIR,BADDIR],80,0) THEN
+      BEGIN
+	UNITCLEAR(GUNIT);
+	IF CHECKRSLT(IORESULT) THEN { Unit is on-line }
+	  BEGIN
+	    X := 0;
+	    FOR I := 0 TO UNITABLE[GUNIT].UEOVBLK-1 DO
+	      BEGIN
+		UNITREAD(GUNIT,A,FBLKSIZE,I);
+		IF SYSCOM^.IORSLT <> INOERROR THEN
+		  BEGIN 
+		    X := X+1;
+		    WRITELN(OUTPUT,'Block ',I,' is bad')
+		  END
+	      END;
+	    WRITE(OUTPUT,X,' bad blocks')
+	  END
+      END
+  END {BADBLOCKS} ;
+  
+  
+  PROCEDURE ZEROVOLUME;
+    
+  LABEL 1;
+    
+  VAR
+    NBLOCKS,LASTBLK: INTEGER; 
+    LDE: DIRENTRY;
+  
+  BEGIN { ZEROVOLUME }
+    CLEARSCREEN;
+    LASTBLK := 6; { Leave room for directory and bootstrap }
+    IF CHECKFILE('Zero dir of','',1,FALSE,FALSE,[OKDIR,BADDIR],80,0) THEN
+      BEGIN
+	UNITCLEAR(GUNIT);
+	IF CHECKRSLT(IORESULT) THEN { Unit is on-line }
+	  BEGIN
+	    IF GDIR <> NIL THEN { There's a directory on this volume }
+	      BEGIN
+		WRITE(OUTPUT,'Destroy ',GVID,': ? ');
+		IF NGETCHAR(TRUE) <> 'Y' THEN
+		  GOTO 1
+	      END;
+	    WRITE(OUTPUT,'Duplicate dir ? ');
+	    CH := NGETCHAR(TRUE);
+	    IF CH = 'Y' THEN { Leave room for a duplicate directory }
+	      LASTBLK := 10
+	    ELSE
+	      IF CH = SYSCOM^.CRTINFO.ALTMODE THEN { Abort ZEROVOLUME }
+		GOTO 1;
+	    CH := 'N';
+	    IF GDIR <> NIL THEN { There's a directory on this volume }
+	      IF (GDIR^[0].DEOVBLK >=LASTBLK) AND
+				 (GDIR^[0].DEOVBLK <= 10000) THEN
+		BEGIN { The number of blocks present may be valid }
+		  WRITE(OUTPUT,GDIR^[0].DEOVBLK,' blocks ? <present #> ');
+		  CH := NGETCHAR(TRUE);
+		  IF CH = SYSCOM^.CRTINFO.ALTMODE THEN
+		    GOTO 1 { Abort ZEROVOLUME }
+		  ELSE
+		    IF CH = 'Y' THEN
+			NBLOCKS := GDIR^[0].DEOVBLK { Keep the present number }
+		END;
+	    IF CH <> 'Y' THEN
+	      BEGIN { Need to get a new number of blocks on disk }
+		WRITE(OUTPUT,'# of blocks ? ');
+		NBLOCKS := 0;
+		READLN(INPUT,NBLOCKS);
+		IF NBLOCKS < LASTBLK THEN
+		  BEGIN { Not a valid number of blocks, abort ZEROVOLUME }
+		    WRITE(OUTPUT,'Bad # blocks');
+		    GOTO 1
+		  END
+	      END;
+	    WRITE(OUTPUT,'New vol name ? ');
+	    READLN(INPUT,GS);
+	    EATSPACES(GS);
+	    IF GS = '' THEN GOTO 1;
+	    IF GS[LENGTH(GS)] = ':' THEN
+	      DELETE(GS,LENGTH(GS),1);
+	    IF (GS = '') OR (LENGTH(GS) > VIDLENG) THEN
+	      BEGIN MESSAGES(54); GOTO 1 END;
+	    TOUPPER(GS,1,LENGTH(GS)); { Change to upper-case }
+	    WITH LDE DO
+	      BEGIN
+		DFIRSTBLK := 0;
+		DLASTBLK := LASTBLK;
+		DFKIND := UNTYPEDFILE;
+		DVID := GS;
+		DEOVBLK := NBLOCKS;
+		DLOADTIME := 0;
+		DLASTBOOT := THEDATE;
+		DNUMFILES := 0;
+		WRITE(OUTPUT,DVID,': correct ? ');
+		IF NGETCHAR(TRUE) = 'Y' THEN
+		  BEGIN
+		    UNITWRITE(GUNIT,LDE,SIZEOF(LDE),DIRBLK);
+		    IF CHECKRSLT(IORESULT) THEN { I/O result is good }
+		      WRITE(OUTPUT,DVID,': zeroed')
+		  END
+	      END
+	  END
+      END;
+1:
+  END {ZEROVOLUME} ;
+
+  PROCEDURE DATESET;
+    VAR
+      DELIMS: SET OF '-'..'/';
+
+    FUNCTION FINDDELIM : BOOLEAN;
+    
+    BEGIN { FINDDELIM }
+      OK := TRUE;
+      WHILE OK AND (GS <> '') DO
+	BEGIN
+	  IF GS[1] IN DELIMS THEN
+	    OK := FALSE;
+	  DELETE(GS,1,1)
+	END;
+      FINDDELIM := GS <> ''
+    END { FINDDELIM };
+	
+   BEGIN {DATESET}
+    CLEARSCREEN;
+    DELIMS := ['-','/'];
+    PL := 'Date set:  <1..31>-<JAN..DEC>-<00..99>  OR <CR>';
+    PROMPT; 
+    WRITELN(OUTPUT);
+    WITH THEDATE DO
+      IF MONTH = 0 THEN 
+	WRITELN(OUTPUT,'No current date')
+      ELSE
+	WRITELN(OUTPUT,'Today is ',DAY:2,'-',MONTHS[MONTH],'-',YEAR:2);
+    WRITE(OUTPUT,'New date ? ');
+    READLN(INPUT,GS);
+    EATSPACES(GS); { Remove spaces and non-printable characters }
+    IF GS <> '' THEN
+      BEGIN
+	I := 0;
+	REPEAT
+	  IF GS[1] IN DIGITS THEN
+	    I := I*10+ORD(GS[1])-ORD('0');
+	  IF NOT(GS[1] IN DELIMS) THEN
+	    DELETE(GS,1,1)
+	UNTIL (GS = '') OR (GS[1] IN DELIMS) OR (I > 31);
+	IF (I > 0) AND (I < 32) THEN
+	  THEDATE.DAY := I
+      END;
+    IF FINDDELIM AND (LENGTH(GS) > 2) THEN
+      BEGIN
+	GVID := '   ';
+	TOUPPER(GS,1,1); { Change to upper-case }
+	FOR I := 2 TO 3 DO
+	  IF ( GS[I] >= 'A' ) AND ( GS[I] <= 'Z' ) THEN
+	     GS[I] := CHR( ORD( GS[I] )-ORD( 'A' )+ORD( 'a' ));
+	MOVELEFT(GS[1],GVID[1],3);
+	FOR I := 1 TO 12 DO
+	  IF MONTHS[I] = GVID THEN
+	    THEDATE.MONTH := I
+      END;
+    IF FINDDELIM THEN
+      BEGIN
+	OK := FALSE;
+	I := 0;
+	REPEAT
+	  IF GS[1] IN DIGITS THEN
+	    BEGIN
+	      I := I*10+ORD(GS[1])-ORD('0');
+	      OK := I <= 99
+	    END;
+	  DELETE(GS,1,1)
+	UNTIL (GS = '');
+	IF OK THEN
+	  THEDATE.YEAR := I
+      END;
+    GUNIT := VOLSEARCH(SYVID,FALSE,GDIR);
+    IF GUNIT = SYSCOM^.SYSUNIT THEN
+      BEGIN
+	GDIR^[0].DLASTBOOT := THEDATE;
+	WRITEDIR(GUNIT,GDIR)
+      END;
+    WITH THEDATE DO
+      WRITE(OUTPUT,'New date is ',DAY:2,'-',MONTHS[MONTH],'-',YEAR:2)
+  END { DATESET } ;
+  
+  
+  PROCEDURE XBLOCKS;
+  
+  LABEL 1;
+  
+  VAR
+    CONFLICT : BOOLEAN;
+    FIRSTBLK,LASTBLK,MAXBLK,MINBLK : INTEGER;
+    LDE : DIRENTRY;
+    A,B : ARRAY [0..255] OF INTEGER;
+  
+  BEGIN { XBLOCKS }
+    CLEARSCREEN;
+    IF CHECKFILE('Examine blocks on','',1,FALSE,FALSE,[OKDIR],80,0) THEN
+      BEGIN
+	CONFLICT := FALSE;
+	MINBLK := 32767;
+	MAXBLK := -1;
+	FIRSTBLK := 0;
+	LASTBLK := 0;
+	WRITE(OUTPUT,'Block number-range ? ');
+	READ(INPUT,FIRSTBLK);
+	IF EOLN(INPUT) THEN
+	  LASTBLK := FIRSTBLK
+	ELSE
+	  BEGIN
+	    READ(INPUT,LASTBLK);
+	    IF NOT EOLN(INPUT) THEN
+	      WRITELN(OUTPUT);
+	    IF LASTBLK < 0 THEN
+	      LASTBLK := ABS(LASTBLK);
+	    IF LASTBLK < FIRSTBLK THEN
+	      BEGIN
+		I := FIRSTBLK;
+		FIRSTBLK := LASTBLK;
+		LASTBLK := I
+	      END
+	  END;
+	IF FIRSTBLK < GDIR^[0].DLASTBLK THEN
+	  BEGIN { Directory is endangered }
+	    WRITE(OUTPUT,'Risk the dir ? ');
+	    IF NGETCHAR(TRUE) <> 'Y' THEN GOTO 1
+	  END;
+	FOR X := 1 TO GDIR^[0].DNUMFILES DO
+	  WITH GDIR^[X] DO
+	    IF (FIRSTBLK < DLASTBLK) AND (LASTBLK >= DFIRSTBLK) THEN
+	      BEGIN { The block is located in a file }
+		IF NOT CONFLICT THEN
+		  BEGIN
+		    CONFLICT := TRUE;
+		    WRITELN(OUTPUT,'File(s) endangered:')
+		  END;
+		WRITELN(OUTPUT,DTID,' ':TIDLENG-LENGTH(DTID)+1,
+			DFIRSTBLK:6,DLASTBLK:6)
+	      END;
+	IF CONFLICT THEN
+	  BEGIN { Files are endangered }
+	    WRITE(OUTPUT,'Try to fix them ? ');
+	    IF NGETCHAR(TRUE) <> 'Y' THEN GOTO 1
+	  END;
+	FOR X := FIRSTBLK TO LASTBLK DO
+	  BEGIN
+	    WRITE(OUTPUT,'Block ',X);
+	    UNITREAD(GUNIT,A,FBLKSIZE,X);
+	    B := A;
+	    UNITWRITE(GUNIT,A,FBLKSIZE,X);
+	    IF IORESULT = 0 THEN
+	      UNITREAD(GUNIT,B,FBLKSIZE,X);
+	    IF (IORESULT = 0) AND (A = B) THEN
+	      WRITELN(OUTPUT,' may be ok')
+	    ELSE
+	      BEGIN
+		WRITELN(OUTPUT,' is bad');
+		IF X < MINBLK THEN MINBLK := X;
+		IF X > MAXBLK THEN MAXBLK := X
+	      END
+	  END;
+	IF MAXBLK < 0 THEN GOTO 1;
+	IF MINBLK = MAXBLK THEN
+	  WRITELN(OUTPUT,'Block ',MINBLK,' is still bad')
+	ELSE
+	  WRITELN(OUTPUT,'Blocks ',MINBLK,' thru ',MAXBLK,
+			' are still bad');
+	WRITE(OUTPUT,'Mark them');
+	IF CONFLICT THEN
+	  WRITE(OUTPUT,' (may remove files!)');
+	WRITE(OUTPUT,' ? ');
+	IF NGETCHAR(TRUE) <> 'Y' THEN GOTO 1;
+	IF CONFLICT THEN
+	  BEGIN
+	    X := 1;  {ZAP CONFLICTS}
+	    WHILE X <= GDIR^[0].DNUMFILES DO
+	      WITH GDIR^[X] DO
+		IF (MINBLK < DLASTBLK) AND (MAXBLK >= DFIRSTBLK) THEN
+		  DELENTRY(X,GDIR)
+		ELSE
+		  X := X+1
+	  END;
+	IF GDIR^[0].DNUMFILES = MAXDIR THEN
+	  BEGIN
+	    IF CHECKRSLT(ORD(INOROOM)) THEN;
+	    GOTO 1
+	  END;
+	WITH LDE DO
+	  BEGIN
+	    DFIRSTBLK := MINBLK;
+	    DLASTBLK := MAXBLK+1;
+	    DFKIND := XDSKFILE;
+	    DLASTBYTE := FBLKSIZE;
+	    DACCESS := THEDATE;
+	    DTID := 'BAD.xxxxx.BAD';
+	    FIRSTBLK := MINBLK;
+	    FOR I := 4 DOWNTO 0 DO
+	      BEGIN
+		DTID[9-I] := CHR(FIRSTBLK DIV IPOT[I] + ORD('0'));
+		FIRSTBLK := FIRSTBLK MOD IPOT[I]
+	      END
+	  END;
+	X := GDIR^[0].DNUMFILES;
+	WHILE MINBLK < GDIR^[X].DLASTBLK DO
+	  X := X - 1;
+	INSENTRY(LDE,X+1,GDIR);
+	WRITEDIR(GUNIT,GDIR);
+	WRITE(OUTPUT,LDE.DTID,' marked')
+      END;
+1:
+  END {XBLOCKS} ;
+
+  PROCEDURE KRUNCH;
+  
+  LABEL 1;
+  VAR
+    LINX: DIRRANGE; 
+    NBLOCKS,DESTBLK,RELBLOCK,CHUNKSIZE,AINX,LBLOCK: INTEGER;
+    REBOOT: BOOLEAN;
+  
+  BEGIN { KRUNCH }
+    CLEARSCREEN;
+    IF CHECKFILE('Crunch','',1,FALSE,FALSE,[OKDIR],80,0)  THEN
+      BEGIN
+	WRITE(OUTPUT,'Are you sure');
+	IF NOT SYSCOM^.MISCINFO.SLOWTERM THEN
+	  WRITE(OUTPUT,' you want to crunch ',GVID,':');
+	WRITE(OUTPUT,' ? ');
+	IF NGETCHAR(TRUE) <> 'Y' THEN GOTO 1; { Abort CRUNCH }
+	REBOOT := FALSE; { Will be set to true if *SYSTEM.PASCAL is moved }
+	SYSCOM^.MISCINFO.NOBREAK := TRUE;
+	FOR LINX := 1 TO GDIR^[0].DNUMFILES DO
+	  WITH GDIR^[LINX] DO
+	    IF (DFKIND <> XDSKFILE) AND
+		(DFIRSTBLK > GDIR^[LINX-1].DLASTBLK) THEN
+	      BEGIN
+		WRITELN(OUTPUT,'Moving ',DTID);
+		REBOOT := REBOOT OR
+			  ((DTID = 'SYSTEM.PASCAL') AND (GVID=SYVID));
+		NBLOCKS := DLASTBLK-DFIRSTBLK; { Number of blocks in file }
+		DESTBLK := GDIR^[LINX-1].DLASTBLK; { Were is this file going }
+		RELBLOCK := 0;
+		REPEAT
+		  CHUNKSIZE := NBLOCKS-RELBLOCK;
+		  IF CHUNKSIZE > GBUFBLKS THEN CHUNKSIZE := GBUFBLKS;
+		  IF CHUNKSIZE > 0 THEN
+		    BEGIN AINX := 0;
+		      FOR LBLOCK := DFIRSTBLK+RELBLOCK TO
+					DFIRSTBLK+RELBLOCK+CHUNKSIZE-1 DO
+			BEGIN
+			  UNITREAD(GUNIT,GBUF^[AINX],FBLKSIZE,LBLOCK);
+			  IF IORESULT <> 0 THEN
+			    BEGIN
+			      WRITELN(OUTPUT,'Read error, rel ',
+				LBLOCK-DFIRSTBLK,', abs ',LBLOCK);
+			      EXIT(KRUNCH)
+			    END;
+			  AINX := AINX+FBLKSIZE
+			END;
+		      AINX := 0;
+		      FOR LBLOCK := DESTBLK+RELBLOCK TO
+					DESTBLK+RELBLOCK+CHUNKSIZE-1 DO
+			BEGIN
+			  UNITWRITE(GUNIT,GBUF^[AINX],FBLKSIZE,LBLOCK);
+			  IF IORESULT <> 0 THEN
+			    BEGIN
+			      WRITELN(OUTPUT,'Write error, rel ',
+				LBLOCK-DESTBLK,', abs ',LBLOCK);
+			      EXIT(KRUNCH)
+			    END;
+			  AINX := AINX+FBLKSIZE
+			END;
+		      RELBLOCK := RELBLOCK+CHUNKSIZE
+		    END
+		UNTIL CHUNKSIZE = 0;
+		DFIRSTBLK := DESTBLK;
+		DLASTBLK := DESTBLK+NBLOCKS;
+		WRITEDIR(GUNIT,GDIR)
+	      END;
+	WRITELN(OUTPUT,GVID,': crunched');
+	IF REBOOT THEN
+	  BEGIN { *SYSTEM.PASCAL was moved }
+	    WRITELN(OUTPUT,'Please re-boot');
+	    REPEAT UNTIL FALSE
+	  END;
+	SYSCOM^.MISCINFO.NOBREAK := FALSE
+      END;
+1:
+  END {KRUNCH} ;
+
+  
+  PROCEDURE CALLPROMPT;
+  
+  BEGIN
+    PROMPT;
+    CH := GETCHAR(BADCOMMAND);
+    IF CH = ' ' THEN
+      CLEARSCREEN
+    ELSE
+      BEGIN
+	HOMECURSOR;
+	CLEARLINE;
+	IF CH = 'Q' THEN EXIT(FILEHANDLER)
+      END
+  END;
+  
+  
+BEGIN {FILEHANDLER}
+  FILERINIT;
+  REPEAT
+    BADCOMMAND := FALSE;
+    INSTRING := '';
+    CLEAR;
+    REPEAT
+      PL :=
+'Filer: G(et, S(ave, W(hat, N(ew, L(dir, R(em, C(hng, T(rans, D(ate, Q(uit [F.5]';
+      CALLPROMPT;
+      IF CH = '?' THEN
+	BEGIN
+	  PL :=
+'Filer: B(ad-blks, E(xt-dir, K(rnch, M(ake, P(refix, V(ols, X(amine, Z(ero [F.5]';
+	CALLPROMPT
+      END;
+      BADCOMMAND := NOT (CH IN ['B','C','D','E','G','K','L','M','N',
+				   'P','R','S','T','V','W','X','Z']);
+    UNTIL NOT BADCOMMAND;
+    PL := '';
+    CASE CH OF
+      'L':  LISTDIR(FALSE);
+      'E':  LISTDIR(TRUE);
+      'G':  GETWORK;
+      'N':  NEWWORK(TRUE);
+      'C':  CHANGER;
+      'R':  REMOVER;
+      'T':  TRANSFER;
+      'S':  IF SAVEWORK(BADCOMMAND) THEN
+	      BEGIN { Saving workfile on a different disk }
+		TRANSFER;
+		IF NOT BADCOMMAND THEN
+		  BEGIN { The code file may need to be saved }
+		    BADCOMMAND := TRUE;
+		    IF SAVEWORK(BADCOMMAND) THEN
+		      TRANSFER
+		  END
+	      END;
+      'P':  PREFIXER;
+      'W':  WHATWORK;
+      'M':  MAKEFILE;
+      'V':  LISTVOLS;
+      'B':  BADBLOCKS;
+      'Z':  ZEROVOLUME;
+      'X':  XBLOCKS;
+      'K':  KRUNCH;
+      'D':  DATESET
+    END
+  UNTIL FALSE
+END {FILEHANDLER} ;
+
+BEGIN END.
+
+                                                                                                                                                                                                   

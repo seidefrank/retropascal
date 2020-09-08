@@ -1,0 +1,285 @@
+
+                                    ADVENTURE 
+
+     The history of this version of Adventure has been lost, and I am
+     unable to credit the originator.  This program was converted to UCSD
+     Pascal from a PL/1 version found on our local computer system.  This
+     version was obviously converted from a Fortran version (it said so in
+     the comments) but any history was not indicated.  If you need
+     assistance with this program, you can write me.  My address is:
+
+                               Michael R. Turner
+                               1622 Colonial Way
+                               Frederick, Md. 21701
+                               (301)-663-9181
+
+     Extended by Ted Beck.  The changes to make the 500-point version were
+     converted from a CDC CYBER 74 FORTRAN program written by Tony Jarrett
+     and Paul Zemlin.  It in turn was modified from an early DEC PDP-11
+     FORTRAN version of Adventure.
+
+     Some bugs fixed by George Schreyer.  In particular, the data files
+ADVXxx.TEXT are VERY sensitive to a blank line at the end of the file. There
+should NOT be a blank line.  Also, the initialization procedure would eat both
+of my machines alive.  It was reading an even number of blocks onto a space on
+the heap not large enough to hold the data, causing damage to whatever was just
+above that space, usually the code pool. I padded the data spaces to make room.
+Also, the entire program was one segment of 10,000+ words.  This is too big to
+run on the LSI-11 extended memory system and probably some others.  I segmented
+the program (in no particularly readonable fashion) to allow the program to run
+on smaller machines.  If you don't like it, just comment out the 'segment's.
+     
+GETTING STARTED.
+
+The steps required to run Adventure are:
+
+
+1).  Compile ADVxINIT.  Files needed are:
+
+        ADVxINIT.TEXT
+        ADVxCONS.TEXT
+
+
+2).  Compile ADVx.  Files needed are:
+
+        ADVx.TEXT
+        ADVxCONS.TEXT
+        ADVxSUBS.TEXT
+        ADVxVERB.TEXT
+        ADVxSEGS.TEXT
+
+3).  Run ADVxINIT to build the run-time data files for Adventure.
+     Files needed are:
+
+        ADVxS1.TEXT
+        ADVxS2.TEXT
+        ADVxS3.TEXT
+        ADVxS4.TEXT
+        ADVxS5.TEXT
+        ADVxS6.TEXT
+        ADVxS7.TEXT
+        ADVxS8.TEXT
+        ADVxS9.TEXT
+        ADVxS10.TEXT
+        ADVxS11.TEXT
+        ADVxINIT.CODE
+
+     There are two output files produced by ADVxINIT:
+
+        ADVxMSGS[95]
+        ADVxDATA[24]
+
+     Insure that there are at least 119 free contiguous blocks on the
+     default disk.  ADVxINIT creates the message file completely before
+     opening the data file.  That way ADVxINIT will complete execution
+     successfully even if only 119 free blocks are available.
+
+
+4).  Build an ADV.MISCINFO file.  This is nothing more than a text file
+     with two numbers in it.  The format is HEIGHT WIDTH (e.g. 24 80).  If
+     you are an APPLE user using the 24x40 screen, this file is not needed
+     (see Notes, below).
+
+
+5).  The only files needed to run Adventure are:
+
+        ADVxDATA
+        ADVxMSGS
+        ADVx.CODE
+        ADV.MISCINFO (optional)
+
+
+6).  Be prepared to spend hours exploring the cave.  Try not to look at
+     the source or the data files until all of Adventuredom pays tribute
+     to you, O Grand Master Adventurer!
+
+
+Notes:
+
+     There is a save game feature.  Try SAVE.  You might like it.  The
+     program asks for your name, but any identifier can be used as long as
+     it is valid for a filename.  Each save file requires 6 blocks.
+
+     The system clock is used to initialize the random number generator.
+     If the value returned by the TIME function is zero, then the user is
+     prompted for a number to start the random number generator.
+
+     The system MISCINFO is not used because the APPLE sets the screen
+     width to 80 on the 40 character screen.  Flipping side to side may be
+     OK during editing, but not during Adventure.  Also, The program
+     defaults are such that APPLE users do not need an ADV.MISCINFO.
+
+     ADVx.TEXT has {$S+} to allow it to compile on most machines.
+
+
+=========================================================================
+PROGRAM-SECTION. 
+
+
+ADVx.TEXT............The Adventure program.
+
+
+ADVxCONS.TEXT........Include file of constants for array dimensions.
+
+
+ADVxSUBS.TEXT........Include file of Adventure subprograms.
+
+
+ADVxVERB.TEXT........Include file of Adventure subprograms.
+
+
+ADVxINIT.TEXT........Initialization program.  This program reads ADVxS1
+                     through ADVxS11 and produces ADVxDATA and ADVxMSGS.
+
+
+=========================================================================
+DATA-FILES-SECTION.
+
+
+ADVx.MISCINFO........Miscellaneous information for Adventure.
+
+
+ADVxS1.TEXT..........Long form descriptions.
+
+     Each line contains a location number, a space, and a line of text.
+     The set of adjacent lines whose numbers are X form the long
+     description of location X.
+
+
+ADVxS2.TEXT..........Short form descriptions.
+
+     Same format as ADVxS1.  Not all places have short descriptions.
+
+
+ADVxS3.TEXT..........Travel Table.
+
+     Each line contains a location number (X), a condition value (M), a
+     second location number (N), and a list of motion numbers from 
+     ADVxS4.  Each motion represents a verb which will take you to N
+     if you are at X.  M and N are interpreted as follows:
+
+        If N<=300     location to go to.
+        If 300<N<=500 N-300 is used to select special code.
+        If N>500      Message N-500 is to be issued.
+
+     Meanwhile, M specifies the condition of motion:
+
+        If M=0        Unconditional.
+        If 0<M<100    M% probability of motion.
+        If M=100      Unconditional but forbidden to dwarves.
+        If 100<M<=200 Must be carrying object M-100.
+        If 200<M<=300 Must be carrying or be in the same room as M-200.
+        If 300<M<=400 Property of (M MOD 100) must <> 0.
+        If 400<M<=500 Property of (M MOD 100) must <> 1.
+        If 500<M<=600 Property of (M MOD 100) must <> 2.
+                      Etc.
+
+     If the condition is not met, then the next *DIFFERENT* 'destination'
+     value is used (Unless it fails to meet *IT'S* conditions, in which
+     case the next is found, etc.).  Typically, the next destination will
+     be for one of the same verbs, so that its only use is as the
+     alternate destination for those verbs.  For instance:
+
+               15  110  22  29  31  34  35  23  43
+               15    0  14  45
+
+     says that from location 15, any of the verbs (29, 31, ..., 43) will take
+     you to 22 if you are carrying object 10.  Otherwise, they or verb 45
+     will take you to location 14.  And:
+
+               11  303   8  49
+               11    0   9  50
+
+     says that from 11, 49 takes him to 8 unless the PROP(3)=0.  In that
+     case, 49 takes you to 9.  Verb 50 always takes you to 9.
+
+
+ADVxS4.TEXT..........Vocabulary
+
+     Each line contains a number and a five letter word.  Let M=N DIV 1000.
+
+        If M=0.  The word is a motion verb used in ADVxS3.
+        If M=1.  The word is an object.
+        If M=2.  The word is an action word (e.g. ATTACK).
+        If M=3.  Special case word.  N MOD 1000 is an index into ADVxS6
+                 messages.
+
+
+ADVxS5.TEXT..........Object descriptions.
+
+     Each line contains a number and a message.  If 1<=N<=100, it is the
+     'INVENTORY' message for object N.  Otherwise N should be 000, 100, 200
+     etc. and the message is the description of the preceding object when
+     it's property value is N DIV 100.  The N DIV 100 is used to
+     distinguish multiple messages from multi-line messages.  Properties
+     that produce no message must be given a null message.
+
+
+ADVxS6.TEXT..........Miscellaneous messages.
+
+     Same format as ADVxS1, ADVxS2 and ADVxS5, except that the numbers are
+     not related to anything.  (Except for special verbs in ADVxS4).
+
+
+ADVxS7.TEXT..........Object locations.
+
+     Each line contains an object number and its initial location (zero if
+     none) and a second location (also zero if none).  If the object is
+     immovable, the second location is set to -1.  If the object has two
+     locations (e.g. GRATE), the second location field is set to the second
+     location and is assumed to be immovable.
+
+
+ADVxS8.TEXT..........Action defaults.
+
+     Each line contains an 'ACTION-VERB' number and the index (into ADVxS6)
+     of the default message for the verb. 
+
+
+ADVxS9.TEXT..........Liquid Assetts, etc.
+
+     Each line contains a number (N) and up to 20 location numbers.  Bit N
+     (where 0 is the units bit) is set in COND(LOC) for each loc given.
+     The bits currently assigned are:
+
+               0   Location is not dark.
+               1   If bit 2 is on; 1=oil, 0=water.
+               2   Liquid asset, set bit 1.
+               3   Pirate doesn't go here unless following player.
+
+     The other bits are used to indicate areas of interest to the hint
+     routines:
+               4 Trying to get into the cave.
+               5 Trying to catch the bird.
+               6 Trying to deal with the snake.
+               7 Lost in a maze.
+               8 Pondering the dark room.
+               9 At Witt's end.  COND(LOC) is set to 2, overriding all
+                 other bits, if LOC has forced motion.
+
+
+ADVxS10.TEXT.........Player class messages.
+
+     Each line contains a number N and a message describing the
+     classification of the player.  The scoring section selects the
+     appropriate message.  A message applies to a players whose scores are
+     higher than the previous N but not higher than this N.
+
+
+ADVxS11.TEXT.........Hints.
+
+     Each line contains a hint number corresponding to the COND(LOC) bits
+     (see ADVxS9), the number of turns he must be at the right LOC(s)
+     before triggering the hint, the points deducted for the hint, the
+     message number of the question (from ADVxS6) and the message number
+     of the hint (also from ADVxS6).  Hint numbers 1-3 are not usable as
+     the COND(LOC) bits 1-3 are otherwise assigned.
+
+
+ADVxDATA and ADVxMSGS.....Run-time data files.
+
+     These files are produced by ADVxINIT from ADVxS1..ADVxS11.  They
+     must be on the default disk in order to run the Adventure program.
+
+
+=========================================================================

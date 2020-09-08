@@ -1,0 +1,57 @@
+PROGRAM SORT;
+{ SOURCE FILE ASCENDING ORDERSORT }
+{ COPYRIGHT 1979 BY BARRY A. COLE
+                 3450 SAWTELLE BL#332
+                 LOS ANGELES, CA 90066
+  THIS MAY BE USED FREELY IF NOT SOLD AND IF THIS
+  MESSAGE IS RETAINED IN THE SOURCE. }
+
+  CONST SIZE=400; { MAXIMUM LINES TO BE SORTED}
+  VAR FROM,TOFIL: STRING[15];
+      SRCFIL,DSTFIL: TEXT;
+      SLOT: PACKED ARRAY[1..SIZE] OF STRING[80];
+      RECNUM: ARRAY[1..SIZE] OF INTEGER;
+      i,gap,j,jg,lines,temp: INTEGER;
+      BCHAR: CHAR;
+PROCEDURE BLIP;
+  BEGIN
+  IF BCHAR='X' THEN BCHAR:='O' ELSE BCHAR:='X';
+  WRITE(BCHAR,CHR(8));
+  END;
+procedure chekswap;
+  begin
+  while j>0 do begin
+    jg:=j+gap;
+    if SLOT[recnum[j]]<=SLOT[recnum[jg]] then exit(chekswap);
+    temp:=recnum[j]; recnum[j]:=recnum[jg]; recnum[jg]:=temp;
+    j:=j-gap; end;
+  end;
+
+  BEGIN
+  lines:=0;
+  WRITE('SORT SOURCE FILE? '); READLN(FROM);
+  WRITE('SORT DEST. FILE?  '); READLN(TOFIL);
+  RESET(SRCFIL,FROM); REWRITE(DSTFIL,TOFIL);
+  WRITELN('READING FROM FILE: ',FROM);
+  WHILE NOT EOF(SRCFIL) DO BEGIN
+    lines:=lines+1; RECNUM[lines]:=lines;
+    READLN(SRCFIL,SLOT[lines]); BLIP; END;
+  WRITELN(lines,' LINES TO BE SORTED');
+  
+  gap:=lines;
+  while gap>0 do begin
+    gap:=gap div 2;
+    for i:=gap+1 to lines do begin  j:=i-gap; chekswap; end;
+    end;
+  
+  { FOR I:=0 TO LINES DO BEGIN BLIP;
+    FOR J:=I TO LINES DO
+      IF SLOT[RECNUM[I]]>SLOT[RECNUM[J]] THEN BEGIN
+        temp:=RECNUM[I]; RECNUM[I]:=RECNUM[J];
+        RECNUM[J]:=temp; END; END;  }
+  WRITELN('SORT OPERATION COMPLETE');
+  FOR I:=1 TO lines DO WRITELN(DSTFIL,SLOT[RECNUM[I]]);
+  CLOSE(DSTFIL,LOCK);
+  WRITELN(TOFIL,' HAS BEEN UPDATED');
+  END.
+

@@ -1,0 +1,404 @@
+(*$S+*)
+program game;
+   (* This is a game by Jon Bondy.  I think it needs some work. I got it 
+      to run on my H-89, but it seemed to ignore many of the movement 
+      commands and I lost every time, oh well.  You will have to install your
+      own keyboard status routine, Jon provides one of his own and I provide
+      one for the H-89.  gws*)
+   const
+      { lengths }
+      l_line = 78;
+      l_screen = 23;
+      home_x = 0;
+      home_y = 1;
+
+      { cursor direction keys as ORDs }
+      ord_up = 116;        { t }
+      ord_down = 118;      { v }
+      ord_right = 103;     { g }
+      ord_left = 102;      { f }
+      { obstacles as ORDs }
+      ord_horiz = 45;      { - }
+      ord_vert = 124;      { | }
+      ord_intersect = 43;  { + }
+      { misc chars in ORD form }
+      ord_uc_i = 73;       { I }
+      ord_lc_i = 105;      { i }
+      ord_uc_q = 81;       { Q }
+      ord_lc_q = 113;      { q }
+      ord_uc_h = 72;       { H }
+      ord_lc_h = 104;      { h }
+      ord_uc_m = 77;       { M }
+      ord_lc_m = 109;      { m }
+      ord_0 = 48;          { 0 }
+      ord_1 = 49;          { 1 }
+      ord_2 = 50;          { 2 }
+      ord_3 = 51;          { 3 }
+      ord_4 = 52;          { 4 }
+      ord_5 = 53;          { 5 }
+      ord_6 = 54;          { 6 }
+      ord_7 = 55;          { 7 }
+      ord_8 = 56;          { 8 }
+      ord_9 = 57;          { 9 }
+      ord_space = 32;
+   
+      max_demons = 9;
+      
+      { obstacles as CHARs }
+      empty = ' ';
+      v_wall = '|';
+      h_wall = '-';
+      intersect = '+';
+      { demons/players as CHARs }
+      demon = 'D';
+      player = 'P';
+   
+   type
+      t_obstacle = char;
+      t_line = packed array [home_x..l_line] of t_obstacle;
+   
+   var
+      pattern : file of t_line;
+      board : array[home_y..l_screen] of t_line;
+      old_random : integer;
+      ch : char;
+      i : integer;
+      { location of player }
+      player_x, player_y : integer;
+      { used in delay loop to slow down game }
+      speed_control : integer; 
+      num_demons, num_live_demons : integer;
+      { starts at 1: game over when decreased to 0 }
+      num_players : integer; 
+      { demon mode }
+      demon_motion : (inertial_demon, heat_seeking_demon);
+      demon_data : array[1..max_demons] of record
+         { current position }
+         x, y : integer;
+         { current direction (inertial mode only): a cursor character }
+         direction : char;
+         alive : boolean;
+         end;
+      
+   procedure eeoln;
+      begin
+      write(chr(27), 'K');  {H-19 specific   gws}
+      end; { eeoln }
+      
+   function random : integer; { procedure }
+      begin
+      random := old_random;
+      old_random := ((old_random * 32761) + 13) mod 32717;
+      end; { random }
+      
+   procedure clear_board;
+      var
+         x, y : integer;
+      begin
+      { board is empty... }
+      fillchar(board, sizeof(board), ord(empty));
+      { ...with boarders established as walls }
+      for x := home_x to l_line do begin
+         board[home_y,x] := h_wall;
+         board[l_screen,x] := h_wall;
+         end;
+      for y := home_y to l_screen do begin
+         board[y,home_x] := v_wall;
+         board[y,l_line] := v_wall;
+         end;
+      board[home_y,home_x] := intersect;
+      board[home_y,l_line] := intersect;
+      board[l_screen,home_x] := intersect;
+      board[l_screen,l_line] := intersect;
+      end;
+      
+   procedure show_board;
+      var
+         y, length : integer;
+      begin
+      gotoxy(home_x, home_y);
+      length := l_line - home_x + 1;
+      for y := home_y to l_screen do begin
+         unitwrite(1,board[y],length);
+         if (y <> l_screen) then writeln;
+         end; { for y }
+      gotoxy(home_x, home_y);
+      end; { show_board }
+      
+   procedure go_prev_dir(prev_dir : char; var x, y : integer);
+      { modify x,y so that motion continues in direction used last }
+      begin
+      case ord(prev_dir) of
+         ord_up : if (y > home_y) then y := y - 1;
+         ord_down : if (y < l_screen) then y := y + 1;
+         ord_left : if (x > home_x) then x := x - 1;
+         ord_right : if (x < l_line) then x := x + 1; 
+         end; { case }
+      end; { go_prev_dir }
+      
+   procedure edit;
+      var
+         x, y : integer;
+         ch, prev_dir : char;
+      begin
+      gotoxy(0,0); eeoln;
+      write('Edit: up, down, left, right, "-", "|", "+", " ", I(nit, Q(uit');
+      x := home_x; y := home_y; prev_dir := chr(ord_right);
+      repeat
+         gotoxy(x,y);
+         read(keyboard,ch);
+         case ord(ch) of
+            ord_up : begin 
+               if (y > home_y) then y := y - 1; prev_dir := ch; end;
+            ord_down : begin 
+               if (y < l_screen) then y := y + 1; prev_dir := ch; end;
+            ord_left : begin 
+               if (x > home_x) then x := x - 1; prev_dir := ch; end;
+            ord_right : begin 
+               if (x < l_line) then x := x + 1; prev_dir := ch; end;
+            ord_horiz : begin 
+               board[y,x] := h_wall; write('-'); 
+               go_prev_dir(prev_dir,x,y); 
+               end;
+            ord_vert : begin 
+               board[y,x] := v_wall; write('|'); 
+               go_prev_dir(prev_dir,x,y); 
+               end;
+            ord_intersect : begin 
+               board[y,x] := intersect; write('+'); 
+               go_prev_dir(prev_dir,x,y); 
+               end;
+            ord_space : begin 
+               board[y,x] := empty; write(' '); 
+               go_prev_dir(prev_dir,x,y); end;
+            ord_lc_i, ord_uc_i : begin
+               clear_board; show_board;
+               end;
+            end; { case }
+         until (ch = 'q') or (ch = 'Q');
+      end; { edit }
+      
+   procedure put_pattern;
+      var
+         fname : string;
+         y : integer;
+      begin
+      gotoxy(0,0); eeoln;
+      write('Write pattern to what file name (".GPAT" assumed) ? ');
+      readln(fname);
+      if (length(fname) > 0) then begin
+         {$I-}
+         rewrite(pattern,concat(fname,'.gpat'));
+         {$I+}
+         if (ioresult = 0) then begin
+            for y := home_y to l_screen do begin
+               pattern^ := board[y]; put(pattern); end;
+            close(pattern,lock);
+            gotoxy(0,0); eeoln;
+            write('File written successfully.');
+            { delay to allow message to be read }
+            for y := 1 to 800 do begin end; 
+            end;
+         end;
+      end; { put_pattern }
+        
+   procedure get_pattern;
+      var
+         fname : string;
+         y : integer;
+      begin
+      gotoxy(0,0); eeoln;
+      write('Read pattern from what file name (".GPAT" assumed) ? ');
+      readln(fname);
+      if (length(fname) > 0) then begin
+         {$I-}
+         reset(pattern,concat(fname,'.gpat'));
+         {$I+}
+         if (ioresult = 0) then
+            for y := home_y to l_screen do begin
+               board[y] := pattern^; get(pattern); end
+         else clear_board;
+         show_board;
+         close(pattern);
+         end;
+      end; { get_pattern }
+       
+   procedure setup;
+      var
+         ch : char;
+      begin
+      repeat
+        gotoxy(0,0); eeoln;
+        write('Setup: E(dit, G(et, P(ut, S(how, N(umdemons, Q(uit : ');
+        read(keyboard,ch);
+        case ch of
+           'e','E' : edit;
+           'g','G' : get_pattern;
+           'p','P' : put_pattern;
+           's','S' : show_board;
+           'n','N' : begin
+              gotoxy(0,0); eeoln; write('Enter number of demons: '); read(ch); 
+              if (ch in ['1'..'9']) then num_demons := ord(ch) - ord('0');
+              ch := ' '; end;
+           'q','Q' : begin end;
+           end; { case }
+        until (ch = 'q') or (ch = 'Q');
+      end; { setup }
+      
+   (*function portread(port : integer) : integer; external; { procedure }*)
+   function kbstat : boolean; external;  {my own keyboard status routine
+                                                for an H-89}
+   function key_hit : boolean; { procedure }
+      begin
+      {key_hit := odd(portread(0) div 2);}
+      key_hit := kbstat;
+      end; { key_hit }
+   
+   procedure update_board(x,y : integer; token : t_obstacle);
+      begin
+      gotoxy(x,y); write(token); gotoxy(0,0);
+      board[y,x] := token;
+      end; { update_board }
+      
+   procedure kill_demon(x_input,y_input : integer);
+      var
+         i : integer;
+      begin
+      for i := 1 to max_demons do with demon_data[i] do begin
+         if alive and (x = x_input) and (y = y_input) then
+            begin
+            alive := false;
+            num_live_demons := num_live_demons - 1;
+            update_board(x,y,empty);
+            gotoxy(70,0); write('Demons: ', num_live_demons);
+            end;
+         end;
+      end; { kill_demon }
+      
+   procedure hyperspace(var x, y : integer; token : t_obstacle);
+      { put "token" in random board position and return position in x/y }
+      var
+         done : boolean;
+      begin
+      done := false; update_board(x,y,empty);
+      repeat
+         x := random mod l_line; y := (random mod (l_screen - 1)) + 1;
+         if (board[y,x] = empty) then begin
+            update_board(x,y,token);
+            done := true;
+            end;
+         until done;
+      end; { hyperspace }
+      
+   procedure move_player(var quit : boolean);
+      var
+         ch : char;
+         board_element : t_obstacle;
+      begin
+      read(keyboard,ch);
+      update_board(player_x, player_y, empty);
+      case ord(ch) of
+         ord_right : begin
+            board_element := board[player_y,player_x+1];
+            if (board_element = empty) then player_x := player_x + 1
+            else if (board_element = demon) then begin
+               player_x := player_x + 1;
+               kill_demon(player_x,player_y);
+               end;
+            end;
+         ord_left : begin
+            board_element := board[player_y,player_x-1];
+            if (board_element = empty) then player_x := player_x - 1
+            else if (board_element = demon) then begin
+               player_x := player_x - 1;
+               kill_demon(player_x,player_y);
+               end;
+            end;
+         ord_up : begin
+            board_element := board[player_y-1,player_x];
+            if (board_element = empty) then player_y := player_y - 1
+            else if (board_element = demon) then begin
+               player_y := player_y - 1;
+               kill_demon(player_x,player_y);
+               end;
+            end;
+         ord_down : begin
+            board_element := board[player_y+1,player_x];
+            if (board_element = empty) then player_y := player_y + 1
+            else if (board_element = demon) then begin
+               player_y := player_y + 1;
+               kill_demon(player_x,player_y);
+               end;
+            end;
+         ord_lc_q, ord_uc_q : quit := true;
+         ord_lc_h, ord_uc_h : hyperspace(player_x, player_y, player);
+         ord_lc_m, ord_uc_m : if (demon_motion = inertial_demon) then
+            demon_motion := heat_seeking_demon
+            else demon_motion := inertial_demon;
+         ord_0 : speed_control := 0;
+         ord_1 : speed_control := 10;
+         ord_2 : speed_control := 20;
+         ord_3 : speed_control := 30;
+         ord_4 : speed_control := 40;
+         ord_5 : speed_control := 50;
+         ord_6 : speed_control := 60;
+         ord_7 : speed_control := 70;
+         ord_8 : speed_control := 80;
+         ord_9 : speed_control := 90;
+         end; { case }
+      update_board(player_x,player_y,player); 
+      end; { move_player }
+      
+   procedure change_direction(x,y : integer; var direction : char);
+      { when an inertial demon hits something, this routine figurs out
+        what direction to send him in next }
+      var
+         new_direction : char;
+         num_free_directions : integer;
+         empty_player : set of t_obstacle;
+      begin
+      num_free_directions := 0; empty_player := [empty,player];
+      { determine what directions are possible -- establish "new_direction"
+        in case there is only one such }
+      if (board[y-1,x] in empty_player) then begin
+         num_free_directions := num_free_directions + 1;
+         new_direction := chr(ord_up);
+         end;
+      if (board[y+1,x] in empty_player) then begin
+         num_free_directions := num_free_directions + 1;
+         new_direction := chr(ord_down);
+         end;
+      if (board[y,x+1] in empty_player) then begin
+         num_free_directions := num_free_directions + 1;
+         new_direction := chr(ord_right);
+         end;
+      if (board[y,x-1] in empty_player) then begin
+         num_free_directions := num_free_directions + 1;
+         new_direction := chr(ord_left);
+         end;
+      if (num_free_directions > 1) then begin
+         { there is more than one possible new direction: select randomly }
+         new_direction := empty;
+         repeat
+            case (random mod 4) of
+               0 : if (board[y-1,x] in empty_player) then
+                  if (direction <> chr(ord_down)) then
+                  new_direction := chr(ord_up);
+               1 : if (board[y+1,x] in empty_player) then
+                  if (direction <> chr(ord_up)) then
+                  new_direction := chr(ord_down);
+               2 : if (board[y,x-1] in empty_player) then
+                  if (direction <> chr(ord_right)) then
+                  new_direction := chr(ord_left);
+               3 : if (board[y,x+1] in empty_player) then
+                  if (direction <> chr(ord_left)) then
+                  new_direction := chr(ord_right);
+               end; { case }
+            until (new_direction <> empty);
+         end; { if }
+      direction := new_direction;
+      end; { change_direction }
+      
+      
+      (*$I game1.text*)
+      

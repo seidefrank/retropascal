@@ -1,0 +1,525 @@
+program  wumpus;
+ 
+{
+        This program was written by Paul J. Gilliam from the basic
+        programs "wumpus 1" and "wumpus 2" in "More BASIC Computer
+        Games", edited by David H. Ahl.  The original games were
+        written by Gregory Yob.  
+        
+        This game will teach you how to play it. 
+        
+        Happy wumpus hunting!
+        
+        (c) 1980 Palouse Software
+        
+        NOTICE:
+        This program was the product of:
+            
+                     Palouse Software
+                     P.O. Box 2202 
+                     Pullman, WA 99163
+                      
+        Permission is hereby given to copy, modify, distribute, and in  
+        any other way use this program, provided that this notice is not 
+        removed from it.
+         
+}
+  type    
+    room = 1 .. 20;
+    tunnel = 1 .. 3;
+  
+  var
+    cave : array[room, tunnel] of room; 
+    initlocate : array[1..6] of room;
+    seed : integer;
+    needhelp : boolean;
+    i, j, arrowcount : integer;
+  
+  {*   
+   *   The following strings can be used for control of the system console.
+   *   The procedure  "terminit"  must be invoked before any of these are
+   *   used.
+   *} 
+  cursorhome, cursorup, cursordown, cursorleft, cursorright,  
+  clearscreen, clearline, beep  :  string[2];
+  
+  procedure  terminit;  
+  {*
+   *   This routine initializes the terminal control strings
+   *}   
+    
+    var  
+      esc : string[1];
+    
+    begin 
+      {*  initialize for TVI-920c  *}
+      esc         :=  ' ';  esc[1]  :=  chr(27);  
+      cursorhome  :=  ' ';  cursorhome[1]  :=  chr(26);
+      cursorup    :=  ' ';  cursorup[1]    :=  chr(23);;   
+      cursordown  :=  ' ';  cursordown[1]  :=  chr(10);
+      cursorleft  :=  ' ';  cursorleft[1]  :=  chr(8);
+      cursorright :=  ' ';  cursorright[1] :=  chr(20);  
+      clearscreen :=  ' ';  clearscreen[1] :=  chr(12);
+      clearline   :=  ' ';  clearline[1] :=  chr(21);
+      beep        :=  ' ';  beep[1]  :=  chr(7)
+      end  { terminit };
+   
+FUNCTION  RANDOM (VAR SEED : INTEGER) : REAL;       
+{*
+ *   This is Algorithm A-1 from Pascal News #12
+ *}
+
+  CONST 
+    PSHIFT  =  1024;    {  2 ^ 10  }
+    PMOD    =    32;    {  2 ^ 5   }
+    QSHIFT  =    16;    {  2 ^ 4   }
+  
+  VAR 
+    A, B :
+      RECORD  CASE BOOLEAN OF
+        TRUE  : (I : INTEGER);
+        FALSE : (S : PACKED SET OF 0..15);
+      END;
+  
+  BEGIN
+  
+    { EXCLUSIVE OR NUMBER AND NUMBER SHIFTED 4 PLACES }  
+    A.I := ABS(SEED);  B.I := A.I DIV QSHIFT;  { RIGHT SHIFT 4 }
+    A.S := (A.S - B.S) + (B.S - A.S);  { XOR }
+    
+    { EXCLUSIVE OR NUMBER AND NUMBER SHIFTED 10 PLACES LEFT }
+    B.I := A.I MOD PMOD * PSHIFT + A.I DIV PMOD;  { CIRCULAR LEFT SHIFT 10 } 
+    A.S := (A.S - B.S) + (B.S - A.S);
+    
+    { CONVERT TO REAL RESULT }
+    SEED := A.I;  RANDOM := A.I / (1.0 + MAXINT)
+  END  { RANDOM };
+
+function  randomize : char;   
+  {*
+   *   This routine will step thru random numbers until a key is pressed
+   *   on the system console. 
+   *}
+   
+{  The next version should work on your system, but I don't know.  }  
+   
+(* Paul Gilliam feels that this routine will work on most systems, but in
+   fact only a few UCSD implementations support asynchronous i/o.  Apple
+   users and others who have implemented KEYPRESS (a machine-language
+   function true if a console key has been pressed) can use version B; on
+   systems like mine, we'll have to make do with version C, which is the only
+   one not commented out.
+   By the way, if you use version A or B, you can initialize seed with a
+   constant.                                            Jim Gagne       *)
+(* VERSION A:  ORIGINAL:*)
+(*var
+    junk : real;
+    ch : char;
+    
+  begin  { randomize } 
+    unitread(1{console}, ch, 1,,1{asynch});
+    while  unitbusy(1)  do  junk  :=  random(seed);
+    randomize  :=  ch
+    end  { randomize };
+ *)
+ 
+ (*VERSION B: USING KEYPRESS *)
+ (* VAR
+        junk: real;
+        ch: char;
+        
+    BEGIN {randomize}
+      WHILE NOT Keypress DO junk := random (seed);
+      Read (ch);
+      randomize := ch;
+    END;
+  *)
+  
+  (*VERSION C: SYNCHRONOUS *)
+     VAR
+        junk : real;
+        ch: char;
+    BEGIN
+      junk := random (seed);
+      Read (ch);
+      randomize := ch;
+    END;
+ 
+
+  
+  function  randroom : room; 
+    begin
+      randroom  :=  trunc(random(seed) * 20) + 1
+      end  { randroom };
+      
+  function  randtunnel : tunnel;
+    begin
+      randtunnel  :=  trunc(random(seed) * 3) + 1
+      end  { randtunnel };
+      
+  function  wumpmove : integer; 
+    var
+      i : integer;
+    begin
+      i  :=  trunc(random(seed) * 4) + 1;
+      if  i > 3  then  wumpmove  :=  -1  else  wumpmove  :=  i;
+      end  { wumpmove };
+        
+  function  instruct(filename : string) : boolean;       
+  {*
+   *   This function uses the input from a file to teach the player
+   *   how to play the game.  When the string "$pause" starts in the
+   *   first position of a line in the file,  'instruct' will pause in
+   *   its listing of the file until the player hits the space bar.
+   *}
+    
+    var    
+      line : string;  
+      ifile : text;
+      ch : char;
+    
+    begin  { instruct }  
+      gotoxy(0,0);
+      write(clearline);
+      write('Do you want instructions on how to play? ');
+      ch  :=  randomize;
+      writeln;
+      instruct  :=  false; 
+      if  (ch <> 'y')  and  (ch <> 'Y')  then  exit(instruct);  
+      {$I- }  { turn off i/o checking } 
+      reset(ifile,filename);
+      {$I+ }  { turn on i/o checking }
+      if  ioresult <> 0  then  begin
+        writeln;
+        writeln('Sorry,  instructions not availiable yet.');
+        exit(instruct)  end;
+      instruct  :=  true;  
+      gotoxy(0,1);
+      write(clearscreen);
+      while  not eof(ifile)  do  begin; 
+        readln(ifile,line);
+        if  (line = '$pause')  or  (line = '$PAUSE')  then  begin    
+          gotoxy(0,0);
+          write(clearline);
+          write('Hit <sp> to continue.'); 
+          repeat read(keyboard,ch) until ch = ' ';
+          gotoxy(0,23);
+          writeln  end
+        else
+          writeln(line)  end;
+      end  { instruct };
+    
+  procedure  getacave;
+    var
+      i : room;
+      j : tunnel;
+      k : integer;
+      cavename : string; 
+      cavein : text;
+      ch : char;
+    begin 
+      cavename  :=  'wump.cave'; 
+      k := length(cavename) + 1;
+      cavename  :=  concat(cavename, '$', '.text');
+      writeln; 
+      repeat  
+        write('cave #(0-5) '); 
+        read(ch);
+        writeln;
+        until  ch in ['0'..'5'];
+      cavename[k]  :=  ch;   
+      reset(cavein,cavename);    
+      writeln('reading ',cavename,' '); 
+      readln(cavein, cavename); 
+      write('.');
+      for  i := 1 to 20  do  begin
+        write('.');
+        for  j := 1 to 3  do  read(cavein,cave[i,j])  end;   
+      writeln;
+      writeln('you are in ',cavename);
+      writeln;
+      end  { getacave }; 
+  
+  procedure  initsetup; 
+    var
+      locatesunique : boolean;
+      i, j : integer;  
+    begin
+      repeat
+        for  i := 1 to 6  do  initlocate[i]  :=  randroom;  
+        locatesunique  :=  true;
+        i  :=  1;              
+        while  locatesunique  and  (i <= 6)  do  begin 
+          j  :=  1;  
+          while  locatesunique  and  (j <= 6)  do  begin
+            if  (initlocate[i] = initlocate[j])  and  (j <> i) then  begin    
+              locatesunique  :=  false  end
+            else  begin 
+              j  :=  j + 1  end
+            end;
+          i  :=  i + 1  end;
+        until  locatesunique; 
+      end  { initsetup }; 
+      
+  procedure  HuntTheWumpus;
+    type
+      long = integer[35];
+    var 
+      i : integer;
+      game : (inprogress, youlost, youwon);
+      locate : array[1..6] of room;
+      escape : char;
+    
+    procedure  warnings;  
+      var
+        location, i, j: integer;
+      begin
+        writeln;
+        location := locate[1];   
+        for  i := 2 to 6  do  begin
+          for  j := 1 to 3  do  begin
+            if  cave[location,j] = locate[i]  then  begin
+              case  i  of
+                2   :  writeln('I smell a Wumpus!');
+                3, 4:  writeln('I feel a draft!');
+                5, 6:  writeln('Bats nearby!');
+                end
+              end
+            end
+          end;
+        writeln('You are in Room ',location:2);
+        write('Tunnels lead to');
+        for  i := 1 to 3  do  write(cave[location,i]:3); 
+        writeln;
+        end  { warnings };
+    
+    function  wanttoshoot : boolean;   
+      var
+        ch : char;      
+      begin
+        repeat
+          write('Shoot or move (s-m) <esc>');     
+          read(keyboard,ch);
+          writeln;
+          if  ch = escape  then  begin   
+           game  :=  youlost;
+           exit(HuntTheWumpus)  end;
+          if  ch = 'l'  then  begin  
+            write('you = ',locate[1]);
+            write(' wumpus = ',locate[2]);
+            write(' pits = ',locate[3],',',locate[4]);
+            write(' bats = ',locate[5],',',locate[6]);
+            writeln  end;
+          until  ch in ['m', 'M', 's', 'S'];   
+        wanttoshoot  :=  ch in ['S', 's'];
+        end  { wanttoshoot }; 
+    
+    procedure  movewumpus; 
+      var
+        i : integer;
+      begin
+        i  :=  wumpmove;
+        if  i > 0  then  locate[2]  :=  cave[locate[2],i];
+        if  locate[1] = locate[2]  then  begin      
+          writeln('Tsk Tsk Tsk - Wumpus got you!');
+          game  :=  youlost  end;
+        end  { movewumpus };
+    
+    function  lint(s : string; var l : long) : integer;  
+      var
+        i, j : integer;
+        negitive : boolean;
+        ch : char;
+      begin 
+        j  :=  0;
+        l  :=  0;
+        lint  :=  -1;
+        negitive  :=  false;
+        for  i := 1 to length(s)  do  begin 
+          ch  :=  s[i];
+          if  ch in ['0'..'9']  then  begin
+            j  :=  j + 1;
+            if  j > 36  then  begin
+              lint  :=  -2;
+              exit(lint)  end;
+            l  :=  l * 10 + (ord(ch) - ord('0'))  end 
+          else if  ch = '-'  then  begin
+            if  negitive  then  exit(lint)  end
+          else  exit(lint);
+          end;
+        if  l > maxint   
+          then  lint  :=  j
+          else  lint  :=  0;
+        if  negitive  then  l  :=  -l;
+        end;
+    
+    procedure  doshot;
+      var
+        path : array[1..5] of integer;
+        rooms, i, j, arrow : integer;
+        roomok, targethit : boolean;
+        l : long;
+        ans : string;
+      begin
+        { program the arrow }
+        repeat
+          write('No. of rooms (1-5) ');
+          readln(ans);   
+          i  :=  lint(ans, l);
+          rooms  :=  trunc(l);
+          until  (i = 0) and (rooms >= 1) and (rooms <= 5);              
+        for  i := 1 to rooms  do begin
+          repeat
+            roomok := true;
+            write('Room # ');
+            readln(ans);  
+            j  :=  lint(ans, l);
+            roomok  :=  (j = 0) and  (l > 0)  and  (l < 21);
+            path[i]  :=  trunc(l);
+            if  i > 2  then  begin   
+              if  path[i] = path[i-2]  then  begin
+                writeln('Arrows aren''t that crooked - try another room');
+                roomok  :=  false  end
+              end;
+            if  not roomok  then  write(beep);  
+            until  roomok;
+          end;
+        { shoot the arrow }
+        arrowcount  :=  arrowcount - 1;
+        I  :=  1;
+        arrow  :=  locate[1];
+        repeat 
+          roomok  :=  false; 
+          for  j := 1 to 3  do  begin
+            if  cave[arrow,j] = path[i]  then  roomok  :=  true  end;
+          if  roomok  then  begin
+            arrow  :=  path[i]  end
+          else  begin 
+            arrow  :=  randroom  end;    
+          if  arrow = locate[1]  then  begin    
+            writeln('OUCH! Arrow got YOU!');
+            game  :=  youlost  end 
+          else  if  arrow = locate[2]  then  begin 
+            writeln('Aha! You got the Wumpus!'); 
+            game  :=  youwon  end;
+          i  :=  i + 1;
+          until  (i > rooms) or (game <> inprogress);
+        if  (game = inprogress) and (arrowcount = 0)  then  begin
+          writeln('Out of arrows!!'); 
+          game  :=  youlost  end;
+        if  game = inprogress  then  writeln('missed'); 
+        movewumpus;
+        end  { doshot };
+    
+    procedure  domove; 
+      var
+        room, i, location : integer;
+        roomok, movefinished : boolean;
+        l : long;
+        ans : string;            
+      begin
+        location  :=  locate[1];
+        repeat
+          write('Where to? '); 
+          readln(ans); 
+          roomok  :=  false;
+          i  :=  lint(ans, l);
+          room  :=  trunc(l);
+          if  i = 0  then  begin
+            for  i := 1 to 3  do  begin   
+              if  room = cave[location,i]  then  roomok  :=  true  end;
+            if  room = location  then  roomok  :=  true  end; 
+          if  not roomok  then  begin
+            writeln('Not possible')  end
+          until  roomok;
+        location  :=  room;
+        repeat  
+          locate[1]  :=  location;
+          movefinished  :=  true; 
+          if  location = locate[2]  then  begin
+            writeln('... OOPS!  Bumped a Wumpus');
+            movewumpus  end;
+          if  game = inprogress  then  begin
+            if  (location = locate[3]) or (location = locate[4])  then  begin
+              writeln('YYYIIEEEE . . . Fell in a pit!');
+              game  :=  youlost  end
+            else if (location = locate[5]) or (location = locate[6]) then begin
+              writeln('ZAP -- Super bat snatch! Elsewhereville for you!'); 
+              movefinished  :=  false;
+              location  :=  randroom  end
+            end
+          until  movefinished;
+        end  { do move }; 
+    
+    begin { huntthewumpus } 
+      escape  :=  chr(27);
+      arrowcount  :=  5; 
+      for  i := 1 to 6  do  locate[i]  :=  initlocate[i];       
+      game  :=  inprogress;
+      writeln;
+      writeln('Hunt the Wumpus'); 
+      writeln;
+      while  game = inprogress  do  begin 
+        warnings;
+        if  wanttoshoot  then  doshot  else  domove;
+        end;
+      if  game = youwon  then
+        writeln('Hee Hee Hee - The Wumpus''ll getcha next time.')
+        else
+        writeln('Ha Ha Ha - You lose!');
+      end  { huntthewumpus };
+      
+  function  newsetup : boolean; 
+    var
+      ch : char;
+    begin
+      writeln;
+      repeat 
+        write('Same set-up (y-n) ');
+        read(ch);
+        writeln;
+        until  ch in ['y', 'Y', 'n', 'N'];
+      newsetup  :=  ch in ['n', 'N'];
+      end  { newsetup };
+  
+  function  newcave : boolean;
+    var
+      ch : char;
+    begin
+      writeln;
+      repeat
+        write('Same cave (y-n) '); 
+        read(ch);
+        writeln
+        until  ch in ['y', 'Y', 'n', 'N'];
+      newcave  :=  ch in ['n', 'N'];
+      end  { newcave };
+       
+  function  alldone : boolean; 
+    var
+      ch : char;
+    begin
+      writeln;
+      repeat 
+        write('Play again (y-n) ');
+        read(keyboard,ch);
+        writeln;
+        until  ch in ['y', 'Y', 'n', 'N'];
+      alldone  :=  ch in ['n', 'N'];
+      end  { alldone };
+      
+  begin  
+    Write ('Type a four-digit number -->  ');
+    Readln (seed); 
+    terminit; 
+    needhelp  :=  instruct('teach.wumpus'); 
+    repeat
+      getacave;
+      repeat 
+        initsetup;
+        repeat
+          huntthewumpus;
+          until  newsetup
+        until  newcave
+      until  alldone
+    end  { wumpus }.

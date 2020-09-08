@@ -1,0 +1,47 @@
+SYSTEM2
+=======
+
+Barebones self-hosted system for use as further basis
+-----------------------------------------------------
+
+ - use COMPILER1 with SYSTEM1 to compile all 5 main source codes of Change Set 591
+ - no SYSTEM.CHARSET
+ - SYSTEM.SYNTAX from ERRORS.TEXT
+ - SYSTEM.MISCINFO from MILLER disk
+ - manually copy all compilates with the sequence below
+
+D:
+cd "\frank\Projects\UCSD Pascal for Metro\WinRT First Steps\Volumes\SYSTEM2"
+copy ..\MILLER\SYSTEM.MISCINFO
+copy ..\SOURCES\ERRORS.TEXT SYSTEM.SYNTAX[TEXT]
+copy COMPILER2.CODE SYSTEM.COMPILER[CODE]
+copy EDITOR2.CODE SYSTEM.EDITOR[CODE]
+copy FILER2.CODE SYSTEM.FILER[CODE]
+copy LINKER2.CODE SYSTEM.LINKER[CODE]
+copy SYSTEM2.CODE SYSTEM.PASCAL[CODE]
+
+Creation of LIBRARIAN.CODE
+--------------------------
+
+ - compile LIBRARY.TEXT to *LIBRARIAN.CODE
+
+Creation of TURTLEGRAPHICS and SYSTEM.LIBRARY
+---------------------------------------------
+
+ - compile TURTLEGRAP.TEXT to *T.CODE
+ - use X *LIBRARIAN, to * from *T.CODE, move seg by '1 0 ', then Q(uit
+ - now it can be used, e.g. APPLE3:GRAFCHARS compiles straight
+ - for check-in, rename to SYSTEM.LIBRARY[CODE]
+
+How to compile GRAFDEMO
+-----------------------
+
+ - remove APPLESTUFF
+ - add this variable and these functions:
+
+    rand: integer;
+function keypress: boolean; begin keypress := false end;
+procedure randomize; begin rand := 42 end;
+function random: integer; begin rand := 13*rand+1; random := rand end;
+
+ - works! GRAFCHARS works also if SYSTEM.CHARSET is present

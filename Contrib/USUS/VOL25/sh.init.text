@@ -1,0 +1,74 @@
+begin { One time initialization and termination code. }
+   
+   { Look up the values for standard keys. }
+   CURSOR_RIGHT     := chr(0) ;
+   CURSOR_LEFT      := chr(0) ;
+   CURSOR_DOWN      := chr(0) ;
+   CURSOR_UP        := chr(0) ;
+   ESC_KEY          := chr(0) ;
+   ERASE_INPUT      := chr(0) ;
+   ENTER_KEY        := chr(0) ;
+   for C := chr(0) to chr(255) do
+     begin
+     ch := c ;
+     case sc_map_crt_command( ch ) of
+       sc_right_key      : CURSOR_RIGHT      := ch ;
+       sc_backspace_key,
+       sc_left_key       : CURSOR_LEFT       := ch ;
+       sc_down_key       : CURSOR_DOWN       := ch ;
+       sc_up_key         : CURSOR_UP         := ch ;
+       sc_escape_key     : ESC_KEY           := ch ;
+       sc_del_key        : ERASE_INPUT       := ch ;
+       sc_etx_key        : ENTER_KEY         := ch ;
+       sc_not_legal      :  { Null statement }     ;
+       end ; { case sc_map_crt_command( ch ) of }
+     end ; { for C in [chr(0)..chr(255)] do }
+   
+   sc_use_info( sc_get, info_rec ) ;
+   with info_rec do
+     begin
+     THE_DATE := sc_date ;
+     with misc_info do
+       begin
+       MAX_COL := width;
+       MAX_ROW := height;
+       end ; { with misc_info do }
+     end ; { with info_rec do }
+
+
+{ The following characters are standard ASCII. }
+  ALARM_BELL   :=chr(7);
+  FORM_FEED    :=chr(12);
+  LINE_KEY     :=chr(10);
+  RETURN_KEY   :=chr(13);
+  TAB_SKIP     :=chr(9);
+  
+  { The following characters are (possibly) unique to the TI-911. }
+  C_CLEAR_HOME :=chr(12);
+  C_HOME       :=chr(130);
+  DEL_KEY      :=chr(132);
+  ERASE_FIELD  :=chr(128);
+  INS_KEY      :=chr(134);
+  TAB_LEFT     :=chr(135);
+  TAB_RIGHT    :=chr(140);
+  
+(*
+  { Enter the values for standard keys since we can't fetch them properly. }
+   CURSOR_RIGHT     := chr(0) ;
+   CURSOR_LEFT      := chr(0) ;
+   CURSOR_DOWN      := chr(0) ;
+   CURSOR_UP        := chr(0) ;
+   ESC_KEY          := chr(0) ;
+   ERASE_INPUT      := chr(0) ;
+   ENTER_KEY        := chr(0) ;
+*)
+   
+  if (MAX_COL=79) and (MAX_ROW=23) then ULINE:=chr(223) else ULINE:='_';
+ {$R-}
+  UNDERLINE[0]:=chr(MAX_FLEN);
+  fillchar(UNDERLINE[1],MAX_FLEN,ULINE);
+ {$R+}
+ 
+ ***; { End of unit initialization. }
+ 
+ 

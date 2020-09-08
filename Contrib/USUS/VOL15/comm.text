@@ -1,0 +1,319 @@
+program comm;
+  
+  { communicate with remote computer and upload/download text }
+  { written by Jon Bondy. }
+  
+  const
+    mdata = 129; { modem data port (both in and out) }
+    mstat = 128; { modem status port }
+    mcmd = 130; { modem command reg }
+    mbaud = 128; { modem baud rate reg }
+    mirpt = 131; { interrupt mask reg }
+    mreset = 1; { reset device }
+    m300b = 132; { 300 baud, 1 stop bits }
+    mimask = 0; { enable no TUART interrupts }
+    mmask = 64; { modem data available mask }
+    cdata = 1; { console data port }
+    kstat = 0; { console status port }
+    kdata = 1; { keyboard data port }
+    kmask = 2; { keyboard data available mask }
+    esc = 27;
+    command_ch = 1; { ^A prefixes commands (receive, send, quit) }
+    lf = 10;
+    cr = 13;
+    cntl_s = 19;
+    cntl_q = 17;
+    bufmax = 30000;
+    
+  type
+    byte = 0..255;
+    
+  var
+    receiving : boolean;
+    rcv_buff : packed array[0..bufmax] of byte;
+    rcv_idx, i : 0..bufmax;
+    next_block : integer; { next block to be written for out_file }
+    data : byte;
+    in_file : text;
+    out_file : file;
+  
+  function pand(ch : byte; mask : integer) : integer; external; { procedure }
+  function portread(addr : integer) : byte; external; { procedure }
+  procedure portwrite(addr : integer; data : byte); external;
+  function eparity(data : byte) : byte; external; { even parity in msb } { procedure }
+  
+  procedure initialize;
+    begin
+    writeln('Tele-communications program.  Written by Jon Bondy 3/82.');
+    writeln('Enter <control-A> to invoke commands.');
+    portwrite(mcmd,mreset); { reset TUART }
+    portwrite(mbaud,m300b); { set to 300 baud }
+    portwrite(mirpt,mimask); { disable all TUART interrupts }
+    receiving := false;
+    rcv_idx := 0;
+    end; { initialize }
+        
+  function open_o_file : boolean; { procedure }
+    var
+       fname : string;
+       ok : boolean;
+       ch : char;
+    begin
+    repeat
+      write('Enter Pascal file name for received data (".text" assummed) : ');
+      readln(fname);
+      if (length(fname) = 0) then begin 
+         open_o_file := false; exit(open_o_file); end;
+      fname := concat(fname,'.text');
+      close(out_file);
+      {$I-} 
+      reset(out_file,fname); { test if file exists }
+      {$I+}
+      ok := true;
+      if (ioresult = 0) then begin
+          write('Do you want to write over that file? ');
+          read(ch); writeln; ok := false;
+          if (ch = 'y') or (ch = 'Y') then ok := true;
+          end;
+      close(out_file);
+      {$I-}
+      if ok then rewrite(out_file,fname);
+      {$I+}
+      until (ioresult = 0) and ok;
+    open_o_file := true;
+    end; { open_o_file }
+  
+  function write_header : boolean; { procedure }
+      var
+         date_file : file; 
+         nblock : integer;
+         date1, date2 : byte;
+      begin
+      { read in current date from system disk }
+      {$I-} reset(date_file,'*');
+      nblock := blockread(date_file,rcv_buff[0],1,2); {$I+}
+      if (nblock <> 1) or (ioresult <> 0) then begin
+         writeln('Error during receive file initialization.');
+         close(date_file); write_header := false; exit(write_header); 
+         end;
+      close(date_file);
+      date1 := rcv_buff[20]; date2 := rcv_buff[21];
+      { create text file header }
+      fillchar(rcv_buff[0],1024,chr(0));
+      rcv_buff[0]   := 1;
+      rcv_buff[114] := 1;        { autoindent := true }
+      rcv_buff[122] := 79;       { right margin := 79 }
+      rcv_buff[124] := 5;        { paragraph margin := 5 }
+      rcv_buff[126] := ord('^'); { command character := '^' }
+      rcv_buff[128] := date1;
+      rcv_buff[129] := date2;
+      rcv_buff[130] := date1;
+      rcv_buff[131] := date2;
+      {$I-} nblock := blockwrite(out_file,rcv_buff[0],2,0); {$I+}
+      if (nblock <> 2) or (ioresult <> 0) then begin
+         writeln('Error during receive file initialization.');
+         close(out_file); write_header := false;
+         end
+      else write_header := true;
+      end; { write_header }
+      
+   procedure start_receive;
+      begin 
+      if not open_o_file then exit(start_receive);
+      if not write_header then exit(start_receive);
+      receiving := true;
+      rcv_idx := 0; { just in case not cleaned up previously }
+      next_block := 2; 
+      writeln('<Reception initiated>');
+      end; { start_receive }
+    
+   procedure close_out_file;
+      var
+         nc, nblock : integer;
+         data_length, len : integer;
+         from_index, to_index : integer;
+         done : boolean;
+      begin
+      if (rcv_idx > bufmax) then nc := bufmax else nc := rcv_idx-1;
+      { move characters to "right" of array }
+      data_length := sizeof(rcv_buff) - 1;
+      from_index := data_length - nc;
+      moveright(rcv_buff[0],rcv_buff[from_index],nc+1);
+      done := false; to_index := 0;
+      { move 1024-byte blocks of chars to left, making sure lines are not
+        split across block boundaries. }
+      repeat
+         if (from_index + 1023 < data_length - 1) then
+            len := scan(-1024,=chr(cr),rcv_buff[from_index+1023]) + 1024
+         else begin
+            len := data_length - from_index + 1; done := true; end;
+         moveleft(rcv_buff[from_index],rcv_buff[to_index],len);
+         from_index := from_index + len;
+         fillchar(rcv_buff[to_index + len], 1024 - len, chr(0));
+         to_index := to_index + 1024;
+         if (to_index > from_index) then begin
+            writeln; writeln('Index overwrite error.'); end;
+         until done;
+      len := to_index div 512;
+      nblock := blockwrite(out_file,rcv_buff[0],len,next_block);
+      if (nblock <> len) or (ioresult <> 0) then begin 
+         writeln('Error during file write.'); end;
+      close(out_file, lock); receiving := false; rcv_idx := 0;
+      writeln('<terminal mode>');   
+      end; { close_out_file }
+   
+   procedure write_interim_buffer;
+      var
+         nc, nblock : integer;
+         data_length, len : integer;
+         from_index, to_index : integer;
+         done : boolean;
+      begin
+      if (rcv_idx > bufmax) then nc := bufmax else nc := rcv_idx-1;
+      { move characters to "right" of array }
+      data_length := sizeof(rcv_buff) - 1;
+      from_index := data_length - nc;
+      moveright(rcv_buff[0],rcv_buff[from_index],nc+1);
+      done := false; to_index := 0;
+      { move 1024-byte blocks of chars to left, making sure lines are not
+        split across block boundaries. }
+      repeat
+         if (from_index + 1023 < data_length - 1) then begin
+            len := scan(-1024,=chr(cr),rcv_buff[from_index+1023]) + 1024;
+            moveleft(rcv_buff[from_index],rcv_buff[to_index],len);
+            from_index := from_index + len;
+            fillchar(rcv_buff[to_index + len], 1024 - len, chr(0));
+            to_index := to_index + 1024;
+            if (to_index > from_index) then begin
+               writeln; writeln('Index overwrite error.'); end;
+            end
+         else done := true; { do not move last partial block }
+         until done;
+      { write data to disk }
+      len := to_index div 512;
+      {$I-} nblock := blockwrite(out_file,rcv_buff[0],len,next_block); {$I+}
+      if (nblock <> len) or (ioresult <> 0) then begin 
+         writeln('Error during file write: receive aborted.'); 
+         close(out_file, lock); rcv_idx := 0; receiving := false; 
+         writeln('<terminal mode>'); exit(write_interim_buffer);
+         end;
+      next_block := next_block + len;
+      { start off with partial block in buffer after interim write }
+      len := data_length - from_index + 1; 
+      moveleft(rcv_buff[from_index],rcv_buff[0],len);
+      rcv_idx := len;
+      end; { write_interim_buffer }
+      
+   procedure put_out_file;
+     { buffer full, so put it on disk }
+     var
+        counter : integer;
+        ch : char;
+     begin 
+     { ask host computer to stop transmitting }
+     portwrite(mdata,eparity(cntl_s));
+     { continue to receive chars while awaiting host pause }
+     counter := 500;  { counter will = 0 when host has stopped: timeout }
+     while (counter > 0) do begin 
+        if (pand(portread(mstat),mmask) <> 0) then begin { modem receive char? }
+           ch := chr(pand(portread(mdata),127)); { remove parity bit }
+           portwrite(cdata,ord(ch)); { echo to crt }
+           if (ch <> chr(lf)) then begin
+              rcv_buff[rcv_idx] := ord(ch); rcv_idx := rcv_idx + 1; end;
+           counter := 500; { try to time out again }
+           end; { if }
+        counter := counter - 1;
+        end; { while }
+     write_interim_buffer;
+     portwrite(mdata,eparity(cntl_q)); { host may resume xmission }
+     end; { put_out_file }
+    
+  function open_i_file : boolean; { procedure }
+     var
+        fname : string;
+     begin
+     repeat
+        write('Enter Pascal file name for send data (".text" assummed) : ');
+        readln(fname);
+        if (length(fname) = 0) then begin
+           open_i_file := false; exit(open_i_file); end;
+        fname := concat(fname,'.text');
+        close(in_file);
+        {$I-} reset(in_file,fname); {$I+}
+        until (ioresult = 0);
+     open_i_file := true;
+     end; { open_i_file }
+  
+  procedure send_file;
+     var
+        abort : boolean;
+        r_ch, s_ch : char;
+     begin 
+     if not open_i_file then exit(send_file); abort := false;
+     while not eof(infile) and not abort do begin
+        if eoln(infile) then begin s_ch := chr(cr); readln(infile); end
+        else read(infile,s_ch);
+        { write to modem }
+        portwrite(mdata,eparity(ord(s_ch))); r_ch := chr(128);
+        repeat
+           { abort send if <esc> key pressed during send }
+           if (pand(portread(kstat),kmask) <> 0) then 
+              if (pand(portread(kdata),127) = esc) then abort := true;
+           { see if modem received echo character yet }
+           if (pand(portread(mstat),mmask) <> 0) then begin
+              { read modem, remove parity bit }
+              r_ch := chr(pand(portread(mdata),127)); 
+              { write char to CRT -- assume CRT is faster than modem }
+              portwrite(cdata,ord(r_ch));
+              end; { if }
+           until (s_ch = r_ch) or abort;
+        end; { while }
+     close(infile);
+     if abort then begin
+        writeln; r_ch := chr(pand(portread(kdata),127)); { clear keyboard ch }
+        writeln('<Transmission aborted by operator>');
+        end
+     else writeln('<Transmission complete>');
+     end; { send_file }
+      
+  procedure get_command;
+     var
+        ch : char;
+     begin 
+     repeat
+        writeln; write('Comm: R(eceive, S(end, C(lose, T(erminal, Q(uit : ');
+        repeat until (pand(portread(kstat),kmask) <> 0);
+        ch := chr(pand(portread(kdata),127)); 
+        until (ch in ['r','R','s','S','c','C','t','T','q','Q']);
+     writeln;
+     case ch of
+       'r','R' : start_receive;
+       's','S' : send_file;
+       'c','C' : close_out_file;
+       't','T' : begin end; { return to terminal mode }
+       'q','Q' : begin if (rcv_idx > 0) then close_out_file; exit(comm); end;
+       end { case }
+     end; { if }
+     
+  begin
+  initialize;
+  repeat
+     { char ready from modem? }
+     if (pand(portread(mstat),mmask) <> 0) then begin
+        data := pand(portread(mdata),127); { remove parity bit }
+        { transfer to CRT -- assume CRT is faster than modem }
+        portwrite(cdata,data); 
+        if receiving and (data <> lf) then begin
+           rcv_buff[rcv_idx] := data; rcv_idx := rcv_idx + 1; end;
+        if (rcv_idx >= (bufmax - 1500)) then put_out_file;
+        end; { read character from modem }
+     { char ready from keyboard? }
+     if (pand(portread(kstat),kmask) <> 0) then begin
+        { read from keyboard }
+        data := pand(portread(kdata),127); { clear msb }
+        if (data = command_ch) then get_command
+        else portwrite(mdata,eparity(data)); { assume kbd is slower than modem }
+        end;  { read character from keyboard }
+     until false;
+  end. { comm }
+  

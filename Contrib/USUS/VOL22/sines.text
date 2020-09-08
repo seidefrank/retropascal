@@ -1,0 +1,207 @@
+{$L- SINES.LIST}
+
+{
+                                 program by:  EDWARD J GRUNDLER
+     Changes made by reviewer:
+       Reversed ranges in SCREENTYPE.
+       Provided PROCEDURE CLEARSCREEN (for Terak in Terak emulator
+         mode or for H19---Edit for your terminal or emulator).
+       Replaced PAGE(OUTPUT) by CLEARSCREEN.
+                    ---Henry E. Baumgarten
+}
+
+PROGRAM SINES;
+TYPE SCREENTYPE = PACKED ARRAY [0..239,0..319] OF BOOLEAN;
+VAR S:SCREENTYPE;
+    DEG,PRAD:BOOLEAN;
+    CH:CHAR;
+    X1,Y1,YINC,YMAX,YMIN,A,B,C,D,X,Y:REAL;
+    R,RW,XSTART,YSTART,DX,DY,INK,I:INTEGER;
+
+PROCEDURE DRAWLINE(VAR R:INTEGER;
+                       S:SCREENTYPE; RW,XSTART,YSTART,DX,DY,INK:INTEGER);
+EXTERNAL;
+
+PROCEDURE CLEARSCREEN;
+  BEGIN
+    WRITE(CHR(27),'E')
+  END;
+
+FUNCTION INPUT_VALUE:REAL;
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+                     OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+             OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(CHR(31),'READ ERROR, TRY AGAIN ',CHR(29))
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+                                             EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE HELP;
+BEGIN
+  CLEARSCREEN;
+  WRITELN('This program plots the functions Y=SIN(X) and Y=A(SIN(BX+C)+D');
+  WRITELN;
+  WRITELN('The range of "X" is -90 to 720 degrees');
+  WRITELN('The range of "Y" is determined by the values of "A" and "D"');
+  WRITELN;
+  WRITELN('The value of "C" can be input as degrees, radians or pi-radians ');
+  WRITELN('as selected by "D", "R" or "P"');
+  WRITELN;
+  WRITELN;
+  WRITELN('press RETURN to continue');
+  READLN;
+  CLEARSCREEN
+END;
+
+PROCEDURE PROMPT;
+BEGIN
+  REPEAT
+    GOTOXY(0,0);
+    WRITELN('SINES:  H(elp, D(egrees, R(adians, P(i-radians, Q(uit');
+    READ(KEYBOARD,CH);
+    CASE CH OF
+    'H','h','/','?': HELP;
+    'D','d'        : DEG:=TRUE;
+    'R','r'        : ;
+    'P','p'        : PRAD:=TRUE;
+    'Q','q'        : EXIT(PROGRAM);
+    END;{OF CASE}
+    IF CH IN ['D','d','R','r','P','p'] THEN
+      BEGIN
+        GOTOXY(15,3);
+        WRITE('Y=A(SIN(BX+C))+D');
+        GOTOXY(0,6);
+        WRITE('ENTER A ');
+        A:=INPUT_VALUE;
+        GOTOXY(0,7);
+        WRITE('ENTER B ');
+        B:=INPUT_VALUE;
+        GOTOXY(0,8);
+        WRITE('ENTER C ');
+        C:=INPUT_VALUE;
+        IF DEG THEN C:=C/57.29577951;
+        IF PRAD THEN C:=C*3.141592654;
+        GOTOXY(0,9);
+        WRITE('ENTER D ');
+        D:=INPUT_VALUE
+      END
+  UNTIL CH IN ['D','d','R','r','P','p']
+END;
+
+PROCEDURE INITIALIZE;
+BEGIN
+  CLEARSCREEN;
+  FILLCHAR(S,9600,CHR(0));
+  UNITWRITE(3,S,63);
+  DEG:=FALSE;
+  PRAD:=FALSE;
+  CH:=' '
+END;
+
+BEGIN{MAIN PROGRAM}
+  REPEAT
+    INITIALIZE;
+    PROMPT;
+    YMAX:=(ABS(A)+D);
+    IF YMAX<1 THEN YMAX:=1;
+    YMIN:=(D-ABS(A));
+    IF YMIN>-1 THEN YMIN:=-1;
+    YINC:=(YMAX-YMIN)/80;
+    YSTART:=ROUND(239+YMIN/YINC);
+    DRAWLINE(R,S,20,0,YSTART,314,0,1);
+    GOTOXY(79,YSTART DIV 10);
+    WRITE('X');
+    DRAWLINE(R,S,20,35,239,0,-80,1);
+    GOTOXY(8,15);
+    WRITE('Y');
+    YSTART:=YSTART+1;
+    FOR I:=0 TO 9 DO
+      BEGIN
+        XSTART:=35*I;
+        DRAWLINE(R,S,20,XSTART,YSTART,0,-5,1)
+      END;
+    FOR I:=0 TO 4 DO
+      BEGIN
+        YSTART:=239-20*I;
+        DRAWLINE(R,S,20,34,YSTART,5,0,1);
+      END;
+    GOTOXY(0,11);
+    WRITE('"X" SCALE GRADUATIONS ARE IN UNITS OF ');
+    IF DEG THEN WRITELN('90 DEGREES')
+           ELSE WRITELN('0.5 PI-RADIANS');
+    WRITE('"Y" SCALE GRADUATIONS ARE IN UNITS OF ',(YMAX-YMIN)/4:5:2,
+          ' FROM ',YMIN:4:2,' TO ',YMAX:4:2);
+    GOTOXY(80,0);
+    FOR I:=0 TO 313 DO
+      BEGIN
+        X:=-1.570796327+I/314*14.13716694;
+        Y:=A*SIN(B*X+C)+D;
+        X1:=-1.570796327+(I+1)/314*14.13716694;
+        Y1:=A*SIN(B*X1+C)+D;
+        YSTART:=ROUND(239-(SIN(X)-YMIN)/YINC);
+        DY:=ROUND(239-(SIN(X1)-YMIN)/YINC-YSTART);
+        IF ODD((I+1) DIV 4) THEN INK:=1 ELSE INK:=0;
+        DRAWLINE(R,S,20,I,YSTART,1,DY,INK);
+        YSTART:=ROUND(239-(Y-YMIN)/YINC);
+        DY:=ROUND(239-(Y1-YMIN)/YINC-YSTART);
+        DRAWLINE(R,S,20,I,YSTART,1,DY,1)
+      END;
+  GOTOXY(0,2);
+  WRITELN('DOTTED CURVE IS Y=SIN(X)');
+  WRITELN('SOLID CURVE IS');
+  GOTOXY(20,5);
+  WRITE('press RETURN to continue');
+  READLN;
+  UNTIL FALSE
+END.

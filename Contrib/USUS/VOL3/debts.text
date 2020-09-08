@@ -1,0 +1,568 @@
+PROGRAM DEBTS;
+{KEEPS TRACK OF ALL REVOLVING DEBTS ON DISK FILE}
+{DISK FILE NAME IS STORE.DATA}
+
+CONST
+ CLERSCRN=26;
+ CLEREOL=28;
+ CLEREOS=25;
+ FIRSTLINE=3;
+ FIRSTYR=70;
+ LASTYR=99;
+ 
+TYPE
+ MNTH=1..12;
+ DAY=1..31;
+ CHOICESET=SET OF CHAR;
+ DATE=
+  RECORD
+   YY:INTEGER;
+   MM:INTEGER;
+   DD:INTEGER;
+  END;
+ STORECARD=
+  RECORD
+   NAME:STRING;
+   LASTPAID:DATE;
+   BALANCE:REAL;
+   LASTPAYMENT:REAL;
+   MINPAYMENT:REAL;
+   CARRYCHARGE:REAL;
+   MONTHLYCOST:REAL;
+   TOTALCARRY:REAL;
+  END;
+ 
+VAR
+ LAST,INDEX             :INTEGER;
+ EXISTS,DONE            :BOOLEAN;
+ TODAY                  :DATE;
+ THISPAYMENT            :REAL;
+ STORE                  :STORECARD;
+ STORES                 :ARRAY[1..30] OF STORECARD;
+ STORAL                 :FILE OF STORECARD;
+ DATEISCURRENT          :BOOLEAN;
+ CHOICE                 :CHOICESET;
+ REPLY                  :CHAR;
+ DATERROR               :BOOLEAN;
+ 
+
+PROCEDURE CLRSCRN;
+ BEGIN
+  WRITE(CHR(CLERSCRN));
+ END;
+ 
+PROCEDURE CLRFROM(LINE:INTEGER);
+ BEGIN
+  GOTOXY(0,LINE);
+  WRITE(CHR(CLEREOS));
+ END;
+
+PROCEDURE CLREOL(LINE:INTEGER);
+ BEGIN
+  GOTOXY(0,LINE);
+  WRITE(CHR(CLEREOL));
+ END;
+ 
+PROCEDURE CLRTO(LINE:INTEGER);
+ VAR I:INTEGER;
+ BEGIN
+  FOR I:=0 TO LINE-1 DO
+   BEGIN
+    GOTOXY(0,I);
+    CLREOL(I);
+   END; {DO}
+ END;
+ 
+PROCEDURE SHOWDATE;
+ BEGIN
+  WRITE(' ':14);
+  WRITELN('TODAY IS: ',TODAY.MM,'/',TODAY.DD,'/',TODAY.YY);
+ END;
+ 
+PROCEDURE SHOWMENU;
+ BEGIN
+ CLRFROM(FIRSTLINE);
+WRITELN('D)':6,' todays Date');
+WRITELN('G)':6,' Global list of creditors');
+WRITELN('P)':6,' Pay a creditor');
+WRITELN('C)':6,' Correct a record');
+WRITELN('A)':6,' Add a creditor');
+WRITELN('L)':6,' list Late payments');
+WRITELN('E)':6,' Expanded creditor info');
+WRITELN('F)':6,' Figure minimum payment');
+WRITELN('R)':6,' Remove a creditor');
+WRITELN('T)':6,' Total all debts');
+WRITELN('Q)':6,' Quit');
+ IF DATEISCURRENT THEN SHOWDATE
+  ELSE
+WRITELN(' ':8,'**NOTE: FIRST COMMAND SHOULD BE -D- FOR DATE');
+END; {SHOWMENU}
+
+PROCEDURE CHOOSE;
+ BEGIN
+  WRITE(' ':5,'Choose an item from the Menu->');
+   REPEAT
+    READ(REPLY);
+   UNTIL REPLY  IN CHOICE
+ END; {CHOOSE}
+
+PROCEDURE GETDATE(VAR ADAY:DATE);
+ VAR M,D,Y:INTEGER;
+ BEGIN
+  DATERROR:=FALSE;
+  WRITE('   Enter date as   MM  DD  YY ->  ');
+  READLN(M,D,Y);
+  IF (M<1) OR (M>12) THEN DATERROR:=TRUE;
+  IF (D<1) OR (D>31) THEN DATERROR:=TRUE;
+  IF (Y<20) OR (Y>99) THEN DATERROR:=TRUE;
+  IF NOT DATERROR THEN
+   BEGIN
+    WITH ADAY DO
+     BEGIN
+      MM:=M;
+      DD:=D;
+      YY:=Y;
+      WRITELN(' ':20,MM:2,'/',DD:2,'/',YY);
+     END;
+   END {NOT ERROR}
+  ELSE
+   BEGIN
+    WRITELN(' ??? DATE DD/MM/YY = ',D,M,Y);
+    WRITELN('    PLEASE TRY AGAIN');
+   END;
+  END; {GETDATE}
+  
+ PROCEDURE ADD;
+  VAR C :CHAR;
+      X :REAL;
+  BEGIN
+   CLRSCRN;
+   LAST:=LAST+1;
+   INDEX:=LAST;
+    WITH STORES[INDEX] DO
+     BEGIN
+   WRITELN;
+   WRITELN(' ':10,'ADDING A NEW RECORD - -');
+   WRITELN;
+   WRITE(' ENTER STORE/CREDITOR NAME-> ');
+   READLN(NAME);
+   WRITELN(' ENTER DATE OF LAST PAYMENT');
+   DATERROR:=TRUE;
+   WHILE DATERROR DO GETDATE(LASTPAID);
+   WRITE(' WHAT IS THE CURRENT BALANCE? ');
+   READLN(BALANCE);
+   WRITE(' IF YOU KNOW MIN. PAYMENT, ENTER IT, ELSE ENTER 0 ');
+   READLN(X);
+   IF X=0 THEN X:=BALANCE/10.0;
+   MINPAYMENT:=X;
+   WRITE(' HOW MUCH WAS THE LAST PAYMENT? ');
+   READLN(LASTPAYMENT);
+   WRITE(' WHAT IS THE CARRYING CHARGE IN PERCENT? ');
+   READLN(CARRYCHARGE);
+   MONTHLYCOST:=BALANCE*CARRYCHARGE/100.0;
+   TOTALCARRY:=0;
+     END; {WITH}
+    CLRTO(FIRSTLINE);
+  END; {ADD}
+ 
+PROCEDURE INFORM;
+ BEGIN
+WRITELN('  THIS PROGRAM KEEPS PERMANENT RECORDS OF YOUR');
+WRITELN('DEBTS TO STORES, ETC, THAT REQUIRE MONTHLY PAYMENTS');
+WRITELN('THE DATA IS KEPT ON A FILE NAMED - STORE.DATA ');
+WRITELN;
+ END; {INFORM}
+ 
+PROCEDURE OPENFILE;
+ VAR C:CHAR;
+ BEGIN
+ REWRITE(STORAL,'STORE.DATA');
+ WRITELN;
+ WRITELN('** NEW FILE - STORE.DATA - WAS CREATED');
+ INDEX:=0;
+ LAST:=0;
+END;
+ 
+PROCEDURE REOPEN;
+ BEGIN
+  RESET(STORAL,'STORE.DATA');
+  INDEX:=1;
+  STORES[INDEX]:=STORAL^;
+ WHILE NOT EOF(STORAL) DO
+  BEGIN
+   INDEX:=INDEX+1;
+   GET(STORAL);
+   STORES[INDEX]:=STORAL^;
+  END; {WHILE}
+  INDEX:=INDEX-1;
+  LAST:=INDEX;
+ END; {REOPEN}
+ 
+PROCEDURE CLOSEFILE;
+ BEGIN
+  CLOSE(STORAL,LOCK);                {CLOSE EXISTING FILE}
+  REWRITE(STORAL,'STORE.DATA');         {OPEN A NEW ONE}
+  FOR INDEX:=1 TO LAST DO
+   BEGIN
+    STORAL^:=STORES[INDEX];
+    PUT(STORAL);
+   END; {OF INDEXING}
+  CLOSE(STORAL,LOCK);        {MAKE IT PERMANENT ON DIR.}
+  DONE:=TRUE;
+ END; {CLOSEFILE}
+ 
+PROCEDURE INIT;
+ VAR C,C2:CHAR;
+ BEGIN
+  CLRSCRN;
+  INFORM;
+  DATEISCURRENT:=FALSE;
+  DONE:=FALSE;
+  CHOICE:=['D','G','P','C','A','L','E','F','R','T','Q'];
+  WRITELN;
+  WRITELN('WARNING - IF A DATA FILE DOES NOT EXIST');
+  WRITELN('  (it wont on the very first run)');
+  WRITELN('YOU MUST CREATE ONE BY USING THE');
+  WRITELN(' A (ADD) COMMAND');
+  WRITE('DOES A DATA FILE EXIST (Y/N)? ');
+  READ(C);
+  IF C<>'Y' THEN
+   BEGIN
+    WRITELN;
+    WRITELN(' ANY EXISTING FILE WILL BE CLOBBERED!!');
+    WRITE('  DO YOU WANT TO START A NEW ONE ? ');
+    READ(C2);
+    IF C2<>'Y' THEN C:='Y';
+   END;
+  EXISTS:=FALSE;
+  IF C='Y' THEN EXISTS:=TRUE;
+  IF EXISTS THEN REOPEN
+   ELSE OPENFILE;
+  CLRSCRN;
+END; {INIT}
+
+PROCEDURE QUIT;
+ VAR C1,C2:CHAR;
+ BEGIN
+  CLRTO(FIRSTLINE);
+  GOTOXY(5,0);
+  WRITE(' DO YOU WANT TO QUIT (Y/N)? ');
+  READ(C1);
+  IF C1='Y' THEN
+   BEGIN
+    DONE:=TRUE;
+    WRITELN;
+    WRITE(' DO YOU WANT THIS TO BE THE NEW FILE (Y/N)? ');
+    READ(C2);
+    IF C2='Y' THEN CLOSEFILE;
+   END; {IF C1='Y'}
+ END; {QUIT}
+ 
+PROCEDURE GLOBALS;
+ VAR C:CHAR;
+     LIN:INTEGER;
+ BEGIN
+  CLRSCRN;
+  GOTOXY(0,FIRSTLINE);
+  FOR INDEX:=1 TO LAST DO
+   BEGIN
+    WITH STORES[INDEX] DO
+     BEGIN
+   LIN:=FIRSTLINE+INDEX-1;
+   WRITE(INDEX:3,'. ');
+   WRITE(NAME);
+   GOTOXY(18,LIN);
+   WRITE(BALANCE:8:2);
+   WITH LASTPAID DO WRITE(MM:6,'/',DD:2,'/',YY:2);
+   WRITE(LASTPAYMENT:8:2);
+   WRITELN;
+    END; {WITH}
+  END; {DO}
+ WRITELN('-----------------------------------------------');
+ IF REPLY='G' THEN
+  BEGIN
+   CLREOL(0);
+   GOTOXY(9,0);
+   WRITE(' Hit a key to continue');
+   READ(C);
+   CLRTO(FIRSTLINE);
+  END; {REPLY='G'}
+END; {GLOBALS}
+
+PROCEDURE GETTODAY;
+ BEGIN
+  CLRTO(FIRSTLINE);
+  GOTOXY(0,0);
+  DATERROR:=TRUE;
+  WHILE DATERROR DO GETDATE(TODAY);
+  DATEISCURRENT:=TRUE;
+ END;
+
+   
+PROCEDURE SHOWALL(I:INTEGER);
+ VAR C:CHAR;
+   BEGIN
+    WITH STORES[I] DO
+     BEGIN
+      CLRSCRN;
+      GOTOXY(10,0); 
+WRITELN(I:2,') ',NAME);
+WRITELN;
+WRITE('Date of last payment :............. ');
+WITH LASTPAID DO WRITELN(MM:2,'/',DD:2,'/',YY:2);
+WRITELN;
+WRITELN('Total balance due = $........... ',BALANCE:8:2);
+WRITELN('Amount of last payment = $...... ',LASTPAYMENT:8:2);
+WRITELN('Monthly carrying charge: %...... ',CARRYCHARGE:8:2);
+WRITELN('Monthly finance charge = $...... ',MONTHLYCOST:8:2);
+WRITELN('Total  charges to date = $...... ',TOTALCARRY:8:2);
+WRITELN('Minimum payment = $............. ',MINPAYMENT:8:2);
+WRITELN;
+   END; {WITH}
+ END; {SHOWALL}
+
+PROCEDURE PAY;
+ VAR I:INTEGER;
+     ANSWER:CHAR;
+ BEGIN
+  CLRSCRN;
+  GLOBALS;
+  GOTOXY(5,0);
+  WRITE('Pay who ? ');
+  READLN(I);
+  IF (I<=LAST) AND (I>0) THEN
+   BEGIN
+    SHOWALL(I);
+    WRITELN;
+    WRITE(' ':10,'Pay how much ? ');
+    READLN(THISPAYMENT);
+    WITH STORES[I] DO
+     BEGIN
+      BALANCE:=BALANCE-THISPAYMENT;
+      LASTPAYMENT:=THISPAYMENT;
+      LASTPAID:=TODAY;
+     END; {WITH}
+    SHOWALL(I);
+    WRITELN;
+    WRITE(' ':10,'ALL O.K. ? ');
+    READ(ANSWER);
+    CLRTO(FIRSTLINE);
+    IF ANSWER='N' THEN
+     BEGIN
+      GOTOXY(10,0);
+      WRITE(' USE ''C'' TO CORRECT IT');
+     END; {IF}
+    END {IF}
+  ELSE
+   BEGIN
+    GOTOXY(6,0);
+    WRITE('THAT NUMBER IS NOT IN THE LIST !');
+   END; {IF}
+  END; {PAY}
+
+{START A GROUP OF DUMMY PROCS HERE}
+ 
+PROCEDURE LATE;
+ BEGIN END;
+ 
+PROCEDURE EXPOSE;
+ VAR I:INTEGER;
+     C:CHAR;
+ BEGIN
+  CLRSCRN;
+  GLOBALS;
+  GOTOXY(5,0);
+  WRITE('Expand which one (number) ? ');
+  READLN(I);
+  IF (I>0) AND (I<=LAST) THEN
+   BEGIN
+    SHOWALL(I);
+    WRITE('  - - Hit a key to cont.  ');
+    READ(C);
+    CLRTO(FIRSTLINE);
+   END
+ ELSE
+  BEGIN
+   GOTOXY(6,1);
+   WRITE('THAT CHOICE IS NOT IN THE LIST');
+  END; {ELSE}
+END; {EXPOSE}
+ 
+PROCEDURE EXPAND;
+ VAR C:CHAR;
+     I:INTEGER;
+  BEGIN
+   CLRTO(FIRSTLINE);
+   GOTOXY(5,0);
+   WRITE('Do you want to step through all ? ');
+   READ(C);
+   IF C='Y' THEN
+    BEGIN
+     FOR I:=1 TO LAST DO
+      BEGIN
+       SHOWALL(I);
+       WRITE('  - - Hit a key to cont.  ');
+       READ(C);
+       CLRSCRN;
+      END; {FOR}
+    END {'Y'}
+  ELSE
+   EXPOSE
+END; {EXPAND}
+
+PROCEDURE FIGUREMIN;
+ BEGIN END;
+ 
+PROCEDURE TOTALALL;
+ VAR
+  I                             :INTEGER;
+  TOTALMONTH,TOTALBALANCE       :REAL;
+  C                             :CHAR;
+ BEGIN
+  CLRSCRN;
+  TOTALMONTH:=0;
+  TOTALBALANCE:=0;
+  FOR I:=1 TO LAST DO
+   WITH STORES[I] DO
+    BEGIN
+     TOTALBALANCE:=TOTALBALANCE+BALANCE;
+     TOTALMONTH:=TOTALMONTH+MONTHLYCOST;
+    END; {FOR-WITH}
+  WRITELN;
+  WRITELN;
+  WRITELN(' Your Total balance is an incredible $ ',
+            TOTALBALANCE:8:2);
+  WRITELN;
+  WRITELN(' And the total carrying charge per monthe is $ ',
+                TOTALMONTH:7:2);
+  WRITELN;
+  WRITELN('     When you''ve seen enough');
+    WRITE('      press a key.... ');
+  READ(C);
+  CLRTO(FIRSTLINE);
+ END; {TOTALALL}
+  
+PROCEDURE REMOVE1;
+ VAR I:INTEGER;
+     C:CHAR;
+ BEGIN
+  CLRSCRN;
+  GLOBALS;
+  CLRTO(FIRSTLINE);
+  GOTOXY(5,0);
+  WRITE('Remove which one (number) ? ');
+  READLN(I);
+  IF (I>0) AND (I<=LAST) THEN
+   BEGIN
+   WITH STORES[I] DO WRITE('  Remove ',NAME,' ? ');
+   READ(C);
+   IF C='Y' THEN 
+    BEGIN
+     LAST:=LAST-1;
+     FOR INDEX:=I TO LAST DO
+      STORES[INDEX]:=STORES[INDEX+1];
+     END; {C='Y'}
+    END {IN LIST}
+   ELSE {NOT IN LIST}
+    BEGIN
+     CLREOL(1);
+     WRITE('   THAT NUMBER IS NOT IN THE LIST!!');
+    END; {ELSE)
+  END; {IF}
+ END; {REMOVE1}
+ 
+{END OF DUMMY PROCS}
+
+PROCEDURE CORRECT;
+ VAR WHAT:CHAR;
+     WHATSIT:SET OF CHAR;
+     I:INTEGER;
+ BEGIN
+  WHATSIT:=['N','B','D','L','M','P','C','T','Q'];
+  CLRSCRN;
+  GLOBALS;
+  GOTOXY(5,0);
+  WRITE('Correct which record (number) ? ');
+  READLN(I);
+  IF (I>0) AND (I<=LAST) THEN
+   BEGIN
+    REPEAT
+     SHOWALL(I);
+     WRITELN('CORRECT one of the following:');
+     WRITELN('N)ame,B)alance,D)ate,L)astpmnt,M)inpmnt');
+     WRITELN('P)ercent,C)ost/mnth,T)otal charge,Q)uit');
+     REPEAT
+      READ(KEYBOARD,WHAT)
+     UNTIL WHAT IN WHATSIT;
+     WITH STORES[I] DO
+      CASE WHAT OF
+    'N':BEGIN
+         WRITE('New Name? ');
+         READLN(NAME);
+         END;
+    'B':BEGIN
+         WRITE('New Balance= ');
+         READLN(BALANCE);
+         END;
+    'D':BEGIN
+         DATERROR:=TRUE;
+         WHILE DATERROR DO GETDATE(LASTPAID);
+         END;
+    'L':BEGIN
+         WRITE('amount of Last payment');
+         READLN(LASTPAYMENT);
+         END;
+    'M':BEGIN
+         WRITE('Minumum payment ? ');
+         READLN(MINPAYMENT);
+         END;
+    'P':BEGIN
+         WRITE('Percent monthly carry charge ? ');
+         READLN(CARRYCHARGE);
+         END;
+    'C':BEGIN
+         WRITE('Cost per month ? ');
+         READLN(MONTHLYCOST);
+         END;
+    'T':BEGIN
+         WRITE('Total carry charge to date ? ');
+         READLN(TOTALCARRY);
+         END;
+    'Q':;
+          END; {CASE}
+      UNTIL WHAT='Q';
+      CLRTO(FIRSTLINE);
+     END {IF}
+   ELSE
+    BEGIN
+     GOTOXY(6,1);
+     WRITE('THAT NUMBER IS NOT IN THE RECORDS');
+    END; {ELSE}
+  END; {CORRECT}
+         
+PROCEDURE SERVE;
+ BEGIN
+   CASE REPLY OF
+ 'D':GETTODAY;
+ 'G':GLOBALS;
+ 'P':PAY;
+ 'C':CORRECT;
+ 'A':ADD;
+ 'L':LATE;
+ 'E':EXPAND;
+ 'F':FIGUREMIN;
+ 'R':REMOVE1;
+ 'T':TOTALALL;
+ 'Q':QUIT;
+   END; {CASE}
+ END; {SERVE}
+
+BEGIN  {MAIN PROG}
+ INIT;
+  REPEAT
+   SHOWMENU;
+   CHOOSE;
+   SERVE;
+  UNTIL DONE
+END.
+

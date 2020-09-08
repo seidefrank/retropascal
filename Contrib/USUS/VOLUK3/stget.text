@@ -1,0 +1,136 @@
+
+(*-------------------------------------------------------------------*)
+   function  st_get_sub_code; (* (STR    :  STRING;
+                                  FIRSTC,
+                                  LASTC  :  INTEGER;
+                                  ENTER  :  BOOLEAN) : ST_SYMBOL; *)
+ 
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(*    DESCRIPTION: THE STRING IN STR   (FIRSTC..LASTC) IS SEARCHED. -*)
+(*    ------------ IF IT IS ALREADY IN THE TABLE THE CODE IS        -*)
+(*    RETURNED. OTHERWISE IF ENTER IT IS STORED IN THE TEXTTABLE AND-*)
+(*    IN THE HASHTABLE. THE HASHTABLE INDEX IS THE ST_SYMBOL.       -*)
+(*    HASH FUNCTION IS THE SUM OF THE FIRST 8 CHARACTER.            -*)
+(*    REHASHING IS DONE BY ADD-THE-HASH-REHASH (SEE [GRIES]).       -*)
+(*                                       44hhPP                     -*)
+(*-------------------------------------------------------------------*)
+ label 1410;
+ var
+      this : stb_s_tab_rec;
+      last_char, length, hash : integer;
+      epos, ind : st_symbol;
+      flag : boolean;
+      loop_i, loop_j : integer;
+      function  hashval : integer ;
+      (* THE HASH FUNCTION IS THE SUM OF THE FIRST 8 CHAR*)
+      var   loop_i, sum, e : integer;
+      begin
+         sum := 0;
+         if last_char >= firstc + 8 then
+            e := firstc + 7
+         else
+            e := last_char;
+       (*END IF;*)
+         for loop_i := firstc to e do
+            sum := sum + ord (str [loop_i]);
+       (*END LOOP;*)
+         sum := sum mod st_sym_ubound;
+         if sum = 0 then
+            sum := 12;
+       (*END IF;*)
+         hashval := sum;
+      end;          (*   HASHVAL;*)
+   begin  (*----------------- ST_GET_SUB_CODE ---------------------- *)
+      if lastc < firstc-1 then   (* ADJUST LASTC FOR ALL EMPTY STRINGS*)
+         last_char := firstc - 1
+      else
+         last_char := lastc;
+    (*END IF;*)
+      hash := hashval;
+      epos := hash;
+      length := last_char - firstc + 1;
+      for loop_i := 1 to st_sym_ubound do               begin
+       (*NUMBER OF REHASH POSSIBILITIES*)
+         ind := 1 + epos;
+         this := stb_s_tab_entries [ind];
+         if this.textb = stb_empty then     begin
+            if enter then                                  begin
+               if stb_str_ubound < stb_number_char + length then
+       begin
+                  if not stb_texttable_full then (* ALREADY MESSAGED?*)
+                                                           begin
+                     er_error_message (1401, er_comp_restriction,
+                                       so_nil_position, lu_no_symbol  );
+                     stb_texttable_full := true;           end;
+                (*END IF;*)
+                  length := 0;              end;
+             (*END IF;*)
+               stb_s_tab_entries [ind].textb := stb_number_char + 1;
+               stb_s_tab_entries [ind].texte := stb_number_char + length;
+               for loop_j := stb_number_char + 1 to stb_number_char + length do
+               stb_s_tab_strings [ loop_j ] :=
+                     str [firstc + loop_j - (stb_number_char + 1) ];
+               stb_number_char := stb_number_char + length;
+               st_get_sub_code := ind;  goto 1410;         end
+             (*RETURN IND;*)
+            else
+               st_get_sub_code := st_nil; goto 1410;       
+             (*RETURN ST_NIL;*)
+                                                           end
+          (*END IF;*)
+    else    if length = this.texte - this.textb + 1 then     begin
+            flag := true;
+            for loop_j := firstc to lastc do
+                flag := flag and
+   (str [loop_j] = stb_s_tab_strings [this.textb + loop_j - firstc]);
+            if flag then
+   (*  SYMBOL HAS ALREADY BEEN ENTERED*)
+                                                   begin
+               st_get_sub_code := ind; goto 1410;  end;       end;
+             (*RETURN IND;*)
+          (*END IF;*)
+       (*END IF;*)
+   (* LAST ALTERNATIVE REHASH*)
+         epos := (epos + hash) mod st_sym_ubound;          end;
+    (*END LOOP;*)
+(* NOW THE HASH TABLE MUST BE FULL*)
+      if not stb_hashtable_full then                         begin
+         er_error_message (1400, er_comp_restriction,
+                           so_nil_position, lu_no_symbol  );
+         stb_hashtable_full := true;                         end;
+     (*END IF;*)
+      st_get_sub_code := st_nil;  goto 1410;
+    (*RETURN ST_NIL;*)
+1410 :
+   end;  (*  ST_GET_SUB_CODE;*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+(*------------------------------------------------------------------*)
+   function  st_get_code; (*(STR : ST_LITERAL; L : INTEGER):ST_SYMBOL;*)
+   var  s : string; i : integer;
+   begin
+      for i := sfirst to l do
+         s[i] := str[i];
+      st_get_code := st_get_sub_code (s, sfirst, l, true);
+   end; (*  ST_GET_CODE;*)
+(*-------------------------------------------------------------------*)
+   function  st_get_char_code; (*(CHR  : CHAR) : ST_SYMBOL;*)
+   var    str : string ;
+   begin
+      str [sfirst] := chr;
+      st_get_char_code := st_get_sub_code (str, sfirst, sfirst, true);
+   end ;    (*    ST_GET_CHAR_CODE;*)
+(*---------------------------------------------------------------------------*)
+ procedure st_get_string;  (*  (CODE             : ST_STRING;
+                               VAR  STR            : STRING;
+                               VAR  OUTP_LAST_CHAR : INTEGER); *)
+   var   e : stb_s_tab_rec;
+       loop_j :integer;
+   begin
+         e := stb_s_tab_entries [code];
+      outp_last_char := e.texte - e.textb + sfirst;
+      for loop_j := sfirst to outp_last_char do
+      str [loop_j]  := stb_s_tab_strings [e.textb + loop_j - sfirst];
+    end;  (*     ST_GET_STRING;*)
+

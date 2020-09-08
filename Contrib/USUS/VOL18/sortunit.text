@@ -1,0 +1,279 @@
+UNIT Sortunit;     
+ 
+ INTERFACE
+  VAR disk : FILE; 
+  
+  PROCEDURE pSort( fname : STRING;     
+                   recsiz,numrecs,
+                   pos1,len1,ord1,
+                   pos2,len2,ord2,
+                   pos3,len3,ord3  : INTEGER);
+                   
+  
+  IMPLEMENTATION
+  
+  PROCEDURE pSort; 
+  TYPE lptr = ^lrec;  
+       lrec = RECORD   
+               key1,key2,key3 : STRING[30];  
+               recfrom        : INTEGER;
+               link           : lptr;      
+              END;
+    VAR linkedrec                   : lrec;
+        first,ptr,tptr,hptr         : lptr;  
+        currentblock,rectoaddto,recat,temp,rnum  : INTEGER;     
+        heaptr                      : ^INTEGER;
+        frecord,tfrecord            : PACKED ARRAY[1..512] OF CHAR;
+      tdblock : PACKED ARRAY[1..512] OF CHAR;   
+       
+      ch : CHAR;
+      
+  
+  PROCEDURE Getlogrec(recnumber : INTEGER); 
+   VAR temp1,temp2,posinblock : INTEGER;  
+   
+   BEGIN   
+    WRITE('+');
+    temp := currentblock;   
+    currentblock := 0;
+    temp1 := 0;temp2 := 0;                              
+    WHILE temp1 < recnumber DO 
+     BEGIN
+      temp2 := temp2 + recsiz;
+      IF temp2 >= 512 THEN BEGIN 
+                           currentblock := currentblock + 1;
+                           temp2 := temp2 - 512;
+                          END;
+      temp1 := temp1 + 1;
+     END;
+    posinblock := temp2;  
+    IF temp<>currentblock                                         
+     THEN
+       temp := BLOCKREAD(disk,tdblock,1,currentblock);                                             
+    IF posinblock + recsiz <= 512 THEN               
+     BEGIN
+      FOR temp := 1 TO recsiz DO  
+       frecord[temp] := tdblock[posinblock+temp];     
+     END 
+    ELSE
+     BEGIN
+      FOR temp := posinblock + 1 TO 512 DO
+       frecord[temp-posinblock] := tdblock[temp];   
+       currentblock := currentblock + 1;
+       temp := BLOCKREAD(disk,tdblock,1,currentblock);                                             
+      FOR temp := 1 TO posinblock + recsiz - 512 DO  
+       frecord[temp+512-posinblock] := tdblock[temp];     
+     END;  
+  END;
+
+  PROCEDURE Putlogrec(recnumber: INTEGER);  
+   VAR temp1,temp2,posinblock : INTEGER;            
+   BEGIN            
+    WRITE('-');
+    temp := currentblock;              
+    currentblock := 0;
+    temp1 := 0;temp2 := 0;  
+    WHILE temp1 < recnumber DO 
+     BEGIN
+      temp2 := temp2 + recsiz;
+      IF temp2 >= 512 THEN BEGIN 
+                           currentblock := currentblock + 1;
+                           temp2 := temp2 - 512;
+                          END;
+      temp1 := temp1 + 1;
+     END;
+    posinblock := temp2;  
+    IF temp<>currentblock   
+     THEN temp := BLOCKREAD(disk,tdblock,1,currentblock);                        
+    IF posinblock + recsiz <= 512 THEN                 
+     BEGIN  
+      FOR temp := 1 TO recsiz DO  
+       tdblock[posinblock+temp] := frecord[temp];           
+      temp := BLOCKWRITE(disk,tdblock,1,currentblock);     
+     END  
+    ELSE
+     BEGIN
+      FOR temp := posinblock + 1 TO 512 DO    
+        tdblock[temp] := frecord[temp-posinblock];    
+      temp := BLOCKWRITE(disk,tdblock,1,currentblock);
+      currentblock := currentblock + 1;
+      temp := BLOCKREAD(disk,tdblock,1,currentblock);         
+      FOR temp := 1 TO posinblock + recsiz - 512 DO  
+       tdblock[temp] := frecord[temp+512-posinblock] ;      
+      temp := BLOCKWRITE(disk,tdblock,1,currentblock);        
+     END;  
+   END;      
+   
+  PROCEDURE Getkeys(recnumber : INTEGER);            
+   BEGIN      
+    Getlogrec(recnumber);      
+    NEW(ptr);    
+    WITH ptr^ DO
+     BEGIN
+      key1 := ''; 
+      key2 := '';
+      key3 := '';
+      FOR temp := 1 TO len1 DO 
+       BEGIN
+        key1 := CONCAT(key1,' '); 
+        key1[temp] := frecord[pos1+temp];
+       END;
+      FOR temp := 1 TO len2 DO 
+       BEGIN
+        key2 := CONCAT(key2,' ');  
+        key2[temp] := frecord[pos2+temp];
+       END;
+      FOR temp := 1 TO len3 DO 
+       BEGIN
+        key3 := CONCAT(key3,' ');  
+        key3[temp] := frecord[pos3+temp];
+       END;
+      recfrom := recnumber;                                
+     END;
+   END;  
+   
+    FUNCTION Atrecbelowtheonetobeadded: BOOLEAN;      
+     VAR intb : BOOLEAN;  
+     BEGIN
+      intb := FALSE;  
+      CASE (ord1*4) + (ord2*2) + ord3 OF    
+       0 : IF      ptr^.key1<tptr^.key1  THEN intb := TRUE              
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2<tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND    
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3<tptr^.key3) THEN intb := TRUE;    
+       1 : IF      ptr^.key1<tptr^.key1  THEN intb := TRUE                 
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2<tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3>tptr^.key3) THEN intb := TRUE;    
+       2 : IF      ptr^.key1<tptr^.key1  THEN intb := TRUE            
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2>tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3<tptr^.key3) THEN intb := TRUE;    
+       3 : IF      ptr^.key1<tptr^.key1  THEN intb := TRUE             
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2>tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3>tptr^.key3) THEN intb := TRUE;    
+       4 : IF      ptr^.key1>tptr^.key1  THEN intb := TRUE             
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2<tptr^.key2) THEN intb := TRUE     
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3<tptr^.key3) THEN intb := TRUE;         
+       5 : IF      ptr^.key1>tptr^.key1  THEN intb := TRUE             
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2<tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3>tptr^.key3) THEN intb := TRUE;    
+       6 : IF      ptr^.key1>tptr^.key1  THEN intb := TRUE             
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2>tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3<tptr^.key3) THEN intb := TRUE;    
+       7 : IF      ptr^.key1>tptr^.key1  THEN intb := TRUE             
+          ELSE IF (ptr^.key1=tptr^.key1) AND 
+                  (ptr^.key2>tptr^.key2) THEN intb := TRUE 
+          ELSE IF (ptr^.key1=tptr^.key1) AND      
+                  (ptr^.key2=tptr^.key2) AND 
+                  (ptr^.key3>tptr^.key3) THEN intb := TRUE;    
+       END; 
+       Atrecbelowtheonetobeadded := intb;        
+     END;        
+     
+  PROCEDURE Addtolinkedlist;          
+   VAR intb : BOOLEAN;
+   BEGIN        
+    tptr := first; intb := TRUE;     
+    WHILE (tptr<>NIL) AND intb DO    
+    IF Atrecbelowtheonetobeadded THEN intb := FALSE                                     
+    ELSE 
+     BEGIN
+      hptr := tptr;  
+      tptr := tptr^.link;    
+     END;
+    ptr^.link := tptr;  
+    IF tptr = first THEN first := ptr
+                    ELSE hptr^.link := ptr;
+    tptr := first;
+   END;     
+   
+  FUNCTION Inrightplace : BOOLEAN;        
+   VAR intb : BOOLEAN;
+   BEGIN
+    intb := TRUE ;   
+    IF ptr^.recfrom <> rectoaddto THEN intb := FALSE; 
+    Inrightplace := intb;   
+   END;
+   
+  PROCEDURE Puttptratlinkedrecthatwillgototemp(temp : INTEGER);
+   VAR temp1 : INTEGER;        
+   BEGIN  
+    tptr := first; 
+    temp1 := 0;
+    WHILE (tptr<>NIL) AND (temp1<temp) DO    
+     BEGIN
+      temp1 := temp1 + 1;  
+      tptr := tptr^.link;  
+     END;
+   END;   
+   
+  PROCEDURE Putinrightplace;        
+   VAR temp2,temp  : INTEGER;  
+   BEGIN 
+    Getlogrec(rectoaddto);      
+    tfrecord := frecord; 
+    temp := rectoaddto;  
+    tptr := ptr;  
+    WHILE tptr^.recfrom<>rectoaddto DO          
+     BEGIN
+      Getlogrec(tptr^.recfrom);  
+      Putlogrec(temp);        
+      temp2 := tptr^.recfrom;     
+      tptr^.recfrom := temp; 
+      temp := temp2; 
+      Puttptratlinkedrecthatwillgototemp(temp);     
+     END; 
+    tptr^.recfrom := temp;
+    frecord := tfrecord;      
+    Putlogrec(temp);  
+   END;   
+   
+  BEGIN (* Sort *)  
+   numrecs := numrecs - 1;
+   pos1 := pos1 - 1; pos2 := pos2 - 1; pos3 :=pos3 - 1;  
+   temp := 0; 
+   currentblock := 32700;
+   RESET(disk,fname);     
+   MARK(heaptr);
+   first := nil;
+   FOR recat := 0 TO numrecs DO          
+    BEGIN
+     Getkeys(recat); 
+     Addtolinkedlist;
+    END;
+   
+   ptr := first; rectoaddto := 0;       
+   
+   REPEAT  
+    IF NOT Inrightplace THEN Putinrightplace; 
+    ptr := ptr^.link;   
+    rectoaddto := rectoaddto + 1;
+   UNTIL ptr=nil;
+    
+   RELEASE(Heaptr);            
+   CLOSE(disk,lock); 
+  END;
+   
+ END.
+   
+   
+   

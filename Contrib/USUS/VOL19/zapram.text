@@ -1,0 +1,62 @@
+program zapramdisk;
+ 
+{ Creates a directory for RAMDISK, assumed to be device #11:
+  Note the constant values and change as desired or appropriate.
+  Compile and rename .CODE file to SYSTEM.STARTUP
+  
+  By Eliakim Willner
+     USUS DEC SIG Chairman                                        }
+ 
+ 
+const dirblk = 2;
+      RamUnit = 11;  {If you changed this in the macro file, change here too}
+      UnitName = 'RAMDISK';  {Change to your taste}
+      NumOfBlocks = 374;     {Valid for systems with 256kb. Adjust as needed}
+ 
+type
+   daterec = packed record
+                      month: 0..12;
+                      day: 0..31;
+                      year: 0..100
+                    end;
+                    
+   filkind = (untypedfil,xdskfil,codefil,textfil,
+              infofil,datafil,graffil,fotofil,securedir);
+ 
+   direntry = packed record
+                dfirstblk: integer;   { first physical disk addr }
+                dlastblk: integer;    { points at block following dir }
+                case dfkind: filkind of
+                  securedir,
+                  untypedfil: { only in beginning of dir; volume info }
+                     (somejunk : 0..2048;
+                      dvid: string[7];        { volume name }
+                      deovblk: integer;       { lastblk of volume }
+                      dnumfils: 0..77;        { number of files in dir }
+                      dloadtime: integer;
+                      dlastboot: daterec);
+                  xdskfil,codefil,textfil,infofil,
+                  datafil,graffil,fotofil:
+                     (morejunk : 0..1024;
+                      status : boolean;
+                      dtid: string[15];
+                      dlastbyte: 1..512;
+                      daccess: daterec)
+              end;
+ 
+var
+   dir0 : direntry;
+   
+begin
+   with dir0 do
+      begin
+         dfirstblk := 0; 
+         dlastblk := 6;
+         dfkind := untypedfil; 
+         dvid := UnitName;
+         deovblk := NumOfBlocks;
+      end;
+   unitwrite (RamUnit, dir0, sizeof(dir0), dirblk);
+end.
+ 
+

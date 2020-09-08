@@ -1,0 +1,199 @@
+{Mail15 - Sortit}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+SEGMENT PROCEDURE Sortit;
+   
+  var sortch:char; {global holds type of sort}
+  
+  TYPE lptr = ^lrec;   
+       lrec = RECORD   
+               key1           : STRING[6];
+               key2           : STRING[30];
+               recfrom        : INTEGER;
+               link           : lptr;      
+              END;
+    VAR linkedrec                   : lrec;
+        first,ptr,tptr,hptr         : lptr;   
+        heaptr                      : ^INTEGER; 
+        ch                          : CHAR;   
+        tfrecord                    : labelrec;
+        rectoaddto,recat            : INTEGER;
+    
+  PROCEDURE Getkeys(recnumber : INTEGER);                   
+   BEGIN      
+    SEEK(disk,recnumber);
+    GET(disk);
+    WRITE('.');
+    NEW(ptr);     
+    WITH disk^,ptr^ DO
+     BEGIN
+      key1 := code;
+      CASE sortch OF  
+       'P','p' : key2 := prefx;
+       'F','f' : key2 := fname; 
+       'N','n' : key2 := minit;
+       'L','l' : key2 := lname; 
+       'U','u' : key2 := suffx;
+       'T','t' : key2 := title; 
+       'C','c' : key2 := coname;
+       '#'     : key2 := phone;  
+       'A','a' : key2 := address;
+       'I','i' : key2 := city;        
+       'S','s' : key2 := state;  
+       'Y','y' : key2 := country;
+       'Z','z' : key2 := zip;
+       'M','m' : key2 := COPY(misc,1,30); {sort on first 30 chs of Misc only}
+       END;  
+      recfrom := recnumber;                                   
+     END;
+   END;  
+   
+    FUNCTION Atrecbelowtheonetobeadded: BOOLEAN;      
+     VAR intb : BOOLEAN;  
+     BEGIN
+      intb := FALSE;  
+      IF          ptr^.key1>tptr^.key1  THEN intb := TRUE                   
+         ELSE IF (ptr^.key1=tptr^.key1) AND 
+                 (ptr^.key2<tptr^.key2) THEN intb := TRUE;  
+       Atrecbelowtheonetobeadded := intb;         
+     END;        
+     
+  PROCEDURE Addtolinkedlist;          
+   VAR intb : BOOLEAN;
+   BEGIN        
+    tptr := first; intb := TRUE;     
+    WHILE (tptr<>NIL) AND intb DO    
+    IF Atrecbelowtheonetobeadded THEN intb := FALSE
+    ELSE 
+     BEGIN
+      hptr := tptr;  
+      tptr := tptr^.link;    
+     END;
+    ptr^.link := tptr;  
+    IF tptr = first THEN first := ptr
+                    ELSE hptr^.link := ptr;
+    tptr := first;
+   END;     
+   
+  FUNCTION Inrightplace : BOOLEAN;        
+   VAR intb : BOOLEAN;
+   BEGIN  
+    intb := TRUE ;   
+    IF ptr^.recfrom <> rectoaddto THEN intb := FALSE;         
+    Inrightplace := intb;   
+   END;
+   
+  PROCEDURE Puttptratlinkedrecthatwillgototemp(temp : INTEGER);  
+   VAR temp1 : INTEGER;        
+   BEGIN  
+    tptr := first; 
+    temp1 := 1;
+    WHILE (tptr<>NIL) AND (temp1<temp) DO    
+     BEGIN
+      temp1 := temp1 + 1;  
+      tptr := tptr^.link;  
+     END;
+   END;   
+   
+  PROCEDURE Putinrightplace;        
+   VAR temp2,temp  : INTEGER;  
+   BEGIN 
+    SEEK(disk,rectoaddto);
+    GET(disk);
+    WRITE('.');
+    tfrecord := disk^;    
+    temp := rectoaddto;  
+    tptr := ptr;  
+    WHILE tptr^.recfrom<>rectoaddto DO          
+     BEGIN
+      SEEK(disk,tptr^.recfrom);  
+      GET(disk);
+      WRITE('.');
+      SEEK(disk,temp);           
+      PUT(disk);
+      WRITE('.');
+      temp2 := tptr^.recfrom;      
+      tptr^.recfrom := temp; 
+      temp := temp2; 
+      Puttptratlinkedrecthatwillgototemp(temp);     
+     END; 
+    tptr^.recfrom := temp;
+    disk^ := tfrecord;        
+    SEEK(disk,temp);  
+    PUT(disk);
+    WRITE('.');
+   END;   
+   
+ PROCEDURE DoSort;
+  BEGIN (* DoSort *)      
+   temp := 0;   
+   MARK(heaptr);
+   first := nil;
+   FOR recat := 1 TO numrecs DO                
+    BEGIN
+     Getkeys(recat); {assumes sortch set globally} 
+     Addtolinkedlist;
+    END;
+   
+   ptr := first; rectoaddto := 0;       
+   
+   REPEAT  
+    rectoaddto := rectoaddto + 1;
+    IF NOT Inrightplace THEN Putinrightplace; 
+    ptr := ptr^.link;   
+   UNTIL ptr=nil;  
+    
+   RELEASE(Heaptr);            
+  END {of DoSort};
+   
+ PROCEDURE Getsortfield;
+  BEGIN
+   repeat
+     SC_Clr_Screen;
+     WRITELN('Sort: P)refix, F)name, mi(N)it, L)name, s(U)ffix, T)itle, C)mpny,');
+     WRITE('      #)ph, A)ddress, c(I)ty, S)tate, cntr(Y), Z)ip, M)isc, Q)uit:');
+     READ(KEYBOARD,sortch);
+   until (sortch IN ['P','p','F','f','N','n','L','l','S','s','T','t','C','c',
+              '#','A','a','I','i','Y','y','Z','z','M','m','u','U','Q','q']);
+   write(sortch);
+   if sortch in ['Q','q'] then EXIT(Sortit);
+  END;      
+    
+   PROCEDURE Findnewnumrecs;
+    BEGIN
+     FOR temp := numrecs DOWNTO 1 DO
+      BEGIN
+       SEEK(disk,temp);
+       GET(disk);
+       WRITE('.');
+       IF (disk^.code = 'Perm  ') OR (disk^.code = 'Add   ') THEN   
+        BEGIN
+         numrecs := temp;
+         temp := 1; 
+        END;
+     END;
+     Wnew0rec;      
+    END;
+    
+   BEGIN {of sortit}
+    Getsortfield; {sets sortch}
+    Krunch;
+    WRITELN;
+    WRITE('Sorting '); 
+    DoSort; 
+    Findnewnumrecs;
+    Init;
+   END {of Sortit};
+

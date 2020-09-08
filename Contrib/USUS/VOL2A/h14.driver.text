@@ -1,0 +1,475 @@
+(*   Program Author:  Frank Monaco
+                      679 Lowell Drive
+                      Marietta, GA 30060
+                      404-424-1460
+                                                        *)
+                                                        
+
+
+PROGRAM H14PRINTERDRIVER( (* FROM *) INPUT  (* TO PRINTER AND 
+                        SCREEN *));
+
+
+
+(* SENDS UCSD PASCAL DISK FILES TO THE HEATHKIT H14 LINE PRINTER
+WHILE INTERACTIVELY ALLOWING THE USER TO SPECIFY OPTIONS AT RUN
+TIME. PROMPTS FOR FILE(S) TO BE PRINTED, AND ALSO FOR USE OF 
+FORTRAN/NOFORTRAN CARRIAGE CONTROL CONVENTIONS IN COLUMN ONE OF 
+THE FILE TO BE PRINTED. IF NOFORTRAN IS SELECTED, PRODUCES PAGED
+AND TITLED OUTPUT (WITH USER NAMING OPTIONS)  *)
+
+
+
+(*
+    *******************************************************
+    *     FORTRAN CARRIAGE CONNTROL                       *
+    *        1....TOP OF FORM                             *
+    *        +....NO LINE FEED                            *
+    *        0....DOUBLE SPACE                            *
+    *        -....TRIPLE SPACE                            *
+    *******************************************************
+
+
+*)
+
+CONST              (*ASCII CONTROL CHARACTERS (DECIMAL) THAT H14 
+                    UNDERSTANDS TO CONTROL COLUMN AND VERTICAL 
+                    SPACING AS WELL AS CHARACTER SIZE. SEE PAGE
+                    13, HEATHKIT MANUAL FOR H14 (OPERATION).    *)
+
+
+
+      LF    = 10;
+      FF   = 12;
+      CR     = 13;
+      ESC  = 27;
+      LCU   = 117;
+      LCX  = 120;
+      LCY    = 121;
+      CTLA = 1;
+      CTLD  = 4;
+      CTLH = 8;
+      CTLP   = 16;
+      CTLT = 20;
+      CTLX  = 24;
+      SP   = 32;
+      DOL    = 36;
+      LPAREN = 40;
+
+
+
+TYPE 
+     CONTROLCOLUMNWIDTH = PACKED ARRAY[0..2] OF CHAR;
+                        (* BUFFER FOR PRINTER OPTIONS *)
+
+
+
+VAR 
+    C8080, C8096, C80132, C9680,C9696,C96132,
+    C13280,C13296,C132132                     : CONTROLCOLUMNWIDTH;
+    COLUMNOPTION, LINESPERINCH                : INTEGER;
+    CH, LASTCH                                : CHAR;
+    FIRSTPART, FILENAME                       : STRING;
+    F                                         : TEXT;
+    FIRSTPOS, BOLDFACE, FORTRANCONTROLS       : BOOLEAN;
+    I                                         : INTEGER;
+
+
+
+PROCEDURE PUTP;
+EXTERNAL;
+     (*  ASSEMBLY ROUTINE THAT PUTS ONE CHARACTER 
+         INTO THE H14'S SERIAL BOARD AT 177514. 
+         ALSO CHECKS BIT 15 (RTS)  OF 177510 TO
+         VERIFY STATUS OF FIFO BUFFER      *)
+
+
+
+PROCEDURE SENDARRAY(T : CONTROLCOLUMNWIDTH);
+     (* SENDS A THREE CHARACTER COLUMN CONTROL 
+      SEQUENCE TO THE H14. SEE PAGE 13, H14 
+      MANUAL FOR OPERATION    *)
+
+VAR 
+    I : INTEGER;
+BEGIN
+  FOR I := 0 TO 2 DO
+     BEGIN
+        CH :=  T[I];
+        PUTP
+     END
+END;  (* SENDARRAY *)
+
+
+
+PROCEDURE INITIALIZE; (* GIVES VALUES TO COLUMN OPTIONS AND SOLICITS 
+                        INTERACTIVELY FROM THE USER WHETHER THE FILE 
+                        SELECTED IS TO BE PRINTED USING FORTRAN
+                        CONTROLS OR WHETHER IT IS TO BE 
+                        PAGED AND TITLED *)
+BEGIN
+         (* DEFINE COLUMN CONTROL SEQUENCES FOR "SENDARRAY " *)
+
+
+   C8080[0]   := CHR (ESC);
+   C8096[0]   := CHR (ESC);
+   C80132[0]  := CHR (ESC);
+   C9680[0]   := CHR (ESC);
+   C9696[0]   := CHR (ESC);
+   C96132[0]  := CHR (ESC);
+   C13280[0]  := CHR (ESC);
+   C13296[0]  := CHR (ESC);
+   C132132[0] := CHR (ESC);
+   C8080[1]   := CHR (LCU);
+   C8096[1]   := CHR (LCU);
+   C80132[1]  := CHR (LCU);
+   C9680[1]   := CHR (LCU);
+   C9696[1]   := CHR (LCU);
+   C96132[1]  := CHR (LCU);
+   C13280[1]  := CHR (LCU);
+   C13296[1]  := CHR (LCU);
+   C132132[1] := CHR (LCU);
+   C8080[2]   := CHR (CTLA);
+   C8096[2]   := CHR (CTLD);
+   C80132[2]  := CHR (CTLH);
+   C9680[2]   := CHR (CTLP);
+   C9696[2]   := CHR (CTLT);
+   C96132[2]  := CHR (CTLX);
+   C13280[2]  := CHR (SP);
+   C13296[2]  := CHR (DOL);
+   C132132[2] := CHR (LPAREN);
+
+
+
+   WRITELN;  (* SEE HEATHKIT MANUAL FOR H14 OPERATION, PAGE 13 *)
+   WRITELN('Please select column control options', CHR(7));
+   WRITELN;
+   WRITELN ('1) 80x80; 2) 80x96; 3) 80x132; 4) 96x80; 5) 96x96; ');
+   WRITE ('6) 96x132; 7) 132x80; 8) 132x96; or 9) 132x132 - - > ', CHR(7));
+   READLN(KEYBOARD,COLUMNOPTION);
+
+
+
+   CASE COLUMNOPTION OF
+     1 : SENDARRAY(C8080);
+     2 : SENDARRAY(C8096);
+     3 : SENDARRAY(C80132);
+     4 : SENDARRAY(C9680);
+     5 : SENDARRAY(C9696);
+     6 : SENDARRAY(C96132);
+     7 : SENDARRAY(C13280);
+     8 : SENDARRAY(C13296);
+     9 : SENDARRAY(C132132)
+   END;  (*CASE COLUMOPTION *)
+
+
+   WRITELN;  (* SEE HEATHKIT MANUAL FOR H14 OPERATION, PAGE 13 *)
+   WRITELN('Please select number of lines per inch ', CHR(7));
+   WRITE(' 1) 6 lines per inch; 2) 8 lines per inch - - -> ', CHR(7));
+   READLN(KEYBOARD,LINESPERINCH);
+   IF LINESPERINCH = 1
+     THEN
+       BEGIN
+         CH := CHR (ESC);
+         PUTP;
+         CH := CHR (LCX);
+         PUTP
+       END
+     ELSE
+       BEGIN
+         CH := CHR (ESC);
+         PUTP;
+         CH := CHR (LCY);
+         PUTP
+       END;
+   WRITELN;
+  WRITE(CHR(7),CHR(7));
+   WRITELN;
+   WRITE('Do you want to use Fortran Carriage Controls?');
+   READLN(KEYBOARD,CH);
+   WRITELN;
+   IF CH IN ['y','Y']
+     THEN
+       FORTRANCONTROL := TRUE  (* USE FORTRAN CARRIAGE CONTROLS *)
+     ELSE
+       FORTRANCONTROL := FALSE;  (* USE PAGED AND TITLED OUTPUT *)
+END; (*INITIALIZE*)
+
+
+
+PROCEDURE FORTRAN; (* IF SELECTED, THIS OPTION USES THE CHARACTER
+                     IN COLUMN ONE FOR CARRIAGE CONTROL *)
+
+
+
+BEGIN
+   BOLDFACE := FALSE;
+   WHILE NOT EOF(F) DO
+       BEGIN
+         FIRSTPOS := TRUE;
+         WHILE NOT EOLN (F) DO
+           BEGIN
+             IF FIRSTPOS
+               THEN
+                 BEGIN
+                   READ(F,CH);
+                   CASE CH OF
+                     '1' : BEGIN    (* TOP OF FORM CASE *)
+                             CH := CHR(FF);
+                             PUTP;
+                             FIRSTPOS := FALSE
+                           END;
+                     '+' : BEGIN    (* OVERSTRIKE CASE *)
+                             BOLDFACE := TRUE;
+                             FIRSTPOS := FALSE
+                           END;
+                     '0' : BEGIN    (* SKIP TWO LINES CASE *)
+                             CH := CHR (LF);
+                             PUTP;
+                             PUTP;
+                             FIRSTPOS := FALSE
+                           END;
+                     '-' : BEGIN    (* SKIP THREE LINES CASE *)
+                             CH := CHR (LF);
+                             PUTP;
+                             PUTP;
+                             PUTP;
+                             FIRSTPOS := FALSE
+                           END
+                   END; (*CASE*)
+
+
+                   IF FIRSTPOS
+                     THEN
+                       BEGIN
+                         LASTCH := CH;
+                         CH := CHR(LF);
+                         PUTP;
+                         CH := LASTCH;
+                         PUTP;
+                         WRITE(CH);
+                         FIRSTPOS := FALSE
+                       END;
+                 END
+               ELSE
+                 BEGIN
+                   IF BOLDFACE
+                     THEN   (* COMPENSATE FOR '+' IN COLUMN ONE *)
+                       BEGIN
+                         BOLDFACE := FALSE;
+                         CH := ' ';
+                         PUTP
+                       END
+                     ELSE
+                       BEGIN
+                         READ(F,CH);
+                         PUTP;
+                         WRITE(CH)
+                       END
+                 END
+           END;
+         READLN(F);
+         CH := CHR(CR);
+         PUTP;
+         WRITELN;
+      END;
+END; (* PROCEDURE FORTRAN *)
+
+
+
+PROCEDURE NOFORTRAN;  (* PRINTS A HEADER (TITLE AND PAGE) WITH THE 
+                        APPROPRIATE NUMBER OF LINES (DEPENDING ON 
+                        COLUMN/CHARACTER OPTIONS SELECTED *)
+
+VAR 
+    NOLINES, NOPAGES, MAXLINES : INTEGER;
+
+
+
+  PROCEDURE WRITEHEADER;
+
+
+
+      PROCEDURE HEADER; (* HANDLES HEADER SPACING, LITERAL CONVERSION, 
+                          AND ACTUAL OUTPUT TO THE PRINTER *)
+
+      VAR 
+          FIRSTDIGIT, LASTDIGIT, NUMBLANKS : INTEGER;
+          FIRSTCH, LASTCH : CHAR;
+          PAGE : STRING;
+
+        BEGIN  (* HEADER *)
+           CASE COLUMNOPTION OF
+             1, 4, 7 : NUMBLANKS := 80 - LENGTH(FIRSTPART) - 7;
+             2, 5, 8 : NUMBLANKS := 96 - LENGTH(FIRSTPART) - 7;
+             3, 6, 9 : NUMBLANKS := 132 - LENGTH(FIRSTPART) - 7
+           END; (* CASE *)
+
+
+           FOR I := 1 TO (NUMBLANKS - 1) DO
+             BEGIN
+               CH := ' ';
+               PUTP;
+               WRITE(CH)
+             END;
+
+
+
+           FIRSTDIGIT := NOPAGES DIV 10;
+           LASTDIGIT := NOPAGES MOD 10;
+           FIRSTCH := CHR ( FIRSTDIGIT + ORD ('0'));
+           LASTCH := CHR (LASTDIGIT + ORD ('0'));
+
+
+           IF FIRSTCH = '0'
+             THEN
+               FIRSTCH := ' ';
+
+
+
+           CH := 'P';
+          PUTP;
+          WRITE(CH);
+           CH := 'a';
+          PUTP;
+          WRITE(CH);
+           CH := 'g';
+          PUTP;
+          WRITE(CH);
+           CH := 'e';
+          PUTP;
+          WRITE(CH);
+           CH := ' ';
+          PUTP;
+          WRITE(CH);
+           CH := FIRSTCH;
+           PUTP;
+           WRITE(CH);
+           CH := LASTCH;
+           PUTP;
+           WRITE(CH);
+           CH := CHR(LF);
+           PUTP;
+          PUTP;
+          WRITELN;
+       END; (* HEADER *)
+
+
+
+     BEGIN (* WRITEHEADER  *)
+        CH := CHR(FF);
+        PUTP;
+        IF FIRSTPART[1] = '#'  (* STRIP FROM FILENAME FOR TITLING *)
+          THEN
+            FIRSTPART[1] := ' ';
+        IF FIRSTPART[2] IN ['4'..'5']
+          THEN
+            FIRSTPART[2] := ' ';
+        IF FIRSTPART[3] = ':'
+           THEN
+             FIRSTPART[3] := ' ';
+        FOR I := 1 TO LENGTH (FIRSTPART) DO
+          BEGIN
+            CH := FIRSTPART[I];
+            PUTP;
+            WRITE(CH)
+          END;
+
+
+        HEADER;
+
+
+     END; (* WRITEHEADER *)
+
+
+
+     BEGIN  (* NOFORTRAN *)
+       IF LINESPERINCH = 1
+         THEN
+           MAXLINES := 60
+          ELSE
+            MAXLINES := 80;
+        NOPAGES  := 1;
+        NOLINES := 3;
+
+
+        REPEAT   (* MAIN LOOP : EXECUTE ONCE PER PAGE *)
+          WRITEHEADER;
+          REPEAT  (* INNER LOOP : EXECUTE ONCE PER LINE *)
+            NOLINES := SUCC (NOLINES);
+            WHILE NOT EOLN(F) DO
+              BEGIN
+                READ(F, CH);
+                PUTP;
+                WRITE(CH)
+              END;
+            READLN(F);
+            WRITELN;
+            CH := CHR(LF);
+            PUTP
+          UNTIL (NOLINES = MAXLINES) OR (EOF(F)); (* LINE LOOP *)
+
+
+          NOLINES := 3;
+          NOPAGES  := SUCC(NOPAGES)
+       UNTIL EOF(F);  (* PAGE LOOP *)
+END; (* NOFORTRAN *)
+
+
+
+PROCEDURE GETFILE; (* SOLICIT FILE NAME TO BE PRINTED FROM USER *)
+
+BEGIN
+   WRITE('Please enter text file name--> ');
+   READLN(INPUT,FIRSTPART);
+   FILENAME := CONCAT(FIRSTPART,'.text');
+   RESET(F,FILENAME); (* NOW GIVE USER OPTION TO NAME OUTPUT *)
+   IF NOT FORTRANCONTROLS
+     THEN
+       BEGIN
+         WRITE(' 1) Use your title  or 2) Use Filename --> ');
+         READLN(CH);
+         WRITELN;
+         IF CH = '1'
+            THEN
+               BEGIN
+                  WRITE('Please enter your title--> ');
+                  READLN(FIRSTPART);
+                   WRITELN
+                  END
+       END;
+END;  (* GETFILE *)
+
+
+
+PROCEDURE ASKFORMORE; (* MORE FILES TO PRINT? *)
+
+BEGIN
+   WRITE('Do you want to print any more files? ');
+   READLN(KEYBOARD,CH);
+   IF (CH IN ['y','Y'])
+     THEN
+       CLOSE(F,LOCK); (* CAN ONLY OPEN
+                                              ONE FILE AT
+                                              A TIME *)
+END; (*ASKFORMORE*)
+
+
+
+BEGIN (*PROGRAM H14 MAIN*)
+
+   FORTRANCONTROL := FALSE;
+   REPEAT           (* MAIN PROGRAM LOOP : EXECUTED ONCE PER FILE
+                                                       PRINTED  *)
+     INITIALIZE;
+     GETFILE;
+     IF FORTRANCONTROL
+       THEN
+         FORTRAN
+       ELSE
+         NOFORTRAN;
+     ASKFORMORE
+   UNTIL CH IN ['n','N'];
+
+
+END. (*PROGRAM H14 MAIN*)

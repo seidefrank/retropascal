@@ -1,0 +1,131 @@
+                                                            22 July 1980
+
+                   TO USERS OF THE UCSD PASCAL USERS' LIBRARY
+
+     Here's some news from the UCSD Pascal front lines (I am reporting
+according to the way I saw it, so don't be surprised if others also present
+interpreted events differently):
+
+     The UCSD System Users Society (USUS) was formed last month at San
+Diego.  It is a vigorous, alive, and independent organization that right now
+is oriented to those who plan to make their living using the UCSD system,
+primarily the Pascal language.  It is possible that hobbiest users may play
+more of a role in the future.
+
+     SofTech Microsystems organized the meeting and was extremely careful to 
+clearly give it away to the users.  The users in turn made no bones about 
+their needs and gripes with SofTech, particularly the importance to them of
+SofTech's releasing Version 4.0 in the NEAR future.  For months the word has
+been that it's been only a few weeks away from being marketed.  The purpose of
+4.0 is twofold, I gathered: 1) to clean up the "warts" and weird system
+dependencies of the UCSD system and to finally remove it from the realm of a
+highly advanced student project, plus 2) to restore total object-code machine
+independence, where programs will run unaltered on multiple machines.  Most of
+the users agreed that even more than implementing Pascal on a micro, what they
+liked most about the UCSD system was its uniformity across multiple systems. 
+TI and Boeing, for instance, chose the UCSD system for these reasons, though
+the man from Boeing noted that alterations were required for total machine
+transparency.  The delays in releasing 4.0 apparently stem from the intention
+at SofTech that it be fully compatible with 2.1 (the Apple system) and 3.0
+(the Microengine), despite less than optimal cooperation from the
+manufacturers involved.
+
+     The things that will be cleaned up include the UNITS system (allowing
+linkage at runtime, plus a greatly expanded number of available segments),
+subtle compiler bugs, and a few fixes in the editor and operating system.  The
+minimal facilities for concurrancy present in the Microengine system will
+apparantly be extended to all.  Despite the fact that many people would like
+to expand the operating system beyond the present single-user development
+system model, these features won't be changed a great deal at present. 
+
+     The future holds a number of tantalizing possibilities and promises.  A 
+major emphasis will be the extension of addressing beyond the present maximum 
+of 64K, requiring (of course) more than 16-bit integer arithmetic as a
+standard, something I feel is a limitation of the present system anyway.  No
+one has talked about how this will be done and yet retain compatibility with
+present systems.  We need improved error handling that does not all to be done
+by the user program, so commercial applications programs do not bomb out to
+the operating system (although there are some tricky, kludgy ways involving a
+fake SYSTEM.DEBUGGER program that EXITS back to the user program; I know no
+more).  We need a more flexible front end (GETCOMMAND, the main command
+processor), so writers of business systems can disguise the operating system
+from the user.  There was considerable interest in a UNIX-like operating
+system with concurrancy, multi-user and multi-tasking capabilities, and
+shells and pipes.  More than likely, this is a good way into the future;
+first, we've got to get an expanded system going on the new 16-bit micros.
+
+     Ideas like the ones above aroused considerable interest at the meeting, 
+and the Advanced Planning Special Interest Group was among the best attended. 
+For further information, contact the chairperson, Randy Bush, at 503/572-
+5391.  It is clear that one of the most important things we users can offer
+SofTech is a coherent feedback mechanism with courage and clout; this was
+already very much in evidence in San Diego.  Al Irvin of SofTech made an
+impassioned plea that anyone who has developed new capabilities of the UCSD
+system contact him for a mutually satisfying discussion concerning SofTech's
+licensing the new development.
+
+     I am chairperson of the software library, which will announce offerings 
+in the newsletter and will sell disks in much the same way that I am now, 
+except that there will be: a) multiple distribution centers, b) several 
+software reviewers, each concentrating on a specific area, and c) the 
+requirement that purchasers of the software either be members ($20 per year) 
+or pay a $20 premium per order.  Only UCSD-compatible software will be
+offered, and all policy is being set by a policy board of interested users. 
+Realistically, we will not be shipping USUS software before 1 September. 
+Because of my announcements of software available from me without such
+restrictions, the group agreed that I should continue as before, although
+eventually I will continue my operations through the USUS exclusively.
+
+     Dr. Ken Bowles will be on sabbatical leave next year, and he is making no 
+secret of his next project:  to get an Ada compiler going on the UCSD system 
+(P-machine compatible only, I imagine).  Because it is no more expensive to 
+have the more distant members of his group work at home and communicate via 
+modem, he plans to implement a full-fledged Telenet host with a hard-disk-
+based microcomputer.  Enough time will be left over on the system to devote
+to an innovative project: interested users will be invited to subscribe to a
+users' bulletin board and software supermarket, where users' group software
+can be downloaded at cost and proprietary programs purchased, all via the
+phone.  The bulletin board would include any comments on the proprietary
+software users cared to leave, which should (with luck) stimulate the rapid
+development of reliable, quality UCSD-compatible products.  Further, and more 
+important, this concept will help overcome the insane proliferation of 
+incompatible floppy disk formats.
+
+     One interesting note: the Pascal Transfer Program from Vol. 2A has turned
+out to be excellent, and has been selected for the "official" modem transfer
+routine by the group, a step approved by its author, Mark Gang.  Thus we can
+all talk with each other. The protocol used is the PCNET "standard" (Mark
+indicated that not all aspects of the protocol had been formalized), so that
+we can talk with non-UCSD processors as well.  The program lets you transfer
+files to another user in both directions at once, while simultaneously
+conversing on your terminals. The only problem is that program overhead is
+high and the data rate low; you can expect about 16 char/sec if your line is
+not too noisy.  Mark promised a new version, somewhat incompatible with the
+old, that involves much more system handshaking to set modem speed and select
+binary vs Radix-41 (PCNET standard) transmission.  We'll probably stick to the 
+old version, since it should run on ANY UCSD system, even on personal 
+computers.
+
+     I also volunteered to be chairperson of the Medical Special Interest 
+Group, and we dreamed up a project to adapt to the UCSD System whatever we 
+could of the expanse of public-domain clinical applications software, 
+developed under grant.  Contact Porter Welbourne, M.D., of Patient Care Data 
+Systems, 418 North Main St., Penn Yan, NY 14527, who volunteered to head up
+this effort.  In addition, we are looking for volunteers to transcribe the 
+programs to UCSD-compatible floppies from 9-track tapes.
+
+     Other special interest groups include the Newsletter (direct all articles 
+to Keith Shillington, c/o SofTech Microsystems), European, Computer Aided 
+Instruction, Standards, Word Processing, Real-Time Applications, Industrial, 
+and Compatibility and Communications.
+
+     To join the UCSD System User Society, send a self-addressed envelope to
+Chip Chapin, Secretary, c/o SofTech Microsystems, 9494 Black Mountain Road,
+San Diego CA 92126, or use the membership form I sent out with the disks.  The 
+next general meeting will be in San Francisco (same time as another, general 
+computer conference) on October 16 to 18, 1980.  Tentative cost is $25.
+
+
+     Keep in touch.
+
+     Jim Gagne.

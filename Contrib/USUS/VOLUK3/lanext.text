@@ -1,0 +1,535 @@
+
+(*------------------------------------------------------------------*)
+   procedure la_next_sym; (*(VAR OUTP_SYMBOL : LU_SYMBOL_DESCRIPTOR;*)
+                          (* VAR OUTP_POS    : SO_POSITION);*)
+(*------------------------------------------------------------------*)
+(*      OUTP_SYMBOL  : NEXT LEXICAL UNIT                           -*)
+(*      OUTP_POS     : POSITION OF THE FIRST CHARACTER OF THE UNIT -*)
+(*      EXTRACTS THE NEXT LEXICAL ELEMENT AND ENTERS IT IN THE     -*)
+(*      CORRESPONDING TABLE.                                       -*)
+(*                                                                 -*)
+(*   SPECIALITIES: ENTRY/EXIT INVARIANT: CURRENT IS NEXT CHARACTER -*)
+(*   ------------- (SEE ALSO BUFFER)                               -*)
+(*------------------------------------------------------------------*)
+label 88, 66, 55, 11;
+var   sharp_char, string_bracket : char;
+      current_type : character_type;
+      uflag, error : boolean;
+      firstc, pos1, pos2, pos3, exp_last : so_sorcecolumn_range;
+      base : integer;
+      exp_positive : boolean;
+      i_code : st_symbol;
+      hstr : so_sorce_string;
+      error_pos : so_position;
+   procedure new_current_char;
+   begin
+        current := succ(current);
+        current_char := buffer [current];
+   end;
+   procedure new_sym (new_discrim : lu_selector; new_symbol : lu_lexical_unit;
+                            new_idcode : st_symbol);
+   begin
+        outp_sym.discrim := new_discrim;
+        outp_sym.sym     := new_symbol;
+        outp_sym.idcode  := new_idcode;
+   end;
+      procedure sequence (sbase       :  integer;
+                          start_shift :  so_sorcecolumn_range;
+                     var  outp_shiftp :  so_sorcecolumn_range);
+  (* SCANS A SEQUENCE OF (EXTENDED) DIGITS WITH UNDERSCORES*)
+  (* SHIFTS THEM TO HSTR TO DELETE THE UNDERSCORES*)
+  (*AFTERWARDS THE STRING IS FOUND IN HSTR(START_SHIFT..OUTP_SHIFTP-1)*)
+  (* LOW LETTERS ARE REPLACED BY UPPER LETTERS*)
+  (* THE DIGITS ARE CHECKED TO BE LESS THAN SBASE*)
+  (* AT LEAST ONE DIGIT MUST BE THERE*)
+  (* CURRENT IS THE FIRST CHAR OF THE SEQUENCE*)
+       label 99;
+var      err, uflg : boolean;
+         first_time : boolean;
+         curr_type : character_type;
+         c : char;
+      begin
+         err := false;
+         uflg := false;
+         first_time:= true;
+         outp_shiftp := start_shift;
+         repeat
+            curr_type := char_type_table [current_char];
+            if curr_type = low_letter then       begin
+               c := chr( ord('A') + ord(current_char) - ord('a'));
+               curr_type := char_type_table [c]; end
+            else
+               c := current_char;
+          (*END IF;*)
+            if (curr_type = digit) or
+              ((sbase > 10)and (curr_type = letter_a_f))then  begin
+               if     (curr_type = digit) and
+                      (ord(c) - ord('0') >= sbase)
+                  or  (curr_type = letter_a_f) and
+                      (ord(c) - ord('A') +10 >= sbase) then begin
+                (* NO CORRECT DIGIT FOR THIS BASE*)
+                  error_pos.sourceline := line_no;
+                  error_pos.column     := current;
+                  er_error_message (1509, er_symbol_error,
+                                    error_pos, lu_no_symbol);
+                  c := '0';
+               end (*IF*);
+               hstr [outp_shiftp] := c;
+               outp_shiftp := outp_shiftp + 1;
+               uflg := false;                               end
+     else   if curr_type = underscore then                  begin
+               if uflg or first_time then
+                  err := true;
+             (*END IF;*)
+               uflg := true;                                end
+            else
+               goto 99;
+          (*END IF;*)
+            first_time := false;
+            new_current_char;
+         until false;
+99 :     if uflg or err then
+            er_error_message ( 1504, er_symbol_error,
+                               outp_pos, lu_no_symbol  )
+    else    if first_time then
+            er_error_message (1501, er_symbol_error,
+                              outp_pos, lu_no_symbol  );
+       (*END IF;*)
+      end;            (*   SEQUENCE;*)
+(*----------------------------------------------------------*)
+      procedure exponent (    expf : so_sorcecolumn_range;
+                          var outp_expl : so_sorcecolumn_range;
+                          var outp_expp : boolean);
+        (* SCANS AN OPTIONAL INTEGER OR REAL EXPONENT*)
+        (* SYNTAX: E ([+] ! -)  INTEGER*)
+        (* THE EXPONENT DIGITS ARE AFTERWARDS IN HSTR(EXPF..OUTP_EXPL)*)
+        (* OUTP_EXPP INDICATES WHETHER THE EXPONENT IS POSITIVE*)
+        (* CURRENT MUST BE THE FIRST CHARACTER*)
+      begin
+         if(current_char = 'E')or(current_char = 'e')then     begin
+         (*  SCAN THE EXPONENT*)
+            new_current_char;
+            outp_expp := current_char <> '-';
+            if(current_char = '-')or(current_char = '+')then new_current_char;
+          (*END IF;*)
+            sequence (10, expf, outp_expl);
+            outp_expl := outp_expl - 1;                       end
+         else                                                 begin
+            outp_expl := expf - 1;
+            outp_expp := false;                               end;
+       (*END IF;*)
+      end;              (*   EXPONENT;*)
+(*----------------------------------------------------------*)
+   procedure readbuffer ;
+   var i,j : integer;
+       CHARA : char;
+   begin
+      last_char := sfirst;
+      line_no := line_no + 1;
+      if eof (input) then                                  
+         buffer [last_char] := eof_char                   
+      else                                                 begin
+         (* READ (CHRC); *)          (*ADJUST*)   (*OVERREADS EOL CHAR*)
+         write (line_no : 4,':');
+         IF FILEINPUT THEN 
+           BEGIN
+                READ(FILEIN,CHARA);
+                WRITE(CHARA);
+           END
+          ELSE read(CHARA);
+          while not eoln(input)  do                       begin
+            buffer[last_char] := CHARA;
+            { adjusted from read(buffer[last_char]); by EDS }
+            last_char := last_char + 1;                   END;
+            IF FILEINPUT THEN 
+              BEGIN
+                   READ(FILEIN,CHARA);
+                   WRITE(CHARA);
+              END
+             ELSE read(CHARA);
+         last_char := last_char - 1;
+      (* DELETE NUL, DEL*)
+         for i := sfirst to last_char do                   begin
+            if(buffer[i] = chr(nul))or(buffer[i] = chr(del))then begin
+               last_char := last_char - 1;
+               for j := i to last_char do
+                  buffer[j] := buffer[j+1];
+                                                           end;
+                                                           end;
+         last_char := last_char + 1;
+         buffer [last_char] := chr (cr);
+         buffer [last_char + 1] := chr (cr);                     end;
+    (*END IF;*)
+      current := sfirst;
+      current_char := buffer [current];
+   end; (*   READBUFFER;*)
+   procedure case_digit;
+   begin
+            base := 10;
+            sequence (10, sfirst, pos1);
+            if(current_char = '#')or(current_char = ':')then begin
+     (*  BASED NUMBER, COMPUTE BASE *)
+               co_string_to_int (hstr, sfirst, pos1-1, 10, error, base);
+               if error or (base < 2) or (base > 16) then begin
+                  er_error_message (1508, er_symbol_error, outp_pos,
+                                    lu_no_symbol);
+                  base := 16;
+               end (*IF*);
+               sharp_char := current_char;
+               (*  MUST BE USED THROUGOUT*)
+               new_current_char;
+               sequence (base, sfirst, pos2);
+          (* BASED REAL NUMBER*)
+               if current_char = '.' then                  begin
+                  new_current_char;
+                  sequence (base, pos2+1, pos3);
+                  if current_char <> sharp_char then begin (*ERRONEOUS*)
+                     er_error_message (1502, er_symbol_error,
+                                       outp_pos, lu_no_symbol);  end
+                  else       new_current_char;
+                (*END IF;*)
+                  exponent (pos3 + 1, exp_last, exp_positive);
+                  new_sym (lu_real, lu_real_sym, outp_sym.idcode);
+                                                           end
+          (* BASED INTEGER NUMBER*)
+               else                                        begin
+                  if current_char <> sharp_char then begin (*ERRONEOUS*)
+                     er_error_message (1502, er_symbol_error,
+                                       outp_pos, lu_no_symbol); end
+                  else                                  
+                     new_current_char;
+                (*END IF;*)
+                  exponent (pos2 + 1, exp_last, exp_positive);
+                  new_sym (lu_int, lu_integer_sym, outp_sym.idcode); end;
+                                                              end
+             (*END IF;*)
+            else if(current_char = '.')and
+              (char_type_table [buffer [current + 1]] = digit)then begin
+            (*  REAL LITERAL*)
+               new_current_char;
+               sequence (10, pos1+1, pos2);
+               exponent (pos2 + 1, exp_last, exp_positive);
+               new_sym (lu_real, lu_real_sym, outp_sym.idcode);  end
+         (* INTEGER LITERAL*)
+            else                                                   begin
+               exponent (pos1, exp_last, exp_positive);
+              new_sym (lu_int, lu_integer_sym, outp_sym.idcode);
+            end (*IF*);
+            (* TEST THAT NO IDENTIFIER OR NUMBER FOLLOWS IMMEDIATELY*)
+            current_type := char_type_table [current_char];
+            if(current_type = letter_a_f)or(current_type = letter_g_z)or
+              (current_type = low_letter)or(current_type = digit)then
+                                                                   begin
+               error_pos.sourceline := outp_pos.sourceline;
+               error_pos.column     := current;
+               er_error_message (1505, er_symbol_error,
+                                 error_pos, lu_no_symbol  );
+            end (*IF*);
+   end; (* CASE_DIGIT *)
+   procedure case_letter;
+   label 77;
+   begin
+              (* UFLAG := FALSE; NOT NECESSARY BECAUSE LETTER ANALYZED*)
+               error := false;
+               pos1 := sfirst;
+               repeat
+                  case char_type_table [current_char] of
+                     letter_a_f , letter_g_z , digit :
+                        uflag := false;
+                     low_letter :                     begin
+                        current_char := chr( ord('A') +
+                                         ord(current_char) - ord('a'));
+                        uflag := false;
+                                                           end;
+                     underscore :                          begin
+                        if uflag then
+                           error := true;
+                      (*END IF;*)
+                        uflag := true;                     end;
+                     dquote, quote, hyphen, ampersand,
+                     lpar, rpar,asterisk, plus, comma,
+                     point, slash, colon, semicolon,
+                     langle, equal, rangle, vbar, nwline,
+                     ignore, blank, htab, eofc, other_graphics,
+                     non_ada :
+                        goto 77;
+                  end;                         (*   CASE;*)
+                  hstr [pos1] := current_char;
+                  pos1 := pos1 + 1;
+                  new_current_char;
+               until false;
+77 :           if uflag or error then
+                  er_error_message (1504, er_symbol_error,
+                                    outp_pos, lu_no_symbol  );
+             (*END IF;*)
+               i_code := st_get_sub_code (hstr, sfirst, pos1-1, false);
+               if last_symbol.sym  <> lu_quote_sym then            
+               (*  IDENTIFY RESERVED WORDS*)
+                 new_sym (lu_id, lu_reserved_word[i_code], i_code)
+               else                          (* ATTRIBUTE NAME*)
+                 new_sym (lu_id, lu_identifier_sym, i_code);
+             (*END IF;*)
+   end; (* CASE_LETTER *)
+(*-------------------------------------------------------------------*)
+   begin  (* LA_NEXT_SYM -----------------------------------*)
+      outp_pos.sourceline := line_no;
+11 :
+         outp_pos.column := current;
+         current_type := char_type_table [current_char];
+         case current_type of
+     digit :                                                 begin
+            case_digit; (* INTEGER OR REAL LITERAL*)
+            goto 88;                                               end;
+(* IDENTIFIER*)
+      letter_a_f , letter_g_z , low_letter :            begin
+               case_letter;
+               goto 88;                                            end;
+(* CHARACTER_LITERAL OR QUOTE*)
+            quote :                                                begin
+               new_current_char;
+               if(buffer [current + 1] <> '''')or(last_symbol.sym =
+                  lu_identifier_sym)then                           
+                  new_sym (lu_other, lu_quote_sym, outp_sym.idcode)
+               else                                                begin
+                  current_type := char_type_table [current_char];
+                  if(current_type = nwline)or(current_type = ignore)or
+                    (current_type = htab)or(current_type = non_ada)then
+                                                                   begin
+                     error_pos.sourceline := outp_pos.sourceline;
+                     error_pos.column     := current;
+                     er_error_message (1500, er_symbol_error,
+                                       error_pos, lu_no_symbol  );
+                                                                   end;
+                (*END IF;*)
+                 new_sym (lu_id, lu_character_sym, st_nil);
+                 current := current + 1;
+                 new_current_char;                             end;
+             (*END IF;*)
+               goto 88;
+                                                                   end;
+(* CHARACTER STRING*)
+           dquote :                                          begin
+               string_bracket := current_char;
+               pos1 := sfirst;
+               repeat
+                  new_current_char;
+                  current_type := char_type_table [current_char];
+                  if current_type = nwline then                    begin
+                     er_error_message (1503, er_symbol_error,
+                                       outp_pos, lu_no_symbol  );
+                     goto 66;                                      end
+   else              if(current_type = ignore)or(current_type = htab)or
+                    (current_type = non_ada)then                   begin
+                     error_pos.sourceline := outp_pos.sourceline;
+                     error_pos.column     := current;
+                     er_error_message (1500, er_symbol_error,
+                                       error_pos, lu_no_symbol  );
+                                                                   end
+   else              if current_char = string_bracket then         begin
+                     new_current_char;
+                     if current_char <> string_bracket then goto 66;
+                                                                   end
+   else              if current_char = '"' then           begin
+                  (*  MUST BE %-STRING, " IS NOT ALLOWED*)
+                     error_pos.sourceline := outp_pos.sourceline;
+                     error_pos.column     := current;
+                     er_error_message (1500, er_symbol_error,
+                                       error_pos, lu_no_symbol  );
+                                                                   end;
+                (*END IF;*)
+                  hstr [pos1] := current_char;
+                  pos1 := pos1 + 1;
+               until false;
+66 :          new_sym (lu_id, lu_string_sym, st_nil);
+               goto 88;
+                                                                   end;
+(* DOT OR INTERVAL*)
+           point :                                   begin
+               new_current_char;
+               if current_char = '.' then                  begin
+                  new_current_char;
+                 new_sym (lu_other, lu_interval_sym, outp_sym.idcode); end
+               else                                        
+                 new_sym (lu_other, lu_dot_sym, outp_sym.idcode);
+             (*END IF;*)
+               goto 88;
+                                                           end;
+(* LESS OR LESS_EQUAL OR LEFT_LABEL_BRACKET OR BOX*)
+           langle :                                  begin
+               new_current_char;
+               if current_char = '>' then                  
+                 new_sym (lu_other, lu_box_sym, outp_sym.idcode)
+   else           if current_char = '=' then               
+                 new_sym (lu_id, lu_less_equal_sym, lu_cde_less_equal)
+   else           if current_char = '<' then               
+                 new_sym (lu_other, lu_left_label_sym, outp_sym.idcode)
+               else                                        begin
+                 new_sym (lu_id, lu_less_sym, lu_code_less);
+                  goto 88;                                 end;
+             (*END IF;*)
+               new_current_char;
+               goto 88;                                    end;
+(* LEFT PARENTHESIS*)
+           lpar :                                    begin
+               new_current_char;
+              new_sym (lu_other, lu_lpar_sym, outp_sym.idcode);
+              goto 88;                                     end;
+(* PLUS*)
+            plus :                                    begin
+               new_current_char;
+              new_sym (lu_id, lu_plus_sym, lu_code_plus);
+               goto 88;
+                                                           end;
+(* SEPARATOR*)
+            vbar :                                    begin
+               new_current_char;
+              new_sym (lu_other, lu_separator_sym, outp_sym.idcode);
+               goto 88;
+                                                           end;
+(* MULTIPLY OR EXPONENTIATION*)
+           asterisk :                                begin
+               new_current_char;
+               if current_char = '*' then                  begin
+                  new_current_char;
+                new_sym (lu_id, lu_exponentiation_sym, lu_code_exponentiation);
+                                                                   end
+               else                                         
+             (*END IF;*)
+                 new_sym (lu_id, lu_multiply_sym, lu_code_multiply);
+               goto 88;                                    end;
+(* RIGHT PARENTHESIS*)
+           rpar :                                    begin
+               new_current_char;
+              new_sym (lu_other, lu_rpar_sym, outp_sym.idcode);
+              goto 88;
+                                                           end;
+(* MINUS OR COMMENT*)
+           hyphen :                                  begin
+               new_current_char;
+               if current_char = '-' then                  begin
+                  repeat
+                     new_current_char;
+                     current_type := char_type_table [current_char];
+                     if current_type = nwline then goto 55;
+                     if(current_type = ignore)or(current_type = non_ada)
+                        then                               begin
+                        error_pos.sourceline := outp_pos.sourceline;
+                        error_pos.column     := current;
+                        er_error_message (1500, er_symbol_error,
+                                          error_pos, lu_no_symbol  );
+                                                           end;
+                   (*END IF;*)
+                  until false;
+55 :
+                                                           end
+               else                                        begin
+                 new_sym (lu_id, lu_minus_sym, lu_code_minus);
+                 goto 88;                                  end;
+             (*END IF;*)
+                                                           end;
+(* DIVIDE OR NOT_EQUAL*)
+           slash :                                   begin
+               new_current_char;
+               if current_char = '=' then                  begin
+                  new_current_char;
+                 new_sym (lu_id, lu_not_equal_sym, lu_code_not_equal); end
+               else
+                 new_sym (lu_id, lu_divide_sym, lu_code_divide);
+             (*END IF;*)
+               goto 88;
+                                                           end;
+                                                           
+(* COMMA*)
+           comma :                                   begin
+               new_current_char;
+              new_sym (lu_other, lu_comma_sym, outp_sym.idcode);
+              goto 88;
+                                                           end;
+(* GREATER OR GREATER_EQUAL OR RIGHT_LABEL_BRACKET*)
+           rangle :                                  begin
+               new_current_char;
+               if current_char = '=' then                  begin
+                  new_current_char;
+                new_sym (lu_id, lu_greator_equal_sym, lu_cde_greater_equal);end
+   else           if current_char = '>' then               begin
+                  new_current_char;
+                 new_sym (lu_other, lu_right_label_sym, outp_sym.idcode); end
+               else                                        
+                 new_sym (lu_id, lu_greater_sym, lu_code_greater);
+             (*END IF;*)
+               goto 88;
+                                                           end;
+(* COLON OR ASSIGN*)
+            colon :                                   begin
+               new_current_char;
+               if current_char = '=' then                  begin
+                  new_current_char;
+                 new_sym (lu_other, lu_assign_sym, outp_sym.idcode); end
+               else                                        
+                 new_sym (lu_other, lu_colon_sym, outp_sym.idcode);
+             (*END IF;*)
+              goto 88;
+                                                           end;
+(* ARROW OR EQUAL *)
+            EQUAL :                                   BEGIN
+               NEW_CURRENT_CHAR;
+               IF CURRENT_CHAR = '>' THEN                   BEGIN
+                  NEW_CURRENT_CHAR;
+                  NEW_SYM (LU_OTHER, LU_ARROW_SYM, OUTP_SYM.IDCODE); END
+               ELSE NEW_SYM (LU_ID, LU_EQUAL_SYM, LU_CODE_EQUAL);
+               (* END IF;*)
+               GOTO 88;                               END;
+
+(* SEMICOLON *)
+            SEMICOLON :                               BEGIN
+               NEW_CURRENT_CHAR;
+               NEW_SYM (LU_OTHER, LU_SEMICOLON_SYM, OUTP_SYM.IDCODE);
+               GOTO 88;                               END;
+
+(* CATENATION *)
+            AMPERSAND :                               BEGIN
+               NEW_CURRENT_CHAR;
+               NEW_SYM(LU_ID, LU_CATENATION_SYM, LU_CODE_CATENATION);
+               GOTO 88;                               END;
+
+(* NEWLINE CHARACTER (MUST NOT BE EOL) *)
+            NWLINE :                                  BEGIN
+               IF CURRENT = LAST_CHAR THEN (* IT IS EOL*)   BEGIN
+                  READBUFFER;
+                  OUTP_POS.SOURCELINE := LINE_NO             END
+               ELSE NEW_CURRENT_CHAR;                   END;
+              (* END IF;*)
+              
+            
+(* EOFC*)
+           eofc :                                     begin
+               if(current <> last_char)
+                  and(current <> sfirst)(*DELETE THIS LINE IF NO $-EOF*)
+               then                                        begin
+                  new_current_char;
+                  er_error_message (1500, er_symbol_error,
+                                    outp_pos, lu_no_symbol); end
+               else                                        begin
+                 new_sym (lu_other, lu_eof_sym, outp_sym.idcode);
+                 goto 88;                                  end;
+             (*END IF;*)
+                                                           end;
+(* BLANK - SKIP*)
+            blank , htab , ignore :                   begin
+               new_current_char;
+                                                           end;
+(* OTHERS ARE NOT ALLOWED HERE*)
+            underscore , other_graphics , non_ada : begin
+               new_current_char;
+               er_error_message (1500, er_symbol_error,
+                                 outp_pos, lu_no_symbol  );  end;
+         end;     (*   CASE;*)
+      goto 11;
+88 :
+(* THE LEXICAL ELEMENT HAS BEEN RECOGNIZED*)
+         last_symbol :=outp_sym;
+         last_pos := outp_pos;
+   end;          (*  LA_NEXT_SYM;*)
+(*-------------------------------------------------------------------*)
+(*END LEXICAL_ANALYZER; *)
+

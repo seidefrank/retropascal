@@ -1,0 +1,139 @@
+
+        Modification and Optimization
+     
+        
+        There are a number of improvements, changes, and alternatives that 
+     have been mentioned throughout the text.  Several others have come to 
+     mind.  I want to close by offering some observations on how the 
+     program might be altered.  
+     
+        First, the chosen key size, page size, and balancing constants are
+     essentially arbitrary in the submitted version.  It is a good idea
+     to choose a key size that matches your application, and then modify
+     the other constants appropriately.  Page size should generally be
+     the amount your operating system can grab in one swipe from the
+     disk, or a multiple thereof (for UCSD p-System, 512 bytes).  The
+     balancing constants should be optimized for a given key and page
+     size, but I can only suggest an empirical approach to finding an
+     optimum.  I would also suggest that most applications could benefit
+     from some form of key compression layered on top of the b-tree. 
+     With string keys, for example, one might want to remove spaces and
+     punctuation and convert to a single case (upper or lower).
+        
+        
+        A relatively simple modification would be the allocation of more
+     space, either automatically or on demand.  Getpage, rather than
+     calling errtrap when it runs out of space, could allocate more.  To
+     be sure that a full volume is handled gracefully, getpage might
+     check to see if the next allocation (rather than this one) will run
+     you out, and attempt to allocate then.  That way, if it can't, it
+     could return a code indicating impending disaster.
+        
+        
+        The i/o primitives could be improved in several ways.  The easiest 
+     is to substitute blockread/blockwrite for get and put.  Assuming 
+     optimal page sizes, i/o could be sped considerably.  A more ambitious 
+     project would be to add buffering.  If the most recently used pages 
+     are kept around in buffers, and supplied to the program on demand 
+     instead of reading, fewer i/o's can be expected.  Buffering can be 
+     dangerous, especially if any kind of program or hardware error occurs 
+     before a modified page is written.  I would recommend always writing 
+     a modified page, even if it is kept in the buffer to avoid a later 
+     read.  With or without buffering, it might be wise to modify the i/o 
+     primitives to keep a change log.  Since the integrity of the tree is 
+     not guaranteed during balancing, insertion, or deletion, any program 
+     or hardware failure during these operations is likely to leave the 
+     tree in an indeterminate state.  To insure absolute integrity, a log 
+     of at least the last (depth-of-tree * bal) page alterations would be
+     necessary.  Another difficulty with buffering is that you either need
+     access to the file information block (fib) and window variable (f^)
+     or you need to completely rewrite the way files are passed, read, and
+     written.  The first solution is possible if you use the system
+     globals available on Volume 8 of the Library (for version II and
+     III).
+     
+        
+        Two modifications were suggested to deal with deep trees in a
+     limited amount of memory (i.e. avoid stack overflow).  First, the
+     call to bbalance in binsert is not required for the integrity of the
+     tree.  It just improves storage utilization.  Removing it would 
+     improve the speed of insertion and avoid memory problems, at the cost 
+     of lowered storage efficiency.  Perhaps a crunching utility could be 
+     written using bbalance to close up unused space when the tree is not 
+     otherwise in use.  It would be a long-running program, but it would 
+     be very useful for highly static data-bases.  The other memory 
+     modification is to change the tail-recursion in bbalance to 
+     iteration.  Unlike LISP and LOGO, Pascal is not smart enough to 
+     recognize tail-recursion as iteration automatically.
+     
+     
+        A very ambitious project would be to eliminate the backpointers 
+     and the fixpointer performance penalty by maintaining an explicit 
+     search path.  I have begun such a modification and can assure you 
+     that it is non-trivial as they say.  If you are using the program for 
+     multiple files, then you need multiple paths, which need to be 
+     passed, along with the tree, to each routine.  Treating the path as 
+     a stack is the best idea, and you know that its depth will not exceed 
+     the depth of the tree (which is unlikely, with a reasonable page 
+     size, to exceed 10 or so).  One problem is that some routines need to 
+     look more than one up the path.  Either provide a means of looking 
+     back that far, or provide local temporaries to pop the top of stack 
+     into.  If you don't need the extra performance, don't bother.
+     
+        
+        Finally, the unit's interface is not very transparent.  Too much
+     internal detail of the data structure is open to an application
+     program, and too much bookkeeping is required of it.  I would suggest
+     adding a layer between the unit and an application program to
+     simplify its use.  By using the system globals, for example, an
+     appplication program could actually look at an indexed file as a
+     regular file with special access methods available as a bonus.
+     Another ambitious project...
+     
+        
+        For all of my self-criticism, the unit has one outstanding 
+     advantage - it works. It has been in daily use on a fairly large 
+     geographic data base for several months without problems.  I would 
+     not wager a nickel that it is totally bug-free, but I would wager a 
+     princely sum (a couple of bucks) that it hasn't any egregious errors, 
+     and that it works basically as promised.  Use it in good health, and 
+     please let me hear about any changes, improvements, bugs, etc. I'm in 
+     the USUS membership roster, and on MUSUS (ppn 70105,772).
+     
+        
+        REFERENCES
+     
+        
+      Bayer, R. and McCreight, E. "Organization and Maintenance of Large
+           Ordered Indexes", 12 ACTA INFORMATICA 1, 1972 (Springer-Verlag)
+           p. 173-189.
+
+           The original work on b-trees by the inventor. A good article.
+
+
+      Comer, Douglas  "The Ubiquitous B-Tree", COMPUTING SURVEYS Vol.11,
+           Number 2, June 1979 (Assn. for Computing Machinery) p. 121-137.
+
+           An excellent survey article. Use Comer's bibliography to pur-
+           sue the subject further.
+           
+
+      Knuth, D.E. THE ART OF COMPUTER PROGRAMMING: VOLUME 3, SEARCHING AND
+           SORTING, 1973 (Addison-Wesley) esp. pages 476-479.
+
+           The definitive (if unreadable) work on the subject of searching
+           and sorting in general.  Some interesting ideas for altering 
+           b-trees.
+
+      Wirth, Niklaus, ALGORITHMS + DATA STRUCTURES = PROGRAMS, 1976
+           (Prentice-Hall), esp.pages 242-264.
+
+           The author of Pascal speaks on a variety of subjects, including
+           example programs in Pascal.  A good, accessible treatment of
+           b-trees.
+      
+        
+     
+        
+
+

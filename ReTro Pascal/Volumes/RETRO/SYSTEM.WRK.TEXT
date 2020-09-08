@@ -1,0 +1,34 @@
+
+{ Welcome to the screen-oriented editor of Retro Pascal.                        }
+
+{ You got here because you typed E in the main command bar.                     }
+{ This editor is different. Remember, it's 1979. Unlike Windows, you cannot     }
+{ just start typing. Instead, you must use commands like I(nsert and D(elete to }
+{ change your text. Try it:                                                     }
+{  - Move the cursor to the empty string '' in the WRITELN statement below.     }
+{    Use the arrow keys. On a touch keyboard, letter O means cursor up, L down. }
+{  - Type I to get into I(nsert mode. Type something, for example Hello World!  }
+{  - Hold down the Ctrl key and type Enter, or on a touch screen, touch <etx>.  }
+{  - You have inserted the text.                                                }
+{ Now try to delete text:                                                       }
+{  - Move the cursor to the P of 'Please enjoy' below.                          }
+{  - Type D for D(elete mode. Move the cursor keys (or O for up, L for down).   }
+{  - Hold down the Ctrl key and type Enter, or on a touch screen, touch <etx>.  }
+{  - You have deleted the text.                                                 }
+{  - Note there is NO undo! You can recover deleted text by C(opy from B(uffer. }
+{ The H(elp command explains the other editing commands.                        }
+{ Once you are done editing your code:                                          }
+{  - Type QUR to quit the editor, update (save) the file, and run it.           }
+{  - If your program has errors, type E again to get back and fix them.         }
+
+{ Tip: Memorize these most-used letter sequences of the build cycle:            }
+{  - E                  enter the editor                                        }
+{  - I ... Ctrl-Enter   enter text                                              }
+{  - QUR                quit, update, run                                       }
+{  - FS name Enter Q    save current workfile under a filename                  }
+{  - FN[Y]Q             start a new program                                     }
+
+PROGRAM HELLOWORLD;
+BEGIN WRITELN('Please enjoy your new Pascal system!');
+  WRITELN('');
+END.

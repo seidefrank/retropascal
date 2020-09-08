@@ -1,0 +1,260 @@
+
+     
+ 
+{**********************************************************************
+ 
+  READLINE clears the input and internal buffers, and then reads a line
+  of up to  MAXLINEWIDTH characters from the input file.  If the line
+  is too long,  it is truncated. . ST and .EN are set to the beginning
+  and end of text,  respectively.  If the line is empty, or begins
+  with a dot (period) or a space,  an appropriate Boolean flag is set.
+ 
+**********************************************************************}
+ 
+ 
+Procedure readline;
+ 
+var
+   all_blanks : boolean;
+   pos        : integer; 
+ 
+begin
+   input_buf := blank_string;
+   internal_buf := blank_buf;
+   all_blanks := true;
+ 
+   blankline := false;
+   dot_command := false;
+   lead_blank := false;
+   pos := 0;
+ 
+   while not(eoln(source)) and (pos < maxlinewidth) do
+      begin
+         pos := pos + 1;
+         input_buf.str[pos] := source^;
+         if source^ <> blank_char then
+            all_blanks := false;
+         get(source); 
+      end;
+ 
+   ln_number := ln_number + 1;
+ 
+   if pos = maxlinewidth then
+      while not(eoln(source)) do
+         get(source);
+ 
+   if eoln(source) then
+      get(source);
+      
+   input_buf.en := pos;   
+ 
+   if (pos = 0) or all_blanks then  
+      blankline := true
+   else
+      if input_buf.str[1] = dot then
+         dot_command := true
+      else
+         if input_buf.str[1] = blank_char then
+            lead_blank := true;
+ 
+end; { readline }
+ 
+{**********************************************************************
+ 
+   PROCESS_FILE is the true top level for RUNON. It begins by outputting
+   a blank page heading of BLANK_HEADING lines.  While the file is not
+   empty or the internal buffer contains unprocessed text, the
+   following sequence is repeated:
+ 
+   a) If the internal buffer is empty, then read a line from
+        the source file.
+      If the line is empty, and we are in filling mode, ignore it,
+        get a new line.
+      If the line read in was a dot command, then call the dot-
+        command processor.
+      Otherwise, line is normal so scan and process it.
+ 
+   b) If the internal buffer is not empty, then process it.
+ 
+   Once the file and input buffer are both empty, force the output
+   buffer  and close the output file.
+ 
+   The variable INC_FIL indicates if the file being processed is an
+   INCLUDE file. It it is, the blank heading is not put out, and
+   the output buffer is not forced out after the file has been
+   processed.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+{****************************************************}
+{                                                    }
+{   Procedure declaration in SYSGEN file.            }
+{----------------------------------------------------}
+{                                                    }
+{   Procedure process_file(var source  : text;       }
+{                              inc_fil : boolean);   }
+{                                                    }
+{****************************************************}
+ 
+ 
+begin  { process file }
+ 
+   if not(inc_fil) then
+      begin
+         n := blank_heading;
+         out_proc(skp);
+         pageinfo.currline := 0;
+      end;
+ 
+   While not(eof(source)) or more_input do
+      begin
+ 
+         If not(more_input) then
+            begin
+               Readline;
+               If not(blankline and
+                  (sysvars[new].fill_mode <> nofilling)) then
+                  begin
+                     if dot_command then
+                        d_c_p 
+                     else
+                        begin
+                           scanner(input_buf.st,
+                                   input_buf.en,
+                                   input_buf.str,
+                                   internal_buf);
+                           out_proc(norm);
+                        end;
+                  end;
+            end
+         else    { more_input }
+            out_proc(norm);
+ 
+      end;  { while }
+ 
+   if not(inc_fil) then
+      if sysvars[new].fill_mode <> nofilling then
+         out_proc(brk);
+ 
+end;  { process_file }
+ 
+{*********************************************************************
+ 
+  INCLUDE_FILE opens a new source file and then passes it recursively
+  to the procedure PROCESS_FILE. Up to MAX_FILES nested levels of
+  include files may be opened simultaneously. The procedure heading
+  is declared FORWARD before OUT_PROC, and the actual code occurs
+  after PROCESS_FILE. If an error occurs, all open files are closed
+  by ERROR.
+ 
+  Three different error conditions are tested for.
+ 
+    1. Too many include files have been opened. Stack overflow.
+    2. General file I/O error. Possibly specific at a future date.
+    3. Include file already included. This is done to prevent
+       infinite recursion. Possibly unnecessary.
+ 
+**********************************************************************}
+ 
+ 
+ 
+ 
+{*******************************************************}
+{                                                       }
+{   Forward declaration in SYSGEN file.                 }
+{-------------------------------------------------------}   
+{                                                       }
+{   Procedure include_file(f_name : string);  Forward   }
+{                                                       }
+{*******************************************************}
+ 
+ 
+Procedure include_file;
+ 
+var
+   i, err_pos : posint;
+ 
+ 
+            Function file_status(f_name : string) : posint;
+ 
+            begin
+               {$I-} 
+                  reset(f, f_name);
+                  file_status := ioresult;
+                  close(f);
+               {$I+} 
+            end; { file_status }
+ 
+ 
+begin  { include_file }
+ 
+   err_pos := input_buf.st - 2;
+ 
+   if file_stack.ptr >= max_files then
+      error(nesdep, err_pos, input_buf.str)
+   else
+      if file_status(f_name) <> 0 then
+         error(filerr, err_pos, input_buf.str)
+      else
+         if f_name = file_in then
+            error(incerr, err_pos, input_buf.str)
+         else
+            for i := 1 to file_stack.ptr do  
+               if f_name = file_stack.stack[i].name then 
+                  error(incerr, err_pos, input_buf.str);
+ 
+   writeln('Including ', f_name);
+ 
+   with file_stack do
+      begin
+         ptr := ptr + 1;
+         stack[ptr].name := f_name;
+         stack[ptr].line := ln_number;
+         stack[ptr].in_buf := input_buf;
+         ln_number := 0;
+      end;
+ 
+   case file_stack.ptr of
+      1 : begin
+             reset(s1, f_name);
+             process_file(s1, true);
+             close(s1);
+          end;
+      2 : begin
+             reset(s2, f_name);
+             process_file(s2, true);
+             close(s2);
+          end;
+      3 : begin
+             reset(s3, f_name);
+             process_file(s3, true);
+             close(s3);
+          end;
+      4 : begin
+             reset(s4, f_name);
+             process_file(s4, true);
+             close(s4);
+          end;
+      5 : begin
+             reset(s5, f_name);
+             process_file(s5, true);
+             close(s5); 
+          end;
+   end; { case }
+ 
+   with file_stack do
+      begin
+         stack[ptr].name := nul;
+         ln_number := stack[ptr].line;
+         input_buf := stack[ptr].in_buf;
+         ptr := ptr - 1;
+      end;
+ 
+end; { include_file }
+ 
+ 
+ 
+

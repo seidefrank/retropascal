@@ -1,0 +1,28 @@
+
+     The PTP system is made up of a large Pascal program and 13 small
+assemble language routines, and one small text file. The large Pascal program
+should work with most systems and because it requires 56K to compile a
+precomplied version PTP.CODE has been provided. The text of this file
+is too large for the L1 editor you may wish to break it into smaller
+files.
+
+     With the exception of the routine KBSTAT most of the assemble language
+will have to modified to work with your system. The current modem routines
+are intended to work with the PMMI modem, if some of the functions are not
+available in your system these routines can be replaced with dummies. The
+routine KBSTAT should work with most system that use CP/M BIOS. After
+modifing these routines for your system they can be entered into the comm
+libraries which is then linked with PTP.CODE (be sure to use another name for
+the output file so as to not destroy this file).
+ 
+     If you do not understand the library procedures you can link the program
+by entering each of the routine names when the linker asks for lib file.
+PTP.CODE is always used as the host file. The library "system.library" is
+not used by this program and automatic linking which may occur if you say run
+after compiling will not work correctly.
+ 
+     The file systemname.text should contain the lat/long of your system and 
+your system name. This file can be edited with the standard editor.
+
+ 
+ 

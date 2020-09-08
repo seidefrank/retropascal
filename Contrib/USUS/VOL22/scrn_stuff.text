@@ -1,0 +1,72 @@
+{
+ This unit was written to put in one place the screen handling conventions
+ employed in the Grundler submissions.  This unit will have to be edited to
+ fit your terminal or (in the case of the Terak) your terminal emulator.
+ The parameters given here are for the Terak in the Terak terminal emulator
+ mode (which was used by the reviewers).  Except for RLF, these will work also
+ for the H19. The RLF given here for the H19 could work for the Terak (as 
+ apparently there are some undocumented alternatives), but this was not tested.
+ The original parameters from the Grundler submission are also given; presumably
+ these are for a different terminal emulator. In the original submission,
+ CLEARSCREEN appeared as PAGE(OUTPUT), and was intended to clear the screen
+ of TEXT.  This will not work on our Teraks with UCSD version 2.0---and is
+ considered by us to be obsolete. You will have to enter the proper code for
+ the clearing of your TEXT screen without clearing the graphics screen.---
+ Clifford L. Bettis and Henry E. Baumgarten
+ }
+ 
+{$L- PRINTER:}
+UNIT SCREEN_STUFF;
+
+INTERFACE
+
+TYPE    SHORTSTRING = STRING[3];
+
+VAR     CEOL,CEOP,RLF,CLEAR_LINE : SHORTSTRING;
+        
+PROCEDURE CLEARSCREEN;
+
+PROCEDURE DEFINESTRINGS;
+
+IMPLEMENTATION
+
+PROCEDURE CLEARSCREEN;    {Clears the TEXT screen}
+  VAR   CS : PACKED ARRAY[0..1] OF 0..255;
+  BEGIN
+    CS[0] := 27;
+    CS[1] := ORD('E');
+    UNITWRITE(1,CS,2)
+  END;
+
+PROCEDURE DEFINESTRINGS;
+  BEGIN
+    CEOL := '12';        {CEOL clears from cursor to end of line}
+    CEOL[1] := CHR(27);
+    CEOL[2] := 'K';
+    {The following was used by the Grundlers
+    CEOL := '1';
+    CEOL[1] := CHR(29);}
+    
+    RLF := '1';          {RLF is a reverse line feed}
+    RLF[1] := CHR(11);
+    {The following is for the H19
+    RLF := '12';
+    RLF[1] := CHR(27);
+    RLF[2] := 'I';}
+    {The following was used by the Grundlers
+    RLF := '1';
+    RLF[1] := CHR(31);}
+    
+    CEOP := '12';      {CEOP clears from cursor to end of page (screen)}
+    CEOP[1] := CHR(27);
+    CEOP[2] := 'J';
+    {The following was used by the Grundlers
+    CEOP := '1';
+    CEOP[1] := CHR(11);}
+    
+    CLEAR_LINE := '1';
+    CLEAR_LINE[1] := CHR(13);  {carriage return}
+    CLEAR_LINE := CONCAT(CEOL,CLEAR_LINE);
+  END;
+  
+END.

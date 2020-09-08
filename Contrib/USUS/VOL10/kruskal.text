@@ -1,0 +1,279 @@
+{************************************************************************
+*                                                                       *
+*  This program is filed as KRUSKAL.TEXT                                *
+*                                                                       * 
+************************************************************************}
+
+
+
+{ 
+
+        program title:          Minimum Span Kruskal
+        written by:             R. M. Wilson
+                                HI-COUNTRY DATA SYSTEMS
+        
+        date written:           March 1981
+        latest revision:        March 1981
+        
+        written for:            CS440 -- Design and Analysis of Algorithms
+                                University of Colorado at Colorado Springs
+                                Spring semester 1981
+        
+        
+        program function:      
+        ----------------
+        
+            This program is designed to determine the minimum spanning
+            tree by the Kruskal algorithm.
+                
+        
+        remarks:               
+        -------
+        
+            This program is furnished to the USUS group for unrestricted
+            personal or non-profit use.  Use of this program for commercial 
+            purposes is authorized with the following restrictions:
+    
+              1--> Prior notification to and acknowledgement by the author
+    
+              2--> A message similar to the one below appears on the screen
+                   upon execution and remains there until a key is hit.
+
+
+*************************************************************************
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                      Program derived from KRUSKAL                     * 
+*                              written by                               *
+*                             R.M. Wilson                               *
+*                        Hi-Country Data Systems                        *
+*                            P.O. Box 4258                              *
+*                        Woodland Park, CO 80863                        *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       * 
+*************************************************************************
+
+}
+{$G+} 
+program MIN_SPAN_TREE_KRUSKAL; 
+
+label 1;
+
+const MAXNODE=50; 
+
+type PRICE=record
+             EDGE:packed array[1..2] of integer; 
+             HOWMUCH:integer; 
+             PATH:boolean;
+           end;
+{************************************************************************
+*                                                                       *
+*  I elected to use a record structure because I felt it would be       *
+*  easier to keep track of the various variables relating to each node  *
+*                                                                       * 
+************************************************************************}
+     A1=packed array[1..2500] of PRICE; {array[1..(MAXNODE*MAXNODE)} 
+     A2=packed array[1..49,1..2] of integer; 
+     A3=packed array[1..MAXNODE] of integer;
+     SETOFCHAR=set of char;
+     
+var  COST:A1; 
+     T:A2;
+     ARRAYSIZE,MINCOST,I,J,K:integer;
+     PARENT:A3;
+     TRACEOPTION:boolean;
+     HARDCOPY:boolean; 
+     BOTH:boolean;
+     CRT:boolean;
+     PRINTER:interactive;
+     DETAIL:boolean;
+     CH:char;
+
+     
+procedure CLEARSCREEN;  {for Heath H-19}
+begin 
+  gotoxy ( 0, 0 );
+  write(chr(27),chr(69));
+end;
+
+function READKEY(OKSET:SETOFCHAR):CHAR; 
+{************************************************************************ 
+*                                                                       * 
+*  This procedure look at each keypress and determines if the key       * 
+*  pressed is valid, i.e. the "set" of char which are valid may be      *
+*  varied with each call of this procedure.  If the key pressed is      * 
+*  not in the valid or 'OKSET', then the bell sounds.  If the key       *
+*  pressed is valid the computer accepts the input and the program      * 
+*  continues to run.                                                    * 
+*                                                                       *
+************************************************************************}
+var CH:CHAR; 
+    GOOD:boolean;
+begin
+  repeat
+    read(KEYBOARD,CH); 
+    if eoln(KEYBOARD) then CH:=chr(13);
+    GOOD:=CH in OKSET;
+    if not GOOD then write(chr(7))
+  until GOOD;
+  READKEY:=CH;
+end;{READKEY}
+
+procedure PRINTAT(X,Y:integer;S:string); 
+{************************************************************************ 
+*                                                                       *
+*  This procedure writes a string at a designated location on the CRT   *
+*                                                                       *
+************************************************************************}
+begin
+  gotoxy(X,Y);
+  write(S);
+end;{PRINTAT}
+
+function YES:boolean;
+begin
+  YES:=READKEY(['Y','y','N','n']) in ['Y','y'];
+end;{YES}
+
+procedure SPACEBAR;  { a technique to hold data/display on CRT }
+var CH:CHAR;
+begin
+  gotoxy(22,23); 
+  write('Hit "SPACE-BAR" to continue   <---');
+  CH:=READKEY([' ']);
+end;{SPACEBAR}
+
+procedure QUIT;  {exit program} 
+begin
+  CLEARSCREEN;
+  exit(program);
+end;{QUIT}
+
+procedure EXAMINE; 
+begin
+  CLEARSCREEN;
+  I:=1;
+  while COST[I].EDGE[1]<>0 do begin
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER); 
+      writeln(PRINTER,'COST[',I,'].EDGE[1] = ',COST[I].EDGE[1]);
+      writeln(PRINTER,'COST[',I,'].EDGE[2] = ',COST[I].EDGE[2]);
+      writeln(PRINTER,'COST[',I,'].HOWMUCH = ',COST[I].HOWMUCH);
+    end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then begin 
+      writeln;
+      writeln('COST[',I,'].EDGE[1] = ',COST[I].EDGE[1]); 
+      writeln('COST[',I,'].EDGE[2] = ',COST[I].EDGE[2]);
+      writeln('COST[',I,'].HOWMUCH = ',COST[I].HOWMUCH);
+      SPACEBAR;
+      writeln;
+    end;{if CRT or BOTH} 
+    I:=I+1; 
+    if HARDCOPY or BOTH then begin
+      writeln(PRINTER); 
+    end;{if HARDCOPY or BOTH}
+    if CRT or BOTH then writeln;
+  end;{while}
+end;{EXAMINE}
+
+procedure INPUTCOST;
+var  ROW,COL:integer;
+begin
+  CLEARSCREEN;
+  PRINTAT(0,10,'Enter number of vertices in graph:  '); 
+  readln(ARRAYSIZE);
+  if (ARRAYSIZE<=0) or (ARRAYSIZE>MAXNODE) then QUIT;
+                                       {prevents program blowup with out of 
+                                        range data entry...does not prevent
+                                        blowup if non numeric entry attempted} 
+  I:=1; 
+  for ROW:=1 to ARRAYSIZE do begin
+    for COL:=ROW to ARRAYSIZE do begin
+      if ROW<>COL then begin
+        with COST[I] do begin
+          EDGE[1]:=ROW;
+          EDGE[2]:=COL;
+          CLEARSCREEN;
+          gotoxy(0,10); write('Is there a path from ',ROW,' to ',COL,' ?  ');
+          if YES then begin
+            PRINTAT(0,12,'(if "y" hit accidently, enter 32767)');
+            gotoxy(0,14);
+            write('Enter cost of path from ',ROW,' to ',COL,'--->  '); 
+            readln(HOWMUCH);
+            PATH:=true;
+          end {if YES}
+          else HOWMUCH:=32767;
+        end;{with}
+{************************************************************************
+*                                                                       * 
+*  The technique of echoing the duplicate edge in a non directed graph  *
+*  immediately rather than waiting was used in the following 'with'     * 
+*  statement because it works better with the record structure.         *
+*                                                                       *
+************************************************************************}
+          with COST[I+1] do begin 
+            EDGE[1]:=COL;
+            EDGE[2]:=ROW;
+            HOWMUCH:=COST[I].HOWMUCH;
+            PATH:=true;
+          end;{with}
+          I:=I +2;
+      end;{if ROW<>COL} 
+    end;{for COL}
+  end;{for ROW}
+  for ROW:=1 to ARRAYSIZE do begin
+    with COST[I] do begin 
+      EDGE[1]:=ROW;
+      EDGE[2]:=ROW;
+      HOWMUCH:=32767;
+      I:=I+1;
+    end;{with}
+  end;{for ROW}
+  if DETAIL then EXAMINE;
+end;{INPUTCOST} 
+
+(*$I kruskal.1.text*)
+
+begin  {MAIN PROGRAM}
+  CLEARSCREEN;
+  TITLE;
+  SPACEBAR;
+  CLEARSCREEN;
+  rewrite(PRINTER,'printer:');
+1:INITIALIZE; 
+  TRACE;
+  INPUTCOST;
+  writeln;
+  KRUSKAL(COST,ARRAYSIZE,T,MINCOST); 
+  writeln;
+  writeln('The minimum cost for a spanning tree is ',MINCOST); 
+  writeln;
+  writeln('The spanning tree is');
+  writeln('--------------------');
+  K:=1;
+  for I:=1 to ARRAYSIZE-1 do begin
+    write('[',T[I,K],',',T[I,K+1],']');
+    writeln;
+  end;{for I}
+  SPACEBAR;
+  CLEARSCREEN;
+  PRINTAT(0,12,'Compute another minimum spanning tree?  ');
+  if YES then begin
+    CLEARSCREEN;
+    goto 1
+  end {if YES}
+  else QUIT
+end.{MIN_SPAN_TREE_KRUSKAL}
+
+
+

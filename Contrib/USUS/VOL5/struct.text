@@ -1,0 +1,103 @@
+
+PROGRAM STRUCT; (* BUILDS A STRUCTURED FILE "#5:ADDRESS.TEXT"
+                            FROM AN UNSTRUCTURED TEXT FILE "#5:ADDS.TEXT"*)
+
+CONST 
+      BLANK = ' ';
+
+
+ (*    ***********************************************************
+      THE FILE "#5:ADDS.TEXT" SHOULD BE BUILT USING THE EDITOR AND
+      SHOULD LOOK LIKE THIS:
+                              NAMELINE
+                              STREETLINE
+                              CITYSTATEZIPLINE
+                              PHONELINE
+                              KEYLINE
+                              NEXTNAMELINE 
+                                ETC...
+      ************************************************************* *)
+
+  TYPE 
+       STRUCTURE = RECORD
+                     NAME : STRING;
+                     STREET : STRING;
+                     CITYSTATEZIP : STRING;
+                     PHONE : STRING;
+                     KEY  : STRING
+                   END;
+
+  VAR 
+      RECNUM   : INTEGER;
+      FID  : FILE OF STRUCTURE;
+      S    : STRING;
+      FIN  : TEXT;
+
+  PROCEDURE ZEROREC (VAR REC : STRUCTURE);
+
+  BEGIN (* ZEROREC *)
+
+     WITH REC DO
+        BEGIN
+           NAME := BLANK;
+           STREET := BLANK;
+           CITYSTATEZIP := BLANK;
+           PHONE := BLANK;
+           KEY := BLANK
+        END;
+  END;  (* ZEROREC *)
+
+
+  BEGIN (* BUILDADDRESS.TEXT *)
+
+     REWRITE(FID,'#5:address.text');
+
+     (*$I+*)
+     
+     WRITELN ('... Building the structured file ...');
+     WRITELN ('... Transferring these records: ');
+     WRITELN;
+
+     RECNUM := 0;
+
+     RESET(FIN,'#5:adds.text');
+
+     WHILE NOT EOF(FIN) DO
+        BEGIN
+           SEEK(FID,RECNUM);
+           GET(FID);
+           ZEROREC(FID^);
+           READLN(FIN,S);
+           FID^.NAME := S;
+
+           READLN(FIN,S);
+           FID^.STREET := S;
+
+           READLN(FIN,S);
+           FID^.CITYSTATEZIP := S;
+
+           READLN(FIN,S);
+           FID^.PHONE := S;
+
+           READLN(FIN,S);
+           WRITELN(S);
+           FID^.KEY := S;
+           
+           WRITELN;
+
+           SEEK(FID,RECNUM);
+           PUT(FID);
+
+           RECNUM := SUCC (RECNUM)
+       END;
+
+    CLOSE(FID,LOCK);
+    CLOSE(FIN,LOCK);
+    
+    REWRITE (FIN,'#5:KEYNO.TEXT');
+    WRITELN (FIN, RECNUM );
+    CLOSE ( FIN, LOCK );
+    
+    WRITELN; 
+    WRITELN (' ... Finished ...');
+END. (* PROGRAM BUILDADDRESS.TEXT *)

@@ -1,0 +1,300 @@
+(*$S++*)
+(*$R-*)
+(*$V-*)
+
+(* ERCC UCSD p-System II.0-IV.0 SORT/MERGE Package Release 1.3 23-Aug-82 *)
+
+(* Suggested file and key specs for sorting TEXT or FILE OF STRING files *)
+
+UNIT SORTSPEC;
+
+INTERFACE
+
+   CONST RUNLENGTH=172; (* Set smaller if your records are large *)
+         MAXNOKEYS=6;   (* Set to number of sorting keys to be defined *)
+         MAXRECL=80;    (* Set to max length of line for TEXT files *)
+   
+   TYPE INPUTTYPE=STRING[MAXRECL];
+        SORTTYPE=PACKED RECORD
+                    MAINPART: INPUTTYPE;
+                    KEYPART: PACKED ARRAY[1..MAXNOKEYS] OF PACKED RECORD
+                       CASE KEYTYPE: CHAR OF
+                       'I': (IKEY: INTEGER);
+                       'R': (RKEY: REAL);
+                       'S': ()
+                    END
+                 END;
+        OUTPUTTYPE=INPUTTYPE;
+        
+   VAR TXTFILE: TEXT; (* Needed locally by PROCEDURE TERMINATE below *)
+       DATFILE: FILE OF INPUTTYPE; (* Ditto *)
+   
+   PROCEDURE INITIALISE;
+   PROCEDURE USERIN(INPUTREC: INPUTTYPE; VAR SORTREC: SORTTYPE);
+   FUNCTION  COMPARE(SORTREC1, SORTREC2: SORTTYPE): BOOLEAN;
+   PROCEDURE USEROUT(SORTREC: SORTTYPE; VAR OUTPUTREC: OUTPUTTYPE);
+   PROCEDURE TERMINATE;
+   
+IMPLEMENTATION
+   
+   (* Declarations of key specification lists *)
+   
+   TYPE KEYLIST=1..MAXNOKEYS;
+   
+   VAR NOOFKEYS: 0..MAXNOKEYS;
+       KEYNO: KEYLIST;
+       KPOS,KLEN: ARRAY [KEYLIST] OF 1..256;
+       KTYP: ARRAY[KEYLIST] OF CHAR;
+       KORD: ARRAY[KEYLIST] OF BOOLEAN;
+      
+   (* ***** Additional PROCEDURES required by PROCEDURE USERIN ***** *)
+   
+   PROCEDURE STOI(LINE:STRING;FIRST,WIDTH:INTEGER;VAR RESULT:INTEGER;
+      VAR ERROR:BOOLEAN);
+      (* Decode numeric field of STRING into INTEGER value *)
+      VAR NO,SIGN,COL,LAST,DIGIT: INTEGER;
+          SYMBOL: CHAR;
+      BEGIN
+          NO:=0; SIGN:=0; ERROR:=FALSE;
+          LAST:=FIRST+WIDTH-1;
+          IF LAST>LENGTH(LINE) THEN ERROR:=TRUE ELSE BEGIN
+             FOR COL:=FIRST TO LAST DO BEGIN
+                SYMBOL:=LINE[COL];
+                IF (SYMBOL='+') THEN
+                   IF (SIGN=0) THEN SIGN:=1 ELSE ERROR:=TRUE
+                ELSE IF (SYMBOL='-') THEN
+                   IF (SIGN=0) THEN SIGN:=-1 ELSE ERROR:=TRUE
+                ELSE IF SYMBOL IN [' ','0'..'9'] THEN BEGIN
+                   IF SYMBOL=' ' THEN DIGIT:=0
+                   ELSE BEGIN
+                      IF SIGN=0 THEN SIGN:=1;
+                      DIGIT:=ORD(SYMBOL)-ORD('0')
+                   END;
+                   IF (NO>3276) OR ((NO=3276) AND (DIGIT>7)) THEN
+                      ERROR:=TRUE
+                   ELSE NO:=10*NO+DIGIT
+                END ELSE ERROR:=TRUE
+             END
+          END;
+          IF ERROR THEN BEGIN
+             WRITELN(CHR(7),'Illegal INTEGER in cols',FIRST,'-',LAST);
+             RESULT:=0;
+          END ELSE RESULT:=NO*SIGN
+       END;
+      
+   PROCEDURE STOR(LINE:STRING;FIRST,WIDTH:INTEGER;VAR RESULT:REAL;
+      VAR ERROR: BOOLEAN);
+      (* Decode numeric field of STRING into REAL value *)
+      VAR NO: REAL;
+          IEXP,PLACES,SIGN,COL,LAST,DIGIT: INTEGER;
+          POINT,EXPT: BOOLEAN;
+          SYMBOL: CHAR;
+      BEGIN
+          NO:=0; SIGN:=0; PLACES:=0; POINT:=FALSE; EXPT:=FALSE; ERROR:=FALSE;
+          LAST:=FIRST+WIDTH-1;
+          IF LAST>LENGTH(LINE) THEN ERROR:=TRUE ELSE BEGIN
+             FOR COL:=FIRST TO LAST DO BEGIN
+                SYMBOL:=LINE[COL];
+                IF SYMBOL='+' THEN
+                   IF SIGN=0 THEN SIGN:=1 ELSE ERROR:=TRUE
+                ELSE IF SYMBOL='-' THEN
+                   IF SIGN=0 THEN SIGN:=-1 ELSE ERROR:=TRUE
+                ELSE IF SYMBOL='.' THEN
+                   IF POINT THEN ERROR:=TRUE ELSE POINT:=TRUE
+                ELSE IF SYMBOL='E' THEN
+                   IF EXPT THEN ERROR:=TRUE ELSE BEGIN
+                      EXPT:=TRUE;
+                      IF COL=LAST THEN ERROR:=TRUE ELSE BEGIN
+                         COL:=COL+1;
+                         STOI(LINE,COL,LAST+1-COL,IEXP,ERROR);
+                         IF (IEXP<-38) OR (IEXP>37) THEN ERROR:=TRUE ELSE
+                            PLACES:=TRUNC(IEXP)+PLACES;
+                         COL:=LAST
+                      END
+                   END
+                ELSE IF SYMBOL IN [' ','0'..'9'] THEN BEGIN
+                   IF SYMBOL=' ' THEN DIGIT:=0
+                   ELSE BEGIN
+                      IF SIGN=0 THEN SIGN:=1;
+                      DIGIT:=ORD(SYMBOL)-ORD('0')
+                   END;
+                   NO:=10*NO+DIGIT;
+                   IF POINT THEN PLACES:=PLACES-1;
+                END ELSE ERROR:=TRUE
+             END
+          END;
+          IF ERROR THEN BEGIN
+             WRITELN(CHR(7),'Illegal REAL in cols',FIRST,'-',LAST);
+             RESULT:=0;
+          END ELSE BEGIN
+             WHILE PLACES<>0 DO
+                IF PLACES>0 THEN BEGIN
+                   NO:=NO*10;
+                   PLACES:=PLACES-1
+                END ELSE BEGIN
+                   NO:=NO/10;
+                   PLACES:=PLACES+1
+                END;
+             RESULT:=NO*SIGN
+          END
+       END;
+      
+   (* PROCEDURES and FUNCTION required SORT/MERGE Package Main Program *)
+   
+   PROCEDURE INITIALISE;
+      VAR CH: CHAR;
+          LINE: STRING;
+          ERROR: BOOLEAN;
+          NO: INTEGER;
+      BEGIN
+         WRITELN('Initialise entered');
+         WRITELN;
+         REPEAT
+            WRITE('How many keys?');
+            READLN(LINE);
+            STOI(LINE,1,LENGTH(LINE),NO,ERROR)
+         UNTIL (NOT ERROR) AND (0<=NO) AND (NO<=MAXNOKEYS);
+         NOOFKEYS:=NO;
+         FOR KEYNO:= 1 TO NOOFKEYS DO BEGIN
+            REPEAT
+               WRITE('Key',KEYNO,' Position (col no.)?');
+               READLN(LINE);
+               STOI(LINE,1,LENGTH(LINE),NO,ERROR)
+            UNTIL (NOT ERROR) AND (1<=NO) AND (NO<=MAXRECL);
+            KPOS[KEYNO]:=NO;
+            REPEAT
+               WRITE(' Length (cols or bytes)?');
+               READLN(LINE);
+               STOI(LINE,1,LENGTH(LINE),NO,ERROR)
+            UNTIL (NOT ERROR) AND (1<=NO) AND (NO<=MAXRECL);
+            KLEN[KEYNO]:=NO;
+            WRITE(' Type I)nteger R)eal S)tring?');
+            REPEAT READ(KEYBOARD,CH) UNTIL CH IN ['I','R','S','i','r','s'];
+            CASE CH OF
+            'i','I': CH:='I';
+            'r','R': CH:='R';
+            's','S': CH:='S'
+            END;
+            WRITE(CH);
+            READLN;
+            KTYP[KEYNO]:=CH;
+            WRITE(' Order A)scending D)escending?');
+            REPEAT READ(KEYBOARD,CH) UNTIL CH IN ['A','a','D','d'];
+            WRITE(CH);
+            READLN;
+            KORD[KEYNO]:=(CH='a') OR (CH='A')
+         END;
+         WRITELN('Initialise ends')
+      END;
+   
+   PROCEDURE USERIN;
+      VAR ERROR: BOOLEAN;
+      BEGIN
+         ERROR:=FALSE;
+         WITH SORTREC DO BEGIN
+            MAINPART:=INPUTREC;
+            FOR KEYNO:= 1 TO NOOFKEYS DO BEGIN
+               CASE KTYP[KEYNO] OF
+               'I': STOI(INPUTREC,KPOS[KEYNO],KLEN[KEYNO],KEYPART[KEYNO].IKEY,
+                    ERROR);
+               'R': STOR(INPUTREC,KPOS[KEYNO],KLEN[KEYNO],KEYPART[KEYNO].RKEY,
+                    ERROR);
+               'S':
+               END;
+               IF ERROR THEN BEGIN
+                  WRITELN('USERIN Fails - Illegal Key in this record:');
+                  WRITELN(INPUTREC)
+               END
+            END
+         END
+      END;
+
+   FUNCTION COMPARE;
+      VAR S1,S2: STRING;
+          I1,I2: INTEGER;
+          R1,R2: REAL;
+      BEGIN
+         COMPARE:=TRUE;
+         FOR KEYNO:= 1 TO NOOFKEYS DO BEGIN
+            CASE KTYP[KEYNO] OF
+            'I': BEGIN
+                    I1:=SORTREC1.KEYPART[KEYNO].IKEY;
+                    I2:=SORTREC2.KEYPART[KEYNO].IKEY;
+                    IF I1<>I2 THEN BEGIN
+                       COMPARE:=(I1<I2)=KORD[KEYNO];
+                       EXIT(COMPARE)
+                    END
+                 END;
+            'R': BEGIN
+                    R1:=SORTREC1.KEYPART[KEYNO].RKEY;
+                    R2:=SORTREC2.KEYPART[KEYNO].RKEY;
+                    IF R1<>R2 THEN BEGIN
+                       COMPARE:=(R1<R2)=KORD[KEYNO];
+                       EXIT(COMPARE)
+                    END
+                 END;
+            'S': BEGIN
+                    S1:=COPY(SORTREC1.MAINPART,KPOS[KEYNO],KLEN[KEYNO]);
+                    S2:=COPY(SORTREC2.MAINPART,KPOS[KEYNO],KLEN[KEYNO]);
+                    IF S1<>S2 THEN BEGIN
+                       COMPARE:=(S1<S2)=KORD[KEYNO];
+                       EXIT(COMPARE)
+                    END
+                 END
+            END
+         END
+      END;
+         
+   PROCEDURE USEROUT;
+      BEGIN
+         OUTPUTREC:=SORTREC.MAINPART
+      END;
+      
+   PROCEDURE TERMINATE;
+       VAR FILENAME: STRING[30];
+           FTYPE: STRING[5];
+           LINE: INPUTTYPE;
+           EXISTS: BOOLEAN;
+      BEGIN
+         WRITELN('Terminate entered'); WRITELN;
+         WRITE('List which file?'); READLN(FILENAME);
+         FTYPE:='';
+         IF LENGTH(FILENAME)>5 THEN FTYPE:=COPY(FILENAME,LENGTH(FILENAME)-4,5);
+         IF (FTYPE='.TEXT') OR (FTYPE='.text') THEN BEGIN
+            (*$I-*)
+            RESET(TXTFILE,FILENAME);
+            EXISTS:=IORESULT=0;
+            (*$I+*)
+            IF EXISTS THEN BEGIN
+               WHILE NOT EOF(TXTFILE) DO BEGIN
+                  READLN(TXTFILE,LINE);
+                  WRITELN(LINE)
+               END;
+               CLOSE(TXTFILE)
+            END
+         END ELSE BEGIN
+             (*$I-*)
+             RESET(DATFILE,FILENAME);
+             EXISTS:=IORESULT=0;
+             (*$I+*)
+             IF EXISTS THEN BEGIN
+                WHILE NOT EOF(DATFILE) DO BEGIN
+                   LINE:=DATFILE^;
+                   GET(DATFILE);
+                   WRITELN(LINE)
+                END;
+                CLOSE(DATFILE)
+             END
+          END;
+          IF NOT EXISTS THEN
+             WRITELN('Sorry, cannot find your file ',FILENAME);
+          WRITELN(CHR(7),'Terminate ends')
+      END;
+      
+(* Remove the following two lines for use under UCSD Version II.0 *)
+
+BEGIN
+   NOOFKEYS:=0 (* Avoids catastrophy if user fails to call INITIALISE *)
+END.
+
+

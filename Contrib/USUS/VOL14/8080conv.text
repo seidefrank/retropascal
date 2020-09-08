@@ -1,0 +1,309 @@
+
+(************************************************************************)
+(*                                                                      *)
+(*      Author:         David Parrish                                   *)
+(*                      Medical College of Georgia                      *)
+(*                      Augusta, Georgia   30912                        *)
+(*                                                                      *)
+(*      Date:           June  14, 1980                                  *)
+(*                                                                      *)
+(*                                                                      *)
+(******* This program is part of the MCG Pascal utilities library *******)
+(*                                                                      *)
+(*      This program takes an assembly language program written         *)
+(*        with Intel 8080 opcodes and translates them to Zilog          *)
+(*        Z-80 opcodes.                                                 *)
+(*                                                                      *)
+(*                  Limitations to the program:                         *)
+(*                                                                      *)
+(*      1. Opcodes and operands must be in upper-case letters.          *)
+(*      2. Labels must be within columns 1 to 16.                       *)
+(*      3. Opcodes and pseudo-ops must start in column 17               *)
+(*           ( The second 8 column tab stop ).                          *)
+(*      4. The pseudo-ops are those of the UCSD assembler.              *)
+(*      5. Comments must start in column 1 or 33 (4th tab).             *)
+(*      6. Everything past column 32 is ignored.                        *)
+(*      7. If the Z-80 opcode and operand is longer than 16             *)
+(*           columns, the characters past that limit are lost.          *)
+(*      8. No multiple operations per line.                             *)
+(*      9. Labels that contain 'SP' or 'PSW' will cause the line to     *)
+(*           not be translated. This can be solved by changing the      *)
+(*           label's name, or by using lower-case letters. (i.e. 'sp')  *)
+(*                                                                      *)
+(*                                                                      *)
+(*      The characters '#' and '$' in the translation table represent   *)
+(*   respectivily no operand with the opcode and a literally translated *)
+(*   operand. The lines in the program that start with '{*}' are for    *)
+(*   program tracing and debugging and may be removed to speed up       *)
+(*   execution. As far as I know, there are no other limitations or     *)
+(*   bugs in the program. This program was a quick-fix for a problem    *)
+(*   and may be helpful for others. Hopefully, it will serve as a       *)
+(*   spring-board for better translation programs. (i.e. a free format  *)
+(*   parser, TDL to UCSD assembler translation, etc.)                   *)
+(*                                                                      *)
+(*                                                                      *)
+(************************************************************************)
+
+
+Program conv;
+  const  tablesize  = 237;
+  
+  type  tblrectype  = record
+                        Intlops : string[12];
+                        Zopc    : string[4];
+                        Zopr    : string[8]
+                      end;
+  
+  var infile, outfile   : text;
+      error, hitend     : boolean;
+      tableloc,k,j      : integer;
+      len, errnum       : integer;
+      orgstr,substr     : string;
+      table             : array [1..tablesize] of tblrectype;
+      registers         : set of char;
+      Zoperand          : string;
+      opcode, operand   : string;
+      asc1, asc2        : string;
+      
+  Procedure tableload;
+    type rectype  = record
+                      a8opc : string[4];
+                      a8opr : string[8];
+                      aZopc : string[4];
+                      aZopr : string[8]
+                    end;
+    var recfile : file of rectype;
+        temprec : rectype;
+              i : integer;
+    begin
+{*}   writeln('begin tableload');
+      reset(recfile,'look.up.table');
+      for i := 1 to tablesize do begin
+        temprec := recfile^;
+        get(recfile);
+        table[i].Intlops := concat(temprec.a8opc,temprec.a8opr);
+        table[i].Zopc := temprec.aZopc;
+        table[i].Zopr := temprec.aZopr
+        end;
+{*}   writeln('end tableload');
+      close(recfile)
+    end; (* tableload *)
+  
+  Procedure setfiles;
+    var tempstr : string;
+    begin
+      write('Input file name > ');
+      readln(tempstr);
+      reset(infile,tempstr);
+      write('Output file name > ');
+      readln(tempstr);
+{*}   writeln('end setfiles');
+      rewrite(outfile,tempstr)
+    end; (* setfiles *)
+      
+  Procedure splitcode; 
+                    (* takes orginal string and extracts opcode and operand *)
+  
+   var i, j  : integer;
+    begin
+{*}   writeln('begin splitcodes');
+      substr := '';
+      if length(orgstr) > 32 then
+         substr := copy(orgstr,17,16)
+        else
+         substr := copy(orgstr,17,(length(orgstr)-16));
+{*}   writeln(' orgstr *',orgstr,'*');
+{*}   writeln(' substr *',substr,'*');
+      substr := concat(substr,'        ');
+      j := length(substr);
+      i := pos(' ',substr);
+      if i = 0 then
+       begin opcode := substr; operand := '#' end (* I know, I just haven't *)
+      else begin                                  (* removed it yet....     *)
+        opcode := copy(substr,1,(i-1));
+        while substr[j] = ' ' do
+          j := j-1;
+        while (substr[i] = ' ') and ( i <= j ) do
+          i := i+1;
+        if i > j then operand := '#'
+                 else operand := copy(substr,i,(j-i+1))
+        end;
+{*}     writeln('opcode *',opcode,'*');
+{*}     writeln('operand *',operand,'*');
+{*}     writeln('end splitcodes')
+    end; (* splitcode *)
+  
+  Function search : integer;       (* Binary table search *)
+    var found : boolean;
+        sertbl, seropc: string;
+        i, j, k       : integer;
+        
+    procedure normalize;        (* takes opcode and operand from splitcodes *)
+      var i, k : integer;       (* and converts to form of table elements.  *)
+      begin
+{*}     writeln('begin normalize');
+        seropc := '             ';
+        insert(opcode, seropc,1);
+        k := length(operand);
+        i := 0;
+        while i < k do
+          begin
+           i := i+1;
+           if operand[i] = ' ' then
+             begin
+              k := k-1;
+              delete(operand,i,1)
+             end
+          end;
+        if length(operand) = 1 then
+          begin
+          if (operand[1] in registers) or ( operand[1] = '#' ) then
+             seropc[5] := operand[1]
+            else
+             seropc[5] := '$';
+{*}       writeln('>A<>',seropc,'<')
+          end
+         else
+          begin
+          if (pos('SP',operand)<>0) then
+            begin
+            if length(operand)=2 then insert('SP',seropc,5)
+              else
+               if operand[3] = ',' then insert('SP,$',seropc,5)
+                                   else insert('$',seropc,5);
+{*}         writeln('>D<>',seropc,'<')
+            end
+           else
+            if pos('PSW',operand) <> 0 then
+              begin
+              if length(operand)=3 then insert('PSW',seropc,5);
+{*}           writeln('>E<>',seropc,'<')
+              end
+             else
+              seropc[5] := '$';
+          if (operand[1] in registers) and (operand[2] = ',') then
+            begin
+              if     (operand[3] in registers)
+                 and (length(operand) = 3) then
+                begin
+                insert(operand,seropc,5);
+                delete(seropc,(pos('$',seropc)),1);
+{*}             writeln('>B<>',seropc,'<')
+                end
+               else
+                begin
+                asc1 := copy(operand,1,2);
+{*}             writeln('asc1 *',asc1,'*');
+                insert(asc1,seropc,5);
+{*}             writeln('>C<>',seropc,'<')
+                end
+             end;
+            end;    (* if length = 1 else *)
+        seropc := copy(seropc,1,12);
+{*}     writeln('seropc *',seropc,'*');
+{*}     writeln('end normalize ')
+      end; (* normalize *)
+              
+    
+    begin
+{*}  writeln('begin search ');
+     normalize;
+     i := 1; j:=tablesize; found := false;
+     repeat k:=(i+j) div 2;
+       sertbl := table[k].Intlops;
+{*}    writeln('sertbl > ',sertbl);
+       if sertbl = seropc then found := true
+                          else if sertbl < seropc then i:=k+1
+                                                  else j:=k-1
+     until (found or (i>j));
+     if i>j then k:= 0;
+     search := k;
+{*}  writeln('end search ')
+    end; (* search *)
+  
+  Procedure insertcode; (* Puts Z-80 codes into original string. *)
+    begin
+{*}  writeln('begin insertcode ');
+     substr := concat(table[tableloc].Zopc,' ',Zoperand,'                  ');
+     substr := copy(substr,1,16);
+     if length(orgstr) > 32 then delete(orgstr,17,16)
+                            else delete(orgstr,17,(length(orgstr)-16));
+     insert(substr,orgstr,17);
+     writeln(outfile,orgstr);
+{*}  writeln('end insertcode')
+    end; (* insertcode *)
+        
+         
+         
+Begin (* main line *)
+ registers := ['A','B','C','D','E','H','L','M'];
+ hitend := false;
+ errnum := 0;
+ error := false;
+ tableload;
+ setfiles;
+ readln(infile,orgstr);
+ repeat
+{*}writeln(' Begin loop ');
+  len := length(orgstr);
+  if len = 0 then insert(' ',orgstr,1);
+  if (orgstr[1] = ';') or (len < 17) or (orgstr[17] = '.') then
+     begin
+       writeln(outfile,orgstr);
+       if     (pos('.END',orgstr)=17) (* check for end of source *)
+          and (pos('.ENDC',orgstr)=0)
+          and (pos('.ENDM',orgstr)=0)
+            then hitend := true
+     end
+    else
+     begin
+      splitcode;
+      tableloc := search;
+      if tableloc = 0 then 
+        begin writeln(outfile,'**** ',orgstr);
+          errnum := errnum +1;
+          error := true;
+          write(chr(7))
+        end
+       else
+        begin    (* Decoding section *)
+{*}      writeln(' Decoding section ');
+         Zoperand := table[tableloc].Zopr;
+         j := pos('$',Zoperand);
+         if Zoperand[1] = '#' then Zoperand[1] := ' ';
+         if pos(',',operand) = 0 then
+           begin                     (* zero and one operands *)
+             if pos('$',table[tableloc].Intlops) = 0 then
+               insertcode
+              else
+               begin                 (* replace literal from operand *)
+               delete(Zoperand,j,1);
+               insert(operand,Zoperand,j);
+               insertcode
+               end
+           end    (* 0 & 1 operands *)
+          else
+           begin  (* 2 operands *)
+             if j = 0 then
+               insertcode
+              else
+               begin
+               delete(Zoperand,j,1);
+               k := pos(',',operand);
+               delete(operand,1,k);
+               insert(operand,Zoperand,j);
+               insertcode
+               end
+           end
+        end      (* Decoding section *)
+     end;
+  readln(infile,orgstr);
+{*}writeln(' After readln ')
+ until hitend;
+{*}writeln('hit eof ');
+ if error then writeln('There were ',errnum,' error(s).')
+          else writeln('No errors encountered');
+ close(infile);
+ close(outfile, lock)
+End. (* main line *)
+

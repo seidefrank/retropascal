@@ -1,0 +1,104 @@
+
+     VOLUME 2A AND VOLUME 2B CATALOG, UCSD PASCAL USERS' GROUP LIBRARY
+
+Machine-dependent software, 512-byte sequential sectors, and other goodies.*
+
+
+Contents of Volume 2A:
+
+512.DOC.TEXT.......Documentation for the 512-byte sectoring routines on 2A & 2B.
+ACOUSTIC.TEXT......Use an acoustic modem with the Pascal Transfer Program (PTP).
+BOOTASM.TEXT.......Assemble a file with the UCSD assembler and save it on CP/M.
+BOOTCPM.TEXT.......Start up under UCSD and then boot up CP/M.
+CPMIO.DOC.TEXT.....How to alter the CP/M interpreter for fancy disk action.
+DCHAYES.IO.TEXT....Use a D.C. Hayes modem w/ the Pascal Transfer Program (PTP).
+DELETE.LF.TEXT.....After transfering a textfile to UCSD, dummp ASCII linefeeds.
+DFOCO.DOC.TEXT.....Documentation for DFOCO.ASM on Volume 2B.
+H14.DRIVER.TEXT....Print out a text file on the Heath printer at full speed.
+H19.DOC.TEXT.......Notes on optimizing the Heath terminal for UCSD Pascal.
+H19.GOTOXY.........Textfile to compile your own GOTOXY for the Heath H19.
+H19.MISCINFO.......SYSTEM.MISCINFO for the Heath terminal.
+HAZEL.MISCINFO.....All ready SETUP for the Hazeltine terminal.
+HEXOUT.TEXT........Pascal routine to print out integers in hexadecimal.
+KBSTAT.TEXT........Yet another keyboard status routine, this time for PTP.TEXT.
+LINECOUNTR.TEXT....Count the lines of a textfile.
+MOVRAM.TEXT........Assembly-language routine for BOOTASM.
+NEW.GOTOXY.TEXT....Good idea: let GOTOXY handle your CRT screen, too. Sample.
+PE1100.GOTOXY......Textfile for GOTOXY for the Perkin-Elmer 1100 (Fox) terminal.
+PERUSE.PG.TEXT.....Look over a textfile on your CRT one page at a time.
+POLICY.DOC.TEXT....How the Users' Group Library runs.
+PRIME1.TEXT........Pascal routine to find prime numbers.
+PRIME2.TEXT........Another prime-number generator.
+PTP.DOC.TEXT.......Documentation for the Pascal Transfer Program.
+PTP.TEXT...........The Pascal Transfer Program.  Requires L2 editor to edit.
+PUNCH.TAPE.TEXT....Send data from the UCSD system to the Heath paper punch.
+RANDOMBYTE.TEXT....Assembly-language routine to access Z-80's R register.
+READ.TAPE.TEXT.....Compliment of PUNCH.TAPE.
+SHELLMSORT.TEXT....Sort a disk-based ASCII list.
+SMARTREMOT.TEXT....Set up your machine as a smart remote terminal.
+TIMING.DOC.TEXT....Notes on tuning your disk drives for fast 512-byte sectors.
+TVI912C.GOTOXY.....Another GOTOXY text, this time for the TelVideo 912.
+UPDATE.DOC.TEXT....Latest news on the UCSD Pascal Users' Group Library.
+VOL.2B.DOC.TEXT....Documentation for the second disk of this volume.
+VOLUME.2.TEXT......Notes on all the programs in Volume 2.
+WRITER.DOC.TEXT....Documentation for WRITER.
+WRITER.TEXT........A quick but nifty text or source file printer.
+
+*    Note:  UCSD Pascal is a trademark of the Regents of the University of
+California.  Please read the file POLICY.DOC.TEXT regarding the software on 
+this disk.  All files are further documented in VOLUME.2.TEXT.
+
+
+Volume 2B Contents:
+
+     This disk is normally supplied in CP/M format, and includes my favorite
+CP/M utilities.  For documentation see VOL.2B.DOC and DFOCO.DOC on Volume 2A.
+
+BOOTER.ASM.......Sophisticated PINIT and *fast* PBIOS for Z-80 systems (can
+                 modify easily for 8080) to run 128- & 512-byte sectored 
+                 single density and 512-byte sectored double density disks
+                 transparently.  Requires Z-80-compatible assembler
+                 (extended Intel memnomics), Western Digital-based floppy
+                 disk controller (eg, 1771, 179x series), and DFOCO-like
+                 disk formatter.  May require attention to disk timing.
+                 
+CAT.COM..........Part of Ward Christenson's CP/M cataloging system.  From the
+                 CP/M Users Group Volume 25.
+               
+CLEAN.COM........Nifty PIP-like utility to back up disk files; easy to use.
+
+D.COM............Replacement for DIR that alphabetizes your directory & dis-
+                 plays it in one screenful, along with filesize & room on disk.
+
+DFOCO.ASM........Double/single density fast FOrmat and COpy, for disks of 
+                 128, 256, or 512-byte sectors, single/double sided.  Requires
+                 Digital Research's MAC (or equivalent) and MACRO.LIB.
+                 All disk access is in the program for speed; Western Digital
+                 chip on your floppy disk controller is a must.
+
+DUMP.ASM.........Fancy file/track/sector hex & ASCII dumps and patches for
+                 3740-type disks.  Accesses CP/M's logical groups directly.
+
+FMAP.COM.........Makes a file of CP/M directory names.  Part of Ward 
+                 Christenson's disk cataloging system.
+
+MACRO.LIB........Fancy 8080 macro library for Digital Research's macroassem-
+                 bler.  Used by DFOCO and DUMP.
+
+PGEN.ASM.........Rewrite of UCSD's distribution PGEN to include booter and 
+                 support multiple disk formats.
+               
+SAMPLEIO.ASM.....Sample UCSD-compatible I/O routines for console and memory-
+                 mapped terminal.  VERY fancy.
+
+SPAT.ASM.........Extensive updating of CP/M Users Group SPAT (Vol. 1), for
+                 patching disks on systems with memory-mapped terminals. Nice.
+
+UCAT.COM.........Update the CATalog; part of CP/M disk cataloging system.
+
+UCSD2CPM.COM.....Object (Z-80 only) of program to transfer UCSD files to CP/M.
+                 Runs under CP/M.
+
+UCSD2CPM.MAC.....Source for program to transfer UCSD files to CP/M.  Requires
+                 assembler that accepts Zilog memnomics (eg, Microsoft).
+                 

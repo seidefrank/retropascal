@@ -1,0 +1,133 @@
+
+   SEGMENT procedure lu_error_symbol (LEX_UNIT :    LU_LEXICAL_UNIT;
+                                 VAR RESULT :  LU_SYM_DESCRIPTOR);
+(*-------------------------------------------------------------------*)
+(*                                                                  -*)
+(*    DESCRIPTION: BUILDS AN DESCRIPTOR FOR ERRORNEOUS CASES        -*)
+(*    ------------ (E.G. INSERTION BY PARSER).                      -*)
+(*                                                                  -*)
+(*-------------------------------------------------------------------*)
+ label 1401;
+ var
+      symbol : lu_sym_descriptor;
+      code : st_symbol;
+      i : integer;
+   begin
+      case lex_unit of
+              lu_identifier_sym :                          begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_identifier_sym;
+            symbol.idcode  :=    lub_cde_identifier;
+                                                           end;
+              lu_integer_sym :                             begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_identifier_sym;
+            symbol.idcode  := lub_code_integer;
+                                                           end;
+              lu_real_sym :                                begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_identifier_sym;
+            symbol.idcode  :=     lub_code_real;
+                                                           end;
+              lu_character_sym :                           begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_identifier_sym;
+            symbol.idcode  :=     lub_code_character ;
+                                                           end;
+              lu_string_sym :                              begin;
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_identifier_sym;
+            symbol.idcode  :=   lub_code_string ;
+                                                           end;
+              lu_eof_sym , lu_dot_sym , lu_interval_sym ,
+            lu_left_label_sym , lu_box_sym , lu_lpar_sym ,
+            lu_separator_sym , lu_rpar_sym , lu_semicolon_sym ,
+            lu_comma_sym , lu_right_label_sym , lu_colon_sym ,
+            lu_assign_sym , lu_quote_sym , lu_arrow_sym :    begin
+            symbol.discrim := lu_other;
+            symbol.sym     := lex_unit;
+                                                           end;
+              lu_minus_sym :                               begin
+            symbol.discrim := lu_id;
+            symbol.sym     := lu_minus_sym;
+            symbol.idcode  :=     lu_code_minus;
+                                                           end;
+              lu_less_sym :                                begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=  lu_less_sym;
+            symbol.idcode  :=  lu_code_less ;              end;
+              lu_less_equal_sym :                          begin
+            symbol.discrim := lu_id;
+            symbol.sym     := lu_less_equal_sym;
+            symbol.idcode  :=      lu_cde_less_equal ;
+                                                           end;
+              lu_plus_sym  :                               begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=  lu_plus_sym;
+            symbol.idcode  :=  lu_code_plus;               end;
+              lu_catenation_sym :                          begin
+            symbol.discrim := lu_id;
+            symbol.sym     := lu_catenation_sym;
+            symbol.idcode   :=     lu_code_catenation;     end;
+              lu_multiply_sym :                            begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=   lu_multiply_sym;
+            symbol.idcode  :=  lu_code_multiply ;          end;
+              lu_exponentiation_sym :                      begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=  lu_exponentiation_sym;
+            symbol.idcode  :=  lu_code_exponentiation ;    end;
+              lu_divide_sym :                              begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=     lu_divide_sym;
+            symbol.idcode  :=     lu_code_divide ;         end;
+              lu_not_equal_sym :                           begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=  lu_not_equal_sym;
+            symbol.idcode  :=  lu_code_not_equal ;         end;
+              lu_greater_sym :                             begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=    lu_greater_sym;
+            symbol.idcode  :=   lu_code_greater ;          end;
+              lu_greator_equal_sym :                       begin
+            symbol.discrim := lu_id;
+            symbol.sym     :=   lu_greator_equal_sym;
+            symbol.idcode  :=   lu_cde_greater_equal ;    end;
+              lu_equal_sym :                               begin
+            symbol.discrim := lu_id;
+            symbol.sym     := lu_equal_sym;
+            symbol.idcode  :=      lu_code_equal ;         end;
+       lu_abort_sym , lu_accept_sym, lu_access_sym, lu_all_sym   ,
+       lu_and_sym   , lu_array_sym , lu_at_sym    , lu_begin_sym ,
+       lu_body_sym  , lu_case_sym  , lu_constant_sym   ,
+       lu_declare_sym    , lu_delay_sym , lu_delta_sym , lu_digits_sym,
+       lu_do_sym    , lu_else_sym  , lu_elsif_sym , lu_end_sym   ,
+       lu_entry_sym , lu_exception_sym  , lu_exit_sym  , lu_for_sym   ,
+       lu_function_sym   , lu_generic_sym    , lu_goto_sym  ,
+       lu_if_sym    , lu_in_sym    , lu_is_sym    , lu_limited_sym    ,
+       lu_loop_sym  , lu_mod_sym   , lu_new_sym   , lu_not_sym   ,
+       lu_null_sym  , lu_of_sym    , lu_or_sym    , lu_others_sym,
+       lu_out_sym   , lu_package_sym    , lu_pragma_sym,
+       lu_private_sym    , lu_procedure_sym  , lu_raise_sym ,
+       lu_range_sym , lu_record_sym, lu_rem_sym   , lu_renames_sym    ,
+       lu_return_sym, lu_reverse_sym    , lu_salect_sym,
+       lu_seperate_sym   , lu_subtype_sym    , lu_task_sym  ,
+       lu_terminate_sym  , lu_then_sym  , lu_type_sym  , lu_use_sym   ,
+       lu_when_sym  , lu_while_sym , lu_with_sym  , lu_xor_sym   :
+                                                           begin
+            code := lub_cde_identifier;
+            for i := 1  to st_sym_ubound do    begin
+(*             LOOP*)
+               if lu_reserved_word [i] = lex_unit then  begin
+                  code := i;
+                  goto 1401;
+               end; (*  IF;*)
+            end;  (* LOOP;*)
+1401 :      symbol.discrim := lu_id;
+               symbol.sym := lex_unit;
+               symbol.idcode := code ;                     end;
+      end; (*  CASE;*)
+(*    RETURN SYMBOL;*)
+      result := symbol;
+   end; (*LU_ERROR_SYMBOL;*)
+

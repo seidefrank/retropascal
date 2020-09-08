@@ -1,0 +1,212 @@
+(**********************************************)
+(* PRXREF.INI -- DJL, 1980 JULY 11, 8:00 P.M. *)
+(**********************************************)
+
+SEGMENT PROCEDURE INITXREF; (* was forward *)
+VAR
+  I, SAVELINE: INTEGER;
+BEGIN
+   (* use linenumber as a code to indicate keywords *)
+   SAVELINE := LINENUMBER;  LINENUMBER := KWCODE;
+   LNUMENTRIES := 0;  (* initialize entry counter local to hunk *)
+   (* init hash tbl *)
+   TOP := P;
+   FOR I := 0 TO P DO  T[ I].KEY := '        ';
+   (* start with a fresh heap *)  RELEASE( HEAPPOINT);  MARK( HEAPPOINT);
+   (* place keywords in table *)
+   SEARCH( 'AND     ');  SEARCH( 'ARRAY   ');  SEARCH( 'BEGIN   ');
+   SEARCH( 'BOOLEAN ');  SEARCH( 'CASE    ');  SEARCH( 'CHAR    ');
+   SEARCH( 'CONST   ');  SEARCH( 'DIV     ');  SEARCH( 'DOWNTO  ');
+   SEARCH( 'DO      ');  SEARCH( 'ELSE    ');  SEARCH( 'END     ');
+   SEARCH( 'EXIT    ');  SEARCH( 'FILE    ');  SEARCH( 'FOR     ');
+   SEARCH( 'FUNCTION');  SEARCH( 'GOTO    ');  SEARCH( 'IF      ');
+   SEARCH( 'IN      ');  SEARCH( 'INPUT   ');
+   SEARCH( 'INTEGER ');  SEARCH( 'MOD     ');  SEARCH( 'NIL     ');
+   SEARCH( 'NOT     ');  SEARCH( 'OF      ');  SEARCH( 'OR      ');
+   SEARCH( 'OUTPUT  ');  SEARCH( 'PACKED  ');  SEARCH( 'PROCEDUR');
+   SEARCH( 'PROGRAM ');  SEARCH( 'REAL    ');  SEARCH( 'RECORD  ');
+   SEARCH( 'REPEAT  ');  SEARCH( 'SET     ');  SEARCH( 'STRING  ');
+   SEARCH( 'TEXT    ');  SEARCH( 'THEN    ');  SEARCH( 'TO      ');
+   SEARCH( 'TYPE    ');  SEARCH( 'UNTIL   ');  SEARCH( 'VAR     ');
+   SEARCH( 'WHILE   ');  SEARCH( 'WITH    ');  SEARCH( 'WRITE   ');
+   SEARCH( 'WRITELN ');  SEARCH( 'INTERACT');
+   SEARCH( 'READ    ');  SEARCH( 'READLN  ');  SEARCH( 'SUCC    ');
+   SEARCH( 'PRED    ');  SEARCH( 'TRUNC   ');  SEARCH( 'ROUND   ');
+   SEARCH( 'ORD     ');  SEARCH( 'CHR     ');  SEARCH( 'ODD     ');
+   SEARCH( 'EOF     ');  SEARCH( 'EOLN    ');  SEARCH( 'PAGE    ');
+   SEARCH( 'PUT     ');  SEARCH( 'GET     ');  SEARCH( 'RESET   ');
+   SEARCH( 'REWRITE ');  SEARCH( 'LABEL   ');  SEARCH( 'FORWARD ');
+   SEARCH( 'NEW     ');  SEARCH( 'DISPOSE ');  SEARCH( 'MARK    ');
+   SEARCH( 'FALSE   ');  SEARCH( 'TRUE    ');
+   LINENUMBER := SAVELINE; (* resore usual linenumber *)
+   END; (* INITIALIZE *)
+(**************************************************************************)
+
+SEGMENT PROCEDURE INITIALIZE( FIRSTTIME: BOOLEAN);
+  (* initialize most variables:  *)
+  (*   FIRSTTIME ==> at the very beginning of execution *)
+  (*   NOT FIRSTTIME ==> preceding each user requested repetition of *)
+  (*     processing a file *)
+
+VAR
+  I: INTEGER;
+  (**************************************************************************)
+
+  PROCEDURE NTOSTR( N: INTEGER; VAR S: STRING);
+    (* convert non-negative integer to string for date routine *)
+  BEGIN
+    S := '';
+    REPEAT
+      INSERT( ' ', S, 1);  S[ 1] := CHR( (N MOD 10) + ORD( '0'));
+      N := N DIV 10
+      UNTIL N = 0
+    END;
+  (**************************************************************************)
+
+  PROCEDURE INITSCREEN;
+    (* sets up EOLSTRING and EOSSTRING for erasing parts of screen *)
+    (* gets its information from SYSTEM.MISCINFO *)
+    (* also checks screen width and height against MINSCRWIDTH and *)
+    (* MINSCRHEIGHT and insists on random cursor addressing *)
+    (* before proceeding *)
+
+    TYPE
+      SYSCOMREC = RECORD (* image of SYSTEM.MISCINFO *)
+        JUNK: ARRAY[ 0..28] OF INTEGER; (* junk and expansion area *)
+        MISCINFO: PACKED RECORD
+          NOBREAK, STUPID, SLOWTERM,
+          HASXYCRT, HASLCCRT, HAS8510A, HASCLOCK: BOOLEAN
+          END;
+        CRTTYPE: INTEGER;
+        CRTCTRL: PACKED RECORD
+          RLF, NDFS, ERASEEOL, ERASEEOS, HOME, ESCAPE: CHAR;
+          BACKSPACE: CHAR;
+          FILLCOUNT: 0..255;
+          CLEARSCREEN, CLEARLINE: CHAR;
+          PREFIXED: PACKED ARRAY[ 0..8] OF BOOLEAN
+          END;
+        CRTINFO: PACKED RECORD
+          WIDTH, HEIGHT: INTEGER;
+          RIGHT, LEFT, DOWN, UP: CHAR;
+          BADCH, CHARDEL, STOP, BREAK, FLUSH, EOF: CHAR;
+          ALTMODE, LINEDEL: CHAR;
+          BACKSPACE, ETX, PREFIX: CHAR;
+          PREFIXED: PACKED ARRAY[ 0..13] OF BOOLEAN;
+          END
+        END (*SYSCOM*);
+    VAR
+      STROFNULLS, ONENULL, PS: CTLSTRING; (* for nulls to terminal *)
+      MISCFILE: FILE OF SYSCOMREC; (* file to read SYSTEM.MISCINFO *)
+      NFILL, I: INTEGER;
+      HADMERR: BOOLEAN; (* error flag *)
+
+    PROCEDURE MERR( S: STRING);
+      (* error handler for screen setup *)
+      BEGIN  WRITELN;  WRITE( 'Screen problem: ', S);  HADMERR := TRUE  END;
+
+    BEGIN (* INITSCREEN *)
+      HADMERR := FALSE; (* assume no problems in info *)
+      (*$I-*) RESET( MISCFILE, '*SYSTEM.MISCINFO'); (*$I+*)
+      WITH MISCFILE^ DO BEGIN
+        IF IORESULT <> 0 THEN
+          MERR( 'No SYSTEM.MISCINFO file on boot volume')
+        ELSE (* have SYSTEM.MISCINFO; check it out *) BEGIN
+          IF NOT MISCINFO.HASXYCRT THEN MERR( 'No XY CRT.');
+          IF CRTINFO.WIDTH < MINSCRWIDTH THEN BEGIN
+            MERR( 'Screen width < '); WRITE( MINSCRWIDTH)  END;
+          IF CRTINFO.HEIGHT < MINSCRHEIGHT THEN BEGIN
+            MERR( 'Screen height < '); WRITE( MINSCRHEIGHT)  END;
+          IF ( CRTCTRL.ERASEEOL = CHR( 0)) OR ( CRTCTRL.ERASEEOS = CHR( 0)) THEN
+            MERR( 'Erase-to-end-of-line or -screen missing');
+          END;
+        IF HADMERR THEN BEGIN (* found an error *)
+          WRITELN; WRITE( 'Cannot run PRXref.');
+          EXIT( PRXREF)
+          END;
+
+        (* all is ok with the screen; set up control strings *)
+        (* first, make strings for prefix and null *)
+        PS := ' ';  PS[ 1] := CRTCTRL.ESCAPE;
+        (* NOTE: using null as screen filler *)
+        ONENULL := ' ';  ONENULL[ 1] := CHR( 0);
+        (* then, set up string of nulls for screen filler *)
+        IF CRTCTRL.FILLCOUNT > 11 THEN  NFILL := 11
+        ELSE NFILL := CRTCTRL.FILLCOUNT;
+        STROFNULLS := '';
+        FOR I := 1 TO CRTCTRL.FILLCOUNT DO INSERT( ONENULL, STROFNULLS, 1);
+        (* set up end-of-line erase string *)
+        EOLSTRING := ' ';  EOLSTRING[ 1] := CRTCTRL.ERASEEOL;
+        INSERT( STROFNULLS, EOLSTRING, 2);
+        IF CRTCTRL.PREFIXED[ 2] THEN INSERT( PS, EOLSTRING, 1);
+        (* and end-of-screen *)
+        EOSSTRING := ' ';  EOSSTRING[ 1] := CRTCTRL.ERASEEOS;
+        INSERT( STROFNULLS, EOSSTRING, 2);
+        IF CRTCTRL.PREFIXED[ 3] THEN INSERT( PS, EOSSTRING, 1);
+        END (* with *)
+      END; (* INITSCREEN *)
+  (**************************************************************************)
+
+  PROCEDURE GETDATE( VAR RETDATE: STRING);
+    (* get date from unit 4 catalog *)
+  CONST
+    MONTHSTRING = 'JanFebMarAprMayJunJulAugSepOctNovDec';
+  TYPE
+    (* the date layout in the catalog *)
+    DATERCD = PACKED RECORD  MONTH: 0..12;  DAY: 0..31;  YEAR: 0..100  END;
+  VAR
+    (* catalog layout for extracting date *)
+    BIGRCD: RECORD CASE BOOLEAN OF
+      FALSE: ( DATEARRAY: PACKED ARRAY[ 0..21] OF CHAR);
+      TRUE: (FILLER: PACKED ARRAY[ 0..19] OF CHAR;
+             DATE: DATERCD)  END;
+    SDAY, SYEAR: STRING;
+
+  BEGIN WITH BIGRCD, DATE DO BEGIN
+    (* get date info from catalog *)
+    UNITWAIT( 4);  UNITREAD( 4, DATEARRAY[ 0], 22, 2);
+    (* convert numbers to printables *)
+    NTOSTR( DAY, SDAY);  NTOSTR( YEAR, SYEAR);
+    (* return date in DD-MMM-YY form *)
+    RETDATE := CONCAT( SDAY, '-', COPY( MONTHSTRING, MONTH*3-2, 3), '-', SYEAR)
+    END  END;
+  (**************************************************************************)
+
+  BEGIN (* INITIALIZE *)
+    IF FIRSTTIME THEN BEGIN (* initialize once per run *)
+      (* get date; establish standard header separator *)
+      GETDATE( TODAY);  HEADERSEP := TODAY;
+      FOR I := 1 TO HEADERSIZE-LENGTH( TODAY) DO
+        HEADERSEP := CONCAT( HEADERCHAR, HEADERSEP);
+      (* initialize screen info *) INITSCREEN;
+      (* nulls for the printer, if needed *)
+      FOR I := 1 TO NUMPRNULLS DO  NULLS[ I] := CHR( NULL);
+      (* show not yet in the xref print phase *)  INXREF := FALSE;
+      (* initialize user options variables *)
+      PAGESKIP := TRUE;  INCLU := TRUE;  PRINTING := TRUE;
+      NUMBERING := TRUE;  XREFFING := FALSE;  SPACING := 1;
+      VFORMATTING := TRUE;  CMDCHAR := '#';  INCLSKIP := TRUE;
+      (* initialize in and out files and check if ok *)
+      MAINNAME := 'SYSTEM.WRK.TEXT';
+      IF NOT FILECHECK( MAINNAME) THEN MAINNAME := ' ';
+      PRINTTITLE := 'PRINTER:';
+      PRINTLAST := PAGELINES - BOTMARGIN; (* set last print line *)
+      (* translate table load factor to threshhold # entries *)
+      MAXNUMENTRIES := TRUNC( LOADFACTOR * P) - 1;
+      CMDCHARSET := [ 'H', 'P', 'S']; (* format directives *)
+      MARK( HEAPPOINT) (* where to cut back xref tbl to *)
+      END
+    ELSE BEGIN  (* initialize before each pass at a file *)
+      (* show not in xref print phase *) INXREF := FALSE;
+      (* header and page and line counting variables *)
+      GPAGE := INITPAGE;  HEADER := '';
+      HDRS := TRUE;  TITLEHDRS := TRUE;
+      FIRSTPAGE := TRUE; (* show topofpage we are starting *)
+      FININCL := FALSE; (* controls include page skipping *)
+      IF XREFFING THEN BEGIN  (* initialize xref (and assume line numbering *)
+        NUMBERING := TRUE;  INITXREF  END;
+      LINENUMBER := 0; (* init print line number (will get bumped first) *)
+      NUMKWREFS := 0;  (* initialize keyword ref counter *)
+      NHUNKS := 0 (* intialize for xref overflow to disk *)
+      END
+    END; (* initialize *)
+

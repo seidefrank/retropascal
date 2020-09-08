@@ -1,0 +1,38 @@
+PROGRAM star_trek;
+
+CONST ent_energy = 5000;        {units of energy to start enterprise}
+      start_torps = 10;         {photon torpedos to start}
+      kling_energy = 300;       {units of energy to start klingon ships}
+      galaxy_size = 7;          {square size of galaxy - 1}
+      quad_size = 7;            {square size of quadrant - 1}
+      max_digit = 9;            {maximum value of single digit}
+      min_device = '0';         {lowest device number}
+      max_device = '7';         {highest device number}
+      max_klingons = 11;        {maximum number of klingon entities in 1 quad}
+      no_sym = '.';             {symbol for nothingness}
+      star_sym = '*';           {symbol for star}
+      nova_sym = '+';           {symbol for nova}
+      ent_sym = 'E';            {symbol for enterprise}
+      f_base_sym = 'B';         {symbol for federation base}
+      kling_sym = 'K';          {symbol for klingon ship}
+      k_base_sym = '@';         {symbol for klingon base}
+      alarm = 7;                {terminal alarm}
+      
+{$I star.part1.text}
+{$I star.part2.text}
+{$I star.part3.text}
+
+BEGIN {of star_trek}
+  seed := 3.14159;
+  initialize;
+  setup_quad (cur_quad, cur_sect);
+  set_condition;
+  instructions;
+  klingon_attack;
+  print_quadrant;
+  WHILE (cur_energy > 0) AND (total_klingons > 0) AND 
+        (total_k_bases > 0) AND (cur_year <> end_year) DO
+    command;
+  finish_game;
+END {of star_trek}.
+

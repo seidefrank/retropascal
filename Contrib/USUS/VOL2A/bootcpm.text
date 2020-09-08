@@ -1,0 +1,42 @@
+        .PROC   BOOTCPM,0
+; COPYRIGHT 1979 BY BARRY A. COLE
+; THIS MAY BE FREELY DISTRIBUTED IF COPYRIGHT NOTICE RETAINED
+; PURPOSE:       BOOT CPM FROM PASCAL
+BOOTLOC .EQU    80H
+TADDR   .EQU    40H
+UNIT    .EQU    TADDR+2
+SECTOR  .EQU    TADDR+3
+TRACK   .EQU    TADDR+4
+PROMPT  LD      DE,MSG
+$100    LD      A,(DE)
+        OR      A
+        JR      Z,WAIT
+        LD      C,A
+        LD      L,0CH   ;OFFSET OF CONOUT IN BIOS
+        CALL    BIOS
+        INC     DE
+        JR      $100
+WAIT    LD      L,09H   ;OFFSET OF CONIN IN BIOS
+        CALL    BIOS
+        CP      0DH     ;CR?
+        JR      NZ,PROMPT
+        LD      HL,BOOTLOC
+        LD      SP,HL
+        LD      (TADDR),HL
+        LD      A,0FEH  ;UNIT
+        LD      (UNIT),A
+        XOR     A
+        LD      (TRACK),A
+        INC     A
+        LD      (SECTOR),A
+        LD      L,27H   ;READ OFFSET INTO BIOS
+        CALL    BIOS
+        JP      BOOTLOC
+BIOS    LD      A,(2)
+        LD      H,A
+        JP      (HL)
+MSG     .BYTE   0DH,0AH
+        .ASCII  "MOUNT CPM DISK IN A--THEN CR"
+        .BYTE   0
+        .END
+

@@ -1,0 +1,449 @@
+{$U-}
+{$S+}
+{$R-}
+{===============================================================}
+{                                                               }
+{               UCSD   ADAPTABLE   ASSEMBLER                    }
+{               ----   ---------   ---------                    }
+{       Patterned after The Waterloo Last Assembler (TLA)       }
+{       Core Authors:  William P. Franks and Dennis Volper      }
+{                                                               }
+{                                                               }
+{               Version :       pdp 11 & LSI 11                 }
+{               Date    :       Dec.   14, 1978                 }
+{               Author  :       Dennis Volper                   }
+{               Release :       II.0 [d.3]                      }
+{                                                               }
+{                                                               }
+{              Institute for Information Systems                }
+{                UC  San Diego, La Jolla,  CA                   }
+{                                                               }
+{                 Kenneth L. Bowles, Director                   }
+{                                                               }
+{                     Copyright (C) 1978,                       }
+{       Regents of the University of California, San Diego      }
+{                                                               }
+{===============================================================}
+PROGRAM SYSTEMLEVEL;
+TYPE    PHYLE=FILE;
+VAR     FILLER:ARRAY[0..6] OF INTEGER;
+	USERINFO:RECORD
+		WORKSRC,WORKCODE:^PHYLE;
+		ERRSYM,ERRBLK,ERRNUM:INTEGER;
+		SLOWTERM,STUPID:BOOLEAN;
+		ALTMODE:CHAR;
+		FILLER2:ARRAY[0..21] OF INTEGER; {change with care...allows}
+		WORKTITLE,SYMTITLE:STRING[15]     {more compile time space}
+	    END;
+
+SEGMENT PROCEDURE TLA(III,JJJ:INTEGER);
+CONST  MAXMACRO       =5;     {Maximum nested level of macros}
+       MAJORVERSION   =1;     {Major version release #}
+       MTYPE          =3;     {Machine type  LSI-11}
+       NUMKWORDS      =32;    {The number of key words in this assembler}
+       HASHRANGE      =128;   {The hash table size}
+       HASHTOP        =127;   {One less than HASHRANGE}
+       MACROSIZE      =9;     {The buffer size for a MACRO stored on heap}
+       BUFBLKS        =2;     {# of blocks for output buffer}
+       BUFLIMIT       =1023;  {(BUFBLKS*512) - 1}
+       MAXPROC        =10;    {Maximum number of Procedures per Assembly}
+       PAGESIZE       =55;    {Lines printed per page}
+       VIEWSTACK      =TRUE;  {Display stack & heap while Assembling}
+       DEBUG          =FALSE; {for debugging Assembler}
+       CODESIZE       =20;    {Testing values}
+       RELEASENAME    ='II.0 [d.3]';
+
+{Below constants are Assembler dependent}
+
+       NOP            =160;   {A one byte NOP}
+       ASMNAME        ='11';
+       BYTEFIT        =5;     {maximum bytes per output line}
+       WORDFIT        =3;     {maximum words per output line}
+       HIBYTEFIRST    =FALSE; {First byte is the high-order byte?}
+       LISTHIFIRST    =TRUE;
+       LCCHAR         ='*';   {Location counter character}
+       WORDADDRESSED  =FALSE; {Word as opposed to byte addressed}
+       AFTERPLUS      =0;     {An impossible character}
+       AFTERMINUS     ='(';   { "-(" is always auto decrement}
+       DEFRADIX       =8;     {Default radix}
+       LISTRADIX      =8;     {Printed listing radix}
+       HEXSWITCH      ='H';   {Char following number which resets radix}
+       DECSWITCH      ='.';
+       OCTSWITCH      =0;
+       BINSWITCH      ='B';
+       RELHI          =FALSE; {Relative byte most significant passed PUTWORD}
+
+TYPE BITE=0..255;
+     PACKNAME=PACKED ARRAY[0..7] OF CHAR;
+     WORDSWAP=PACKED RECORD CASE INTEGER OF
+	      0:(HWORD:INTEGER);
+	      1:(HIBYTE,LOWBYTE:BITE);
+	      2:(HEX1,HEX2,HEX3,HEX4:0..15);
+	      3:(OCT2,OCT3,OCT4,OCT5,OCT6:0..7;
+				     OCT1:0..1);
+	      4:(BIN:PACKED ARRAY[0..15] OF 0..1);
+	  END;
+     HASHTYPE=RECORD CASE BOOLEAN OF
+	      TRUE:(INT:INTEGER);
+	     FALSE:(BOL:BOOLEAN)
+	  END;
+     BYTESWAP=PACKED RECORD CASE INTEGER OF
+	      0:(BWORD:INTEGER);
+	      1:(REGLOW:0..7;
+		 MODELOW:0..7;
+		 REGHI:0..7;
+		 MODEHI:0..7;
+		 DUM2:0..15);
+	      2:(XOFFSET:BITE;
+		 DUM3:BITE);
+	      3:(SOBSET:0..63;
+		 DUM4:0..1023)
+	  END;
+
+(*$I ASM1.TEXT*)
+(*$I ASM2.TEXT*)
+(*$I ASM3.TEXT*)
+
+PROCEDURE INSTRCLASS;
+
+PROCEDURE GETOPER(VAR XMODE,XREG,INDEX:INTEGER;
+		  VAR ISINDEXED,RELATIVE:BOOLEAN);
+  VAR MODEADJUST:INTEGER;
+  {1: evaluate any exterior address
+   2: evaluate register number and set register number
+   3: check special stack and set mode
+   XMODE,XREG,INDEX and ISINDEXED are variables returned by this routine,
+   the routine input is the assembly file.
+   XMODE is the address mode of the operand.
+   XREG  is the register specified (or implied) by the operand.
+   INDEX is the value of the index which is specified by the operand, except
+	 that where the PC register is implied it is the value of the operand.
+   ISINDEXED is true if there is an index specified or if the register is the
+	 PC. It is true in exactly those cases requiring a second word be 
+	 emitted following the emission of the opcode.}
+ BEGIN
+  MODEADJUST:=0;
+  RELATIVE:=FALSE;
+  ISINDEXED:=FALSE;
+  XMODE:=0;
+  XREG:=0;
+  IF EXPRESS(FALSE) THEN
+   BEGIN
+    ISINDEXED:=TRUE;
+    INDEX:=RESULT.OFFSETORVALUE;
+    IF RESULT.ATTRIBUTE=DEFABS THEN
+     BEGIN{A register stands alone. Check special stack, if it is empty the
+	   mode is 0 otherwise the mode is 1 and we check for an "@". Then
+	   load the value of the register}
+      IF SPCIALSTKINDEX=-1 THEN XMODE:=0 ELSE
+       BEGIN
+	XMODE:=1;
+	IF (SPECIALSTK[0]<>ATSIGN) OR (SPCIALSTKINDEX<>0) THEN
+	  ERROR(25{illegal use of special symbols});
+	SPCIALSTKINDEX:=-1;
+       END;
+      XREG:=SYM^.VALUE;
+      ISINDEXED:=FALSE;
+     END ELSE{Indexed addressing. Operand followed by register enclosed
+	      in parentheses. If no register is explicit then the PC
+	      register is implied}
+      IF LEXTOKEN=OPENPAREN THEN
+       BEGIN{check special stack and determine mode then get the register}
+	SPCIALSTKINDEX:=SPCIALSTKINDEX-1;{Peel "(" off stack}
+	IF (SPCIALSTKINDEX=0) AND (SPECIALSTK[0]=ATSIGN) THEN
+	 BEGIN
+	  MODEADJUST:=1;
+	  SPCIALSTKINDEX:=-1;
+	 END;
+	XMODE:=6+MODEADJUST;
+	LEX;
+	IF (LEXTOKEN=TIDENTIFIER) AND (SYM^.ATTRIBUTE=DEFABS) THEN
+	 BEGIN
+	  XREG:=SYM^.VALUE;
+	  LEX;
+	  IF LEXTOKEN<>CLOSEPAREN THEN ERROR(76{")" expected}) ELSE LEX;
+	 END ELSE ERROR(77{Register expected});
+       END ELSE
+       BEGIN{The PC is the implied register, check special stack}
+	XREG:=7;
+	IF SPCIALSTKINDEX=-1 THEN
+	 BEGIN{Mode=Relative}
+	  RELATIVE:=TRUE;
+	  INDEX:=RESULT.OFFSETORVALUE-4;
+	  XMODE:=6;
+	 END ELSE
+	 BEGIN
+	  IF SPCIALSTKINDEX=0 THEN
+	    IF SPECIALSTK[0]=ATSIGN THEN
+	     BEGIN{Mode=Relative defered}
+	      RELATIVE:=TRUE;
+	      INDEX:=RESULT.OFFSETORVALUE-4;
+	      XMODE:=7;
+	     END ELSE
+	      IF SPECIALSTK[0]=NUMBERSIGN THEN XMODE:=2 ELSE{=Immediate}
+		ERROR(25{Special symbol misused})
+	    ELSE
+	    IF SPCIALSTKINDEX=1 THEN
+	      IF (SPECIALSTK[0]=ATSIGN) AND
+		 (SPECIALSTK[1]=NUMBERSIGN) THEN XMODE:=3 ELSE{=Absolute}
+		ERROR(25{Special symbol misused})
+	      ELSE ERROR(78{Too many special symbols});
+	  SPCIALSTKINDEX:=-1;
+	 END;
+       END
+   END ELSE
+     IF LEXTOKEN=OPENPAREN THEN{Unindexed use of register. Modes 1..5}
+      BEGIN
+       SPCIALSTKINDEX:=SPCIALSTKINDEX-1;{Peel off the "("}
+       IF (SPCIALSTKINDEX<>-1) AND
+	  (SPECIALSTK[0]=ATSIGN) THEN MODEADJUST:=1;{Auto Inc/Dec Defered}
+       LEX;{get register number}
+       IF (LEXTOKEN=TIDENTIFIER) AND (SYM^.ATTRIBUTE=DEFABS) THEN
+	BEGIN
+	 XREG:=SYM^.VALUE;
+	 LEX;
+	 IF LEXTOKEN=CLOSEPAREN THEN
+	  BEGIN
+	   LEX;
+	   IF LEXTOKEN=PLUS THEN{Check for auto-increment}
+	    BEGIN
+	     LEX;
+	     XMODE:=2+MODEADJUST
+	    END ELSE
+	     IF SPCIALSTKINDEX>=MODEADJUST THEN{Check for Auto decrement}
+	      BEGIN
+	       IF SPECIALSTK[SPCIALSTKINDEX]=AUTODECR THEN
+		BEGIN
+		 XMODE:=4+MODEADJUST;
+		 SPCIALSTKINDEX:=SPCIALSTKINDEX-1;
+		END ELSE ERROR(79{Unrecognizable operand});
+	      END ELSE
+		BEGIN  {@(R0) implies @0(R0), some say...}
+		  XMODE:=1;
+	          ISINDEXED:=TRUE;
+		  INDEX:=0;
+		END;
+	  END ELSE ERROR(76{")" expected});
+	END ELSE ERROR(77{Register expected});
+       IF MODEADJUST=1 THEN SPCIALSTKINDEX:=SPCIALSTKINDEX-1;
+			{Peel off the "@"}
+      END ELSE ERROR(79{Unrecognizable operand});
+ END;
+
+PROCEDURE ZOP1;
+{instructions with no operands}
+BEGIN
+  IF DEBUG THEN WRITELN('Op1');
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  OPBYTE.BWORD:=SYM^.VALUE;
+  PUTWORD(OPBYTE.BWORD);
+  LEX;
+END;
+
+PROCEDURE ZOP2;
+{branch - short: opcode..offset in words.}
+BEGIN
+  IF DEBUG THEN WRITELN('Op2');
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  OPBYTE.BWORD:=SYM^.VALUE;
+  IF EXPRESS(TRUE) THEN
+   BEGIN
+    RELOCATE.OFFSETORVALUE:=RELOCATE.OFFSETORVALUE-2;{for putrelword's sake}
+    PUTRELWORD(OPBYTE.BWORD,TRUE,TRUE);
+   END;
+END;
+
+PROCEDURE ZOP3;
+  VAR MODE1,REG1,OPINDX1:INTEGER;
+      HASINDX1,REL1:BOOLEAN;
+{one operand: opcode..mode..register. CLR,COM,INC,DEC,NEG, Shift & rotates,
+ and Multiple precision}
+BEGIN
+  IF DEBUG THEN WRITELN('Op3');
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  OPBYTE.BWORD:=SYM^.VALUE;
+  GETOPER(MODE1,REG1,OPINDX1,HASINDX1,REL1);
+  OPERAND1:=RELOCATE;
+  RELOCATE:=NULLREL;
+  OPBYTE.MODELOW:=MODE1;
+  OPBYTE.REGLOW:=REG1;
+  PUTWORD(OPBYTE.BWORD);
+  IF HASINDX1 THEN
+   BEGIN
+    RELOCATE:=OPERAND1;
+    IF REL1 THEN PUTRELWORD(OPINDX1,FALSE,FALSE) ELSE PUTWORD(OPINDX1);
+   END;
+END;
+
+PROCEDURE ZOP4;
+{one operand: opcode..register. RTS, and Floating-point}
+BEGIN
+  IF DEBUG THEN WRITELN('Op4');
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  OPBYTE.BWORD:=SYM^.VALUE;
+  LEX;
+  IF SYM^.ATTRIBUTE=DEFABS THEN
+   BEGIN
+    OPBYTE.REGLOW:=SYM^.VALUE;
+    PUTWORD(OPBYTE.BWORD);
+    LEX;
+   END ELSE ERROR(80{Register reference only});
+END;
+
+PROCEDURE ZOP5;
+  VAR MODE1,REG1,OPINDX1:INTEGER;
+      HASINDX1,REL1:BOOLEAN;
+{opcode..register..mode..register. Used by XOR,JSR}
+BEGIN
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  IF DEBUG THEN WRITELN('Op5');
+  OPBYTE.BWORD:=SYM^.VALUE;
+  LEX;
+  IF SYM^.ATTRIBUTE=DEFABS THEN OPBYTE.REGHI:=SYM^.VALUE
+     ELSE ERROR(81{First operand must be register});
+  LEX;
+  IF LEXTOKEN<>COMMA THEN ERROR(82{Comma expected});
+  GETOPER(MODE1,REG1,OPINDX1,HASINDX1,REL1);
+  OPERAND1:=RELOCATE;
+  RELOCATE:=NULLREL;
+  OPBYTE.MODELOW:=MODE1;
+  OPBYTE.REGLOW:=REG1;
+  PUTWORD(OPBYTE.BWORD);
+  IF HASINDX1 THEN
+   BEGIN
+    RELOCATE:=OPERAND1;
+    IF REL1 THEN PUTRELWORD(OPINDX1,FALSE,FALSE) ELSE PUTWORD(OPINDX1);
+   END;
+END;
+
+PROCEDURE ZOP6;
+{handles MARK}
+BEGIN
+  IF DEBUG THEN WRITELN('Op6');
+  ERROR(83{Unimplemented instruction});
+END;
+
+PROCEDURE ZOP7;
+{handles SOB}
+BEGIN
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  IF DEBUG THEN WRITELN('Op7');
+  OPBYTE.BWORD:=SYM^.VALUE;
+  LEX;
+  IF SYM^.ATTRIBUTE=DEFABS THEN
+   BEGIN
+    OPBYTE.REGHI:=SYM^.VALUE;
+    LEX;
+    IF LEXTOKEN=COMMA THEN
+     BEGIN
+      IF EXPRESS(TRUE) THEN
+       BEGIN
+	IF RESULT.ATTRIBUTE=LABELS THEN
+	 BEGIN
+	  RESULT.OFFSETORVALUE:=(LC+2-RESULT.OFFSETORVALUE) DIV 2;
+	  IF CHECKOPERAND(TRUE,FALSE,TRUE,0,64) THEN
+	   BEGIN
+	    RELOCATE:=NULLREL;
+	    OPBYTE.SOBSET:=RESULT.OFFSETORVALUE;
+	    PUTWORD(OPBYTE.BWORD);
+	   END;
+	 END ELSE ERROR(84{Must branch backwards to label});
+       END;
+     END ELSE ERROR(82{Comma expected});
+   END ELSE ERROR(81{First operand must be register});
+END;
+
+PROCEDURE ZOP8;
+{The double operand instructions. MOV,CMP,ADD,SUB and logicals}
+  VAR MODE1,REG1,OPINDX1,MODE2,REG2,OPINDX2:INTEGER;
+      HASINDX1,REL1,HASINDX2,REL2:BOOLEAN;
+ BEGIN
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  IF DEBUG THEN WRITELN('Op8');
+  OPBYTE.BWORD:=SYM^.VALUE;
+  GETOPER(MODE1,REG1,OPINDX1,HASINDX1,REL1);
+  OPBYTE.MODEHI:=MODE1;
+  OPBYTE.REGHI:=REG1;
+  OPERAND1:=RELOCATE;
+  RELOCATE:=NULLREL;
+  IF LEXTOKEN<>COMMA THEN ERROR(82{Comma expected});
+  GETOPER(MODE2,REG2,OPINDX2,HASINDX2,REL2);
+  OPBYTE.MODELOW:=MODE2;
+  OPBYTE.REGLOW:=REG2;
+  OPERAND2:=RELOCATE;
+  RELOCATE:=NULLREL;
+  PUTWORD(OPBYTE.BWORD);
+  IF HASINDX1 THEN
+   BEGIN
+    RELOCATE:=OPERAND1;
+    IF REL1 THEN PUTRELWORD(OPINDX1,FALSE,FALSE) ELSE PUTWORD(OPINDX1);
+   END;
+  IF HASINDX2 THEN
+   BEGIN
+    RELOCATE:=OPERAND2;
+    IF REL2 THEN
+     BEGIN
+      IF HASINDX1 THEN OPINDX2:=OPINDX2-2;
+      PUTRELWORD(OPINDX2,FALSE,FALSE)
+     END ELSE PUTWORD(OPINDX2);
+   END;
+ END;
+
+PROCEDURE ZOP9;
+  VAR MODE1,REG1,OPINDX1:INTEGER;
+      HASINDX1,REL1:BOOLEAN;
+{opcode..register..mode..register. Used by MUL,DIV,ASH,ASHC}
+BEGIN
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  IF DEBUG THEN WRITELN('Op5');
+  OPBYTE.BWORD:=SYM^.VALUE;
+  GETOPER(MODE1,REG1,OPINDX1,HASINDX1,REL1);
+  IF LEXTOKEN<>COMMA THEN ERROR(82{Comma expected});
+  LEX;
+  IF SYM^.ATTRIBUTE=DEFABS THEN OPBYTE.REGHI:=SYM^.VALUE
+     ELSE ERROR(81{First operand must be register});
+  LEX;
+  OPERAND1:=RELOCATE;
+  RELOCATE:=NULLREL;
+  OPBYTE.MODELOW:=MODE1;
+  OPBYTE.REGLOW:=REG1;
+  PUTWORD(OPBYTE.BWORD);
+  IF HASINDX1 THEN
+   BEGIN
+    RELOCATE:=OPERAND1;
+    IF REL1 THEN PUTRELWORD(OPINDX1,FALSE,FALSE) ELSE PUTWORD(OPINDX1);
+   END;
+END;
+
+PROCEDURE ZOP10;
+{TRAP and EMT}
+BEGIN
+  IF DEBUG THEN WRITELN('Op2');
+  IF ODD(LC) THEN PUTBYTE(NOP);
+  OPBYTE.BWORD:=SYM^.VALUE;
+  IF EXPRESS(TRUE) THEN
+    IF CHECKOPERAND(TRUE,TRUE,TRUE,-128,255) THEN
+      OPBYTE.XOFFSET:=RESULT.OFFSETORVALUE;
+  PUTWORD(OPBYTE.BWORD);
+END;
+
+BEGIN {INSTRCLASS}
+  CASE SYM^.ATTRIBUTE OF
+    OPS1:ZOP1;
+    OPS2:ZOP2;
+    OPS3:ZOP3;
+    OPS4:ZOP4;
+    OPS5:ZOP5;
+    OPS6:ZOP6;
+    OPS7:ZOP7;
+    OPS8:ZOP8;
+    OPS9:ZOP9;
+    OPS10:ZOP10
+  END;
+END;
+
+(*$I ASM4.TEXT*)
+(*$I ASM5.TEXT*)
+(*$I ASM6.TEXT*)
+
+BEGIN  {dummy outer block}  END.

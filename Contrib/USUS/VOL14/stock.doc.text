@@ -1,0 +1,34 @@
+17 September 1980
+
+I am not aware of any portion of this program as being from another program.
+Stock is a computer implementation of a bookshelf game "Stocks & Bonds" owned
+and published by Avalon Hill.
+
+The program was developed on a Heathkit (H-11) and a Southwest Technical
+Products (SWTP-82) terminial using Pascal II.0.
+
+The idiosyncrasies of the program are:
+
+1.  It is scope dependent.
+
+2.  I have no random number generator and I am simulating one from the line
+    clock.  Therefore, there must be a line clock and it must be on.
+    [changed to detect presence of clock and prompt for seed if no clock  gws]
+
+3.  It uses CHR(12), form feed, to clear the screen and home the cursor.
+    [ changed to H-19 codes   gws]
+
+4.  The program data is initialized from a text file named
+    STOCK:STOCK.DATA.TEXT
+    [changed to #5:STOCK.DATA.TEXT gws] 
+
+Questions can be directed to:
+
+Homer Baker
+Phoenix Union High School District
+2526 W. Osborn Road
+Phoenix, AZ  85017
+
+Phone:(602) 257-3086
+Home :(602) 967-0064
+

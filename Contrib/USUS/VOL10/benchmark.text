@@ -1,0 +1,472 @@
+program BENCHMARK; 
+
+type
+
+      REC2_TYPE=record
+        next:^REC2_TYPE
+      end;
+      
+var   NUM_LOOPS:integer;
+      I,J,K,L,TEST:integer;
+      R,S,T:real;
+      A:array [1..100] of integer;
+      B:array [1..100] of real;
+      STR1,STR2,STR3:string[80]; 
+      CH:char;
+      REC1:record 
+             FIRSTI,SECONDI:integer;
+             FIRSTR,SECONDR:real;
+           end;
+      ROOT,PTR:^REC2_TYPE;
+      CSET:set of char;
+      
+procedure prompt;
+  
+procedure prompt1;
+begin
+  writeln('21. CASE statements.                 22. PROCEDURE calls.');
+  writeln('23. PROC. calls w/INTEGER param.     24. PROC. calls w/REAL param.');
+  writeln('25. PROC. calls w/local var.         26. SET unions.');
+  writeln('27. SET differences.                 28. SET IN''s.');
+  writeln('29. pointer transfers.               30. STRING transfers.'); 
+  writeln('31. STRING comparison.'); 
+  writeln;
+  writeln('STRING functions    32. LENGTH   33. COPY   34. POS   35. CONCAT');
+  writeln('                    36. DELETE   37. INSERT');
+  writeln('number crunching    38. SIN   39. COS   40. EXP   41. ATAN');
+  writeln('                    42. LN    43. LOG   44. PWROFTEN   45. TRUNC'); 
+  writeln('                    46. ROUND');
+end;
+
+begin
+  gotoxy(0,0);
+  write(chr(26));
+  writeln(' 1. null FOR loops (TO).              2. null FOR loops (DOWNTO).'); 
+  writeln(' 3. INTEGER increments (FOR loop).    4. null WHILE loops.');
+  writeln(' 5. null REPEAT loops.                6. INTEGER adds.');
+  writeln(' 7. INTEGER multiplies.               8. INTEGER divides.'); 
+  writeln(' 9. REAL increments.                 10. REAL adds'); 
+  writeln('11. REAL multiplies.                 12. REAL divides.'); 
+  writeln('13. INTEGER transfers.               14. INTEGER ARRAY transfers.'); 
+  writeln('15. REAL transfers.                  16. REAL ARRAY transfers.');
+  writeln('17. INTEGER RECORD transfers.        18. REAL RECORD transfers.'); 
+  writeln('19. INTEGER IF comparisons.          20. REAL IF comparisons.');
+  prompt1;
+end; {PROMPT}
+
+procedure SPACEBAR;
+begin
+  repeat
+    read(keyboard,CH)
+  until CH=' '
+end; {SPACEBAR}
+
+procedure DUMMY1; 
+begin 
+end; {DUMMY1} 
+
+procedure DUMMY2(I:integer); 
+begin
+end; {DUMMY2}
+
+procedure DUMMY3(I:real);
+begin 
+end; {DUMMY3}
+
+procedure DUMMY4;
+var I:integer;
+begin
+end; {DUMMY4}
+
+procedure TEST1;
+begin 
+  write('1--> hit SPACEBAR to start ',NUM_LOOPS,' null FOR loops (TO) timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin end;
+  writeln;
+  write(chr(7),'     end null FOR loops (TO) timing...'); 
+  writeln;
+  writeln
+end; {TEST1} 
+
+procedure TEST2;
+begin 
+  write('2--> hit SPACEBAR to start ',NUM_LOOPS,' null FOR loops (DOWNTO) timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=NUM_LOOPS downto 1 do begin end;
+  writeln;
+  write(chr(7),'     end null FOR loops (DOWNTO) timing...'); 
+  writeln;
+  writeln
+end; {TEST2} 
+
+procedure TEST3;
+begin 
+  write('3--> hit SPACEBAR to start ',NUM_LOOPS,' integer increments (FOR loop) timing...');
+  SPACEBAR;
+  J:=0;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=J+1 end; 
+  writeln;
+  write(chr(7),'     end integer increments (FOR loop) timing...'); 
+  writeln;
+  writeln
+end; {TEST3} 
+
+procedure TEST4;
+begin 
+  write('4--> hit SPACEBAR to start ',NUM_LOOPS,' null WHILE loops timing...'); 
+  SPACEBAR;
+  J:=0;
+  write(chr(7)); 
+  while (J<NUM_LOOPS) do begin J:=J+1 end; 
+  writeln;
+  write(chr(7),'     end null WHILE loops timing...');
+  writeln;
+  writeln
+end; {TEST4} 
+
+procedure TEST5;
+begin 
+  write('5--> hit SPACEBAR to start ',NUM_LOOPS,' null REPEAT loops timing...');
+  SPACEBAR;
+  J:=0;
+  write(chr(7)); 
+  repeat J:=J+1 until (J=NUM_LOOPS);
+  writeln; 
+  write(chr(7),'     end null REPEAT loops timing...'); 
+  writeln;
+  writeln
+end; {TEST5} 
+
+procedure TEST6;
+begin 
+  write('6--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER adds timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=J+K end; 
+  writeln;
+  write(chr(7),'     end INTEGER adds timing...'); 
+  writeln;
+  writeln
+end; {TEST6} 
+
+procedure TEST7;
+begin 
+  write('7--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER mulitplies timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=K*1 end; 
+  writeln;
+  write(chr(7),'     end INTEGER mulitplies timing...'); 
+  writeln;
+  writeln
+end; {TEST7} 
+
+procedure TEST8;
+begin 
+  write('8--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER divides timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=K div 1 end; 
+  writeln;
+  write(chr(7),'     end INTEGER divides timing...'); 
+  writeln;
+  writeln
+end; {TEST8} 
+
+procedure TEST9;
+begin 
+  write('9--> hit SPACEBAR to start ',NUM_LOOPS,' REAL increments timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=R+1.0 end;
+  writeln;
+  write(chr(7),'     end REAL increments timing...'); 
+  writeln;
+  writeln
+end; {TEST9} 
+
+procedure TEST10;
+begin 
+  write('10--> hit SPACEBAR to start ',NUM_LOOPS,' REAL adds timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=R+S end; 
+  writeln;
+  write(chr(7),'      end REAL adds timing...'); 
+  writeln;
+  writeln
+end; {TEST10} 
+
+procedure TEST11;
+begin 
+  write('11--> hit SPACEBAR to start ',NUM_LOOPS,' REAL multiplies timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=S*T end; 
+  writeln;
+  write(chr(7),'      end REAL multiplies timing...'); 
+  writeln;
+  writeln
+end; {TEST11} 
+
+procedure TEST12;
+begin 
+  write('12--> hit SPACEBAR to start ',NUM_LOOPS,' REAL divides timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=S/T end; 
+  writeln;
+  write(chr(7),'      end REAL divides timing...'); 
+  writeln;
+  writeln
+end; {TEST12} 
+
+procedure TEST13;
+begin 
+  write('13--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER transfers timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=K end; 
+  writeln;
+  write(chr(7),'      end INTEGER transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST13} 
+
+procedure TEST14; 
+begin 
+  J:=5;
+  K:=12;
+  write('14--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER ARRAY transfers timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin A[J]:=A[K] end; 
+  writeln;
+  write(chr(7),'      end INTEGER ARRAY transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST14} 
+
+procedure TEST15;
+begin 
+  write('15--> hit SPACEBAR to start ',NUM_LOOPS,' REAL transfers timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=S end; 
+  writeln;
+  write(chr(7),'      end REAL transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST15} 
+
+procedure TEST16;
+begin 
+  J:=5;
+  K:=12;
+  write('16--> hit SPACEBAR to start ',NUM_LOOPS,' REAL ARRAY transfers timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin B[J]:=B[K] end; 
+  writeln;
+  write(chr(7),'      end REAL ARRAY transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST16} 
+
+procedure TEST17;
+begin 
+  write('17--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER RECORD transfers timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin REC1.FIRSTI:=REC1.SECONDI end;
+  writeln;
+  write(chr(7),'      end INTEGER RECORD transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST17} 
+
+procedure TEST18;
+begin 
+  write('18--> hit SPACEBAR to start ',NUM_LOOPS,' REAL RECORD transfers timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin REC1.FIRSTR:=REC1.SECONDR end;
+  writeln;
+  write(chr(7),'      end REAL RECORD transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST18} 
+
+procedure TEST19;
+begin 
+  J:=5;
+  K:=12;
+  write('19--> hit SPACEBAR to start ',NUM_LOOPS,' INTEGER IF comparisions timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do if (J<K) then begin end; 
+  writeln;
+  write(chr(7),'      end INTEGER IF comparisions timing...'); 
+  writeln;
+  writeln
+end; {TEST19} 
+
+procedure TEST20;
+begin 
+  R:=5.0;
+  S:=12.0;
+  write('20--> hit SPACEBAR to start ',NUM_LOOPS,' REAL IF comparisons timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do if (R<S) then begin end; 
+  writeln;
+  write(chr(7),'      end REAL IF comparisons timing...'); 
+  writeln;
+  writeln
+end; {TEST20} 
+
+procedure TEST21;
+begin 
+  J:=2;
+  write('21--> hit SPACEBAR to start ',NUM_LOOPS,' CASE statements timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do
+    case J of
+      1:begin end;
+      2:begin end;
+      3:begin end;
+      4:begin end;
+   end;
+  writeln;
+  write(chr(7),'      end CASE statements timing...'); 
+  writeln;
+  writeln
+end; {TEST21} 
+
+procedure TEST22;
+begin 
+  write('22--> hit SPACEBAR to start ',NUM_LOOPS,' PROCEDURE calls timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do DUMMY1;
+  writeln;
+  write(chr(7),'      end PROCEDURE calls timing...'); 
+  writeln;
+  writeln
+end; {TEST22} 
+
+procedure TEST23;
+begin 
+  write('23--> hit SPACEBAR to start ',NUM_LOOPS,' PROCEDURE calls (INTEGER param) timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do DUMMY2(I);
+  writeln; 
+  write(chr(7),'      end PROCEDURE calls (INTEGER param) timing...'); 
+  writeln;
+  writeln
+end; {TEST23} 
+
+procedure TEST24;
+begin 
+  write('24--> hit SPACEBAR to start ',NUM_LOOPS,' PROCEDURE calls (REAL param) timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do DUMMY3(R);
+  writeln; 
+  write(chr(7),'      end PROCEDURE calls (REAL param) timing...'); 
+  writeln;
+  writeln
+end; {TEST24} 
+
+procedure TEST25;
+begin 
+  write('25--> hit SPACEBAR to start ',NUM_LOOPS,' PROCEDURE calls (local var) timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do DUMMY4;
+  writeln;
+  write(chr(7),'      end PROCEDURE calls (local var) timing...'); 
+  writeln;
+  writeln
+end; {TEST25} 
+
+procedure TEST26;
+begin 
+  write('26--> hit SPACEBAR to start ',NUM_LOOPS,' SET unions timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin CSET:=CSET+['a','b'] end;
+  writeln;
+  write(chr(7),'      end SET unions timing...'); 
+  writeln;
+  writeln
+end; {TEST26} 
+
+procedure TEST27;
+begin 
+  write('27--> hit SPACEBAR to start ',NUM_LOOPS,' SET differences timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin CSET:=CSET-['a','b'] end;
+  writeln;
+  write(chr(7),'      end SET differences timing...'); 
+  writeln;
+  writeln
+end; {TEST27} 
+
+procedure TEST28;
+begin 
+  write('28--> hit SPACEBAR to start ',NUM_LOOPS,' SET IN''s timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do if (CH in CSET) then begin end; 
+  writeln;
+  write(chr(7),'      end SET IN''s timing...'); 
+  writeln;
+  writeln
+end; {TEST28} 
+
+(*$I BENCHMARK1.TEXT*)
+
+begin  {MAIN PROGRAM}
+  write(chr(26),chr(30));
+  J:=100; K:=200; L:=300; R:=400; S:=500; T:=600;
+  write('Enter number of loops per test:  ');
+  readln(NUM_LOOPS);
+  repeat
+    PROMPT;
+    writeln;
+    write('Enter test (enter "0" for all, negative number to quit):  ');
+    readln(TEST); 
+    write(chr(26),chr(30));
+    if (TEST>=0) then 
+      case TEST of
+         0:begin
+             TEST1; TEST2; TEST3; TEST4; TEST5; TEST6; TEST7; TEST8; 
+             TEST9; TEST10; TEST11; TEST12; TEST13; TEST14; TEST15;
+             TEST16; TEST17; TEST18; TEST19; TEST20; TEST21; TEST22;
+             TEST23; TEST24; TEST25; TEST26; TEST27; TEST28; TEST29; 
+             TEST30; TEST31; TEST32; TEST33; TEST34; TEST35; TEST36;
+             TEST37; TEST38; TEST39; TEST40; TEST41; TEST42; TEST43;
+             TEST44; TEST45; TEST46;
+           end; 
+         1:TEST1; 2:TEST2; 3:TEST3; 4:TEST4; 5:TEST5; 6:TEST6; 7:TEST7; 
+         8:TEST8; 9:TEST9; 10:TEST10; 11:TEST11; 12:TEST12; 13:TEST13; 
+        14:TEST14; 15:TEST15; 16:TEST16; 17:TEST17; 18:TEST18; 19:TEST19;
+        20:TEST20; 21:TEST21; 22:TEST22; 23:TEST23; 24:TEST24; 25:TEST25;
+        26:TEST26; 27:TEST27; 28:TEST28; 29:TEST29; 30:TEST30; 31:TEST31;
+        32:TEST32; 33:TEST33; 34:TEST34; 35:TEST35; 36:TEST36; 37:TEST37;
+        38:TEST38; 39:TEST39; 40:TEST40; 41:TEST41; 42:TEST42; 43:TEST43;
+        44:TEST44; 45:TEST45; 46:TEST46;
+      end;
+  until (TEST<0);
+end.
+
+
+

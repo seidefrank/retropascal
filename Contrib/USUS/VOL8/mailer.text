@@ -1,0 +1,365 @@
+(*[B+, E=3, G=1, I=1, L=1, P=1, W=1-75] FORMATTER DIRECTIVES*)
+program mailer;
+
+const
+ stringlength = 25;
+ maxentries = 100;
+ 
+type
+ shortstring = string[stringlength];
+ index = 0.. maxentries;
+ entry = record
+          name, street, city, phone: shortstring;
+          state: string[2];
+          zipcode: string[8]
+         end;
+ field =
+  (nam, str, cit, pho, sta, zip);
+ fieldset = set of field;
+ pointer = ^ node;
+ node = record
+         key: shortstring;
+         number: index;
+         left, right: pointer
+        end;
+ 
+var
+ topentry: index;
+ keyfield: field;
+ adds: file of entry;
+ printfields: fieldset;
+ heap: ^ integer;
+ root: pointer;
+ empty: string;
+ modified: boolean;
+ 
+function upper(ch: char): char;
+ 
+ begin
+  if ch in ['a' .. 'z']   then upper := chr(ord(ch) - 32)
+  else upper := ch
+ end (*upper*);
+
+function f(ch: char): field;
+ 
+ begin
+  case ch of
+   'N': f := nam;
+   'S': f := str;
+   'C': f := cit;
+   'P': f := pho;
+   'T': f := sta;
+   'Z': f := zip
+  end (*CASE*);
+ end (*f*);
+
+procedure saferead(var thestring: string; len: integer);
+ 
+ var
+  s: string;
+  
+ begin
+  readln(s);
+  while length(s) > len do
+   begin
+    writeln('Max of ', len, ' characters; re-enter: ');
+    write('|': len + 1, chr(141));   readln(s)
+   end;
+  thestring := s
+ end (*saferead*);
+
+procedure initfield(var fld: field);
+ 
+ var
+  ch: char;
+  
+ begin
+  repeat
+   write('Sort by N(ame S(treet C(ity P(hone sT(ate Z(ip: ');   read(ch);
+   writeln;   ch := upper(ch);
+  until ch in ['N', 'S', 'C', 'P', 'T', 'Z'];
+  fld := f(ch)
+ end (*initfield*);
+
+procedure initset(var fs: fieldset);
+ 
+ var
+  s: string;
+  i: integer;
+  
+ begin
+  fs := [];
+  repeat
+   writeln('Enter a string with desired field codes;');
+   write('N(ame S(treet C(ity P(hone sT(ate Z(ip: ');   readln(s);
+   for i := 1 to length(s) do
+    if upper(s[i]) in ['N', 'S', 'C', 'P', 'T', 'Z']
+    then fs := fs + [f(upper(s[i]))]
+  until fs <> []
+ end (*initset*);
+
+procedure initfile;
+ 
+ var
+  i: index;
+  addsname: string;
+  
+ begin
+  close(adds, lock);   write('Name of address file: ');   readln(addsname);
+(*$I-*)
+  reset(adds, addsname);
+(*$I+*)
+  if ioresult > 0
+  then
+   begin
+    rewrite(adds, addsname);
+    writeln('Creating new file ', addsname, '.');
+    for i := 0 to maxentries do
+     begin seek(adds, i);   adds ^.name := empty;   put(adds) end
+   end (*if*)
+ end (*initfile*);
+
+procedure key(keyfield: field; ent: entry; n: index);
+ 
+ var
+  s: shortstring;
+  
+ procedure enter(var p: pointer);
+  
+  begin
+   if p = nil
+   then
+    begin
+     new(p);   p ^.key := s;   p ^.number := n;
+     writeln(p ^.number, ' ', p ^.key);   p ^.left := nil;
+     p ^.right := nil
+    end
+   else if s < p ^.key   then enter(p ^.left)   else enter(p ^.right)
+  end (*enter*);
+ 
+ begin (*key*)
+  case keyfield of
+   nam: s := ent.name;
+   str: s := ent.street;
+   cit: s := ent.city;
+   sta: s := ent.state;
+   zip: s := ent.zipcode;
+   pho: s := ent.phone
+  end (*case*);
+  enter(root)
+ end (*key*);
+
+procedure initkeys;
+ 
+ begin (*initkeys*)
+  release(heap);   writeln;   writeln('Sorting...');   writeln;
+  root := nil;   topentry := 0;   reset(adds);   seek(adds, 0);
+  get(adds);
+  while adds ^.name <> empty do
+   begin
+    key(keyfield, adds ^, topentry);   topentry := topentry + 1;
+    seek(adds, topentry);   get(adds);
+   end (*while*);
+  writeln;   modified := false
+ end (*initkeys*);
+
+procedure addarecord;
+ 
+ begin
+  if topentry >= maxentries
+  then begin writeln('File full.');   exit(addarecord) end;
+  seek(adds, topentry);
+  with adds ^ do
+   begin
+    write('Name: ');   saferead(name, stringlength);   write('Street: ');
+    saferead(street, stringlength);   write('City: ');
+    saferead(city, stringlength);   write('State: ');   saferead(state, 2);
+    write('Zipcode: ');   saferead(zipcode, 8);   write('Phone: ');
+    saferead(phone, stringlength);
+   end;
+  key(keyfield, adds ^, topentry);   put(adds);   topentry := topentry + 1
+ end (*addarecord*);
+
+procedure printrecords;
+ 
+ var
+  searchmode:
+   (all, only, except);
+  ch: char;
+  target, foutname: string;
+  fout: text;
+  
+ function wanted(s: string): boolean;
+  
+  begin
+   case searchmode of
+    all: wanted := true;
+    only: wanted := pos(target, s) <> 0;
+    except: wanted := pos(target, s) = 0
+   end (*CASE*)
+  end (*wanted*);
+ 
+ procedure printone(number: index);
+  
+  procedure print(s: string);
+   
+   var
+    i: integer;
+    lastname: string;
+    
+   begin
+    i := pos(',', s);
+    if i in [0, length(s)]   then writeln(fout, s)
+    else
+     begin
+      lastname := copy(s, 1, i - 1);   delete(s, 1, i);
+      while (s[1] = ' ') and (length(s) > 1) do delete(s, 1, 1);
+      writeln(fout, s, ' ', lastname)
+     end
+   end (*print*);
+  
+  begin (*printone*)
+   seek(adds, number);   get(adds);
+   with adds ^ do
+    begin
+     if nam in printfields   then print(name);
+     if str in printfields   then writeln(fout, street, ' ');
+     if cit in printfields   then write(fout, city, ' ');
+     if sta in printfields   then write(fout, state, ' ');
+     if zip in printfields   then write(fout, zipcode);
+     if printfields * [cit, sta, zip] <> []   then writeln;
+     if pho in printfields   then writeln(phone);   writeln
+    end
+  end (*printone*);
+ 
+ procedure postorder(p: pointer);
+  
+  begin
+   if p <> nil then
+    begin
+     postorder(p ^.left);   if wanted(p ^.key)   then printone(p ^.number);
+     postorder(p ^.right)
+    end;
+  end (*postorder*);
+ 
+ begin (*printrecords*)
+  write('Output file: ');   readln(foutname);   rewrite(fout, foutname);
+  repeat
+   write('A(ll O(nly E(xcept: ');   read(ch);   writeln;   ch := upper(ch);
+  until ch in ['A', 'O', 'E'];
+  case ch of
+   'A': searchmode := all;
+   'O': searchmode := only;
+   'E': searchmode := except
+  end (*CASE*);
+  if ch in ['O', 'E']   then begin write('Target: ');   readln(target) end;
+  writeln;   if modified   then initkeys;   postorder(root);
+  close(fout, lock)
+ end (*printrecords*);
+
+procedure modifyarecord;
+ 
+ var
+  entrynum, count: index;
+  target: string;
+  
+ procedure preorder(p: pointer);
+  
+  begin
+   if p <> nil
+   then
+    begin
+     if pos(target, p ^.key) <> 0 then
+      begin
+       count := count + 1;   writeln(p ^.number, ' ', p ^.key);
+       entrynum := p ^.number
+      end;
+     preorder(p ^.left);   preorder(p ^.right)
+    end
+  end (*preorder*);
+ 
+ procedure change(entrynum: index);
+  
+  const
+   esc = 24;
+   
+  var
+   s: shortstring;
+   buf: entry;
+   
+  procedure exitmod;
+   
+   begin
+    adds ^ := buf;   seek(adds, entrynum);   put(adds);
+    exit(modifyarecord)
+   end (*exitmod*);
+  
+  procedure modone(prompt: string; f: field; var old: string; len: integer)
+   ;
+   
+   var
+    s: string;
+    ch: char;
+    
+   begin
+    write('New ', prompt, ': ');   get(input);
+    if input ^ = chr(esc)   then begin read(ch);   writeln;   exitmod end;
+    saferead(s, len);
+    if s = ''   then exit(modone)
+    else
+     if s[1] = chr(esc)   then exitmod
+     else begin old := s;   if f = keyfield   then modified := true end
+   end (*modone*);
+  
+  begin (*change*)
+   seek(adds, entrynum);   get(adds);   buf := adds ^;
+   with buf do
+    begin
+     writeln('Name: ', name);   writeln('Street: ', street);
+     writeln('City state zip: ', city, ' ', state, ' ', zipcode);
+     writeln('Phone: ', phone);   writeln;
+     modone('name', nam, name, stringlength);
+     modone('street', str, street, stringlength);
+     modone('city', cit, city, stringlength);
+     modone('state', sta, state, 2);   modone('zip', zip, zipcode, 8);
+     modone('phone', pho, phone, stringlength);   exitmod
+    end
+  end (*change*);
+ 
+ begin (*modifyarecord*)
+  count := 0;   write('Target: ');   readln(target);   preorder(root);
+  if count = 0   then writeln('Not in file.')
+  else
+   begin
+    if count > 1
+    then begin write('Specify record number: ');   readln(entrynum) end;
+    change(entrynum)
+   end
+ end (*modifyarecord*);
+
+procedure doacommand;
+ 
+ var
+  com: char;
+  
+ begin
+  repeat
+   write('A(dd M(odify F(ilechange P(rint N(ewsort S(et Q(uit: ');
+   read(com);   writeln;   com := upper(com);
+   case com of
+    'A': addarecord;
+    'M': modifyarecord;
+    'N': begin initfield(keyfield);   initkeys end;
+    'P': printrecords;
+    'F': begin initfiles;   initkeys end;
+    'Q': begin close(adds, lock);   exit(mailer) end;
+    'S': initset(printfields);
+   end (*CASE*)
+  until false
+ end (*doacommand*);
+
+begin (*mailer*)
+ mark(heap);   empty := ' ';   empty[1] := chr(0);   initfile;
+ initfield(keyfield);   initkeys;   printfields := [nam .. cit, sta, zip];
+ repeat doacommand   until false
+end (*mailer*).

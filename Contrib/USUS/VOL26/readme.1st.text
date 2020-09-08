@@ -1,0 +1,50 @@
+Some notes from the reviewer:
+
+     I have made UDE marginally work.  I am not really very impressed
+with the entire package, but it shows some interesting programming constructs
+and is very possibly useful to somebody.  The documentation, although extensive
+is unclear and hard to follow.  The example given in the last part of the
+documentation has some errors, but after a couple of hours of playing around,
+you too will figure it out.  
+
+     The program requires that the code files reside on #4:.  You can easily
+change this in UD.UDE.TEXT.  The program has the built in and annoying
+tendency to chain back to itself, so you may find that it restarts when you
+don't want it to.  Simply remove the last call to CHAIN in UD.UDE.TEXT and re-
+compile it.
+
+     There is some rather clever code in SH.INIT.TEXT to to obtain the
+cursor control characters for the user's terminal.  Unfortunatly, it don't
+work.  If your terminal uses two character control sequences for the arrow keys
+you will have to go in and hard wire stuff.  The function SC_MAP_CRT_COMMAND
+is kind of odd and can't really be used in the way shown with two character
+sequences.  
+
+     SC_MAP_CRT_COMMAND (in screenops) expects you to read characters from
+the terminal and pass all of them through it.  If your terminal has two
+character control sequences, some of the characters that you read will
+be the prefix characters.  When SC_MAP_CRT_COMMAND is passed a prefix
+character, IT GOES OUT AND READS THE TERMINAL, EXPECTING TO FIND ANOTHER
+CHARACTER!!  If the next character is one of the ones for the special keys,
+it will return the enumerated type of the special key and the value of the
+character that it read.  This means that the method used in UDE hangs
+whenever this procedure is called.  UNLESS THE CORRECT CHARACTERS ARE TYPED IN
+THE CORRECT ORDER the program will not be able to determine the values of the 
+arrow keys.  With one character command sequences, the method should work fine.
+
+     The author has also done something which will cause a lot of users, 
+especially those with APC's and PC's a lot of grief.  Most of the prompt 
+lines are written to the screen with the 8th bit set.  This is probably
+some special video attribute for his terminal, but many terminals use
+the characters between 128 and 255 as graphics characters.  This means the
+much of the prompting information will be displayed as graphic garbage.
+This stuff is scattered throughout the program, and I didn't want to change
+it.  If it causes you problems, you will have to go in and delete the
+< +128 > expressions.
+
+     Good luck  george w. schreyer
+
+     p.s.  The submittor has requested that any changes, bug fixes, or
+upgrades be submitted back to him.  If you improve on this program, other
+than the items mentioned above, please contact me so that we can send
+the upgrades back to him.

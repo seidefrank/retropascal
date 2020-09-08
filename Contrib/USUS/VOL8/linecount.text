@@ -1,0 +1,136 @@
+PROGRAM LINECOUNTER;
+
+{by Sandy and George Schreyer}
+
+{use this program to do a very fast line count of one or several files.
+ you must make a text file of the filenames that you wish to count if you
+ want to count more than one file at a time}
+ 
+USES (*$U SCREENUNIT.CODE*)SCREENUNIT,
+     (*$U FILEUNIT.CODE*) FILEUNIT,
+     (*$U PRINTRUNIT.CODE*)PRINTERUNIT;
+
+VAR DIRF:TEXT; {Directory file}
+    DISK:FILE; {Text file to be line-counted}
+    FILENAME:STRING; {Name of text file}
+    LINES:INTEGER; {Number of lines in one text file}
+    PRNT:TEXT; {Output to printer}
+    TRANSACTION:CHAR; {What program is to do}
+    
+PROCEDURE DO_COUNT;
+{ Count the lines of text file FILENAME.  The answer is LINES. }
+VAR POSITION,INDEX,BLOCKS,DATA_LEFT : INTEGER;
+    DATA : PACKED ARRAY[0..17407] OF CHAR;
+{$R-}
+BEGIN
+   LINES:=0;
+   INDEX:=0;
+   WRITELN('counting ... ',FILENAME);
+   BLOCKS:=BLOCKREAD(DISK,DATA,34,2);
+   DATA_LEFT:=512*BLOCKS;
+   REPEAT
+      POSITION:=SCAN(DATA_LEFT,=CHR(13),DATA[INDEX]);
+      LINES:=SUCC(LINES);
+      INDEX:=INDEX+POSITION+1;
+      DATA_LEFT:=DATA_LEFT-POSITION;
+   UNTIL DATA_LEFT <= 0;
+   LINES:=LINES-1;
+END {DO_COUNT};
+{$R+}
+
+PROCEDURE COUNT_ONE;
+{ Count the number of lines in one file. }
+BEGIN
+   OPNDSKREAD(DISK,'Count lines in which text file? ',FILENAME,0,5);
+   IF FILENAME='' THEN EXIT(COUNT_ONE);
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   WRITELN;
+   DO_COUNT;
+   WRITELN;
+   WRITELN('Your file ',FILENAME,' has ',LINES,' lines.');
+   CLOSE(DISK,LOCK);
+END {COUNT_ONE};
+
+PROCEDURE COUNT_MANY;
+{ Count the number of lines in a group of files. }
+VAR DATE:STRING;
+    DIREOF:BOOLEAN;
+    DIR_NAME:STRING;
+    IORSLT:INTEGER;
+    STAR:STRING;
+    TOT_LINES:INTEGER;
+BEGIN
+   OPNDSKREAD(DIRF,'What is the name of your directory? ',DIR_NAME,0,5);
+   IF DIR_NAME='' THEN EXIT(COUNT_MANY);
+   TOT_LINES:=0;
+   PAGE(PRNT);
+   WRITELN(PRNT,'Line counts for directory ',DIR_NAME);
+   STAR:='*';
+   GET_FILE_DATE(STAR,DATE);
+   WRITELN(PRNT,'     on ',DATE);
+   WRITELN(PRNT);
+   WRITELN(PRNT);
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   REPEAT
+      READLN(DIRF,FILENAME);
+      DIREOF:=EOF(DIRF);
+      IF (NOT DIREOF) AND (FILENAME<>'') THEN
+         BEGIN
+         {$I-}
+         RESET(DISK,FILENAME);
+         IORSLT:=IORESULT;
+         {$I+}
+         IF IORSLT<>0 THEN
+            WRITELN(PRNT,FILENAME,' can not be opened.')
+         ELSE
+            BEGIN
+            DO_COUNT;
+            FILENAME:=CONCAT(FILENAME,'                                   ');
+            WRITELN(PRNT,COPY(FILENAME,1,30),LINES:10);
+            TOT_LINES:=TOT_LINES+LINES;
+            WAIT_FOR_DC1;
+            END;
+         END;
+      CLOSE(DISK,LOCK);
+   UNTIL DIREOF;
+   WRITELN(PRNT);
+   WRITELN(PRNT,'TOTAL',' ':25,TOT_LINES:10);
+   CLOSE(DIRF,LOCK);
+END {COUNT_MANY};
+
+BEGIN {LINECOUNTER}
+   INITPT;
+   GETCRTINFO;
+   REWRITE(PRNT,'PRINTER:');
+   GOTOXY(0,0);
+   CRT(ERASEOS);
+   WRITELN('LINE COUNTER   version 2      22-Jul-81');
+   WRITELN;
+   VER_SCREENUNIT;
+   VER_FILEUNIT;
+   VER_PRTUNIT;
+   REPEAT
+      GOTOXY(0,15);
+      WRITELN('A)  Count lines in one file');
+      WRITELN('B)  Count lines for all files in directory');
+      WRITELN;
+      WRITELN('Q)  Quit');
+      REPEAT
+         GOTOXY(0,12);
+         WRITE('Enter letter of desired menu item: ');
+         READ(TRANSACTION);
+      UNTIL TRANSACTION IN ['A','B','Q','a','b','q'];
+      GOTOXY(0,0);
+      CRT(ERASEOS);
+      CASE (TRANSACTION) OF
+         'A','a': COUNT_ONE;
+         'B','b': COUNT_MANY;
+         'Q','q': ;
+      END {case};
+      GOTOXY(0,0);
+      CRT(ERASEOS);
+   UNTIL TRANSACTION IN ['Q','q'];
+END. {LINECOUNTER}
+

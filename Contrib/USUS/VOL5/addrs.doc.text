@@ -1,0 +1,65 @@
+
+                           Monaco's Address Programs
+                                  Version 2.0
+
+
+
+     These address programs (STRUCT, UPDATE AND GETSORT) are designed to
+manage a database of up to 1000 records consisting of "arbitrary records". An
+"arbitrary" record is simply defined as five strings of text, each string up
+to 80 characters long, and the fifth string being the "key" by which the
+records are sorted and accessed. The routines will build the database, allow
+dynamic updates, and sort the entire database for a printable output file. The
+selected application presented here is for maintaining an address file, but
+the source can be easily changed to reflect any application. 
+
+     Use "STRUCT" to convert a standard ascii file (built in the editor called
+#5:adds.text) to the diskfile #5:address.text. The file #5:adds.text must look
+like this: 
+
+                                    Nameline
+                                   Streetline
+                                CitystateZipline
+                                   Phoneline
+                                    Keyline
+                                 Nextnameline 
+                                     etc...
+
+     Note that no blank intervening lines are permitted, and that no
+completely blank fields are allowed.  Also, the keyline should contain the
+collating sequence key you want the record accessed by (keys must be, on the
+whole, unique). Use #5:update.code to update/modify or print mailing labels
+from the database, and use #5:getsort.code to build a sorted, full copy of
+#5:address.text called #5:printf.text. You can spool #5:printf.text; do not
+attempt to use #5:address.text for anything (editor, line printer, etc) as it
+is a structured file! 
+         
+     HINTS: you only have to use #5:struct.code once; #5:update.code and
+#5:getsort.code do everything for you automatically once you have the
+structured file #5:address.text.  Both #5:update.code and #5:getsort.code will
+build files of keys (these will magically appear on #5:); do not mess with
+these phantom files! The user should only ensure that a few free blocks appear
+right after #5:address.text to allow dynamic file increase. 
+
+     The user should modify the global variables for terminal control in
+#5:update.text (since I built it for a Hazeltine 1510); see the main program
+for documentation for what the global terminal variables handle. 
+
+     When #5:update.code prompts for a key, the first record in address.text
+having the string typed after the prompt will be retrieved; the entire key
+need not be typed! Also, if the key is not found, update will prompt for
+another try. Update understands "stop" and "print" as reserved keys with
+obvious meanings. 
+
+     Last, when adding new records with new keys, bracket the key field with
+"*" as "*keyfield*". Notice that character cases are important in keys! The
+user will find the program #5:getsort.text extremely instructional in tech-
+niques of sorting large files with little memory... 
+
+                      
+     Please address comments to:
+                      
+                            Cpt Francis J. Monaco
+                 Department of Geography and Computer Science
+                      The United States Military Academy
+                          West Point, New York 10996

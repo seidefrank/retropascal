@@ -1,0 +1,121 @@
+******************************************************************************
+
+#: 8590      Sec. 1 - Members
+Sb: Whetstone and Apple II
+    02-Oct-82  10:35:42
+Fm: Keith McLaurin 71505,2035
+To: Roger Peterson
+
+Roger, I compiled and ran the whetstone on an Apple II with Apple Pascal 1.1. 
+The results are below.  I added a time instruction to relate the time spent in
+the program initialized after the readln(I) and all times are relative to that
+point.  The input/output to the screen and the disk file adds about 15
+seconds.  I added looping constructs to call each routine to allow running the
+program for more than 1 million (I=10) to reduce the I/O percentage and
+improve the 1 second resolution of the clock.  To compile, I had to enable the
+goto compiler option, add Uses Transcend, and change ARCTAN to ATAN.  I also
+ran it for IV.0...  no Uses Transcend needed for iv.0 .
+Whetstone  I = 10;      Range Checking on.
+  T:     0 MODULE  1    0    0    0     1.000    -1.000    -1.000    -1.000
+  T:     7 MODULE  2  120  140  120    -0.068    -0.463    -0.730    -1.124
+  T:    46 MODULE  3  140  120  120    -0.055    -0.447    -0.711    -1.103
+  T:    55 MODULE  4 3450    1    1     1.000    -1.000    -1.000    -1.000
+  T:    84 MODULE  6 2100    1    2     6.000     6.000    -0.711    -1.103
+  T:   231 MODULE  7  320    1    2     0.492     0.492     0.492     0.492
+  T:   355 MODULE  8 8990    1    2     1.000     1.000     1.000     1.000
+  T:   421 MODULE  9 6160    1    2     3.000     2.000     3.000    -1.103
+  T:   423 MODULE 10    0    2    3     1.000    -1.000    -1.000    -1.000
+  T:   515 MODULE 11  930    2    3     0.835     0.835     0.835     0.835
+
+  Apple Pascal 1.1   Apple Pascal 1.1     Apple Pascal 1.1    IV.0 - Apple
+  Weight 1 million . Weight 100 Million . Weight 1 Million . Weight 1 Million
+  (range chkg off)     (range chkg on)     (range chkg on)   (range chkg on)
+  T:   0 MODULE  1   T:     1 MODULE  1  T:     0 MODULE  1  T:   0 MODULE  1
+  T:   6 MODULE  2   T:   534 MODULE  2  T:     7 MODULE  2  T:   6 MODULE  2
+  T:  42 MODULE  3   T:  4269 MODULE  3  T:    46 MODULE  3  T:  41 MODULE  3
+  T:  52 MODULE  4   T:  5063 MODULE  4  T:    55 MODULE  4  T:  50 MODULE  4
+  T:  80 MODULE  6   T:  7826 MODULE  6  T:    84 MODULE  6  T:  75 MODULE  6
+  T: 226 MODULE  7   T: 22302 MODULE  7  T:   231 MODULE  7  T: 219 MODULE  7
+  T: 350 MODULE  8   T: 34553 MODULE  8  T:   355 MODULE  8  T: 342 MODULE  8
+  T: 410 MODULE  9   T: 40961 MODULE  9  T:   421 MODULE  9  T: 400 MODULE  9
+  T: 412 MODULE 10   T: 40962 MODULE 10  T:   423 MODULE 10  T: 401 MODULE 10
+  T: 504 MODULE 11   T: 50078 MODULE 11  T:   515 MODULE 11  T: 493 MODULE 11
+  Comments:  Module 1 -- Simple identifiers, assignments
+             Module 2 -- Array Elements
+             Module 3 -- Array as Parameter
+             Module 4 -- Conditional Jumps
+             Module 5 -- Omitted ?? Why and What ??
+             Module 6 -- Integer (Array) arithmetic
+             Module 7 -- Trig Functions
+             Module 8 -- Procedure Calls
+             Module 9 -- Array References
+             Module 10 - Integer Arithmetic
+             Module 11 - Standard Math Functions
+    IV.0 is faster in excution than Apple Pascal 1.1. The time spent in any
+    Module is calculated by subtracting the T: value above the module. e.g.
+    time in module 11 is 50078 - 40962 = 9116 seconds. The values were
+    calculated as long integers. - keith mclaurin
+
+
+
+
+
+
+
+
+
+
+******************************************************************************
+
+MODULE 5 was also omitted in the original reference.  There was no reason
+given, nor any explanation of its original purpose.  -Roger Peterson
+
+******************************************************************************
+
+ #: 8732      Sec. 1 - Members
+Sb: #8685-Whetstone cont.
+Fm: Keith McLaurin 71505,2035
+To: Roger Peterson 71565,411
+
+Roger,
+I looked up the reference you listed for 'The Computer Journal' Volume 19, #1
+p. 43-49 and see that Module 5 is ommited in the Appendix with no explanation
+as to why.  So please disreguard my earlier question.
+
+The source file I downloaded from the MUSUS data base WHET.PAS has one very
+minor typo in MODULE 4.  The conditional statement J<1 should read J<2.  This
+has little impact on program execution time on the Apple II.  I replaced the
+Var Temp in MODULE 7 with the source to match the Algol listing and the 
+execution time of that module increased about 20%.  The use of Temp 
+variable optimizes the source sincethe Temp expression is evaluated only once
+in a pass rather than twice when it is in the denominator.  Essentially
+equivalent times are obtained when the Temp expression is evaluated twice.
+
+I have often heard of 'Whetstones' and often wondered what they specifically
+were.  The Whetstone program is a benchmark for evaluating scientific type 
+programs based on analysis of about 1000 programs for frequencies of
+operations.  The term 'Whetstones per second' is calculated by I * 100,000 /
+(Program execution in seconds).  Thanks for sharing this program with the USUS
+group.  -keith mclaurin
+
+******************************************************************************
+
+The temporary variable, TEMP, in MODULE 7 was added for the OMSI compiler.
+OMSI Pascal (versions 1.1 and really do NOT use the stack properly and thus 
+have severe limits on nesting of expressions (especially floating point 
+calculations).  This is not a limitation in UCSD.  I suggest that the original
+source of WHET.PAS be changed to read
+
+             BEGIN
+               TEMP:= COS(X+Y)+COS(X-Y)-1.0;
+               X:=T*ATAN(T2*SIN(X)*COS(X)/TEMP);  (* USE ARCTAN FOR OMSI *)
+               TEMP:=COS(X+Y)+COS(X-Y)-1.0;
+               Y:=T*ATAN(T2*SIN(Y)*COS(Y)/TEMP)
+             END;
+
+Now the only difference from the original is that it has two additional
+floating point store and retrieve operations.  -Roger Peterson
+
+******************************************************************************
+
+

@@ -1,0 +1,30 @@
+
+PROGRAM HEXTEST;
+VAR CH : CHAR;
+     I : 0..1;
+
+PROCEDURE HEXOUT (C:CHAR);
+TYPE        HEX = PACKED ARRAY[0..1] OF 0..15;
+      ALIASTYPE = RECORD
+                   CASE BOOLEAN OF
+                     TRUE: (CHAREP:CHAR);
+                     FALSE: (HEXREP:HEX)
+                   END;
+VAR  ALIAS:ALIASTYPE;
+BEGIN
+  ALIAS.CHAREP:=C;
+  FOR I:=1 DOWNTO 0 DO
+  IF ALIAS.HEXREP[I] < 10 THEN WRITE(ALIAS.HEXREP[I]) 
+    ELSE WRITE(CHR(ALIAS.HEXREP[I]+55));
+END;
+
+
+BEGIN
+  REPEAT
+    WRITELN;
+    READ(KEYBOARD,CH);
+    HEXOUT(CH);
+  UNTIL CH='Z'
+END.
+
+j

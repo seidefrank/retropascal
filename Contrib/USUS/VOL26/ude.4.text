@@ -1,0 +1,523 @@
+   
+1.7.1 Definition of terms 
+ 
+      The following terms are used frequently in describing Copy Data File. 
+       
+   Data file -     A set of two files, one thats name ends with .SCRN and one
+                   that ends with .TEXT, used by the UDE programs to store data.
+                
+   UDE SCRN file - A file created by the UDE Define program thats name ends with
+                   .SCRN. This file contains all the necessary information 
+                   describing the screen prompts and the size, number, type and 
+                   length of data fields in a UDE data file. 
+    
+   UDE TEXT file - A file created by the UDE maintain program ending with .TEXT.
+                   This file contains the actual data of a UDE data file,
+                   arranged in records. 
+    
+   Data field -    The individual pieces of data that the user enters into the
+                   UDE data file from the screen.  The user defines the
+                   characteristics of a data field in the screen definition 
+                   program which is described in Section 1.8. 
+    
+   Record -        All the data fields together on the screen make up one UDE
+                   record.  A record may have up to forty data fields. 
+    
+   Field id -      The name given to a data field in the screen definition
+                   program.  These names are used in the List, Sort and Copy 
+                   routines. 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+1.7.2 Screen definition requirements 
+ 
+     Data from a field in one data file can be copied to a field in another
+data file only if the two fields have the same field id.  This does not mean
+that the screen definitions of the two data files must be identical.  Each of
+the data files may contain field ids not present in the other, but only fields
+common to both of the data files will be eligible for copying.  
+ 
+   Data may be copied between two fields of different types as long as
+the actual data to be copied is of the proper type.  For example, numeric data
+from an alphanumeric type field may be copied to a numeric type field.  An error
+message will be displayed and the program will terminate if an attempt is made
+to copy improper type data to a field.  Data may also be copied between two
+fields of different lengths.  If a field is not large enough to hold all of the
+data being copied to it, the following prompt will appear: 
+ 
+     One or more of the fields is not large enough to hold all of the 
+     data being copied to it.  Proceed anyway? (Y/N): 
+ 
+If the response is <Y>, as many characters as the field will hold will
+be copied, starting from the left.  All excess characters on the right will be
+ignored.  If the response is <N> the program will terminate.  This prompt
+will be displayed only once during the execution of the program. 
+ 
+1.7.3 Accessing the data files 
+ 
+     Before the copy is started, the user will normally define a new UDE form
+by using the UDE Define function.  After the new form has been defined, press a
+<C> while in the main UDE display and the following screen appears: 
+ 
+**************************************************************** 
+ 
+                         COPY A DATA FILE 
+                         ================ 
+ 
+DATA FILE TO COPY FROM 
+ 
+Volume   : ________
+Name     : ____________
+Type     :   SCRN and TEXT
+ 
+ 
+DATA FILE TO COPY TO 
+ 
+Volume   : ________
+Name     : ____________
+Type     :   SCRN and TEXT 
+ 
+ 
+<ENTER> to execute, <ESC> to abort 
+ 
+**************************************************************** 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+    After entering the volume and name fields for each data file, press
+<enter>.  If the program cannot find the "from" text file or either of the
+files ending in .SCRN, an error message is displayed.  If the data file to be
+copied to contains no TEXT file, the program asks if it should create one.  If
+the answer is yes, the next prompt is: 
+ 
+     Maximum number of records? _0__________
+ 
+The absolute maximum number of records in a data file is 32767.  The maximum
+number of records in the new TEXT file may be greater than, less than, or equal
+to the number of records in the TEXT file to be copied from. 
+ 
+1.7.4 Status messages 
+ 
+     When the program begins copying, the following message will appear as
+each record is copied: 
+ 
+     STATUS: Copying record# X 
+ 
+where X is the number of the record that data is currently being copied from. 
+By watching the messages, the user will be able to estimate the amount of time
+the copy will take.  The amount of time required is heavily dependent upon the
+size and number of fields in the data file records.  When finished copying, the
+program will display a message indicating the number of records copied.  If
+there was not room to copy all records to the output file, the program will
+display a message indicating the number of records copied before the output
+file became full. 
+ 
+1.7.5 Copying all fields of all records into a new data file 
+ 
+     This section describes how to copy one data file, as is, into a new,
+larger or smaller data file.  The user begins by either creating a new .SCRN
+file with UDE Define, or, if the definition of the new file will be exactly
+the same as the old, the Filer may be used to make a copy of the .SCRN file
+into another file that ends in .SCRN. 
+ 
+    Because this is a new data file, the user will be asked how many
+records are to be in the data file; it will then create that many records in a
+file thats name ends in .TEXT.  The program will display the following prompt: 
+ 
+     Do you wish to copy all fields common to both data files? (Y/N): Y 
+ 
+Since all fields are to be copied, press either <return> or <Y>.  The
+next prompt will be: 
+ 
+     Are fields to be tested for certain values before record 
+     is copied? (Y/N):N 
+ 
+Press either <return> or <N> since all records are to be copied.  The
+following prompt will then appear: 
+ 
+     Copy blank records? (Y/N): N 
+ 
+
+
+
+
+
+
+
+
+
+
+In a UDE file, blank records are defined to be those records deleted with
+the Delete function of the UDE maintain program or those records of a file
+that have never been used.  If the reponse to the above prompt is a <Y>, the
+program will copy blank records to the output file, if the response is an <N>
+it will not.  If the data file being copied from has no blank (deleted) records
+among the non-blank records, this operation will have no effect.  Upon
+recieving a response to the above prompt the program will begin copying. 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.7.6 Copying only certain fields into a new data file 
+ 
+     To copy only certain fields of all records into a new data file, follow
+this procedure.  Any fields that are not copied to will be left blank.  Again,
+begin by defining a new .SCRN file with UDE Define.  Then begin the Copy
+command and tell how many records are to be in the data file.  After creating
+the new .TEXT file, the program will display the following prompt: 
+ 
+     Do you wish to copy to all fields common to both data files? (Y/N): 
+ 
+Press <N> and the following screen will appear: 
+ 
+**************************************************************** 
+ 
+The following fields are common to both data files. Indicate 
+those fields whose information is to be copied (Y/N) 
+ 
+FIELD1   Y     FIELD2   Y 
+FIELD3   Y     FIELD4   Y 
+    .              . 
+    .              . 
+    .              . 
+ 
+ 
+ 
+ 
+ 
+ 
+<ENTER> to execute, <ESC> to abort 
+ 
+**************************************************************** 
+ 
+If the information in the field is to be copied into the new file, there
+must be a Y in the the space next to the field id.  Otherwise the information
+in that field will not be copied.  The remaining prompts will be the same as
+those for copying all fields as described in section 1.7.5. 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.7.7 Copying only certain records into a new data file 
+ 
+     The prompts are the same as those described in section 1.7.5 for copying
+all fields.  Respond the same way but with one exception.  When the following
+prompt appears: 
+ 
+     Are fields to be tested for certain values before record 
+     is copied? (Y/N): 
+ 
+Respond <Y> and the following screen will appear: 
+ 
+***************************************************************** 
+ 
+Comparison tests to be made on fields of each record:     Choose from the 
+                                                          following fields: 
+FIELD ID  OPERATOR                VALUE 
+ 
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+________    ____     _______________________________
+
+Valid operators are: < , > , = , <= , >= , or <> 
+
+Currently viewing tests 1 - 13 
+
+Get, Save tests, Change, Next, Back, Quit: 
+
+***************************************************************** 
+ 
+    Up to 52 tests can be performed on the fields of each record to
+determine whether or not that record should be copied.  It should be emphasized
+that these tests determine whether or not the record is copied, they do not
+determine which fields of the record are copied.  Refer to section 1.7.6 for
+instructions on indicating which fields of a record are to be copied.  The
+operation of these tests is the same as that of the tests described in detail
+in section 1.5.2.2 on the UDE List function. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   When all of the tests have been entered, press <Q>.  If two or more
+tests have been entered the following screen will be displayed: 
+ 
+***************************************************************** 
+ 
+Copy each record if: 
+ 
+1) All of the above tests have been met 
+2) Any of the above tests has been met 
+ 
+Enter 1 or 2 : 
+ 
+***************************************************************** 
+ 
+The user must respond correctly to the above prompt to get the desired
+result.  Please refer to section 1.5.2.2 for an explanation of this prompt. 
+ 
+    The remaining prompts in the series will be the same as those
+described in section 1.7.5. 
+ 
+1.7.8 Copying additional records to an existing data file 
+ 
+     The program allows additional records to be appended to the end of an
+existing UDE data file.  After the program accesses the data files, the
+following prompt will be displayed: 
+ 
+     Data file has existing records.  Do you wish to delete them? (Y/N): 
+ 
+Enter an <N> so that the records will not be deleted.  The next prompt
+will be: 
+ 
+     Do you wish to add the new records at the end of the  
+     data file? (Y/N): Y 
+ 
+Press either <return> or <Y>.  The additional records will be copied
+to a location in the data file just after the last non-blank record
+(regardless of any blank records that are mixed in with the non-blank records).
+ Blank records are defined to be those records deleted with the Delete
+function of UDE Maintain or those records of a file that have never been used. 
+ 
+    The remaining prompts will be the same as those described in section
+1.7.5.  If there is not enough room to copy all records to the file, a message
+will be displayed indicating the number of records copied before the file
+became full. 
+ 
+1.7.9 Merging selected fields into an existing data file 
+ 
+     The program will allow data to be copied to selected fields of an
+existing UDE data file, leaving those fields not copied into undisturbed.  Be
+very careful when using this feature.  When using the program for this
+purpose, the user should be sure that each record to be copied from the first
+data file will merge with the proper record from the second data file. 
+ 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    After accessing the data files, the program will display the same two
+prompts as described in the section on copying additional records to an
+existing data file, section 1.7.8 above.  Respond with an <N> to both of the
+prompts and the following note will appear: 
+ 
+     NOTE: Any fields of the existing data file that are not copied to will 
+     be left intact.  Do you wish to proceed? (Y/N): 
+ 
+Press <Y> to continue, <N> to terminate the program.  The remaining
+prompts will be the same as those described in section 1.7.5.  Respond as
+necessary to copy the desired fields and records to the existing data file. 
+ 
+1.7.10 Deleting unwanted records from a data file 
+ 
+     The program may be used to remove unwanted records by copying to and from
+the same UDE data file.  After accessing the data files, the program will
+display the following prompt: 
+ 
+     Data file being copied to has existing records.  Do you wish to delete 
+     them? (Y/N): 
+ 
+It is appropriate to respond <Y> to this prompt even when copying to
+and from the same data file.  None of the original records of the file will be
+deleted until all of the desired records have been copied.  The program copies
+the new records to the beginning of the data file, writing over any of the
+original records.  Only after copying all of the desired records are the
+remaining original records deleted.  Refer to section 1.7.7 for instructions on
+testing fields of records for certain values. 
+ 
+Warning: Copying to and from the same file is a dangerous operation.  It 
+         is not possible to recover accidentally deleted records. 
+ 
+See section 1.7.4 for an explanation of the STATUS messages displayed while the
+program is copying. 
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.8 DEFINING A SCREEN FORMAT 
+ 
+1.8.1 Introduction 
+ 
+     The define program may be run by executing the file SD/DEFINE.CODE. 
+This program will allow the user to define an input mask by entering a
+description of the input fields required and their position on the screen. 
+This definition also serves as the model for creating data files in the
+Universal Data Entry program. 
+ 
+1.8.1.1 Main Option Menu 
+ 
+ 
+                               SCREEN DEFINITION 
+                               ================= 
+                                 Version IV.0 
+                                        
+                                        
+                        Clear current screen definition 
+                        Edit screen definition file 
+                        Get old screen definition file 
+                        Print screen definition file 
+                        Quit 
+                        Save current screen definition 
+ 
+ 
+     SELECTION : _
+ 
+     The Define program has a Main menu that allows access to the various
+functions neccessary to define, maintain, and store a screen definition file. 
+The bold capital letters in the Main menu and lower level prompt lines indicate
+the keys which must be pressed to execute the options at that level.  A
+description of each function follows. 
+ 
+1.8.2 Clear current screen definition
+ 
+     Pressing the <C> key from the Main menu clears all files and variables
+in the define program as if the user had just executed the program.  It is
+recommended that users execute the clear function after saving a screen
+definition before defining another. 
+

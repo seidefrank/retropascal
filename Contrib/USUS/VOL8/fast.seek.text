@@ -1,0 +1,130 @@
+{Copyright 1980 by
+Stuart Lynne
+1350 Clifton Ave.
+Coquitlam, British Columbia,
+Canada
+V3J 5K6
+
+Permission granted to use for noncommercial purposes.  All
+other rights reserved}
+
+  
+{ fast.seek }
+{$U-,S+}
+
+{$I globals }
+
+{
+*
+*       Fast Seek
+*
+*       Changes Copyright (c) 1980, by Stuart Lynne. All rights reserved.
+*
+*       This is a recoded version of the UCSD Pascal Seek algorithm. It
+*       is 50 to 100 % faster than the original.
+*
+*
+}
+{$C Copyright (c) 1980, by Stuart Lynne. All rights reserved.}
+(*----------------------------------------------------------*)
+
+SEPARATE UNIT Unit_Seek;
+INTERFACE
+    
+  PROCEDURE FSEEK(VAR F: FIB; RECNUM: INTEGER);
+  
+IMPLEMENTATION
+    
+  Procedure Super (A, B: integer; var Block, Byte: integer);
+  
+    var
+         A_Hi, A_Mid, A_Low, B_Hi, B_Mid, B_Low,
+         Little_Total, A_Mid_B_Low, A_Low_B_Mid, A_Low_B_Low: integer;
+    
+    begin         {of SUPER_DIV}
+      
+      A_Low := A Mod 32;
+      B_Low := B Mod 32;
+      
+      A_Hi := A Div 1024;
+      B_Hi := B Div 1024;
+      
+      A_Mid := (A mod 1024) DIV 32;
+      B_Mid := (B mod 1024) DIV 32;
+      
+      A_Mid_B_Low := A_Mid * B_Low;
+      A_Low_B_Mid := A_Low * B_Mid;
+      A_Low_B_Low := A_Low * B_Low;
+      
+      
+      Little_Total := (A_Mid_B_Low * 32 Mod 512) +
+                      (A_Low_B_Mid * 32 Mod 512) +
+                      (A_Low_B_Low      Mod 512);
+      
+      Byte := Little_Total Mod 512;
+      
+      Block := A_Hi * B_Hi * 2048  + A_Hi * B_Mid * 64    + A_Hi * B_Low * 2 
+             + A_Mid * B_Hi * 64   + A_MiD * B_MiD * 2    + A_Mid_B_Low Div 16 
+             + A_Low * B_Hi * 2    + A_Low_B_Mid Div 16   + A_Low_B_Low Div 512 
+             + Little_Total div 512;
+      
+    end  {of Super};
+
+  PROCEDURE FSEEK(*VAR F: FIB; RECNUM: INTEGER*);
+    LABEL 1;
+    VAR BYTE,BLOCK,N: INTEGER;
+    
+    
+  BEGIN SYSCOM^.IORSLT := INOERROR;
+    IF F.FISOPEN THEN
+      WITH F,FHEADER DO
+        BEGIN 
+          IF (RECNUM < 0) OR NOT FSOFTBUF OR
+                  ((DFKIND = TEXTFILE) AND (FRECSIZE = 1)) THEN
+            GOTO 1; (*NO SEEK ALLOWED*)
+          {
+          * Block := RECNUM*FRECSIZE DIV FBLKSIZE + 1;
+          * Byte  := RECNUM*FRECSIZE MOD FBLKSIZE;
+          }
+          Super (Recnum, Frecsize, Block, Byte);
+          Block := Block + 1;
+          IF BYTE = 0 THEN 
+            BEGIN
+              BYTE := FBLKSIZE;     
+              BLOCK := BLOCK - 1;
+              END;
+          N := DLASTBLK-DFIRSTBLK;
+          IF (BLOCK > N) OR ((BLOCK = N) AND (BYTE >= DLASTBYTE)) THEN
+            BEGIN BLOCK := N; BYTE := DLASTBYTE END;
+          IF BLOCK <> FNXTBLK THEN
+            BEGIN
+              IF FBUFCHNGD THEN
+                BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+                  UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1);
+                  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+                END;
+              IF (BLOCK <= FMAXBLK) AND (BYTE <> FBLKSIZE) THEN
+                BEGIN
+                  UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+BLOCK-1);
+                  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+                END
+            END;
+          IF FNXTBLK > FMAXBLK THEN
+            BEGIN FMAXBLK := FNXTBLK; FMAXBYTE := FNXTBYTE END
+          ELSE
+            IF (FNXTBLK = FMAXBLK) AND (FNXTBYTE > FMAXBYTE) THEN
+              FMAXBYTE := FNXTBYTE;
+          FEOF := FALSE; FEOLN := FALSE; FREPTCNT := 0;
+          IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR;
+          FNXTBLK := BLOCK; FNXTBYTE := BYTE
+        END
+    ELSE SYSCOM^.IORSLT := INOTOPEN;
+  1:
+  END (*FSEEK*) ;
+
+
+END { PASCALIO } ;
+
+(*Dummy level 0 outerblock*)
+BEGIN END.
+

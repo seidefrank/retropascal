@@ -1,0 +1,157 @@
+[hf=5/he=1]|UNIVERSAL DATA ENTRY|
+[he=2]|Introduction|
+[he=3]|10/81|
+[st=1/tabs=6,9,12,r65/ff=3/hg=3/hm=1,1.0/vm=0.25,0.5]
+[hs=8/ce]|7. UNIVERSAL DATA ENTRY|
+[ff=3/fo=1]7-@
+[hs=10]
+7.1 |INTRODUCTION|
+
+7.1.1 |Overview|
+
+	Universal Data Entry (|UDE|) enables users with little training to enter
+data into computer files which can later be sorted, printed, or accessed by
+other programs for data processing.  It provides prompts at fields in which
+data is to be entered, and, if an error is detected, it advises the user.  The
+screen prompts are created by the user with the help of the UDE Define
+function.
+
+	The UDE system is comprised of five programs: Define, Maintain, Sort, List
+and Copy.  Define allows the user to set up the screen and record layout of a
+data file.  Maintain collects data and enters it into a file which may be
+scanned to change or delete a record.  Sort is used to sort the records by
+field.  Up to ten fields may be used as keys, and each field may be sorted in
+ascending or descending order.  The user may put the sorted results into a new
+file if the data needs to be saved in its original form.  The keys used for
+sorting may also be stored for subsequent use.
+
+	List allows the user to list the records in the data file on a line or
+letter-quality printer.  The list format is user-defined and allows choosing
+the headings and footings which are to appear at the tops and bottoms of pages,
+which fields and records are to be printed, and which headings are to appear
+above each field.  Format information may be saved for use in printing other
+data.  List also allows a user to "export" data file records into a text file
+to do custom letter writing or address lists.
+
+	Copy allows the user to copy data from selected fields and records of
+either a UDE or GENLIST data file to a UDE data file.
+
+	UDE may also be used in conjunction with other programs which read data
+and process it by means of specially-prepared software.  Finally, UDE can
+collect data for transmission to other computers for storage or processing.
+
+	UDE can be used for name and address lists, inventory records, appointment
+calendars, purchase order records, payroll records, and many other business
+problems.
+
+	To use UDE for a particular application, start the program by entering
+/UDE from the main system menu or execute UD/UDE.CODE.  Define a data file
+using the UDE Define function and specify the information (numbers, dates,
+names, addresses, amounts, descriptions, etc.) needed in the data file.  This
+process is very similar to designing a manual filing system and takes only a
+few minutes to accomplish.
+
+	Having defined a data file format, create the data file and enter
+information using the Maintain function.  Once entered, any record can be
+examined, changed or deleted.
+
+	Information in the data file can be sorted, printed or copied as
+required with the Sort, List and Copy functions.
+
+[cp=18]	UDE for the PCIF system is made up of the following programs:
+[in=5]
+|UD/UDE.CODE| - Allows the user to choose the UDE function that is to be
+performed.
+
+|SD/DEFINE.CODE| - Defines the screen and record layout of a data file.
+
+|UD/MAINT.CODE| - Creates a data file if necessary and maintains records in the
+data file with add, examine, delete and modify commands.
+
+|UD/SORT.CODE| - Sorts data file records.  This program requires the
+file UD/SORT.SCRN be available on the prefixed disk.
+
+|UD/LIST.CODE| - Lists the active records in the data file.  This program
+requires the file UD/LIST.SCRN to be on the prefixed disk.
+
+|UD/COPY.CODE| - Copies all or part of either a UDE or GENLIST data file to a
+UDE data file.
+[in]
+[cp=4]7.1.2 |Screen Data Input|
+
+	A defined UDE data file will appear on the screen as an number of prompts
+followed by values.
+
+[cp=10]***********************************************************************
+
+[ce]|UDE Data File
+[ce]Example 1
+
+	1st prompt:_value1_          2nd prompt:_value2_
+	3rd prompt:_value3_
+	4th prompt:_value4_|
+
+***********************************************************************
+
+[cp=4]The underlined information is what the user enters into the data file.
+The rest of the information is prompts that the user does not change.  For
+instance, a UDE data file could be set up to store customer names, addresses
+and telephone numbers.  The prompts on the screen might look like:
+
+[cp=9]************************************************************************
+
+[ce]|Customer Data File
+
+	Name:_                    _   Telephone number:_            _
+	Street:_                                  _
+	City:_                _  State:_  _  Zip:_       _|
+
+***********************************************************************
+
+[cp=4]	Each piece of information the user enters on the screen is known as a
+_field_.  So there is a name field, a telephone number field, and so on.  All
+the fields on the screen, when taken together, are known as a _record_.  All
+the records are called the _data file_.
+
+[cp=4]	UDE collects all its records by presenting the screen to the user to
+be filled in.  There is more information on entering records into UDE in the
+Maintain section.  There are also some special keys that are used when entering
+data.  These special keys are explained in Appendix D.
+
+[cp=12]7.1.3 |Screen Messages|
+
+	During the operation of UDE the following types of messages may be
+displayed in the right half of the last line on the screen.
+[in=5]
+|STATUS:| Indicates the status of an operation.
+
+|ERROR:| Indicates an error has occurred.
+
+|WARNING:| Indicates the operator is about to perform a dangerous
+operation.
+
+|ACTION:| Indicates some action is required by the operator to
+continue.
+[in]
+[cp=5]7.1.4 |Standard Screen Commands|
+
+	Some of the screens displayed by UDE programs have the following standard
+commands at the bottom of the screen.  All other commands, unique to a certain
+UDE function, will be explained later in the manual.
+
+[cp=4]7.1.4.1 |Execute Screen Functions|
+
+	When the e|X|ecute command is in the lower left of the UDE
+screen, press |<X>| to execute the function indicated by the screen display.
+[cp=5]
+7.1.4.2 |Changing Screen Data Fields|
+
+	When the |C|hange command is in the lower left of the UDE screen, press
+|<C>| to change the values in the data fields on the screen.  The cursor will be
+put at the beginning of the first field.
+
+[cp=4]7.1.4.3 |Quitting the Current Screen|
+
+	When the |Q|uit command is in the lower left of the UDE screen, press
+|<Q>| to exit the current operation.
+[tf=#5:UD.SAVEDOC]                  

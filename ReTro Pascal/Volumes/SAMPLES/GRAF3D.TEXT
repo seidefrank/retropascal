@@ -1,0 +1,109 @@
+program graf3d;
+  (* uses applestuff; *)
+  type transform = record axx, axy, axz, ayx, ayy, ayz, azx, azy, azz,
+                          bx, by, bz: real
+                   end;
+       point = record x, y, z: real end;
+       edge = record ibegin, iend: integer end;
+       pointarray = array [1..2730(*32k*)] of point;
+       edgearray = array [1..8191] of edge;
+       object = record
+                  npoints, nedges: integer;
+                  points: ^pointarray;
+                  edges: ^edgearray;
+               end;
+       byteptr = ^char;
+  var screenwidth, screenheight: real;
+      teapot: object;
+  procedure malloc(var p: byteptr; n: integer); (* todo: move to retrostuff *)
+    type onek = packed array [1..1024] of char;
+    var dummy: ^onek;
+        i:integer;
+  begin
+    new(p);
+    for i:=0 to n div 1024 do new(dummy); (* stopgap, to be done right *)
+  end;
+  procedure newobject(var o: object; npoints, nedges: integer);
+    type threestate = 1..3;
+    var trix: record case threestat of 1: (b: ^char);
+                                 2: (p: ^pointarray);
+                                 3: (e: ^edgearray)
+           end;
+  begin
+    with o,trix do begin
+      malloc(b,npoints*sizeof(point));
+      npoints:=npoints;
+      points:=p;
+      malloc(b,nedges*sizeof(edge));
+      nedges:=nedges;
+      edges:=trix.e;
+    end
+  end;
+  procedure applytransform(var py(*out*),px(*in*): point; var t: transform);
+  begin
+    with px,t do begin
+      py.x:=axx*x+axy*y+axz*z+bx;
+      py.y:=ayx*x+ayy*y+ayz*z+by;
+      py.z:=azx*x+azy*y+azz*z+bx
+    end
+  end;
+  (* c := b * a *)
+  procedure chain(var c,b,a: transform);
+  begin
+  end;
+  procedure setscale(var t: transform; s: real);
+  begin with t do begin
+    axx:=s; axy:=0; axz:=0; bx:=0;
+    ayx:=0; ayy:=s; ayz:=0; by:=0;
+    azx:=0; azy:=0; azz:=s; bz:=0;
+  end end;
+  procedure setidentity(var t: transform);
+  begin setscale(t, 1) end;
+  (* project and transform to screen coordinates *)
+  (* projected x,y must be divided by z to get screen coordinate *)
+  procedure setcamera(var t:transform; w,h,dist: real);
+    var scale,scale2: real;
+  begin 
+    scale:=w/2; scale2:=h/2; (* unit square fill screen *)
+    if scale2<scale then scale:=scale2;
+    setidentity(t);
+    with t do begin
+      (* viewer is at (0,0,dist) looking along -z axis *)
+      (* x:=x*dist/(z+dist)*scale *)
+      azz:=1; bz:=dist;
+      axx:=dist*scale; ayy:=dist*scale;
+    end
+  end;
+  procedure drawwireframe(var o: object; var objtrans, camtrans: transform);
+    var trans: transform;
+        tempobj: object;
+        markptr: ^integer;
+        i: integer;
+  begin
+    (* compute transform end to end *)
+    chain(trans, camtrans, objtrans);
+    (* project all points *)
+    mark(markptr);
+    newobject(tempobj, o.npoints, 0);
+    with o do
+      for i:=1 to npoints do begin
+        applytransform(tempobj.points^[i], points^[i], trans);
+        with tempobj.points^[i] do begin x:=x/z; y:=y/z end;
+      end;
+    tempobj.nedges:=o.nedges;
+    tempobj.edges:=o.edges;
+    (* draw the wireframe *)
+    with tempobj do
+      for i:=1 to nedges do
+        with edges^[i] do begin
+          (* pencolor(none);
+          with points^[ibegin] do moveto(x,y);
+          pencolor(white);
+          with points^[iend] do moveto(x,y); *)
+        end;
+    release(markptr);
+  end;
+begin
+  newobject(teapot, 1000, 2000);
+  readln;
+end.

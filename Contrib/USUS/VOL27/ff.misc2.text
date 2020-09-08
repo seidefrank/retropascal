@@ -1,0 +1,306 @@
+SEGMENT PROCEDURE CONSOLIDATE;
+VAR
+     CALC: STRING[L_CALC];
+     CONSPAGE: INTEGER;
+     OPERATORS: SET OF CHAR;
+     DAT_TEMP: STRING[17];
+     VOL: STRING[7];
+     FNAME: STRING[10];
+     
+PROCEDURE EVALUATE;
+VAR
+     CH: CHAR;
+     PT: INTEGER;
+
+FUNCTION VALID_CALC: BOOLEAN;
+
+PROCEDURE ERR(WHAT: INTEGER);
+VAR MSG: STRING[17];
+     I: INTEGER;
+BEGIN
+  CASE WHAT OF
+    1: MSG := 'Invalid Page';
+    2: MSG := 'Bad character';
+    3: MSG := 'Unexpected end';
+    4: MSG := 'Invalid Constant'
+  END;
+  GOTOXY(1,MSG_LINE);
+  FOR I := 1 TO PT-1 DO WRITE(OUTPUT,CALC[I]);
+  WRITE(OUTPUT,' <-> ');
+  DELETE(CALC,LENGTH(CALC),1);   (* remove EOF character *)
+  FOR I := PT TO LENGTH(CALC) DO WRITE(OUTPUT,CALC[I]);
+  PRESSRETURN(MSG,MSG_LINE+1);
+  ERASE(MSG_LINE+1);
+  EXIT(VALID_CALC)
+END;
+
+PROCEDURE SCANNER;
+(* This procedure sets the variable PT that is the index into CALC,
+   sets CH to the character just scanned,
+   and calls ERR if something is wrong.
+*)
+VAR  NUM, ENDOFNUM: INTEGER;
+
+  FUNCTION SETNUM: BOOLEAN;
+  BEGIN
+    IF CH IN DIGITS THEN  (* set NUM *)
+      BEGIN
+        ENDOFNUM := PT + 1;
+        WHILE CALC[ ENDOFNUM ] IN DIGITS DO ENDOFNUM := ENDOFNUM + 1;
+        VALUE(TRUE, COPY(CALC,PT,ENDOFNUM-PT), FAKE, NUM);
+        PT := ENDOFNUM;
+        SETNUM := TRUE
+      END
+    ELSE SETNUM := FALSE
+  END;
+  
+BEGIN  (* SCANNER *)
+  IF CALC[PT] = SPACE THEN
+    REPEAT PT := PT + 1 UNTIL CALC[ PT ] <> SPACE;  (* get non-blank *)
+  CH := CALC[ PT ];
+  IF SETNUM THEN
+    IF (NUM < 1) OR (NUM > DIRECTORY^.NO_PAGES) THEN ERR(1)
+    ELSE              (* Have a valid Page reference *)
+  ELSE
+    IF CH IN OPERATORS THEN PT := PT + 1 ELSE
+    IF CH = 'C' THEN  (* at a possible constant *)
+      BEGIN
+        PT := PT + 1;
+        CH := CALC[ PT ];
+        IF SETNUM THEN
+          IF (NUM < 1) OR (NUM > DIRECTORY^.NO_CONSTS) THEN ERR(4)
+          ELSE        (* have a valid Constant reference *)
+        ELSE ERR(2)
+      END
+    ELSE ERR(2);
+  IF CH = '#' THEN PT := PT - 1
+END;   (* of scanner *)
+
+BEGIN  (* VALID_CALC *)
+  VALID_CALC := FALSE;
+  SCANNER;                           (* get first thing to consolidate *)
+  IF CH = '#' THEN ERR(3);           (* if nothing there then error   *)
+  IF NOT (CH IN DIGITS) THEN ERR(2);
+  SCANNER;                           (* get first operator *)
+  WHILE (CH IN OPERATORS) AND (CH <> '#') DO
+    BEGIN
+      SCANNER;                                (* skip operator *)
+      IF NOT (CH IN DIGITS) THEN              (* have a number ? *)
+        IF CH = '#' THEN ERR(3) ELSE ERR(2);  (* No ! *)
+      SCANNER;                                (* skip number *)
+    END;
+  IF CH <> '#' THEN ERR(3);  (* make sure no more string is left *)
+  VALID_CALC := TRUE
+END;   (* of valid_calc *)
+
+BEGIN  (* EVALUATE *)
+  REPEAT
+    PROMPT('Enter Consolidation Control',MSG_LINE-1);
+    PROMPT('=',MSG_LINE);
+    ACCEPTSTR(TRUE,L_CALC-1,1,MSG_LINE,CALC,CALC);
+    IF CALC = 'ESCAPE' THEN
+      BEGIN
+        FREEMEM(TEMP_DAT_DESC);
+        CLOSE(TEMP_DAT_FILE,PURGE);
+        FINISHUP;
+        EXIT(CONSOLIDATE)
+      END;
+    LCTOUC(CALC);
+    PT := 1;
+    CALC := CONCAT(CALC,'#');
+  UNTIL VALID_CALC;
+  PROMPT('Consolidation -> ',MSG_LINE-1);
+  DELETE(CALC,LENGTH(CALC),1);
+  WRITE(OUTPUT,CONSPAGE,'=',CALC);
+END;
+
+PROCEDURE MATH;
+VAR
+     NUM, PT, ROW, COL, I, J: INTEGER;
+     NUMBER1, NUMBER2: NUMBERTYPE;
+     ERR, ACONST: BOOLEAN;
+     CH, OP: CHAR;
+
+PROCEDURE SCANNER( VAR ACONST: BOOLEAN );
+(* This procedure sets the variable PT that is the index into CALC,
+   sets CH to the character just scanned,
+   sets PAGE to a page number if it was legal.
+*)
+VAR  ENDOFNUM: INTEGER;
+
+  PROCEDURE SETNUM;
+  BEGIN
+    ENDOFNUM := PT + 1;
+    WHILE CALC[ ENDOFNUM ] IN DIGITS DO ENDOFNUM := ENDOFNUM + 1;
+    VALUE(TRUE, COPY(CALC,PT,ENDOFNUM-PT), FAKE, NUM);
+    PT := ENDOFNUM
+  END;
+
+BEGIN  (* SCANNER *)
+  ACONST := FALSE;
+  IF CALC[PT] = SPACE THEN
+    REPEAT PT := PT + 1 UNTIL CALC[ PT ] <> SPACE;  (* get non-blank *)
+  CH := CALC[ PT ];
+  IF CH IN DIGITS THEN SETNUM              (* set Page number *)
+  ELSE
+    IF CH = 'C' THEN
+      BEGIN  ACONST := TRUE;  PT := PT + 1;  SETNUM  END  (* set Const number *)
+    ELSE
+      IF CH IN OPERATORS THEN PT := PT + 1;
+  IF CH = '#' THEN PT := PT - 1
+END;   (* of scanner *)
+
+PROCEDURE GETVALUE( VAR ACONST: BOOLEAN );
+BEGIN
+  SCANNER( ACONST );
+  IF ACONST THEN     (* Thing was a constant, init NUMBER1 to it *)
+    BEGIN
+      SEEKCON(NUM,ANDGET);
+      NUMBER1 := FORM_CON_FILE^
+    END;
+END;
+
+BEGIN  (* MATH *)
+  ONEMOMENT('Consolidation in Progress');
+  
+  MEMORY;
+  
+  PT := 1;
+  CALC := CONCAT(CALC,'#');
+  GETVALUE( ACONST );
+  WITH DIRECTORY^ DO BEGIN
+    FOR I := 1 TO NO_ROWS DO       (* initialize temp page *)
+      FOR J := 1 TO NO_COLS DO
+        BEGIN
+          IF NOT ACONST THEN       (* set THENUMBER *)
+            NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,NUM,I,J,NUMBER1,ANDGET,ERR);
+          NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,I,J,NUMBER1,ANDPUT,ERR)
+        END;
+    SCANNER( ACONST );             (* get operator *)
+    WHILE (CH IN OPERATORS) AND (CH <> '#') DO
+      BEGIN
+        OP := CH;                  (* Save operator *)
+        GETVALUE( ACONST );
+        FOR I := 1 TO NO_ROWS DO   (* do math *)
+          FOR J := 1 TO NO_COLS DO
+            BEGIN
+              IF NOT ACONST THEN       (* set NUMBER1 *)
+                NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,NUM,I,J,NUMBER1,ANDGET,ERR);
+              NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,I,J,NUMBER2,ANDGET,ERR);
+              IF FIGURE(NUMBER2,NUMBER2,NUMBER1,OP) THEN;
+              NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,I,J,NUMBER2,ANDPUT,ERR);
+            END;
+        SCANNER( ACONST )
+      END;
+    ONEMOMENT('Saving Consolidated Page');
+    FOR I := 1 TO NO_ROWS DO
+      FOR J := 1 TO NO_COLS DO
+        BEGIN
+          NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,I,J,NUMBER1,ANDGET,ERR);
+          NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,CONSPAGE,I,J,NUMBER1,ANDPUT,ERR)
+        END
+  END;
+  DELETE(CALC,LENGTH(CALC),1)  (* Delete the EOF character *)
+END;   (* of math *)
+
+PROCEDURE DOCONSOL;
+
+PROCEDURE OPENOUTPUTFILE( OLD: BOOLEAN );
+BEGIN
+  REPEAT
+    GETRESPONSE(TRUE, 'Volume Name: ',VOL, ':', 7, VOL);
+    IF VOL   = 'ESCAPE' THEN EXIT(DOCONSOL);
+    GETRESPONSE(TRUE, 'File Name: ', FNAME, '.TEXT', 10, FNAME);
+    IF FNAME = 'ESCAPE' THEN EXIT(DOCONSOL);
+    IF OLD THEN   RESET(PRINTER, CONCAT(VOL,':',FNAME,'.TEXT'))
+    ELSE        REWRITE(PRINTER, CONCAT(VOL,':',FNAME,'.TEXT'));
+    PRINTER_ON := IORESULT = 0;
+    IF NOT PRINTER_ON THEN
+      PRESSRETURN(CONCAT('Unable to open ',VOL,':',FNAME,'.TEXT'),MSG_LINE)
+  UNTIL PRINTER_ON
+END;   (* of open output file *)
+
+PROCEDURE CLOSEFILE;
+BEGIN
+  CLOSE(PRINTER, LOCK);  PRINTER_ON := FALSE
+END;   (* of close file *)
+
+BEGIN  (* DOCONSOL *)
+  IF YESNO('Is there a Control file to use','N') THEN
+    BEGIN
+      OPENOUTPUTFILE(TRUE);
+      READLN(PRINTER,CONSPAGE);
+      READLN(PRINTER,CALC);
+      CLOSEFILE
+    END;
+  (*$B 40COL- *)
+  GETNUM(1,DIRECTORY^.NO_PAGES,CONSPAGE,'Enter Consolidation Page #',CONSPAGE);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  GETNUM(1,DIRECTORY^.NO_PAGES,CONSPAGE,'Consol Page #',CONSPAGE);
+  (*$E 40COL  *)
+  EVALUATE;
+  IF YESNO('Perform Consolidation','Y') THEN MATH;
+  ERASE(MSG_LINE-1);
+  (*$B 40COL- *)
+  IF YESNO('Save this information in a Control file','N') THEN
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  IF YESNO('Save info in Control file','N') THEN
+  (*$E 40COL  *)
+    BEGIN
+      OPENOUTPUTFILE(FALSE);
+      WRITELN(PRINTER,CONSPAGE);
+      WRITELN(PRINTER,CALC);
+      CLOSEFILE
+    END
+END;   (* of do consols *)
+
+BEGIN  (* CONSOLIDATE *)
+  OPERATORS := ['+','-','*','/','^','#'];
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  (*$B 40COL- *)
+  WRITELN(OUTPUT,'F R E E F O R M   C O N S O L I D A T I O N');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN(OUTPUT,'F R E E F O R M   CONSOLIDATION');
+  (*$E 40COL  *)
+  
+  MEMORY;
+  
+  IF DISK_DIR THEN
+    IF NAME_FORM(REQUESTED_FORM, RECNUMBER) THEN
+      BEGIN
+        ONEMOMENT('Opening Constant, Data and Temp files');
+        IF NOT OPEN_CON(REQUESTED_FORM) THEN ERROR(12) ELSE
+          IF NOT OPEN_DAT(REQUESTED_FORM,FORM_DAT_FILE,FORM_DAT_DESC,
+                            'CONSOLIDATE,FIGURE',FALSE) THEN ERROR(5)
+          ELSE
+            IF OPEN_DAT_TEMP( DAT_TEMP ) THEN
+              BEGIN
+                IF OPEN_DAT(TEMP_FILE_NAME,TEMP_DAT_FILE,TEMP_DAT_DESC,
+                              'CONSOLIDATE,FIGURE',TRUE) THEN;
+                
+  MEMORY;
+    
+                VOL := DISKDRIVE;  FNAME := '';  CALC := '';  CONSPAGE := -1;
+                
+                REPEAT
+                  DOCONSOL
+                UNTIL NOT YESNO(CONCAT('More to Consolidate in ',
+                                                          REQUESTED_FORM),'N');
+                FREEMEM(TEMP_DAT_DESC);
+                CLOSE(TEMP_DAT_FILE,PURGE)
+              END
+      END;
+  FINISHUP
+END;   (* of consolidate *)
+
+BEGIN  (* MISC *)
+  CASE OPTION OF
+    5: CONSOLIDATE;
+    6: ROLL
+  END
+END;   (* of misc *)
+

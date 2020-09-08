@@ -1,0 +1,165 @@
+{Version 001                 16 Jan 82      KGB
+    Original issue.}
+    
+{$I-}
+PROGRAM bootmaker;
+
+{**********************************************************************
+*    (C) 1982 K. G. Balke, Associates.                                *
+*    All rights reserved.                                             *
+**********************************************************************}
+
+{$C (C) 1982 K. G. Balke, Associates}
+
+                                  {This program installs a complete
+                                  bootstrap and SBIOS on a Sony micro-
+                                  floppy disk.}
+  
+  CONST
+    bios_len = 4;
+    bios_pos = 2560;
+    sboot_len = 4;
+    boot_pos = 0;
+    sboot_nam = 'load.sboot';
+    sboot_pos = 512;
+    
+  VAR
+    blks:                    INTEGER;
+                                  {Number of blocks read from bootstrap
+                                  file in most recent block read.}
+                                  
+    boot_ary:                PACKED ARRAY [0 .. 4607] OF CHAR;
+                                  {Transfer block for accumulating new
+                                  bootstrap and bios components.  Order is:
+                                       Primary bootstrap       1
+                                       Secondary bootstrap     4
+                                       SBIOS                   4}
+                                       
+    boot_file:               FILE;
+                                  {File for reading bootstrap and bios
+                                  components.}
+                                  
+    boot_rslt:               INTEGER;
+                                  {IO_RESULT equivalent returned by the
+                                  formatting service of the SBIOS.}
+    
+    f_rslt_str:              STRING;
+                                  {String for accumulating formatting error
+                                  diagnostic message.}
+                                  
+    in_ary:                  PACKED ARRAY [0 .. 1] OF CHAR;
+    
+  
+  PROCEDURE boot_writ
+                                  {Format a diskette with interleave 2,
+                                  skew 4.}
+                                  
+   (VAR
+      rslt:                  INTEGER;
+                                  {Result of the format process.  Values
+                                  correspond to IO_RESULT.}
+    
+    VAR
+      boot_ary);
+                                  {Bootstrap to be installed on new disk.}
+    
+    EXTERNAL;
+    
+  
+  PROCEDURE diag_file
+                                  {Diagnose result of block read and abort
+                                  program if error.}
+                                  
+     (r:                     INTEGER;
+                                  {Number of blocks actually read.}
+                                  
+      t:                     INTEGER;
+                                  {Target block count.}
+                                  
+      i:                     INTEGER);
+                                  {IO Result of operation.}
+    
+    BEGIN {diag_file}
+      IF (r <> t) OR (i > 0) THEN
+        BEGIN
+          GO_TO_X_Y (0, 23);
+          WRITE ('Bootstrap files could not be read.  Result = ',
+            i, '.');
+          EXIT (bootmaker)
+        END
+    END {diag_file};
+    
+    
+  BEGIN {bootmaker}
+    WRITE (CHR (27), '*');
+
+    GO_TO_X_Y (56, 0);
+    WRITE (CHR (27), 'k');
+    GO_TO_X_Y (23, 0);
+    WRITE (CHR (27), 'j PASCAL DISK BOOTSTRAP INSTALLER');
+
+    GO_TO_X_Y (55, 1);
+    WRITE (CHR (27), 'm');
+    GO_TO_X_Y (22, 1);
+    WRITE (CHR (27), 'l(C) 1982 K. G. Balke, Associates');
+    
+    FILL_CHAR (boot_ary, 4608, CHR (0));
+    
+    RESET (boot_file, 'e.load.boot');
+    blks := BLOCK_READ (boot_file, boot_ary [boot_pos], 1);
+    diag_file (blks, 1, IO_RESULT);
+    CLOSE (boot_file);
+    
+    RESET (boot_file, sboot_nam);
+    blks := BLOCK_READ (boot_file, boot_ary [sboot_pos], sboot_len);
+    diag_file (blks, sboot_len, IO_RESULT);
+    CLOSE (boot_file);
+    
+    RESET (boot_file, 'e.load.bios');
+    blks := BLOCK_READ (boot_file, boot_ary [bios_pos], bios_len);
+    diag_file (blks, bios_len, IO_RESULT);
+    CLOSE (boot_file);
+    
+    GO_TO_X_Y (0, 23);
+    WRITE ('Bootstrap Track Constructed.');
+    
+    UNIT_CLEAR (5);
+    
+    GO_TO_X_Y (5, 10);
+    WRITE ('Place disk to receive new bootstrap in Unit #5.');
+    GO_TO_X_Y (5, 11);
+    WRITE ('Enter <CR> to install bootstrap, other key to stop.');
+    
+    REPEAT
+      UNIT_READ (2, in_ary, 1,, 12);
+      
+      IF in_ary [0] = CHR (13) THEN
+        BEGIN
+          boot_writ (boot_rslt, boot_ary);
+          
+          GO_TO_X_Y (0, 23);
+          IF boot_rslt IN [0, 9] THEN
+            BEGIN
+              CASE boot_rslt OF
+                0:
+                  f_rslt_str := 'Bootstrap installed successfully.';
+  
+                9:
+                  f_rslt_str := 'No disk in Unit #5.              '
+              END;
+              WRITE (f_rslt_str)
+            END
+  
+          ELSE
+            WRITE ('Installation result = ', boot_rslt, '.         ')
+        END
+  
+      ELSE
+        BEGIN
+          GO_TO_X_Y (0, 23);
+          WRITE ('Installation terminated.         ')
+        END
+    UNTIL in_ary [0] <> CHR (13)
+  END {bootmaker}.
+
+

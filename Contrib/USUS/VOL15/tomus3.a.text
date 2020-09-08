@@ -1,0 +1,218 @@
+
+
+                      INSTRUCTIONS FOR TOMUSUS.03
+
+
+1.  GENERAL INFORMATION
+
+TOMUSUS stands for "Terminal Option for MUSUS" and is pronounced "to 
+muse us".  It is a modified version of Bob Peterson's TERMINAL program 
+which utilizes REMUNIT, the standard communication UNIT adopted by 
+USUS for all terminal communication programs in UCSD Pascal.
+
+TOMUSUS.03 is an upgraded version of TOMUSUS.02, which was previously
+made available for LSI-11 users of MUSUS.  TOMUSUS.03 is more
+efficient for disk operations during transmission and also has the
+following new features:
+
+     a.  The B(reak option, which transmits the break signal to the
+remote computer;
+
+     b.  The X(off option, which transmits the XOFF (control-S) signal
+to the remote computer;
+
+     c.  O(ptions will now present a submenu.
+
+It should be noted that REMUNIT.L3, which is used by TOMUSUS.03,
+utilizes the two external procedures SET_BREAK and CLR_BREAK.  These
+are assembly language programs for the LSI-11 which perform the
+simple functions of turning on and off the hardware generated break
+signals.  The present code for these procedures assume the standard
+addresses for REMIN and REMOUT (177520).  If any other address is to
+be used, the value for XCSR in both SET_BREAK and CLR_BREAK must be
+altered accordingly.
+
+
+2.  CONTENTS OF THE TOMUSUS FILES
+
+The MUSUS Library version of TOMUSUS.03 consists of the following 
+five files:
+        
+        TOMUS3.A contains instructions for compiling and executing 
+        TOMUSUS.03.  (This is what you are reading now.)
+        
+        TOMUS3.B1 contains the external procedure SET_BREAK and should
+        be renamed SET_BREAK.TEXT.
+        
+        TOMUS3.B2 contains the external procedure CLR_BREAK and should
+        be renamed CLR_BREAK.TEXT.
+
+        TOMUS3.B3 contains the unit REMUNIT for TOMUSUS.03 and should
+        be renamed REMUNIT.L3.TEXT.  (The "L" in L3 is to remind you
+        that this unit was written primarily for LSI-11s.)
+        
+        TOMUS3.C1 and TOMUS3.C2 together make up the main TOMUSUS.03
+        program.  TOMUS3.C1 contains program comments that should be
+        inserted at the beginning of the program just after the copyright
+        statement.  TOMUS3.C2  contains the main TOMUSUS.03 program.
+        It should be renamed TOMUSUS.03.TEXT.
+
+The following instructions for compiling TOMUSUS.03 will assume that 
+you have renamed the files as above.
+
+
+3.  COMPILING
+
+TOMUSUS.03 uses the unit REMUNIT.L3 which in turn uses the external 
+procedures SET_BREAK and CLR_BREAK.  Hence, the procedure for 
+compiling the entire program must be done in the appropriate sequence 
+of steps, as follows.
+
+Step 1:  Assemble SET_BREAK.TEXT and get SET_BREAK.CODE.
+
+Step 2:  Assemble CLR_BREAK.TEXT and get CLR_BREAK.CODE.
+
+Step 3:  Compile REMUNIT.L3.TEXT and get REMUNIT.L3.CODE.
+
+Step 4:  By executing the system program *LIBRARY.CODE, create a new
+library (call it anything you want) which will contain the contents of
+*SYSTEM.LIBRARY, SET_BREAK.CODE, CLR_BREAK.CODE, and REMUNIT.L3.CODE.
+
+Step 5:  Do a L(ink of the new library. 
+
+Step 6:  Use the linked library as your new *SYSTEM.LIBRARY.
+
+Step 7:  R(un TOMUSUS.03.TEXT and get TOMUSUS.03.CODE as well as a 
+test run of the program.
+
+
+2.  EXECUTING TOMUSUS.03.CODE
+
+Execution of TOMUSUS should be almost self-explanatory, but the 
+following comments may be of some help.
+
+     a.  After you do an eXecute on TOMUSUS, it will display a brief
+statement on your screen about the TOMUSUS version, date, author's
+name, and a copyright statement.  It will then ask you to press
+RETURN.  
+
+     b.  After RETURN has been entered, TOMUSUS is ready to
+communicate with the remote computer of your choice.  If you had not
+already done so, you should connect your modem to the telephone system
+at this time and dial the remote computer.  Nothing else needs to be
+done as far as TOMUSUS is concerned.
+
+     c.  At anytime during or prior to establishing your remote
+connection (but after the initial RETURN), you may temporarily enter
+the offline mode of TOMUSUS by pressing the "attention character". 
+The default for this is control-E (or control-e).  When the attention
+character is pressed, TOMUSUS will temporarily enter an "off-line"
+mode and display a menu of certain things you may choose to do at
+this point, as follows:
+
+        (1)     Q(uit will terminate the current TOMUSUS session.
+
+        (2)     C(ontinue will cause an immediate exit from the
+                offline mode.  (A control-c will also do the same.)
+
+        (3)     B(reak will send the break signal to the remote.
+        
+        (4)     X(off will send the XOFF character (control-s) to the
+                remote.  (Other control characters can be sent directly
+                from the keyboard, except for the TOMUSUS attention
+                character.)
+                
+        (5)     O(ptions stands for "miscellaneous options".  It will
+                display its own submenu.  Each selection will result in
+                a question to the user concerning certain transmission
+                characteristics, echoing, or the attention character.
+                If you want to change the attention character or
+                communicate with a half duplex remote, this is where
+                you would change your parameters.  
+        
+        (6)     L(ogfile will permit you to initiate or terminate
+                logging your session to a diskfile.  It will first
+                tell you whether a logfile is currently open or not.
+                
+                If not open, it will ask you if you want to open a 
+                logfile.  If you answer with a "Y" or "y", it will 
+                ask for a file name.  You should specify a complete 
+                diskfile name.  (Remember to use .TEXT if you will
+                subsequently use the Editor on this file.)  If you 
+                change your mind, a null entry will cancel this operation.
+                
+                If open, it will ask if you want to close the diskfile.
+                
+                Opening and closing diskfiles can be done as many times
+                as is desired during a session.  Hence, you can write
+                different portions of your session to different disk
+                files.
+                
+        (7)     P(rinter is a toggle switch that allows you to open
+                or close the line printer at any time during your
+                TOMUSUS session.
+                
+                The current print routine sends characters to the 
+                printer as they are typed or received from the remote
+                computer.  Hence, if your printer does not allow the
+                immediate printing of characters received (or does not
+                have the necessary line buffer to collect a line of
+                characters before printing), you may run into problems.
+                
+                
+     d.  The offline mode can be entered at any time and as often as
+you wish.  In the current implementation of REMUNIT, you can Q(uit out
+of TOMUSUS and re-execute TOMUSUS without affecting your remote
+communication.  This also means that if necessary you can even do
+some offline maneuvers (like examining your disk directory) and then
+return to the online mode without affecting your remote connection.
+
+
+3.  KNOWN BUGS
+
+There is a bug in TOMUSUS.03 that has not been fixed.  This bug is 
+encountered when both the L(ogfile and P(rinter options are on.  The 
+result is that both the disk file and printer output will$lose some 
+characters.  It does not happen when only one of these options is on.
+
+This bug may only affect those who have the same printer configuration 
+as mine, which is a TI-810 connected to a Heath H-11 via the Heath 
+serial I/O board for the TI-810.  
+
+     
+4.  FINAL COMMENTS
+
+Although TOMUSUS bears my copyright statement, it is the result of a 
+cooperative effort between myself and the following persons:
+
+        Robert W. Peterson, who was kind enough to allow me to use his 
+program TERMINAL and his unit REMUNIT as the starting point for 
+TOMUSUS;
+
+        Walter B. Farrell, who made most of the necessary changes to 
+Bob Peterson's REMUNIT that allowed the autolog function of TOMUSUS.02 
+to work properly; and
+
+        Dr. Richard Yensen, who provided me with the BLOCKWRITE and 
+UNITWRITE changes that speeded up the autolog function.
+
+
+By the way, TOMUSUS was copyrighted primarily to protect Bob 
+Peterson's copyright rather than my own code.  If you wish to make 
+further changes for your own use, I see no reason why Bob would 
+object.  However, if you distribute any modified version of TOMUSUS, I 
+think that you should check with Bob and me first.
+
+I would appreciate any and all comments about TOMUSUS, whether you
+like it or not.  I am sure that many improvements can be made, and
+would like to have any help you could provide to make TOMUSUS a really
+useful and enjoyable program.
+
+If you have any problems with TOMUSUS, feel free to send me messages 
+on MUSUS or Telemail, or call me at (213)541-2918 any time I'm there
+(day or night).
+
+
+Mike Ikezawa
+03 December 1981
+

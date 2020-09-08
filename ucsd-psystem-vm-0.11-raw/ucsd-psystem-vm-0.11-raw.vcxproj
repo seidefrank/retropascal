@@ -1,0 +1,133 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{01AE7A1B-3949-442F-AE73-3831C8BC2E98}</ProjectGuid>
+    <SccProjectName>SAK</SccProjectName>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccProvider>SAK</SccProvider>
+    <RootNamespace>ucsdpsystemvm011raw</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <None Include="aegis.conf" />
+    <None Include="AUTHORS" />
+    <None Include="BUILDING" />
+    <None Include="configure" />
+    <None Include="install-sh" />
+    <None Include="lib\config.h.in" />
+    <None Include="LICENSE" />
+    <None Include="Makefile.in" />
+    <None Include="man\man1\ucsdpsys_svolcvt.1" />
+    <None Include="man\man1\ucsdpsys_svolio.1" />
+    <None Include="man\man1\ucsdpsys_vm.1" />
+    <None Include="man\man1\ucsdpsys_vm_license.1" />
+    <None Include="man\man1\ucsdpsys_xturtleserver.1" />
+    <None Include="man\man1\z_copyright.so" />
+    <None Include="man\man1\z_exit.so" />
+    <None Include="README" />
+    <None Include="turtle_graphics\turt.asm.text" />
+    <None Include="turtle_graphics\turtlegr.text" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="lib\byte_sex.c" />
+    <ClCompile Include="lib\diskio.c" />
+    <ClCompile Include="lib\memory.c" />
+    <ClCompile Include="lib\progname.c" />
+    <ClCompile Include="lib\version.c" />
+    <ClCompile Include="lib\version_stamp.c" />
+    <ClCompile Include="ucsdpsys_vm\array.c" />
+    <ClCompile Include="ucsdpsys_vm\long_integer.c" />
+    <ClCompile Include="ucsdpsys_vm\main.c" />
+    <ClCompile Include="ucsdpsys_vm\native6502.c" />
+    <ClCompile Include="ucsdpsys_vm\printer.c" />
+    <ClCompile Include="ucsdpsys_vm\ptrace.c" />
+    <ClCompile Include="ucsdpsys_vm\search.c" />
+    <ClCompile Include="ucsdpsys_vm\sets.c" />
+    <ClCompile Include="ucsdpsys_vm\stack.c" />
+    <ClCompile Include="ucsdpsys_vm\term.c" />
+    <ClCompile Include="ucsdpsys_vm\turtlegr.c" />
+    <ClCompile Include="ucsdpsys_vm\unit_io.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="lib\byte_sex.h" />
+    <ClInclude Include="lib\diskio.h" />
+    <ClInclude Include="lib\gcc_attributes.h" />
+    <ClInclude Include="lib\memory.h" />
+    <ClInclude Include="lib\patchlevel.h" />
+    <ClInclude Include="lib\pcode.h" />
+    <ClInclude Include="lib\progname.h" />
+    <ClInclude Include="lib\psystem.h" />
+    <ClInclude Include="lib\version.h" />
+    <ClInclude Include="lib\version_stamp.h" />
+    <ClInclude Include="ucsdpsys_vm\array.h" />
+    <ClInclude Include="ucsdpsys_vm\long_integer.h" />
+    <ClInclude Include="ucsdpsys_vm\native6502.h" />
+    <ClInclude Include="ucsdpsys_vm\printer.h" />
+    <ClInclude Include="ucsdpsys_vm\ptrace.h" />
+    <ClInclude Include="ucsdpsys_vm\search.h" />
+    <ClInclude Include="ucsdpsys_vm\sets.h" />
+    <ClInclude Include="ucsdpsys_vm\stack.h" />
+    <ClInclude Include="ucsdpsys_vm\term.h" />
+    <ClInclude Include="ucsdpsys_vm\turtlegr.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

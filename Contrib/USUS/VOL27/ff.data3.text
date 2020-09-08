@@ -1,0 +1,374 @@
+(*$R- *)
+SEGMENT PROCEDURE MATH;
+VAR
+     SKIPOMSG, LEAVE: BOOLEAN;
+     CURCONST, ROW, COL: INTEGER;
+
+PROCEDURE DOIT(DOINGROW: BOOLEAN);
+VAR
+     CNT, MAX: INTEGER;
+     C_STRING: STRING[L_CALC];
+
+PROCEDURE OOPS(NUM: INTEGER);
+BEGIN
+  IF SKIPOMSG AND (NUM=1) THEN EXIT(OOPS);  (* Told to ignore Overflow msgs ? *)
+  PROMPT('ERROR: ',MSG_LINE-1);
+  CASE NUM OF
+    1: WRITE(OUTPUT,'OVERFLOW');
+    2: WRITE(OUTPUT,'Heading');
+    3: BEGIN
+         WRITE(OUTPUT,'Illegal ');
+         IF DOINGROW THEN WRITE(OUTPUT,'row') ELSE WRITE(OUTPUT,'column')
+       END
+  END;
+  IF NUM <> 1 THEN WRITE(OUTPUT,' specified');
+  WRITELN(OUTPUT,', Calc. at Row = ',ROW,'  Col = ',COL);
+  IF NUM = 1 THEN   (* Continue?, if so should Overflows be ignored *)
+    BEGIN
+      LEAVE := NOT YESNO('Continue Calculations','Y');
+      IF NOT LEAVE THEN SKIPOMSG := YESNO('Ignore future Overflows','Y')
+    END;
+  IF LEAVE OR (NUM <> 1) THEN
+    BEGIN
+      PRESSRETURN('Math being aborted,',MSG_LINE);
+      CLOSE(FORM_CON_FILE);  CON_OPEN := FALSE;  (* Bug fix  SDA 12/18/81    *)
+      DISPLAY(FALSE);                            (* Forgot to close Con_file *)
+      EXIT(MATH);
+    END;
+  ERASE(MSG_LINE);
+  PROMPT('Math in progress....',MSG_LINE-1);
+END;   (* of err *)
+
+PROCEDURE DOMATH;
+TYPE
+     TOKENKINDS = (CONSTV, EOFV, LPARENV, MINUSV, PLUSV, UPARROWV, RPARENV,
+                   VALUEV, SLASHV, STARV);
+VAR
+     SCANRSLT: NUMBERTYPE;
+     TOKENTYPE: TOKENKINDS;
+     PT: INTEGER;
+     
+PROCEDURE SCANNER;
+VAR
+     NUM: INTEGER;
+     CH, DUMY: CHAR;
+
+PROCEDURE SETNUM;
+VAR  ENDOFNUM: INTEGER;
+BEGIN
+  ENDOFNUM := PT;
+  REPEAT
+    ENDOFNUM := ENDOFNUM + 1;
+    DUMY := C_STRING[ ENDOFNUM ]
+  UNTIL NOT (( DUMY >= '0' ) AND ( DUMY <= '9' ));
+  VALUE(TRUE,COPY(C_STRING,PT,ENDOFNUM-PT),FAKE,NUM);
+  PT := ENDOFNUM;
+END;   (* of setnum *)
+
+  
+PROCEDURE GETCONSTANT;
+BEGIN
+  PT := PT + 1;
+  DUMY := C_STRING[ PT ];
+  IF (DUMY >= '0') AND (DUMY <= '9') THEN
+    BEGIN
+      SETNUM;
+      IF NUM <> CURCONST THEN
+        BEGIN  SEEKCON(NUM,ANDGET);  CURCONST := NUM  END;
+      SCANRSLT := FORM_CON_FILE^;
+      TOKENTYPE := CONSTV
+    END
+END;   (* of getconstant *)
+
+PROCEDURE GETVALUE;
+BEGIN
+  SETNUM;
+  WITH DIRECTORY^ DO
+    IF DOINGROW THEN
+      BEGIN
+        IF NUM > NO_ROWS THEN OOPS(3);
+        NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,CUR_PAGE,NUM,COL,SCANRSLT,ANDGET,ERR)
+      END
+    ELSE
+      BEGIN
+        IF NUM > NO_COLS THEN OOPS(3);
+        NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,CUR_PAGE,ROW,NUM,SCANRSLT,ANDGET,ERR)
+      END;
+  TOKENTYPE := VALUEV;
+END;   (* getvalue *)
+
+BEGIN  (* SCANNER *)
+  IF C_STRING[ PT ] = ' ' THEN
+    REPEAT PT := PT + 1 UNTIL C_STRING[ PT ] <> ' '; (* get non blank *)
+  CH := C_STRING[ PT ];
+  IF CH = 'C' THEN GETCONSTANT
+  ELSE IF (CH >= '0') AND (CH <= '9') THEN GETVALUE
+    ELSE
+      BEGIN
+        CASE CH OF
+          '+': TOKENTYPE:=PLUSV;
+          '-': TOKENTYPE:=MINUSV;
+          '*': TOKENTYPE:=STARV;
+          '/': TOKENTYPE:=SLASHV;
+          '^': TOKENTYPE:=UPARROWV;
+          '(': TOKENTYPE:=LPARENV;
+          ')': TOKENTYPE:=RPARENV;
+          '#': TOKENTYPE:=EOFV
+        END;
+        PT := PT + 1
+      END;
+  IF TOKENTYPE = EOFV THEN PT := PT - 1;
+END;   (* of scanner *)
+
+PROCEDURE EXPRESSION( VAR ANS: NUMBERTYPE );
+VAR
+     SAVEOP: CHAR;
+     CHANGESIGN: BOOLEAN;
+     RESULT: NUMBERTYPE;
+
+PROCEDURE PARENEXPRESSION( VAR ANS: NUMBERTYPE );
+BEGIN
+  SCANNER;            (* throw away left paren  *)
+  EXPRESSION( ANS );
+  SCANNER             (* throw away right paren *)
+END;    (* of parenexpression *)
+
+PROCEDURE PRIMARY( VAR ANS: NUMBERTYPE );
+BEGIN   (* PRIMARY *)
+  IF (TOKENTYPE = CONSTV) OR (TOKENTYPE = VALUEV) THEN
+    BEGIN
+      ANS := SCANRSLT;
+      SCANNER
+    END
+  ELSE
+    IF TOKENTYPE = LPARENV THEN PARENEXPRESSION( ANS )
+END;    (* of primary *)
+
+PROCEDURE FACTOR( VAR ANS: NUMBERTYPE );
+VAR
+     RESULT: NUMBERTYPE;
+
+BEGIN   (* FACTOR *)
+  PRIMARY( ANS );
+  WHILE TOKENTYPE = UPARROWV DO
+    BEGIN
+      SCANNER;
+      PRIMARY( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,'^') THEN OOPS(1);
+    END
+END;    (* of factor *)
+
+PROCEDURE TERM( VAR ANS: NUMBERTYPE );
+VAR
+     SAVEOP: CHAR;
+     RESULT: NUMBERTYPE;
+
+BEGIN   (* TERM *)
+  FACTOR( ANS );
+  WHILE (TOKENTYPE = STARV) OR (TOKENTYPE = SLASHV) DO
+    BEGIN
+      IF TOKENTYPE = STARV THEN SAVEOP := '*' ELSE SAVEOP := '/';
+      SCANNER;
+      FACTOR( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,SAVEOP) THEN OOPS(1);
+    END
+END;    (* of term *)
+
+BEGIN   (* EXPRESSION *)
+  IF (TOKENTYPE = PLUSV) OR (TOKENTYPE = MINUSV) THEN
+    BEGIN
+      CHANGESIGN := TOKENTYPE = MINUSV;
+      SCANNER
+    END
+  ELSE CHANGESIGN := FALSE;
+  TERM( ANS );
+  IF CHANGESIGN THEN IF FIGURE(ANS,ZERO,ANS,'-') THEN; (* do the unary minus *)
+  WHILE (TOKENTYPE = PLUSV) OR (TOKENTYPE = MINUSV) DO
+    BEGIN
+      IF TOKENTYPE = PLUSV THEN SAVEOP := '+' ELSE SAVEOP := '-';
+      SCANNER;
+      TERM( RESULT );
+      IF NOT FIGURE(ANS,ANS,RESULT,SAVEOP) THEN OOPS(1)
+    END
+END;   (* of expression *)
+
+BEGIN  (* DOMATH *)
+  PT := 1;
+  SCANNER;
+  EXPRESSION( ANUMBER );
+  NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,CUR_PAGE,ROW,COL,ANUMBER,ANDPUT,ERR)
+END;   (* of domath *)
+
+BEGIN
+  WITH DIRECTORY^, FORM_CTL_FILE^ DO BEGIN
+    C_STRING := CTL_CALC;
+    LCTOUC(C_STRING);   (* Convert to caps *)
+    C_STRING := CONCAT(C_STRING,'#');
+
+    (* The first version of Freeform left an equals sign in the first position
+       of the calc string.  Must get rid of this for this version to work *)
+    IF POS('=',C_STRING) = 1 THEN DELETE(C_STRING,1,1);
+
+    IF DOINGROW THEN  MAX := NO_COLS  ELSE  MAX := NO_ROWS;
+
+    (*$R- *)
+    FOR CNT := 1 TO MAX DO
+      IF DOINGROW THEN
+        IF CROSS_CALC^[ CNT + NO_ROWS ] THEN
+          BEGIN  COL := CNT;  DOMATH  END
+        ELSE
+          (* No math then *)
+      ELSE
+        IF CROSS_CALC^[ CNT ] THEN
+          BEGIN  ROW := CNT;  DOMATH  END
+        ELSE
+          (* No math then *)
+    (*$R^ *)
+  END
+END;   (* of doit *)
+
+(*$R- *)
+PROCEDURE DO_COLS(WHICH: TYPE_CALC);
+BEGIN
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO
+    FOR COL := 1 TO NO_COLS DO
+      IF WHICH = CALC_LIST^[ COL + NO_ROWS ] THEN
+        BEGIN
+          SEEKCTL(FORM_CTL_FILE,TRUE,COL,ANDGET);
+          DOIT(FALSE)
+        END
+END;   (* of do_cols *)
+
+PROCEDURE DO_ROWS(WHICH: TYPE_CALC);
+BEGIN
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO
+    FOR ROW := 1 TO NO_ROWS DO
+      IF WHICH = CALC_LIST^[ ROW ] THEN
+        BEGIN
+          SEEKCTL(FORM_CTL_FILE,FALSE,ROW,ANDGET);
+          DOIT(TRUE)
+        END
+END;   (* of do_rows *)
+(*$R^ *)
+
+BEGIN
+  IF NOT OPEN_CON(REQUESTED_FORM) THEN  (* Open file that has constants *)
+    BEGIN  ERROR(12);  EXIT(MATH)  END;
+  PROMPT('Math in progress....',MSG_LINE-1);
+  SKIPOMSG := FALSE;
+  CURCONST := 0;
+  DIDDLED := CALC_CASE <> 0;
+  
+  MEMORY;
+  
+  WITH DIRECTORY^ DO
+    CASE CALC_CASE OF
+      0: (* no calculations to do! *) ;
+      1: DOCOLS(INIT_C);
+      2: DOROWS(INIT_C);
+      3: IF FORMAT = FCOL THEN
+           BEGIN
+             DO_COLS(INIT_C);
+             DO_ROWS(INIT_C)
+           END
+         ELSE
+           BEGIN
+             DO_ROWS(INIT_C);
+             DO_COLS(INIT_C)
+           END;
+      4: DOCOLS(FINL_C);
+      5: BEGIN
+           DOCOLS(INIT_C);
+           DOCOLS(FINL_C)
+         END;
+      6: BEGIN
+           DOROWS(INIT_C);
+           DOCOLS(FINL_C)
+         END;
+      7: IF FORMAT = FCOL THEN
+           BEGIN
+             DOCOLS(INIT_C);
+             DOROWS(INIT_C);
+             DOCOLS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOROWS(INIT_C);
+             DOCOLS(INIT_C);
+             DOCOLS(FINL_C)
+           END;
+      8: DOROWS(FINL_C);
+      9: BEGIN
+           DOCOLS(INIT_C);
+           DOROWS(FINL_C)
+         END;
+     10: BEGIN
+           DOROWS(INIT_C);
+           DOROWS(FINL_C)
+         END;
+     11: IF FORMAT = FCOL THEN
+           BEGIN
+             DOCOLS(INIT_C);
+             DOROWS(INIT_C);
+             DOROWS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOROWS(INIT_C);
+             DOCOLS(INIT_C);
+             DOROWS(FINL_C)
+           END;
+     12: IF FORMAT = FCOL THEN
+           BEGIN
+             DOCOLS(FINL_C);
+             DOROWS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOROWS(FINL_C);
+             DOCOLS(FINL_C)
+           END;
+     13: IF FORMAT = FCOL THEN
+           BEGIN
+             DOCOLS(INIT_C);
+             DOCOLS(FINL_C);
+             DOROWS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOCOLS(INIT_C);
+             DOROWS(FINL_C);
+             DOCOLS(FINL_C)
+           END;
+     14: IF FORMAT = FCOL THEN
+           BEGIN
+             DOROWS(INIT_C);
+             DOCOLS(FINL_C);
+             DOROWS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOROWS(INIT_C);
+             DOROWS(FINL_C);
+             DOCOLS(FINL_C)
+           END;
+     15: IF FORMAT = FCOL THEN
+           BEGIN
+             DOCOLS(INIT_C);
+             DOROWS(INIT_C);
+             DOCOLS(FINL_C);
+             DOROWS(FINL_C)
+           END
+         ELSE
+           BEGIN
+             DOROWS(INIT_C);
+             DOCOLS(INIT_C);
+             DOROWS(FINL_C);
+             DOCOLS(FINL_C)
+           END
+    END;
+  CLOSE(FORM_CON_FILE);  CON_OPEN := FALSE;
+  DISPLAY(FALSE)
+END;   (* of math *)
+(*$R^ *)
+

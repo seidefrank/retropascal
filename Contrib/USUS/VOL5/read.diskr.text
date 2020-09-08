@@ -1,0 +1,330 @@
+
+
+
+
+
+         
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                         Disk Block Read/Write/Modify
+
+
+                                      by
+
+
+                                Roger L. Soles
+
+
+                       Georgia Institute of Technology
+                                  Box 36177
+                              Atlanta, GA  30332
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1
+
+
+
+
+
+
+              Disk Block Read/Write/Modify (afterwards referred to as
+         "DISKREAD") is a system utility program  designed  to  allow
+         the knowledgable user a means through which he can read  in-
+         formation  from disk, modify that information, and place  it
+         back onto the disk. It's primary design purpose is to  allow
+         the user to make quick disk patches, either  in  his  system
+         files, or any other file.  (Basically,  a  very  smart  DUMP
+         facility with dynamic disk and RAM updating capability! - F.
+         Monaco). 
+
+
+         
+                                  WARNING!  
+         
+
+              This program can totaly obliterate the  information  on
+         the disk (and RAM), and therefore it must be  considered  as
+         dangerous to the unfamiliar user - please acquaint  yourself
+         with it's operation before proceeding to utilize it. 
+
+              The screen consists of several distinct fields: 
+
+              1) The upper part of the screen will have a  field  in-
+         dicating  the current block number and the current unit  (or
+         volume) number in both decimal and hex, as a rule quantities
+         that "DISKREAD" displays will  always  be  in  hex.  Between
+         these is an indicator, either HEX or ASCII, this  refers  to
+         the mode in which the data from the  disk  block  is  to  be
+         displayed. 
+
+              2) A command prompt line: all commands and  user  input
+         quantities will be entered here. When the  cursor  is  here,
+         "DISKREAD" is waiting for a user input. 
+
+              3) The disk block buffer area. This area is bounded  by
+         a row and a column of numbers, the  actual  address  of  any
+         byte in the buffer is the logical sum of the two quantities,
+         and thus a little knowledge about  hexidecimal  addition  is
+         needed to utilize the displayed information efficiently. The
+         contents of the buffer are displayed in the current mode. In
+         ASCII mode, only legal ASCII characters are displayed;  that
+         is ' '..'}'; all other ASCII codes are displayed as blanks. 
+
+              The commands of "DISKREAD" are: 
+
+
+                                     
+                       1) Set ASCII display mode : 'a'
+                                     
+
+              This command will immediately display the  contents  of
+         the disk block buffer in ASCII and set the mode indicator to
+         show this. 
+
+
+
+                                    - 1 -                              
+1
+
+         Diskread                                         30 Apr 1980 
+
+
+
+           
+                    2)  Set HEXIDECIMAL display mode : 'h'
+           
+
+              This command will immediately display the  contents  of
+         the disk block buffer in hex and set the mode  indicator  to
+         show this. 
+
+
+           
+                          3)  READ a disk block : 'r'
+           
+
+              This command will cause "DISKREAD" to read in the  disk
+         block specified by the current blocknumber from  the  volume
+         specified in the current unitnumber. If the I/O  process  is
+         not complete, "DISKREAD" alerts the  user  and  displays  an
+         error message, hit RETURN to continue. 
+
+
+                                       
+                      4)  WRITE the buffer to disk : 'w'
+                                       
+
+              This command will cause "DISKREAD"  to  write  out  the
+         contents of the buffer to the block specified by the current
+         block number on the volume specified  by  the  current  unit
+         number. Before the process is completed,  verification  from
+         the user is requested, typing anything  except  'y'  or  'Y'
+         will abort the process. 
+
+
+                        
+                                  WARNING!  
+                        
+
+              This is the only dangerous command in "DISKREAD",  once
+         a buffer has been written to disk, the information that  was
+         prevously in the block on the disk is lost! 
+
+              If the I/O process is not complete,  "DISKREAD"  alerts
+         the user and  displays  an  error  message,  hit  RETURN  to
+         continue. 
+
+
+          
+                     5) INCREMENT disk block number : '+'
+          
+
+              This command will increment the current blocknumber  by
+         one each time it is pressed. If the blocknumber exceeds  the
+         MAXBLOCKS on the disk, the number wraps around to zero.  For
+         convenience the ';' may also be used so that the  user  does
+         not have to hit the shift key. 
+
+
+
+                                    - 2 -                              
+1
+
+         Diskread                                         30 Apr 1980 
+
+
+
+                               
+                     6) DECREMENT disk block number : '-'
+                               
+
+              This command will decrement the current blocknumber  by
+         one each time it is pressed. If the blocknumber  goes  below
+         zero,  then  number  wraps  around  to  the  MAXBLOCKS.  For
+         convenience, if the keyboard is shift locked,  the  '='  may
+         also be used. 
+
+
+              
+                        7) Set the BLOCK NUMBER : 'b'
+              
+
+              This command allows the  user  to  enter  the  absolute
+         block address directly in  either  hexidecimal  or  decimal,
+         default is decimal, but a '$' anywhere in  the  input  field
+         will cause the number to be processed as a hex number  (this
+         is true of all numeric  input).  Special  Note:  users  with
+         mini-floppies or hard disks will have to change the constant
+         in the beginning of "DISKREAD" to reflect the correct number
+         of blocks! 
+
+
+           
+                         8) Set the UNIT NUMBER : 'u'
+           
+
+              This command allows the user to enter the volume number
+         on which further operations are to take place, if the number
+         entered is not a vailide block device then the default value
+         of four is substituted - no error message is given! 
+
+
+                                                    
+                     9) CHANGE buffer byte by byte : 'c'
+                                                    
+
+              This command allows the user to change the buffer  con-
+         tents  byte by byte. The user is first ask  for  a  starting
+         address at which the changes are to  begin,  then  he  enter
+         each change. The displayed numbers are the current  address,
+         and the value of the buffer at that  address.  To  terminate
+         the change mode, simply type return with no other entry. 
+
+
+                                                         
+                           10) STRING CHANGES : 's'
+                                                         
+
+              This command allows the user to chage the  buffer  con-
+         tents  to values which are equivalent to  an  input  string.
+         The user is ask to supply a starting address for the  string
+         and the string, the change takes up as  many  bytes  as  are
+
+
+                                    - 3 -                              
+1
+
+         Diskread                                         30 Apr 1980 
+
+
+
+         needed for the string, trailing blanks are significant! 
+
+
+                                                        
+                           11) MEMORY UPDATE : 'm'
+                                                        
+
+              This command allows the user to change large amounts of
+         the buffer with a single command. The starting address,  the
+         ending address, and the value to update the buffer  to  must
+         be supplied when  requested,  if  the  starting  address  is
+         larger than the ending addres the proccess is aborted. 
+
+
+                                                       
+                                12) QUIT : 'q'
+                                                       
+
+              This command terminates "DISKREAD", the buffer  is  not
+         saved automatically! 
+
+
+                     
+                           Some General Suggestions
+                     
+
+              Numeric inputs may be either hex or decimal,  generally
+         error messages are not given, "DISKREAD" assumes the user is
+         very familar with this program, and that he  simply  made  a
+         typing error, any  quantity  may  be  corrected  before  the
+         return key is hit by simply back spacing, and  either  upper
+         of lower case characters can be used for  commands  and  hex
+         digits. 
+
+
+        
+                   Please send comments and suggestions to:
+        
+
+
+        
+                                Roger L. Soles
+        
+                       Georgia Institute of Technology
+        
+                              Atlanta, GA  30332
+        
+
+
+        
+
+
+        
+                                   NOTICE:
+        
+
+
+                                    - 4 -                              
+1
+
+         Diskread                                         30 Apr 1980 
+
+
+
+
+
+
+              This program is for free  distribution  ONLY,  and  the
+         copyright notice and author name may not be removed! 

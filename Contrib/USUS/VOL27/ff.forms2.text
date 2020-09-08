@@ -1,0 +1,227 @@
+SEGMENT PROCEDURE LIST;
+
+SEGMENT PROCEDURE DIR;     (* Display or list freeform directory *)
+BEGIN
+  PUTMAINHEAD;
+  WRITELN('FREEFORM Directory Listing');
+  IF DISK_DIR THEN
+    BEGIN
+      MEMORY;
+      IF YESNO('Listing on Printer','N') THEN
+        BEGIN
+          SETPRINTER;
+          IF PRINTER_ON THEN
+            BEGIN  ONEMOMENT('Listing');  DISPLAYDIR(PRINTER,FALSE,TRUE,0)  END
+        END
+      ELSE
+        BEGIN
+          DISPLAYDIR(OUTPUT,TRUE,TRUE,0);
+          PRESSRETURN('To continue,',MSG_LINE)
+        END;
+      CLOSE(DIRECTORY);  FILEOPEN := FALSE;
+    END
+END;      (* of dir *)
+
+SEGMENT PROCEDURE CONTROL;
+VAR
+    I, BOT_CNT: INTEGER;
+    
+SEGMENT PROCEDURE DISPLAYCTL(VAR OUTFILE: TXTFILE;  TOSCREEN: BOOLEAN);
+VAR
+    NUM_CONSTANTS, PAGE: INTEGER;
+
+PROCEDURE NEWPAGE;                      FORWARD;
+PROCEDURE DOHEADING;                    FORWARD;
+PROCEDURE CHECKIO( ERR: INTEGER );      FORWARD;
+
+SEGMENT PROCEDURE DIS_CONSTS;           FORWARD;
+SEGMENT PROCEDURE DIS_PAGE_CTRLS;       FORWARD;
+SEGMENT PROCEDURE DIS_RC_CTRLS;         FORWARD;
+
+SEGMENT PROCEDURE DIS_CONSTS;
+BEGIN
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE,'Calculation constants  : ',DIRECTORY^.NO_CONSTS);
+  PRINT_LINE := PRINT_LINE + 8;
+  FOR I := 1 TO DIRECTORY^.NO_CONSTS DO
+    BEGIN
+      IF PRINT_LINE > BOT_CNT THEN
+        IF TOSCREEN THEN
+          BEGIN PRESSRETURN('More constants..',MSG_LINE); DOHEADING END
+        ELSE NEWPAGE;
+      PRINT_LINE := PRINT_LINE+1;
+      SEEKCON(I,ANDGET);
+      NUMTOSTR(IS, FORM_CON_FILE^, MAXWHOLE, 5);
+      WRITELN(OUTFILE,'Constant # ',I:3,' = ',IS);
+    END;
+  CLOSE(FORM_CON_FILE);  CON_OPEN := FALSE
+END;   (* of dis_consts *)
+
+SEGMENT PROCEDURE DIS_PAGE_CTRLS;     (* Page controls listing *)
+VAR PAGE: INTEGER;
+
+PROCEDURE TITLEIT;
+BEGIN
+  IF TOSCREEN THEN
+    BEGIN
+      PRESSRETURN('For page titles',MSG_LINE);
+      DOHEADING
+    END;
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE,'Page Titles are as follows:');
+  WRITELN(OUTFILE,'##  Title Description');
+  PRINT_LINE := PRINT_LINE+3;
+END;  (* of titleit *)
+
+BEGIN  (* DIS_PAGE_CTLS *)
+  IF NOT OPEN_TIT(REQUESTED_FORM) THEN CHECKIO(8);
+  TITLEIT;
+  MEMORY;
+  FOR PAGE := 1 TO DIRECTORY^.NO_PAGES DO
+    BEGIN   (* Display page titles *)
+      IF PRINT_LINE > BOT_CNT THEN
+        IF TOSCREEN THEN TITLEIT ELSE NEWPAGE;
+      GET(FORM_TIT_FILE);
+      WRITELN(OUTFILE,PAGE:2,'  ',FORM_TIT_FILE^);
+      PRINT_LINE := PRINT_LINE + 1
+    END;
+  MEMORY;
+  CLOSE(FORM_TIT_FILE);
+  TIT_OPEN := FALSE;
+END;     (* of dis_page_ctrls *)
+
+SEGMENT PROCEDURE DIS_RC_CTRLS;   (* Display row and column controls *)
+VAR
+     WHAT: STRING[7];
+     I, J, NUM: INTEGER;
+
+PROCEDURE TITLEIT;
+BEGIN
+  IF TOSCREEN THEN 
+    BEGIN
+      PRESSRETURN(CONCAT('For ',WHAT,' controls'),MSG_LINE);
+      DOHEADING
+    END;
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE,'Controls for the ',NUM,' defined ',WHAT,
+                  's are as follows:');
+  WRITELN(OUTFILE,CONTROL_HEADER);
+  PRINT_LINE := PRINT_LINE + 3;
+END;  (* of titleit *)
+
+PROCEDURE WRITERECORD(RECNUM: INTEGER;  DOINGROW: BOOLEAN);
+BEGIN
+  IF PRINT_LINE > BOT_CNT THEN
+    IF TOSCREEN THEN TITLEIT ELSE NEWPAGE;
+  SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,RECNUM,ANDGET);
+  WRITEAREC(OUTFILE,RECNUM,FORM_CTL_FILE^);
+  PRINT_LINE := PRINT_LINE+1;
+END;  (* of writerecord *)
+
+BEGIN   (* DIS_RC_CTRLS *)
+  IF NOT OPEN_CTL(REQUESTED_FORM) THEN CHECKIO(4);
+  WHAT := 'row'   ;  NUM := DIRECTORY^.NO_ROWS;
+  MEMORY;
+  TITLEIT;
+  FOR I := 1 TO NUM DO  WRITERECORD(I,TRUE);
+  WHAT := 'column';  NUM := DIRECTORY^.NO_COLS;
+  TITLEIT;
+  FOR I := 1 TO NUM DO  WRITERECORD(I,FALSE);
+  MEMORY;
+  CLOSE(FORM_CTL_FILE);  CTL_OPEN := FALSE;
+END;    (* of dis_rc_ctrls *)
+
+PROCEDURE NEWPAGE;
+BEGIN
+  {WRITELN(OUTFILE,CLEAR);}
+  sc_clr_screen;
+  PRINT_LINE := 1;
+END;
+
+PROCEDURE DOHEADING;
+BEGIN
+  PUTMAINHEAD;
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE,'Form name is -> ',REQUESTED_FORM);
+  PRINT_LINE := PRINT_LINE+2;
+END;
+
+PROCEDURE CHECKIO{ ERR: INTEGER };
+BEGIN
+  ERROR(ERR);
+  EXIT(DISPLAYCTL)
+END;  (* of checkio *)
+
+BEGIN     (* DISPLAYCTL *)
+  IF NOT TOSCREEN THEN        (* get printer aligned *)
+    BEGIN
+      SETPRINTER;
+      IF IORESULT <> 0 THEN CHECKIO(3);
+      ONEMOMENT('Listing')
+    END;
+  
+  IF TOSCREEN THEN            (* set bot_cnt to point where a tof is needed  *)
+    BEGIN  BOT_CNT := MSG_LINE-3;  PUTMAINHEAD  END
+  ELSE
+    BOT_CNT := PAPER_LENGTH-3;
+  
+  WITH DIRECTORY^ DO BEGIN
+    WRITELN(OUTFILE);
+    WRITELN(OUTFILE,'FORM description         : ',FORM_DESC);
+    WRITELN(OUTFILE,'FORM name                : ',
+       REQUESTED_FORM,'   User ID : ',FORM_ID,'   Date Created : ',FORM_DATE);
+    WRITELN(OUTFILE);
+    WRITELN(OUTFILE,'# of Pages/Rows/Max Rows/Columns/Max Columns : ',
+        NO_PAGES,'/',NO_ROWS,'/',THEMAXROW,'/',NO_COLS,'/',THEMAXCOL);
+    WRITE(OUTFILE,'Formatted by ');
+    IF FORMAT=FROW THEN  WRITE(OUTFILE,'ROW') ELSE  WRITE(OUTFILE,'COLUMN');
+    WRITE(OUTFILE,' --- ');
+    IF AUTO_SWITCH=NOAUTO THEN
+      WRITE(OUTFILE,'No automatic month headings')
+    ELSE
+      BEGIN
+        WRITE(OUTFILE,'Month Headings by ');
+        IF AUTO_SWITCH=AROW THEN  WRITE(OUTFILE,'ROW')
+        ELSE WRITE(OUTFILE,'COLUMN');
+      END;
+    WRITELN(OUTFILE);
+    IF NOT OPEN_CON(REQUESTED_FORM) THEN CHECKIO(12);
+    MEMORY
+  END  (* of with Directory^ *);
+  
+  DIS_CONSTS;        (* display constants     *)
+  DIS_PAGE_CTRLS;    (* Display page controls *)
+  DIS_RC_CTRLS;      (* display row  controls *)
+
+  IF NOT TOSCREEN THEN {WRITE(OUTFILE, CLEAR)} sc_clr_screen;
+END;     (* of displayctl *)
+
+BEGIN     (* CONTROL *)
+  PUTMAINHEAD;
+  WRITELN(OUTPUT,'FORM Controls listing');
+  IF DISK_DIR THEN      (* Get a disk with a free directory *)
+    BEGIN
+      IF NAME_FORM(REQUESTED_FORM,RECNUMBER) THEN   (* enter name of form *)
+        BEGIN
+          MEMORY;
+          IF YESNO('Listing on Printer','N') THEN
+            DISPLAYCTL(PRINTER,FALSE)
+          ELSE
+            BEGIN
+              DISPLAYCTL(OUTPUT,TRUE);
+              PRESSRETURN('To continue,',MSG_LINE)
+            END
+        END;
+      CLOSE(DIRECTORY);
+      FILEOPEN := FALSE;
+    END
+END;     (* of control *)
+
+BEGIN    (* LIST *)
+  MEMORY;
+  CASE OPTION OF
+    3: DIR;
+    4: CONTROL;
+  END;
+END;    (* of list *)
+

@@ -1,0 +1,539 @@
+.TITLE    "K. G. Balke, Associates, Escort File Transfer Unit"
+
+;  Author:      Karl G. Balke
+;  Version:     01 October 1982
+
+.INCLUDE  bios.const
+
+.RELPROC  MDEM_INIT, 1
+
+;  This service initializes the modem port to the speed indicated in 
+;  its parameter (the clock divisor at 16x speed).
+
+;  It assumes that the port is in mode instruction mode on entry.
+
+;  It is called from a Pascal program which declares it as follows:
+
+;         PROCEDURE mdem_init
+;            (divisor:             INTEGER);
+
+          
+;  Position the divisor for programming the clock divider.
+          POP   HL
+          EX    (SP), HL
+          LD    A, 76H
+          OUT   (CNT_MDM), A
+          LD    A, L
+          OUT   (CNT_REG_1), A
+          LD    A, H
+          OUT   (CNT_REG_1), A
+          
+;  Set the modem port mode.
+          LD    A, 4EH
+          OUT   (PRT_MODEM + STAT_PRT), A
+          
+;  Turn on the port and wait for the chips to settle.
+          LD    A, 17H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    B, 0
+          DJNZ  $
+          
+;  Turn off the modem port to clear the line of any noise.
+          LD    A, 40H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    B, 0
+          DJNZ  $
+          
+;  Set the modem port mode again.
+          LD    A, 4EH
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    A, 37H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          RET
+
+.RELPROC  MDEM_CLR
+
+;  This procedure turns off the DSR and CTS lines of the
+;  modem, indicating that the computer is no longer listening.
+;  It also places the modem in mode instruction mode.
+
+;  It is declared in the caller as:
+
+;         PROCEDURE mdem_clr;
+
+          LD    A, 40H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          RET
+
+
+.PROC     READ_MSG, 1
+;  This service reads a message over the designated serial port.
+;  It interprets the messages according to the following protocol:
+
+;         First Ch.                Rest Of Message
+;         ---------                ---------------
+
+;            A                     <IO Result>
+
+;            B                     <IO Result>
+;                                  512-byte message if IO Result = 0
+
+;            C                     --
+
+;            D                     String (all strings are Pascal form.)
+
+;            E                     String
+
+;            G                     --
+
+;            R                     String
+
+;            W                     String
+
+;  The service also polls for console break-in and detects the serial
+;  line dropping or going inactive.  (DSR/DTR low means line dropped,
+;  CTS/RTS low means inactive.)
+
+;  Console break-in is translated into a line condition code placed in
+;  the returned message.  The console break-in is detected by use of the
+;  standard SBIOS calls, and must consist of a single escape character
+;  (others are ignored).
+
+;  Line conditions are reported through the leading character of the
+;  returned message as follows:
+
+;         Value                    Meaning
+;         -----                    -------
+;           1                      Line error
+;           3                      Line dropped
+;           4                      Pause (cancel message thus far)
+;           5                      Escape from console
+
+;  Procedure is declared in Pascal program as follows:
+;         PROCEDURE
+;          (VAR
+;             msg:                 {PACKED ARRAY [0 .. 513] OF CHAR});
+
+          .DEF  HEX_OUT
+
+          POP   HL
+          EX    (SP), HL
+          LD    (MSG_BASE), HL
+
+;  From here on, HL => next character to deposit in message.
+;  Read the initial incoming character and interpret.
+          CALL  RD_DEPOS
+          AND   A
+          RET   NZ
+
+;  Error free transmission occurred.  Interpret the message.
+          LD    A, E
+          
+;  Discard initial binary zero on assumption that it is generated
+;  by serial port when DSR comes high.
+          AND   A
+          JR    NZ, $0
+          
+;  Reset the message pointer and read the next character.
+          LD    HL, (MSG_BASE)
+          CALL  RD_DEPOS
+          AND   A
+          RET   NZ
+
+          LD    A, E
+          
+$0:
+;  Interpret this character as serious transmission.
+          CP    "A"
+          JP    Z, RD_DEPOS
+
+;  Not "A".  Return if not larger.
+          RET   C
+
+;  Return if greater than "W".
+          CP    "W"
+          JR    Z, $3
+          RET   NC
+
+;  Test remaining long message characters.
+          CP    "D"
+          JR    Z, $3
+          
+          CP    "E"
+          JR    Z, $3
+          
+          CP    "R"
+          JR    Z, $3
+          
+          CP    "B"
+          RET   NZ
+
+;  Block message in response to "G" request.  Get IO Result and
+;  decide whether or not to read 512 characters of block.
+          CALL  RD_DEPOS
+          AND   A
+          RET   NZ
+
+;  Check for IO Result if read valid.
+          CP    E
+          RET   NZ
+
+;  Result indicates block will follow.
+          LD    BC, 2
+
+$2:
+;  Read the number of characters specified in BC, where C is high
+;  order byte.
+          CALL  RD_DEPOS
+          AND   A
+          RET   NZ
+          
+          DJNZ  $2
+          DEC   C
+          RET   Z
+          JR    $2
+
+$3:
+;  Read the string length character and set up to read the characters
+;  of string.
+          CALL  RD_DEPOS
+          AND   A
+          RET   NZ
+          
+          LD    B, E
+          LD    C, 1
+          JR    $2
+
+
+RD_DEPOS:
+;  This service reads the next character from the line and deposits it
+;  into the message.  It also polls for console break-in, and detects
+;  transmission failures.
+
+;  On Entry:
+;         (HL) => Message Deposit Position
+
+;  On Exit:
+;         (A) = Result status.
+;         (E) = Character read.
+;         (HL) => Next Message Character.
+
+          CALL  RD_CHAR
+          AND   A
+          JR    Z, $0
+
+          LD    HL, (MSG_BASE)
+          LD    (HL), A
+          RET
+
+$0:
+          LD    (HL), E
+          INC   HL
+          RET
+
+
+RD_CHAR:
+;  This service reads a character from the transmission port.
+;  It detects pause and line dropping signals, and console break-in
+;  with an escape character.
+
+;  On Exit:
+;         (A) = Event status.
+;         (E) = Character read.
+
+          PUSH  BC
+
+$0:
+;  Poll for console character ready.
+          IN    A, (CRT_STAT)
+          AND   02H
+          JR    NZ, $8
+
+;  Look for line dropping.
+          IN    A, (PRT_MODEM + STAT_PRT)
+          BIT   PRT_DSR, A
+          JR    Z, $1
+          
+;  Look for pause condition from other end.
+          BIT   PRT_RTSB, A
+          JR    Z, $2
+          
+;  Analyze errors on line.
+          LD    B, A
+          AND   38H
+          JR    NZ, $3
+
+;  Test for available character on line.
+          BIT   PRT_RRDY, B
+          JR    Z, $0
+
+;  Character available on line.  Read it and return result.
+          IN    A, (PRT_MODEM)
+          
+;         CALL  HEX_OUT
+          
+          LD    E, A
+          XOR   A
+
+$9:
+          POP   BC
+          RET
+
+
+$8:
+;  Break-in must be escape.
+          IN    A, (CRT_DATA)
+          AND   7FH
+          CP    27
+          JR    NZ, $0
+
+;  Drop CTS and return escape result.
+          LD    A, 15H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    A, 5
+          JR    $9
+
+$1:
+;  Line has dropped since last poll.
+          LD    A, 3
+          JR    $9
+
+$2:
+;  Ready to send has dropped since last poll.
+          LD    A, 4
+          JR    $9
+
+$3:
+;  Transmission problems.  Drop CTS to signal other end that
+;  transaction unsuccessful.
+          LD    A, 17H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    A, 1
+          JR    $9
+
+MSG_BASE:
+          .WORD 0
+
+HEX_OUT:
+;  This service presents the character it receives on input on the
+;  screen in hex format.
+
+;  On Entry:
+;         (A) = Character to print.
+
+          PUSH  AF
+          PUSH  BC
+
+          LD    B, A
+          AND   0F0H
+          RLA
+          RLA
+          RLA
+          RLA
+          RLA
+          CALL  CONS_OUT
+
+          LD    A, B
+          AND   0FH
+          CALL  CONS_OUT
+          
+          LD    C, " "
+          CALL  CONS_TRAN
+
+          POP   BC
+          POP   AF
+          RET
+
+CONS_OUT:
+;  This service converts the offered nibble to a hex digit and sends
+;  it to the console.
+
+;  On Entry:
+;         (A) = Nibble.
+
+          ADD   A, 30H
+          CP    3AH
+          JR    C, $0
+          ADD   A, 7
+$0:
+          LD    C, A
+
+CONS_TRAN:
+          IN    A, (CRT_STAT)
+          AND   01H
+          JR    Z, CONS_TRAN
+
+          LD    A, C
+          OUT   (CRT_DATA), A
+          RET
+
+
+
+.FUNC     WRT_MSG, 2
+;  This service writes a message to the file transfer port.  It detects
+;  console break-in and drops the CTS line to indicate a pause in
+;  transmission.
+
+;  The result code is interpreted as follows:
+
+;         Value                    Meaning
+;         -----                    -------
+;           0                      Message written.
+;           1                      Line error.
+;           2                      Line interrupt (character received).
+;           3                      Line dropped.
+;           4                      Pause (RTS dropped).
+;           5                      Escape break-in from keyboard.
+
+;  The function is declared in a Pascal program as follows:
+;         FUNCTION wrt_msg
+;            (l:                   INTEGER;
+;           VAR
+;             msg:                 {PACKED ARRAY [0 .. 513] OF CHAR}):
+;                                  INTEGER;
+          
+          .REF  HEX_OUT
+
+          POP   DE                 ;  Return.
+          POP   HL                 ;  Message pointer.
+          POP   BC                 ;  Message length.
+          POP   AF                 ;  Dummy function value.
+          PUSH  DE
+
+;  Position transfer count for efficient processing.
+          LD    A, C
+          LD    C, B
+          AND   A
+          JR    Z, $0
+          
+          INC   C
+$0:
+          LD    B, A
+
+;  Raise CTS signal if not already on.
+          LD    A, 27H
+          OUT   (PRT_MODEM + STAT_PRT), A
+
+$1:
+;  Transfer characters until done.
+          LD    E, (HL)
+          INC   HL
+          CALL  WRT_CHAR
+
+          AND   A
+          JR    NZ, $3
+
+;  Count down transfer count.
+          DJNZ  $1
+          DEC   C
+          JR    NZ, $1
+
+;  Report successful status.
+          LD    HL, 0
+
+$2:
+;  Push result onto stack and return.
+          EX    (SP), HL
+          JP    (HL)
+
+$3:
+;  Error or escape break-in has occurred.  Report status.
+          LD    L, A
+          LD    H, 0
+          JR    $2
+
+WRT_CHAR:
+;  This service writes a single character to the serial line.  It also
+;  polls for <esc> break-in, receipt of a character on the serial line
+;  in the opposite direction, and loss of line.
+
+;  On Entry:
+;         (E) = Character to transmit.
+
+;  On Exit:
+;         (A) = Result.  Values are:
+;               0--Successful transmission.
+;               1--Line error.
+;               2--Reverse direction character.
+;               3--Line dropped.
+;               4--Pause (RTS dropped).
+;               5--Console escape break-in.
+
+          PUSH  BC
+
+$0:
+;  Poll for console character ready.
+          IN    A, (CRT_STAT)
+          AND   02H
+          JR    NZ, $8
+
+;  See if Host is still connected.
+          IN    A, (PRT_MODEM + STAT_PRT)
+          BIT   PRT_DSR, A
+          JR    Z, $1
+
+;  Identify errors.
+          LD    B, A
+          AND   38H
+          JR    NZ, $3
+
+;  See if transmit buffer is ready for next character.
+          BIT   PRT_THBE, B
+          JR    NZ, $4
+
+;  See if Host is trying to send a character.
+          BIT   PRT_RRDY, B
+          JR    Z, $0
+
+;  Input character from line ready to read.
+          LD    A, 2
+          JR    $9
+
+$8:
+;  Break-in must be escape.
+          IN    A, (CRT_DATA)
+          AND   7FH
+          CP    27
+          JR    NZ, $0
+
+;  Drop CTS and return escape result.
+          LD    A, 17H
+          OUT   (PRT_MODEM + STAT_PRT), A
+          LD    A, 5
+          JR    $9
+
+$1:
+;  Escort off line.
+          LD    A, 3
+          JR    $9
+
+$2:
+;  Escort RTS dropped.
+          LD    A, 4
+          JR    $9
+
+$3:
+;  Line transfer error.
+          LD    A, 1
+          JR    $9
+
+$4:
+;  See if Host has dropped RTS to request pause.
+          BIT   PRT_RTSB, B
+          JR    Z, $2
+
+;  Ready to send character.
+          LD    A, E
+          OUT   (PRT_MODEM), A
+
+;         CALL  HEX_OUT
+          
+          XOR   A
+
+$9:
+;  Return result.
+          POP   BC
+          RET
+
+.END
+

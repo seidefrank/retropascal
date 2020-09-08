@@ -1,0 +1,89 @@
+PROGRAM GETCPM;
+(* COPYRIGHT 1979 BY BARRY A. COLE *)
+  CONST SPACES='            '; BUFSIZE=32750;
+  VAR I,J,K,INDEX,NEXTEX,BIGP,BLANKS,BLOCKS,ROOM,COL: INTEGER;
+      DISKBUF: PACKED ARRAY[0..1023] OF CHAR;
+      BIGBUF: PACKED ARRAY[0..BUFSIZE] OF CHAR;
+      F:FILE; DELAY: CHAR; CPMTITLE,PASCTITLE: STRING[13];
+      EXTENTS: ARRAY[1..64] OF INTEGER;
+      NEWLINE: BOOLEAN;
+
+PROCEDURE READCPM(PARAM: INTEGER); EXTERNAL;
+procedure tack(value:integer);
+  begin
+  if bigp=bufsize then begin write(chr(value));
+    exit(tack); end;
+  bigbuf[bigp]:=chr(value); bigp:=bigp+1; col:=col+1;
+  end;
+procedure putit(ind: integer);
+  begin
+  if ord(diskbuf[ind])<>0 then begin
+    extents[nextex]:=ord(diskbuf[ind]); nextex:=nextex+1; end;
+  end;
+PROCEDURE SEARCH;
+  VAR FOUND: BOOLEAN; K,BLOCK,I: INTEGER;
+  BEGIN
+  FOR BLOCK:=0 TO 1 DO BEGIN
+    READCPM(BLOCK);
+    FOR I:=0 TO 31 DO BEGIN FOUND:=TRUE;
+      FOR J:=1 TO 11 DO 
+        IF DISKBUF[32*I+J]<>CPMTITLE[J] THEN FOUND:=FALSE;
+      IF FOUND THEN FOR K:=32*I+16 TO 32*I+31 DO PUTIT(K);
+      END;
+    END;
+  END; {eop search}
+procedure process;
+  var i,tabcol: integer;
+  begin
+  for i:=1 to nextex-1 do
+    begin
+    READCPM(extents[i]);
+    FOR J:=0 TO 1023 DO BEGIN
+      K:=ORD(DISKBUF[J]);
+      IF K=26 THEN EXIT(PROCESS); {EOF FOUND}
+      IF (K<>32) AND NEWLINE THEN BEGIN 
+        TACK(16); TACK(BL{NKS); COL:=BLANKS-32;
+        BLANKS:=32; NEWLINE:=FALSE; END;
+      IF (K=32) AND NEWLINE THEN BLANKS:=BLANKS+1
+        ELSE IF K>=32 THEN TACK(K);
+      IF K=9 THEN FOR TABCOL:=COL MOD 8 TO 7 DO TACK(32); {TAB}
+      IF K=13 THEN BEGIN {CR}
+        TACK(13); NEWLINE:=TRUE; BLANKS:=32;
+        ROOM:=1024-(BIGP MOD 1024);
+        IF ROOM<82 THEN REPEAT BEGIN
+          TACK(0); ROOM:=ROOM-1; END UNTIL ROOM=0;
+        END;
+      END;
+    end;
+  end; {end of process }
+
+  BEGIN
+  REPEAT BEGIN
+   WRITELN('PLACE CP/M DISK IN DRIVE A');
+   WRITE('FILE NAME? '); READLN(CPMTITLE); I:=POS('.',CPMTITLE);
+   END UNTIL (I>0) AND (I<10);
+   {IF (I=0) OR (I>9) THEN WRITELN('ILLEGAL FILE NAME FORMAT')
+     ELSE BEGIN }
+  PASCTITLE:=CONCAT(COPY(CPMTITLE,1,I),'TEXT');
+  CPMTITLE:=CONCAT(COPY(CPMTITLE,1,I-1),
+  COPY(SPACES,1,9-I),COPY(CPMTITLE,I+1,3));
+      {END;}
+  WRITELN('SEARCHING FOR "',CPMTITLE,'"');
+  BLANKS:=32; NEWLINE:=TRUE; BIGP:=0; NEXTEX:=1; SEARCH;
+  IF NEXTEX=1 THEN WRITELN('FILE NOT FOUND')
+  ELSE BEGIN
+    WRITELN('FILE IS ',NEXTEX-1,' EXTENT(S) LONG');
+    PROCESS;
+    BLOCKS:=(BIGP DIV 512)+2;
+    FOR I:=BIGP TO BLOCKS*512-1 DO BIGBUF[I]:=CHR(0);
+    WRITELN('PLACE PASCAL DISK IN DRIVE A, HIT KEY WHEN READY');
+    READ(DELAY); {SWITCH DISK DELAY }
+    WRITELN('WRITING ',BLOCKS+2,' BLOCKS TO ',PASCTITLE);
+    REWRITE(F,PASCTITLE);
+    IF BLOCKS<31 THEN J:=BLOCKWRITE(F,BIGBUF,BLOCKS,2)
+      ELSE BEGIN J:=BLOCKWRITE(F,BIGBUF,30,2);
+           J:=BLOCKWRITE(F,BIGBUF[15360],BLOCKS-30,32); END;
+    CLOSE(F,LOCK);
+    END;
+  END.
+

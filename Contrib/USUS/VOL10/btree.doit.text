@@ -1,0 +1,302 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.DOIT.TEXT              revised 31-May-82              *
+*                                                                       *
+************************************************************************}
+
+
+
+procedure KEY_INSERT;
+{************************************************************************
+*                                                                       *
+*  This procedure controls the retrival or correction of existing       *
+*  records and/or the addition of new records.                          *
+*                                                                       *
+************************************************************************}
+label 1;
+var   INPUTKEY:string;          {search key}
+      FOUND,WRONG:boolean;      {insertion control variables}
+      U:PERSON;                 {for adding new root}
+      I,J,Q:integer;            {loop control variables}
+      OLDPERS,NEWPERS:PERSON_NODE;
+        {OLDPERS for deleteing old root due to changed key}
+        {NEWPERS for adding new root due to insertion}
+begin
+  REAL_KEY:='          ';       {initialize}
+  reset(PERSONS,PERSON_FILE);   {open data file}
+1:SPLIT:=false;                 {initialize}
+  (*writeln(OUTFILE,'ROOT = ',FILE_LEN.PERSON_ROOT);
+  writeln(OUTFILE,'AVAIL = ',FILE_LEN.PERSON_AVAIL);*)
+  CHANGED:=false;               {initialize}
+  DUPLICATE:=false;             {initialize}
+  WRONG:=false;                 {initialize}
+  FOUND:=false;                 {initialize}
+  LEAVE:=false;                 {initialize}
+  repeat
+    write('Enter KEY to find/insert:  ');
+    readln(INPUTKEY);             {get search key}
+  until GOOD_STRING(INPUTKEY);
+    {prevent meaningless keys}
+  J:=length(INPUTKEY);
+  if J>10 then J:=10;
+  REAL_KEY:=copy(INPUTKEY,1,J);
+  UPPERCASE(REAL_KEY);          {convert to uppercase}
+  FAKE_KEY:=REAL_KEY;           {save INPUTKEY for display purposes}
+  INVERT_KEY(REAL_KEY,1);       {convert to correct format}
+  (*writeln(OUTFILE,'SEARCH KEY ',INPUTKEY);      {display user key}
+  writeln(OUTFILE,'REAL SEARCH KEY ',REAL_KEY); {display real key}*)
+  write('Searching for <',FAKE_KEY,'>');
+  SEARCH(REAL_KEY,FILE_LEN.PERSON_ROOT,U,FOUND,WRONG);
+     {find/insert search key}
+  if WRONG then begin  {inputed key incorrect or key changed in SEARCH}
+    if FOUND then begin         {key changed in SEARCH}
+      SPLIT:=false;                     {re-initialize}
+      DUPLICATE:=false;                 {re-initialize}
+      LEAVE:=false;                     {re-initialize}
+      WRONG:=false;                     {re-initialize}
+      U.SUCC_NODE:=-1;                  {initialize}
+      U.DUPE:=-1;                       {initialize}
+      (*writeln('Person "U" equals...');
+      writeln;
+      writeln;
+      PRINT_PERSON(U);
+      writeln;
+      writeln;
+      writeln('U.KEY = "',U.KEY,'"');
+      writeln(OUTFILE,'ROOT = ',FILE_LEN.PERSON_ROOT);
+      write(OUTFILE,'AVAIL = ',FILE_LEN.PERSON_AVAIL);
+      readln; *)
+      writeln;
+      writeln;
+      write('Inserting record into new location');
+      SEARCH(U.KEY,FILE_LEN.PERSON_ROOT,U,FOUND,WRONG);
+      if NEW_HEIGHT then begin      {insert new base node}
+        Q:=FILE_LEN.PERSON_ROOT;    {pointer to old root node}
+        with NEWPERS do begin       {initialize new root node}
+          NODESIZE:=1;              {any new root node only has one person}
+          P0:=Q;                    {initialize lessor successor pointer}
+          DATA[1]:=U;               {add person to new root node}
+        end; {with NEWPERS}
+        seek(PERSONS,FILE_LEN.PERSON_AVAIL);
+          {set file window to next "empty" node locaton}
+        write('.');                 {show user something is happening}
+        get(PERSONS);               {load file buffer}
+        J:=PERSONS^.P0;             {save location of next node in linked list}
+        seek(PERSONS,FILE_LEN.PERSON_AVAIL);
+          {set file window to first available empty node}
+        write('.');                 {show user something is happening}
+        PERSONS^:=NEWPERS;          {assign to a "disk variable"}
+        put(PERSONS);               {write new root node to disk}
+        FILE_LEN.PERSON_ROOT:=FILE_LEN.PERSON_AVAIL;
+          {update root node pointer}
+        FILE_LEN.PERSON_AVAIL:=J;
+          {reset pointer to new head node of linked list}
+        FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED-1;
+          {correct number of empty or unused nodes}
+      end; {if NEW_HEIGHT}
+      if CHANGED then begin
+        SPLIT:=false;                     {re-initialize}
+        DUPLICATE:=false;                 {re-initialize}
+        LEAVE:=false;                     {re-initialize}
+        WRONG:=false;                     {re-initialize}
+        writeln;
+        writeln;
+        write('Deleting record from previous location');
+        FOUND:=true;
+        DELETE(PERSONPTR.KEY,FILE_LEN.PERSON_ROOT,FOUND,WRONG);
+        if NEW_HEIGHT then begin      {root node size was reduced}
+          seek(PERSONS,FILE_LEN.PERSON_ROOT); {set file window to root node}
+          write('.');                 {show user something is happening}
+          get(PERSONS);                        {load file buffer}
+          J:=FILE_LEN.PERSON_ROOT;    {save location of root node}
+          if PERSONS^.NODESIZE=0 then begin   {must reset root pointer}
+            FILE_LEN.PERSON_ROOT:=PERSONS^.P0;
+              {if PERSONS^.NODESIZE=0 then the root node is empty so reset
+               the root to the old root lessor successor}
+            PERSONS^.P0:=FILE_LEN.PERSON_AVAIL;
+              {link old root node to the linked list of available nodes}
+            FILE_LEN.PERSON_AVAIL:=J;
+              {reset pointer to linked list of available nodes}
+            FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED+1;
+              {correct number of empty or unused nodes}
+          end; {if PERSONS^.NODESIZE=0}
+          OLDPERS:=PERSONS^;          {hold while seeking}
+          seek(PERSONS,J);            {set file window to old root node}
+          write('.');                 {show user something is happening}
+          PERSONS^:=OLDPERS;          {load file buffer}
+          NEW_HEIGHT:=false;          {prevent unwanted action}
+          put(PERSONS)                {write file buffer to disk}
+        end  {if NEW_HEIGHT}
+      end  {if CHANGED}
+    end  {if FOUND}
+    else begin
+      writeln;
+      writeln;
+      goto 1
+    end  {else begin}
+  end; {if WRONG}
+  if NEW_HEIGHT then begin      {insert new base node}
+    Q:=FILE_LEN.PERSON_ROOT;    {pointer to old root node}
+    with NEWPERS do begin       {initialize new root node}
+      NODESIZE:=1;              {any new root node only has one person}
+      P0:=Q;                    {initialize lessor successor pointer}
+      DATA[1]:=U;               {add person to new root node}
+    end; {with NEWPERS}
+    seek(PERSONS,FILE_LEN.PERSON_AVAIL);
+      {set file window to next "empty" node locaton}
+    write('.');                 {show user something is happening}
+    get(PERSONS);               {load file buffer}
+    J:=PERSONS^.P0;             {save location of next node in linked list}
+    seek(PERSONS,FILE_LEN.PERSON_AVAIL);
+      {set file window to first available empty node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=NEWPERS;          {assign to a "disk variable"}
+    put(PERSONS);               {write new root node to disk}
+    FILE_LEN.PERSON_ROOT:=FILE_LEN.PERSON_AVAIL;
+      {update root node pointer}
+    FILE_LEN.PERSON_AVAIL:=J;   {reset pointer to new head node of linked list}
+    FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED-1;
+      {correct number of empty or unused nodes}
+  end; {if NEW_HEIGHT}
+{************************************************************************
+*                                                                       *
+*  The five lines which follow save the revised control data to the     *
+*  disk.  This is done after each operation where an insertion or       *
+*  deletion might have taken place.  The reason is is done here rather  *
+*  than upon program exit is to limit the damage which might be done    *
+*  if there is a power or other failure prior to exiting the program.   *
+*                                                                       *
+************************************************************************}
+  close(PERSONS,lock);          {ensure entire file is in directory}
+  seek(CONTROLFILE,0);          {reset file window to node 0}
+  write('.');                   {show user something is happening}
+  CONTROLFILE^:=FILE_LEN;       {load CONTROLFILE buffer}
+  put(CONTROLFILE);             {write CONTROLFILE buffer to disk}
+  writeln;
+  writeln;
+  write('Print out or traverse B-tree?  (y/n)  ');
+  if YES then PRINT_IT
+end; {KEY_INSERT}
+
+procedure KEY_DELETE;
+{************************************************************************
+*                                                                       *
+*  This procedure controls the deletion of existing records.            *
+*                                                                       *
+************************************************************************}
+label 1;
+var   INPUTKEY:string;          {search key}
+      U:PERSON;                 {not required?}
+      FOUND,WRONG:boolean;      {insertion control variables}
+      OLDPERS:PERSON_NODE;
+      I,J,Q:integer;            {loop control variables}
+begin
+  REAL_KEY:='          ';       {initialize}
+  reset(PERSONS,PERSON_FILE);   {open data file}
+1:SPLIT:=false;                 {initialize}
+  (*writeln(OUTFILE,'ROOT = ',FILE_LEN.PERSON_ROOT);
+  writeln(OUTFILE,'AVAIL = ',FILE_LEN.PERSON_AVAIL);*)
+  CHANGED:=false;               {initialize}
+  DUPLICATE:=false;             {initialize}
+  WRONG:=false;                 {initialize}
+  FOUND:=false;                 {initialize}
+  LEAVE:=false;                 {initialize}
+  repeat
+    write('Enter KEY to delete:  ');
+    readln(INPUTKEY);             {get search key}
+  until GOOD_STRING(INPUTKEY);
+    {prevent meaningless keys}
+  J:=length(INPUTKEY);
+  if J>10 then J:=10;
+  REAL_KEY:=copy(INPUTKEY,1,J);
+  UPPERCASE(INPUTKEY);          {convert to uppercase}
+  FAKE_KEY:=INPUTKEY;           {save INPUTKEY for display purposes}
+  REAL_KEY:=INPUTKEY;           {initialize}
+  INVERT_KEY(REAL_KEY,1);       {convert key to correct format}
+  (*writeln(OUTFILE,'DELETE KEY ',INPUTKEY);      {display user key}
+  writeln(OUTFILE,'REAL DELETE KEY ',REAL_KEY); {display real key}*)
+  write('Deleteing record <',FAKE_KEY,'>');
+  DELETE(REAL_KEY,FILE_LEN.PERSON_ROOT,FOUND,WRONG);   {delete search key}
+  if WRONG then goto 1;
+  if NEW_HEIGHT then begin      {root node size was reduced}
+    seek(PERSONS,FILE_LEN.PERSON_ROOT); {set file window to root node}
+    write('.');                 {show user something is happening}
+    get(PERSONS);                        {load file buffer}
+    J:=FILE_LEN.PERSON_ROOT;    {save location of root node}
+    if PERSONS^.NODESIZE=0 then begin   {must reset root pointer}
+      FILE_LEN.PERSON_ROOT:=PERSONS^.P0;
+        {if PERSONS^.NODESIZE=0 then the root node is empty so reset
+         the root to the old root lessor successor}
+      PERSONS^.P0:=FILE_LEN.PERSON_AVAIL;
+        {link old root node to the linked list of available nodes}
+      FILE_LEN.PERSON_AVAIL:=J;
+        {reset pointer to linked list of available nodes}
+      FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED+1;
+        {correct number of empty or unused nodes}
+    end; {if PERSONS^.NODESIZE=0}
+    OLDPERS:=PERSONS^;          {hold while seeking}
+    seek(PERSONS,J);            {set file window to old root node}
+    write('.');                 {show user something is happening}
+    PERSONS^:=OLDPERS;          {load file buffer}
+    put(PERSONS)                {write file buffer to disk}
+  end; {if NEW_HEIGHT}
+  close(PERSONS,lock);          {make sure entire file is in directory}
+{************************************************************************
+*                                                                       *
+*  The five lines which follow save the revised control data to the     *
+*  disk.  This is done after each operation where an insertion or       *
+*  deletion might have taken place.  The reason is is done here rather  *
+*  than upon program exit is to limit the damage which might be done    *
+*  if there is a power or other failure prior to exiting the program.   *
+*                                                                       *
+************************************************************************}
+  close(PERSONS,lock);          {ensure entire file is in directory}
+  seek(CONTROLFILE,0);          {reset file window to node 0}
+  write('.');                   {show user something is happening}
+  CONTROLFILE^:=FILE_LEN;       {load CONTROLFILE buffer}
+  put(CONTROLFILE);             {write CONTROLFILE buffer to disk}
+  writeln;
+  writeln;
+  write('Print out or traverse B-tree?  (y/n)  ');
+  if YES then PRINT_IT
+end; {KEY_DELETE}
+
+
+
+
+procedure DATA_FULL;
+begin
+  CLEARSCREEN;
+  gotoxy(0,11);
+  writeln('There is no more space to insert data!!!!!');
+  gotoxy(16,23);
+  write('hit SPACEBAR to continue <--');
+  CH:=READKEY([' '])
+end; {DATA_FULL}
+
+procedure TITLE;
+var   S:string;
+      I,J:integer;
+begin 
+  S:='ADDRESS BOOK'; 
+  PRINTAT(37-length(S) div 2,2,S); 
+  S:='written by';
+  PRINTAT(37-length(S) div 2,3,S); 
+  S:='R. M. Wilson';
+  PRINTAT(37-length(S) div 2,4,S); 
+  S:='Copyright by';
+  PRINTAT(37-length(S) div 2,13,S);
+  S:='HI-COUNTRY DATA SYSTEMS';
+  PRINTAT(37-length(S) div 2,15,S); 
+  S:='P.O. Box 4258';
+  PRINTAT(37-length(S) div 2,16,S); 
+  S:='Woodland Park, CO 80863-4258';
+  PRINTAT(37-length(S) div 2,17,S); 
+  S:='November 27, 1981';
+  PRINTAT(37-length(S) div 2,18,S); 
+  S:='Hit "SPACEBAR" to continue <--'; 
+  PRINTAT(37-length(S) div 2,23,S); 
+  CH:=READKEY([' ']);
+  CLEARSCREEN 
+end; {TITLE}
+

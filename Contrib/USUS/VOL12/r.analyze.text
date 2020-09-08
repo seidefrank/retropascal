@@ -1,0 +1,288 @@
+{ ANALYZE:  Analyze and summarize execution time performance measurements
+            from an AUGMENTed Pascal program.
+
+        PROGRAM HISTORY:
+
+  S. Matwin and M. Missala, 1975:
+    Polish Academy of Sciences Computer Centre, Pkin, Warsaw, Poland.
+  
+  Modified, Generalized, and Renamed by:
+    A. B. Mickel and H. U. Rubenstein, 1977.
+    University of Minnesota Computer Center, Minneapolis, MN 55455 USA.
+    
+  Published in Pascal News, No. 12., 1978 June.
+  
+  Overhauled for UCSD Pascal and interactive environment by:
+    James L. Gagne, September, 1981.
+    Datamed Research, Inc., 1433 Roscomare Road, Los Angeles, CA 90077 USA.
+    JLG's changes from the PUG version are denoted with empty comment braces.
+    
+  Patched by George Schreyer,  lines changed noted by gws    Oct 1981
+  
+  The names and organizations given here must not be deleted in any use of
+    this program. (Note added 9/81: this program is not known to be copyright.)
+    
+Internal documentation:
+  
+    Analyze reads two files.  Inter2 (UCSD filename is fixed: "AUG.PROCNAMES")
+  is the file containing the "module" (procedure/function) names which are used
+  when the results are sorted and written out (up to 10 characters only).
+  Timing (UCSD filename: "TIMING.DAT") is the file containing the execution
+  trace of the program being monitored.  Both files are expected to be on the
+  default disk.
+  
+    Within ANALYZE, the procedure named processbody does the actual analysis
+  by determining every time interval:
+        time interval = time of exit - time of entry
+
+    Gotoexits were handled specially in the PUG version.  These features have
+  been removed from the UCSD version, but for now special provisions for
+  the EXIT procedure have not been installed.
+}
+
+PROGRAM Analyze;
+
+CONST   AlfaLeng = 10;
+        MaxNames = 1000;
+        TicksPerSec = 60.0;     {clock increments ("ticks") per second}
+        PrinterName = '#8:';    {name of standard printer}
+
+TYPE    Alfa = PACKED ARRAY [1..AlfaLeng] OF Char;
+        TagRange = 0..MaxNames;
+        Measurement = PACKED RECORD
+                        Tag: TagRange;
+                        Mark: (Entry, ExitP, GotoEntry);
+                        HiTime, LoTime: integer
+                      END;
+{}      DblInt = RECORD
+                   Hi, Lo: integer
+                 END;
+        Counter = RECORD
+                    Count, SubRtnCount: integer;
+                    Name: Alfa;
+{}                  TimeSpent: Real
+                  END;
+
+VAR     MaxTag: TagRange;
+{}      LastDot: char;
+{}      JustOne, TotalCalls:  DblInt;
+        ch: char;
+        TotalTime, StartingTime, FudgeFactor: real;
+        TimeOverhead: real;       {sec's req'd to write each timing datum}
+        Modules:  ARRAY [TagRange] OF Counter;
+        Timing:  FILE OF Measurement;
+{}      OutFile: text;
+
+
+PROCEDURE Sort(min, max: tagrange);
+{Quicksort with bounded recursion depth, used to alphebatize module names.
+ Requires min < max.}
+VAR     low, high: integer;
+        MidKey: Alfa;
+        Temp: Counter;
+
+BEGIN
+                       REPEAT        {pick split point}
+    MidKey := Modules[(min + max) DIV 2].Name;  low := min;  high := max;
+    REPEAT      {partition}
+      WHILE Modules[low].Name < MidKey DO low := low + 1;
+      WHILE Modules[high].Name > MidKey DO high := high - 1;
+      IF low <= high
+        THEN BEGIN
+          Temp := Modules[low];  Modules[low] := Modules[high];
+          Modules[high] := Temp;  low := low + 1;  high := high - 1
+        END
+    UNTIL low > high;            {recursively sort shorter sub-segment}
+    IF high - min < max - low
+      THEN BEGIN IF min < high THEN Sort(min,high);  min := low END
+      ELSE BEGIN IF low < max THEN Sort(low,max);  max := high END
+  UNTIL max <= min
+END;
+
+
+  FUNCTION RealTime: Real;  {convert time to real number}
+VAR     Hi, Lo: integer;
+BEGIN
+  WITH Timing^ DO IF Tag <= 0 THEN Realtime := 0
+  ELSE BEGIN
+    Hi := HiTime*2;  Lo := LoTime;
+    IF Hi < 0 THEN Hi := Hi + 32767 + 1; {throw away sign bit if a carry}
+    IF Lo < 0
+      THEN BEGIN Lo := Lo + 32767 + 1;  Hi := Hi + 1 END;
+    IF Hi < 0 THEN Hi := 0;
+    RealTime := Lo + 32768.0 * Hi
+  END
+END;
+
+
+PROCEDURE AddDblInt(VAR i1, i2: DblInt);   {add i1 and i2; sum in i1}
+VAR     Sum: DblInt;
+BEGIN
+  WITH Sum DO
+    BEGIN
+      Hi := i1.Hi + i2.Hi;  Lo := i1.Lo + i2.Lo;
+      IF (i1.Hi > 0) AND (i2.Hi > 0) AND (Hi < 0)
+        THEN Hi := Hi + 32767 + 1;
+      IF (i1.Lo > 0) AND (i2.Lo > 0) AND (Lo < 0)
+        THEN BEGIN Lo := Lo + 32765 + 3;  Hi := Hi + 1 END
+    END;
+  i1 := Sum;
+END;
+
+
+PROCEDURE SubDblInt(VAR i1, i2: DblInt);   {subtract i2 from i1; diffrnc in i1}
+VAR     Diff: DblInt;
+BEGIN
+  WITH Diff DO
+    BEGIN
+      Hi := i1.Hi - i2.Hi;  Lo := i1.Lo - i2.Lo;
+      IF (i1.Hi < 0) AND (i2.Hi < 0) AND (Hi > 0) THEN Hi := Hi + 32767 + 1;
+      IF (i1.Lo < 0) AND (i2.Lo < 0) AND (Lo > 0)
+        THEN BEGIN Lo := Lo + 32765 + 3;  Hi := Hi - 1 END
+    END;
+  i1 := Diff
+END;
+
+
+PROCEDURE ProcessBody;
+{process timing file of dynamic measurements.}
+VAR     ModuleTag: TagRange;
+        NoGoto, SameModule: boolean;
+        SubCnt: integer;
+{}      Temp1, Temp2, ModulTime: Real;
+
+BEGIN
+   ModuleTag := Timing^.Tag;  ModulTime := 0.0;  SubCnt := 0;
+   Temp1 := RealTime + FudgeFactor;  Get(Timing);
+   WHILE (Timing^.Mark = entry) AND (Timing^.Tag > 0) AND NOT EOF(Timing) DO
+     BEGIN
+{}     Temp2 := RealTime;  ModulTime := ModulTime + Temp2 - Temp1 - FudgeFactor;
+{}     ProcessBody;  Temp1 := RealTime;  SubCnt := SubCnt + 1;
+{}     NoGoto := Timing^.Mark <> GotoEntry;
+{}     SameModule := Timing^.Tag = ModuleTag;
+{gws}  {IF SameModule OR NoGoto THEN} Get(timing);
+     END;
+{} Temp2 := RealTime;  ModulTime := ModulTime + Temp2 - Temp1;
+{} AddDblInt(TotalCalls,JustOne);
+{} IF TotalCalls.Lo MOD 50 = 0 THEN Write('.');
+{} IF TotalCalls.Lo MOD 2500 = 0 THEN Writeln;
+   WITH Modules[ModuleTag] DO
+     BEGIN
+       Count := Count + 1;  TimeSpent := TimeSpent + ModulTime;
+       SubRtnCount := SubRtnCount + SubCnt;
+     END
+END;
+
+
+PROCEDURE Initialize;           {initialization placed here: JLG}
+VAR     Tag: TagRange;
+        i: integer;
+        s: string;
+        Inter2: FILE OF Alfa;
+BEGIN
+{} Writeln('Welcome to ANALYZE, the program timing analyzer.');  Writeln;
+{} Writeln(
+'     You should be using this program only after having run Pascal source');
+{} Writeln(
+'text through AUGMENT to add the time-keeping function, then compiled and run');
+{} Writeln(
+'the new program.  The data files AUG.PROCNAMES and TIMING.DAT must both be');
+{} Writeln(
+'on the default disk, or the program will die.');  Writeln;
+{} Reset(Inter2, 'AUG.PROCNAMES');  Reset(Timing,'TIMING.DAT');
+  IF EOF(Timing)
+{}  THEN BEGIN Writeln('*FATAL ERROR* timing file empty');  Exit(Program) END;
+{} Writeln(
+'Please enter the destination of the timing analysis (<ret> for printer):');
+{} Write('--> ':12);  Readln(s);
+{} WHILE POS(' ',s) > 0 DO DELETE(s,POS(' ',s),1);
+{} FOR i := 1 TO Length(s) DO
+         
+{} IF s[i] IN ['a'..'z'] THEN s[i] := CHR(ORD(s[i]) + ORD('A') - ORD('a'));
+{} IF s = '' THEN s := PrinterName
+{}   ELSE IF POS('.TEXT',s) = 0 THEN s := CONCAT(s,'.TEXT');
+  Rewrite(OutFile, s);  Tag := 1;
+  WHILE NOT EOF(Inter2) DO
+    BEGIN
+      WITH Modules[Tag] DO
+        BEGIN
+          Name := Inter2^;  Get(Inter2);  Count := 0;  SubRtnCount := 0;
+          TimeSpent := 0.0
+        END;
+      Tag := Tag + 1
+    END;
+  MaxTag := Tag - 1;
+{} Writeln (MaxTag,' module names found.');
+{} Writeln(
+'The timing process slows down actual program execution because of the');
+{} Writeln('overhead required to record timing information.');
+{} Writeln(
+      'Please enter the avg # of milliseconds overhead per timing datum: ');
+{} Readln(TimeOverhead);  FudgeFactor := TimeOverhead * TicksPerSec / 1000.0;
+{} TotalCalls.Hi := 0;  TotalCalls.Lo := 0;
+{} JustOne.Hi := 0;  JustOne.Lo := 1;  StartingTime := RealTime;
+{} Writeln('Reading timing data (one dot = 100 entries):');  Writeln;
+END;
+
+
+PROCEDURE PrintResults;  {all output pulled into this procedure: JLG}
+{ procedure overhauled 15 Nov 81}
+VAR     Tag: TagRange;
+        i, j: integer;
+        TCalls, TSpent, PerCent, MSCnvt: Real;
+BEGIN
+  Writeln(OutFile,' ':9,'Performance Measurement Summary for Pascal Program:  ',
+                  Modules[1].Name);
+  Writeln(Outfile, ' ':9, '(Assumes ',
+              TimeOverhead:5:2, ' milliseconds of overhead per time measure)');
+  Writeln(OutFile);
+  Writeln(OutFile,'execution time':69);
+  Writeln(OutFile,'calls':31, '(msec)':40, '(sec)':9);
+  Writeln(OutFile,'module':9, 'times':9, 'percent':11,'subroutine':14,
+                  'average':12, 'module':10, 'percent':11);
+  Writeln(OutFile,'name':8, 'called':11, 'of total':11, 'calls':11,
+                  'per call':15, 'total':8, 'of total': 13);
+  Writeln(OutFile,' ----------', '------':8, '--------':11,'------':11,
+                  '--------':15, '------':9, '--------':12);
+  MSCnvt := 1000.0 / TicksPerSec;    {millisec per 60hz clock tick}
+  TCalls := 1.0 + TotalCalls.Lo - 1.0 + (32768.0 * TotalCalls.Hi);
+  TotalTime := 0.0;
+  FOR Tag := 1 TO MaxTag DO WITH Modules[Tag] DO IF Count > 0
+    THEN IF TimeSpent < 0.0
+      THEN TimeSpent := 0.0 ELSE TotalTime := TotalTime + TimeSpent;
+  IF TotalCalls.Lo + TotalCalls.Hi = 0
+    THEN Writeln(Outfile,'Program did not execute; no timing data.')
+  ELSE FOR Tag := 1 TO MaxTag DO WITH Modules[Tag] DO
+    BEGIN
+      PerCent := (Count / TCalls) * 100.0;
+      Write(OutFile,Name:11, Count:8);
+      IF Count = 0
+        THEN Writeln(Outfile,'-----':11, '-----':11,
+                             '-----':15, '-----':9, '-----':12)
+        ELSE BEGIN
+          Write(Outfile, PerCent:11:3, SubRtnCount:11);
+          Write(OutFile,((TimeSpent/Count)*MSCnvt):15:2,
+                        TimeSpent/TicksPerSec:9:3);
+          IF TotalTime = 0 THEN Writeln(OutFile,'-----':12)
+            ELSE Writeln(OutFile,((TimeSpent / TotalTime) *100.0):12:3)
+        END
+    END;
+  Writeln(OutFile,' ==========', '======':8, '========':11, '======':11,
+                  '========':15, '======':9, '========':12);
+  Writeln(OutFile,'TOTALS':9, TCalls:10:1, '100.000':11,
+    ((TotalTime/TCalls)*MSCnvt):26:2, TotalTime/TicksPerSec:9:3, '100.000':12)
+END;
+
+
+BEGIN {program}
+  Initialize;  ProcessBody;
+  IF MaxTag > 1
+    THEN BEGIN
+      Writeln(CHR(7));
+      Write('Do you want your report alphabetized by procedure name (Y/N)?  ');
+      REPEAT READ(ch) UNTIL (ch IN ['y','Y','n','N']);  Writeln;
+      IF (ch IN ['y','Y']) THEN Sort(1, MaxTag)
+    END;
+  PrintResults;  Close(OutFile, LOCK);
+END.
+

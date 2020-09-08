@@ -1,0 +1,433 @@
+1.8.3 Edit screen definition file
+
+1.8.3.1 Field definition input mask
+ 
+     The Edit option uses the following Data Field input mask to input
+information required for defining a data field: 
+ 
+                               DEFINE DATA FIELD 
+                               - - - - - - - - -
+
+     Field ID Name            : _______   Auto Skip (T/F)         : _____
+     Field Type (C/D/I/V)     : __        Justify (L/R/N)         : __
+     Row / Column Number      : __/__     Alpha-Numeric (A/L/N/S) : __
+     Field Length             : __        Minimum Input           : ___
+     Default/Calculation : ________________________
+ 
+ 
+     The field ID name is a mnemonic used to identify the various data fields
+in a screen definition file.  The ID name may be any combination of 8 letters
+or numbers but must be unique for each data input field. 
+ 
+     The auto skip option determines whether the cursor should automatically
+skip to the next field in the screen file when the last character in that
+field is input or whether the cursor should stop on that last character and
+signal that the end of the field has been reached by ringing the alarm bell. 
+ 
+     A data field may be one of four possible types: Calculation,
+Duplicate, Index, Variable.  A Variable field allows the information in
+the the field to vary as the user likes.  An Index field allows the field
+value to vary.  Some programs, such as the Data Base Manager, use this field as
+an index into the data base, requiring that the value of this field be unique
+for each record.  A Duplicate field is an index field that is not required to
+be unique for the data base.  A Calulation field does not allow input but
+reflects the result of a numeric expression involving other numeric data fields
+in the file.  All fields in a screen definition file should be Variable
+unless another type is specifically required. The default field type is
+Variable. 
+ 
+     The data field contents may be displayed right or left justified within
+the field by specifying jusification as Left, Right, or None.
+Numeric fields are usually right justified while alphabetic fields are
+normally left justified.  Be aware that justification of numbers, especially
+decimal values, may affect sorting. 
+ 
+     The row and column numbers indicate the location of the field on the
+console screen and are restricted by the console screen size.  Row numbers are
+normally between 0 and 23 inclusive while column numbers are between 0 and 79
+inclusive. 
+ 
+    Information accepted by the data field may be restricted by
+specifying the input type as follows: 
+ 
+          Alphanumeric - Accepts any Numeric or Letter character. 
+          Numeric - Accepts number 0-9,a decimal point, or a plus or minus sign.
+          Letters - Accepts letters of the alphabet, a hyphen, or a period. 
+          Special - Accepts any character on the keyboard except vector keys. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+     The field length indicates the maximum number of characters the field may
+accept.  The maximum data field length is forty(40), the default is zero(0). 
+The user may also specify the minimum number of characters the field must
+accept which may not be less than zero or more than the field length.  The
+default minimum is zero (0). 
+ 
+     The user may specify a constant default value for the Variable, Index, and
+Duplicate fields by entering a string whose length is less than the maximum
+field length in the Default/Calculation input field. The value of another data
+field may be used as the default by entering the name of the default field
+enclosed in square brackets in the Default/Calculation input field instead of a
+constant default string.  Numeric expressions for Calculation fields may be any
+valid algebraic expression using the four basic operators: addition (+),
+subtraction (-), multiplication (*), and division (/), the ID names of any
+numeric data fields in the current file, numeric constants, and parenthesis.
+The value of a data field ID name in the expression is assumed to be zero if
+the data field ID name is not a member of the screen file or is not a valid
+number. 
+ 
+     When all the necessary information has been entered, the user may press
+the <ENTER> key to return to the edit option level.  If the <ESC> key is
+pressed, the information entered is ignored and the previous field definition
+is redisplayed. 
+ 
+1.8.3.2 Prompt definition input mask
+ 
+                              DEFINE PROMPT FIELD 
+                              - - - - - - - - - -
+ 
+          Prompt Number : __
+          Row Number    : __
+          Column Number : __
+          Prompt : __________________________________________
+ 
+ 
+     The prompt definition input screen functions similarly to the data field
+definition input screen.  The prompts are numbered according to their positions
+on the console screen and may be referenced by this number. 
+ 
+     The row and column numbers indicate the location of the prompt field on
+the console screen and are restricted by the console screen size.  Row numbers
+are normally between 0 and 23 inclusive while column numbers usually are
+between 0 and 79 inclusive. 
+ 
+     The prompt text may be any string of up to forty(40) characters.  Prompt
+fields may be used for any purpose the user desires (i.e. as prompts for data
+fields, titles, borders, or decoration).  They do not affect the value of the
+data fields in any manner but may affect their display if their locations
+overlap.  Pressing the <ENTER> key returns the user back to the edit option
+prompt line.  Pressing the <ESC> key causes the information to be erased and
+replaced with the previously displayed prompt field definition. 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+1.8.3.3 Edit options
+ 
+     The input mask displayed on the screen at run time indicates whether the
+user is in the Field or Prompt mode.  Just below either one is the edit
+prompt line whose bold letters indicate which keys must be pressed to execute
+the various edit options.  The edit prompt line appears as follows : 
+ 
+          Upper Field  Add    Back Examine Test 
+          Lower Prompt Delete Next Change  Quit: 
+ 
+The edit options are described as follows: 
+ 
+            Add -   Instructs the program to add the prompt or field definition
+                    shown to the screen definition file. 
+                    
+            Back -  Displays the previous prompt or field definition. 
+             
+            Change - Allows the user to change the prompt or field definition
+                    shown. 
+                      
+            Delete - Instructs the program to search for the ID name or prompt
+                    number shown and remove it from the screen definition file.
+                    However, the field or prompt definition remains on the
+                    screen, allowing the user to change it and then add it 
+                    back to the file. 
+
+            Examine - Instructs the program to display the definition of the
+                    ID name or prompt number currently showing on the console
+                    screen.  (i.e. Press the <C> key, change the field name, 
+                    press the <ENTER> key, then press the <E> key to examine 
+                    the field definition for the ID name just entered). 
+                     
+            Field - Instructs the program to display the field definition input
+                    mask. 
+                      
+            Lower - Instructs the program to position the field or prompt input
+                    mask on the upper half of the console screen thus allowing
+                    the user to view the lower half of the screen file 
+                    currently being defined. 
+         
+            Next -  Displays the next prompt or field definition.
+              
+            Prompt - Instructs the program to display the prompt definition
+                    input mask. 
+                     
+            Quit -  Instructs the program to return to the Main menu level.
+              
+            Test -  Allows the user to see how the screen definition file will 
+                    run when used by an outside program.  The input mask is 
+                    removed from the console screen and the user may test the 
+                    current screen definition.  When the <ENTER> or <ESC> key 
+                    is pressed the input mask is redisplayed and more prompts or
+                    fields may be added, changed or deleted. 
+                     
+            Upper - Instructs the program to position the field or prompt input
+                    mask on the lower half of the console screen thus allowing 
+                    the user to view the upper half of the screen file 
+                    currently being defined. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.8.4 Get old screen defintion
+ 
+     When the <G> key is pressed at the Main menu level the following screen
+will be displayed: 
+ 
+                             GET SCREEN DEFINITION 
+                            ======================= 
+ 
+ 
+                         Volume    :  _______ 
+                         File      :  __________ 
+                         Type      :  SCRN 
+ 
+ 
+ 
+          <ENTER> to execute,<ESC> to abort 
+ 
+The cursor will be placed at the begining of the Volume input field, the user
+may then change the file information on the screen.  Pressing the <ENTER> key
+causes the program to locate the file specified and copy its contents into a
+temporary file that may be edited.  If the file is found and the copy
+successful, the program will return to the Main menu level after displaying the
+message : 
+ 
+                             STATUS: File loaded. 
+ 
+Otherwise an error message will be displayed explaining the problem in finding
+or copying the file.  If the <ESC> key is pressed, the program returns to the
+Main menu level. 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.8.4.1  Screen Definition Example
+ 
+     The following is an example of the inputs normally required to create,
+test, and update an input screen definition file: 
+ 
+(1)     Press the <E> key from the Main menu to Edit the screen
+        definition.  The Data Field input mask will be displayed on the upper
+        half of the screen, the lower half should be blank. 
+         
+(2)     Press <C> key to change the field definition.  The cursor will be
+        placed in the first input field. 
+         
+(3)     Enter the Data Field definition as follows: 
+        <F> <I> <R> <S> <T> <RETURN>  {Identifies the field name as "FIRST".} 
+        <TAB> <L> <RETURN>  {Uses default field type of Variable and sets
+        justification (left).} 
+        <space> <4> <TAB>  {Sets field row location.} 
+        <space> <8> <TAB>  {Sets field column location.} 
+        <A> <RETURN>  {Requires alphabetic input only.} 
+        <1> <0> <TAB>  {Allows up to 10 characters input but uses default
+        minimum of zero and default value of blanks.} 
+        <ENTER>  {returns to the edit option prompt line.} 
+         
+(4)     Press the <A> key to Add the field to the current screen definition
+        file. 
+ 
+(5)     Press the <U> key to show the upper half of the current screen
+        definition file.  The field previously defined will appear on the forth
+        row and the eighth column as fifteen blanks represented by underscores.
+        The Data Field definition input mask will be displayed on the lower 
+        half of the console screen. 
+         
+(6)     Press the <P> key to display the Prompt Field definition input mask
+        on the lower half of the screen. 
+         
+(7)     Press the <C> key to change the prompt definition shown (blank). 
+ 
+(8)     Enter the Prompt Field definition as follows: 
+        <RETURN>  {Prompt field number is not required.} 
+        <space> <4> <RETURN>  {Sets row location.} 
+        <space> <0> <RETURN>  {Sets column location.} 
+        <N> <A> <M> <E> <space> <:> <ENTER>  {Inputs prompt text and returns to
+        edit option prompt line.} 
+ 
+(9)     Press the <A> key to add the prompt field to the current screen
+        definition file.  The prompt will be displayed at the row and column 
+        location defined. 
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+(10)    Enter the rest of the prompt field definitions.  Press the <C>
+        key to change the information as before and then the <ERASE INPUT> and 
+        <RETURN> keys; enter the location and text as follows: 
+ 
+                           Row  Column     Prompt 
+                            5      0      GREETING: 
+                            6      0      COMPANY : 
+                            7      0      ADDRESS : 
+                            8      0      CITY : 
+                            8     22      STATE : 
+                            8     34      ZIP : 
+                           10      0      ITEM OF INTEREST : 
+ 
+(11)    Press the <F> key to display the Data Field definition input
+        mask on the lower half of the screen.  The upper half of the console
+        screen should still show the prompts and data field previously defined. 
+ 
+(12)    Enter the rest of the data field descriptions.  Press the <C> key to 
+        change the information as before and then the <ERASE INPUT> key; enter 
+        the information as follows: 
+         
+                ID Name      Just.     Row/Col.  A/L/N/S   Length  
+                   LAST        L       4 / 26     L          15 
+                   GREET       L       5 / 10     L          20
+                   CONAME      L       6 / 10     S          15 
+                   ADDR        L       7 / 10     S          20 
+                   CITY        L       8 / 10     L          10 
+                   STATE       N       8 / 30     L           2 
+                   ZIP         R       8 / 39     N           7 
+                   ITEM        L      10 / 15     S          15 
+                                        
+                                        
+(13)    To change the default in GREETING to contain the value of "FIRST: " 
+        <C>  {Puts the cursor on the first data field definition input field.} 
+        <ERASE INPUT>  {Clears input mask.} 
+        <G> <R> <E> <E> <T>  <ENTER>  {Identifies field and returns to edit
+        option prompt line.} 
+        <E>  {Examines data field.  The lower half of the console screen should
+        now show the definition of the GREET field.} 
+        <D>  {Deletes the field from the screen file.} 
+        <C>  {Puts the cursor on the first Data Field definition input field.} 
+        <RETURN> <RETURN>  
+        <RETURN>  {Moves cursor to default/calculation input field.} 
+        <[> <F> <I> <R> <S> <T> <]>  <ENTER>  {Sets the default to the value of
+        FIRST.} 
+        <A>  {Adds the new field definiton back into the current screen file.} 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(14)    To change the "NAME :" prompt: 
+        <P>  {Displays the Prompt Field definition input mask.} 
+        Press the <N> and/or <B> keys until the "NAME :" prompt definition is
+        displayed. 
+        <D>  {deletes the prompt from the current screen definition file.} 
+        <C>  {Puts the cursor on the first input field in the Prompt Field
+        definition input mask.} 
+        <RETURN> <RETURN> 
+        <RETURN>  {Moves the cursor to the prompt text input field.} 
+        Insert four (4) blanks just before the colon using the <right arrow> to
+        position the cursor and the <INS CHAR> key to insert the blanks. 
+        <ENTER>  {Returns to the edit option prompt line.} 
+        <A>  {Adds the new prompt back into the current screen file.} 
+         
+(15)    The console screen should now look like this: 
+ 
+ 
+ 
+        NAME      : _______  ___________
+        GREETING  : _______________
+        COMPANY   : ___________
+        ADDRESS   : ______________
+        CITY      : _______  STATE :___ ZIP : _______
+
+        ITEM OF INTEREST : ________________
+
+
+                              DEFINE PROMPT FIELD
+                              - - - - - - - - - -
+
+        Prompt Number  :_1
+        Row Number     :_4
+        Column Number  :_0
+        Prompt : NAME__:_______________
+
+
+        Upper Field  Add    Back  Examine Test
+        Lower Prompt Delete Next  Change  Quit: A
+
+ 
+(16)    Pressing the <F> key will cause the console screen to
+        look like this: 
+         
+         
+         
+        NAME      : ______  ___________
+        GREETING  : ______________
+        COMPANY   : ___________
+        ADDRESS   : ______________
+        CITY      : _______  STATE :___ ZIP : _______
+
+        ITEM OF INTEREST : _________________
+
+

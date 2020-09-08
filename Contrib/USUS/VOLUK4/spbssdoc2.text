@@ -1,0 +1,531 @@
+       Procedure IntNum(VAR NUM:INTEGER;VAR GOOD:BOOLEAN;S:STRING)
+       ============================================================
+       
+       
+       
+       Local vars      75 words
+       ----------
+       Code           402 bytes
+       ----
+       
+       
+       Other routines used    None
+       -------------------
+       
+       Special features       None
+       ----------------
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       IntNum converts the string S to the integer NUM if this is possible.
+       GOOD is set to 'true' if the conversion is successful.  Otherwise GOOD 
+       is set to 'false' and NUM is returned as -32767.
+       
+       
+       Leading and trailing spaces (ASCII dec 32) in S are ignored.  the 
+       number in S is assumed to be terminated by the first space following a 
+       digit.
+       
+       Conversion to integer form will be unsuccessful if any of the
+       following occur:
+       
+           1)  S contains characters other than '+','-',' ','0'..'9'
+       
+           2)  '+'or '-' appear in any position except the first  (ignoring 
+               leading spaces)
+       
+           3)  Any characters other than 'space' follow the terminating space
+       
+           4)  The value of the converted integer lies outside the range
+               (-32767 .. +32767) inclusive.
+       
+                                                    
+       
+       Applications
+       ------------
+       
+       
+       IntNum can be used together with the compiler option I- to read 
+       integer data without the risk of a program crash should the data 
+       contain any errors.  Such data might be read from disk, from the 
+       terminal keyboard, or from an external device.
+       
+       
+       It is also used in GetInt and GetIntNo where the integer is, in fact, 
+       read from the keyboard as a string, then converted to an integer, 
+       using IntNum.
+       
+Function Yes:BOOLEAN;
+=====================
+
+
+
+Local vars
+----------
+Code           38 bytes
+----
+
+Other routines   GetCHoice
+--------------
+
+Special features NONE
+----------------
+
+
+
+General description
+-------------------
+
+Yes returns true if 'y' or 'Y' is entered at the keyboard and false
+if 'n' of 'N' is entered.  Will not accept any other characters.
+
+
+
+Applications
+------------
+
+Can be used whenever a true/false answer is required.
+
+Procedure OpenNewFile(VAR NAMEOFFILE:STRING;S1,S2:STRING);
+==========================================================
+
+
+Local vars     87 words
+----------
+
+Code          294 bytes
+----
+
+Other routines used    GetTextfileName,Goodbye,PrintLine,
+-------------------    Bell,Yes,IoError
+
+Special features       The variable F, of type TEXT is used to 
+                       denote the channel to the specified file.
+                       It is assummed that F has been declared
+                       earlier in the INTERFACE section of a 
+                       UNIT.
+                       
+                       
+                       
+General description
+-------------------
+
+OpenNewFile uses GetTextfileName to get a legal filename from the
+keyboard.  It then checks to see if this file already exists, and if 
+it does, the message
+
+
+               'This file already exists!'
+               'Do you wish to overwrite it (y/n)?'
+
+appears on lines 11 & 14 respectively.
+If the reply is 'N' then the screen is cleared and the user prompted for
+another filename.  If the reply is 'Y' then the file is opened with a 
+'rewrite' command, and left open (the contents of the original version 
+will be lost)
+
+     If the file does not already exist a new file is opened with the 
+'rewrite' command and left open.
+    
+     If there is a fault during the opening of the file, then
+appropriate IOERROR message is displayed and the user prompted for 
+another filename, until a new file is successfully opened.
+
+     As OpenNewfile uses the text variable f,f must be closed when
+OpenNewfile is called.  If this is not the case the message
+
+                'Not closed; attempt to open an open file'
+                'Program needs altering to rectify'
+                'this problem'
+            
+will appear and the program will be terminated using Goodbye.
+
+
+
+
+Applications
+------------
+
+Can be used in virtually every program when a new file has
+to be created.
+
+
+       Procedure WriteIoError (IORESULT : INTEGER)
+       ===========================================
+       
+       
+       
+       Local vars     0 words
+       ----------   
+       Code         972 bytes
+       ----
+       
+       Other routines used     None
+       -------------------
+       
+       Special features        None
+       ----------------
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       WriteIoError lists the I/O fault description to the current
+       cursor position on the screen.  These fault descriptions are given in
+       the appropriate UCSD Manuals.
+       
+       If IORESULT is not in the range 1..18, or 64, the message
+       'Report this fault' is listed.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       WriteIoError is used in IOERROR to list the formal I/0 error 
+       description, and can be incorporated in any procedures which
+       fulfill a similar role.
+       
+       
+       Procedure GetIntNo
+       
+       (VAR NUM:INTEGER;VAR OK:BOOLEAN;MAXLEN:INTEGER TERMCHARS:SETOFCHAR)
+       ====================================================================
+       
+       
+       
+       
+       Local vars       110 words
+       ----------
+       Code             374 bytes
+       ----
+       
+       Other routines used    GetChar,IntNum
+       -------------------
+       
+       Special features       1. The variable TERMCHARS is of type SETOFCHAR 
+       ----------------          which must be declared as a new type
+                                         SETCHAR=SET OF CHAR;
+                                 either in the INTERFACE section of the UNIT 
+                                 or at the start of the program, whichever is 
+                                 appropriate.
+            
+       
+       
+       General Description
+       -------------------
+       
+       
+       GetIntNo returns one integer from the keyboard.  Leading spaces are
+       ignored.
+       
+       The integer is terminated by any one of the charcters in TERMCHARS.    
+       
+       If the integer entered from the keyboard is a short integer, that is
+       in the range (-32767 ..  +32767), OK is set to 'true'.  Otherwise OK
+       is set to 'false', and NUM is set to -32767.
+
+       Backspacing to correct errors is permissible until a terminating 
+       character has been entered.
+       
+       The maximum number of digits which a user is allowed to enter from the 
+       keyboard, ignoring leading spaces, is MAXLEN.  After MAXLEN characters
+       have been entered, the only acceptable characters are TERMCHARS and
+       BACKSPACE.
+       
+       Illegal characters, that is all characters except '+','-',' ',
+       '0'..'9',are not accepted, and the bell is rung as a warning.
+       Characters which would cause illegal format, e.g.  a second '+', are
+       not accepted, and the bell is rung as a warning.
+       
+       
+       Applications
+       ------------
+       
+       
+       GetIntNo can be used to read an integer from the keyboard, using any 
+       (sensible) terminating characters. A check is made to ensure that 
+       the integer entered is not a 'long integer'.
+       
+Procedure Bell (TIMES:INTEGER);
+===============================
+
+
+
+Local vars      4 words
+----------
+Code           74 bytes
+----
+
+Other routines used  NONE
+-------------------
+
+Special features     NONE
+----------------
+
+
+General Description
+-------------------
+
+Bell sends the ASCII code 13 the requested number of times.  This 
+rings the bell in the Apple (or external terminal) each time the 
+code is sent.
+
+
+Applications
+------------
+
+Obvious.  In general the Computing & Statistics staff at
+SCRIP use Bell(3) to give an error warning & Bell(1) to give
+an audio prompt that some routine has just been started/
+completed.
+       Function GetReal (X,X:INTEGER;MIN,MAX:REAL):REAL
+       ================================================
+       
+       
+       
+       
+       Local vars     13 words
+       ----------
+       Code          258 bytes
+       ----
+       
+       Other routines used GetRealNo,Screenops 
+       -------------------
+       
+       Special features        None
+       ----------------
+       
+       
+       
+       GENERAL DESCRIPTION
+       -------------------
+       
+       
+       GetReal obtains a real number from the keyboard.  The real number must 
+       be terminated by a RETURN.  The number entered is echoed to the screen 
+       starting at position x,y.
+       
+       
+       If the value of this real number does not lie in the range MIN .. MAX, 
+       the bell is rung and at line y+2, & y+3 respectively, the message
+       
+                 'Error!  min is 
+                 'press <return> to try again..'
+       
+       is listed (similarly for MAX).  The user must then enter another real
+       number.  When return is pressed the message & the number entered are
+       cleared from the screen & the cursor is returned to position x,y
+       waiting for another attempt.  As the function uses GetRealNo, any
+       illegal characters or formats will not be accepted.
+       
+       
+       
+       APPLICATIONS
+       ------------
+       
+       
+       GetReal can be used to read a single real number from the keyboard,  
+       Where that real number must lie within a given range.
+                
+       Procedure Goodbye
+       =================
+       
+       
+       Local vars    5 words
+       ----------
+       code        290 bytes
+       ----
+       
+       Other routines used PrintLine,chainstuff
+       -------------------
+       
+       Special features      1.  Goodbye uses F, of type text, declared
+                                 in the interface section of the Unit, 
+                                 and will work successfully only if F is 
+                                 closed when Goodbye is called.  As 
+                                 Goodbye is called by several other 
+                                 procedures, particularly I/O checking 
+                                 routines, care must be taken to ensure
+                                 that F is never left open unnecessarily.
+       
+       
+       
+       General Description
+       -------------------
+       
+       
+       Goodbye is a elaborate version of the UCSD intrinsic EXIT.
+       
+       The Statement 'End of program' is listed, on the screen starting at
+       position (0,22).
+       
+       Goodbye then checks to see if SYSTEM.PASCAL is on-line in the boot
+       disk drive (#4).If this file is not on-line the bell is rung several
+       times and the message 'Put system disc in #4 and press <return>' is
+       sent to line 23 of the screen.
+       
+       If SYSTEM.PASCAL is present Goodbye then checks to see if the boot 
+       disc is a 'Turnkey disc' by checking to see if SYSTEM.STARTUP is also 
+       on the boot disc.  If the boot disc is a 'turnkey disc' Goodbye then
+       looks to see if STARTUP.CODE (*) is present and if it is 
+       
+       PLEASE PRESS <RETURN> TO CONTINUE
+       
+       sent to line 23.  When RETURN is pressed,STARTUP.CODE is
+       executed,putting the user back into the original program (thus the
+       user is never in the Outer Command Level).
+       
+       If SYSTEM.PASCAL is present and SYSTEM.STARTUP or STARTUP.CODE is not
+       then Goodbye leaves the user in the outer command level.
+       
+       (NOTE:Goodbye only works to its full usefulness if the 'original' 
+       system disc is in drive 4. If another system disc is in drive 4 then 
+       Goodbye will find SYSTEM.PASCAL (and maybe SYSTEM.STARTUP) and 
+       therefore think that the correct disc is in drive 4,but the operating 
+       system demands that the disc HAS  to be the disc that the system was 
+       booted with, and it will take over from Goodbye and promt the user for 
+       the original boot disc)
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       Goodbye forces the program to end immediately, and, if the original
+       boot disc is in drive 4, returns the user safely to the Outer Command
+       Level of the UCSD System unless the boot disc is a 'turnkey disc' in
+       which case he user will be left in the startup program (which means
+       that the inexperienced user, assuming the programs lead the user,
+       needs only to know how to turn the APPLE on and how to read!).
+       
+       
+       (*) Note STARTUP.CODE is a feature used by the Statistics and 
+       Computing staff at the Scottish Crop Research Institute 
+       (Pentlandfield).  It is used to make development and updating of
+       turnkey discs simpler.  Our SYSTEM.STARTUP programs are very short and
+       just execute STARTUP.CODE programs, which will usually contain the
+       initial MENU.  Also SYSTEM.STARTUP cannot be used as a paramter in 
+       SETCHAIN.
+       
+       
+       Function GetInt(X,Y,MIN,MAX:INTEGER):INTEGER
+       ========================================
+       
+       
+       
+       
+       Local vars     10 words
+       ----------
+       Code          226 bytes
+       ----
+       
+       Other routines used GetIntNo,Screenops 
+       -------------------
+       
+       Special features       
+       ----------------
+       
+       
+       
+       GENERAL DESCRIPTION
+       -------------------
+       
+       
+       GetInt reads an integer from the keyboard.  This integer must be
+       terminated by the RETURN key.  The integer is echoed to the screen
+       starting at position (x,y).  If this integer lies outside the range
+       MIN..MAX, where MIN and MAX must not be long integers, the bell is
+       rung and at lines y+2,Y+3 respectively, the message
+       
+       'Range error min is MIN max is MAX
+       Press <return> to try again..'
+       
+       is listed.  The user must then enter another number.  When RETURN is
+       pressed the message and number entered are cleared from the screen and
+       the cursor returns to position X,Y waiting for another attempt.  This
+       function uses GetIntNo, which protects the user from entering illegal
+       characters or formats.
+       
+       
+       APPLICATIONS
+       ------------
+       
+       If the integer entered is a long integer then the value of the integer 
+       will be changed to -32767, so -32767 sould never be used as the MIN 
+       value in the range.
+       
+
+       Procedure CheckPrinter
+       ======================
+       
+       
+       
+       Local vars          5 words
+       ----------
+       Code              320 bytes
+       ----
+       
+       Other routines used PrintLine, GetChar.
+       
+       Special features          1.  The variable PR, of type TEXT, is used to 
+       ----------------          denote PRINTER: within Checkprinter. It is
+                                 assumed that PR has been declared earlier in 
+                                 THE INTERFACE section of a UNIT 
+   
+       
+       
+       General Description
+       -------------------
+       
+
+       CheckPrinter  does three things.
+       
+       Firstly it sends the folling message to the screen.
+       
+       'Please check that the printer is
+        switched on and is "online"
+        Press the spacebar to align the
+        printer.
+        to start listing press <return>'
+        
+       Secondly it opens the output file PRINTER:.  Note that this is done 
+       with I/O checking off so that if PRINTER: has already been 'opened' in 
+       the main program, no error will occur.
+       
+       Thirdly it moves the paper in the printer forward one line every time 
+       the spacebar is pressed.  Thus by holding down both the spacebar and 
+       the repeat keys, the paper can be easily be moved to the top of a 
+       page.
+       
+       Program control is returned to the main program once the RETURN key
+       is pressed.
+       
+       
+       
+       Applications
+       ------------
+       
+       
+       CheckPrinter can be used to ensure the printer is online before any
+       printing is done.
+

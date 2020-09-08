@@ -1,0 +1,136 @@
+
+                       Monaco's Fmt  and Other Gems...
+
+
+                                  edited by
+
+
+                              Francis J. Monaco
+
+
+
+
+                         Introduction to this Volume
+
+     Hopefully, this volume contains something for everyone in the wonderful
+world of UCSD PASCAL! From an interactive textformatter to a really fine disk-
+memory-patch and dump routine, an attempt to include a wide variety of really
+useful stuff has been made. The source code is included in all cases except
+for the textformatter; interested personnel should contact the author for
+information on obtaining the source to "FMT"... 
+
+
+                   
+                            Small Database System
+                   
+
+     "ADDRS.DOC" contains instructions on how to use STRUCT, UPDATE, and
+GETSORT; basically, these programs allow ISAM updates, sorts, etc. on a large
+user defined "database". Because update uses the foreground and background
+intensity levels of display capabilities of the Hazeltine 1510 terminal, the
+user should get into the variable definitions at the start of the main program
+and redefine some values (all well documented). Other than a dual floppy
+system and a printer on line (the printer code can be easily removed), these
+programs require little else except compilation. 
+
+
+                                                       
+                        Monaco's Interactive Formatter
+                                                       
+
+
+
+     The file "READ.FMT" is a printable user manual for using the the code
+files "FMT.1.5.CODE" and "FMT.20.CODE". The user should look at "SP.TEXT" in
+the editor, and modify it to work with his/her printer; then try SP on
+"READ.FMT" (since it contains FORTRAN carriage controls which must be con-
+verted to ASCII: an extremely simple task). Once you have a copy of the
+READ.FMT in hand, print the input files "USER.IN2" and "USER.A2" and study the
+input to "FMT" along-side the output from "FMT".  The author would appreciate
+feedback from users of "FMT", as it might one day become a saleable product.
+By the way, "FMT.EXAMP" is another example input file to "FMT". 
+
+
+                     
+                         Fantastic Disk Patch Utility
+                     
+
+
+
+     See "READ.DISKR" for instructions on this fine bit of programming. The
+compiliable version is "DISKREAD" and will work on any system, including
+knowledge of terminal control features (it reads SYSTEM.MISCINFO!). 
+
+
+                                      
+                Change Crummy Identifiers to Nice Identifiers
+                                      
+
+
+
+     The file "ID2D" is a terminal-independent version of PUG's ID2D, a very
+clean balanced AVL tree implementation of a program to change all PASCAL
+identifiers in one program into new identifiers in a new program.  Self
+prompting. Requires a file containing the old identifiers, new identifiers as:
+
+
+
+                                 
+                              oldid1, newid1
+                              oldid2, newid2
+                              oldid3, newid3
+                                 
+
+
+                                 
+
+     as well as a file containing the program to be changed. Errors go to the
+screen. Very clean... 
+
+
+                                       
+                           Miscellaneous Good Stuff
+                                                      
+
+
+
+     "DIR" reads a directory from the command level of the UCSD PASCAL system;
+"FAST.PG" solves the problem of an extremely fast program perusal using
+blockreads and unitwrites to the console; "UNIT.GOOD.TEXT" is a unit that con-
+tains very good stuff like: a procedure to get the system date; a procedure to
+read in a string without bombing; a procedure to open a file for reading or
+writing that will provide you with a directory if you forget the file name
+(under program control) and give you unlimited chances; and best of all, a set
+of two procedures that will read in "SYSTEM.MISCINFO" and allow the user to
+use procedure calls like: 
+
+
+      
+                               crt ( eraseol ) 
+                               crt ( eraseos )
+                                 crt ( left )
+                                crt ( right )
+      
+
+
+      
+
+     etc. anywhere in the program. This is not dependent on anything except
+the data in SYSTEM.MISCINFO; therefore, all terminals will respond correctly
+to these "crt" calls (as long as "getcrtinfo" has been invoked!) This unit was
+named "goodstuff" and when you see it, you'll know why! Added goodie for LSI-
+11 interps: change the line "ALOCK:.BYTE0" to "ALOCK:.BYTE-1" in IOTRAP and
+rebuild the interpreter to preclude having to type control-r to get lower
+case! 
+
+
+                                                     
+                   Please send comments and suggestions to:
+
+                                Francis J. Monaco
+                                   Cpt, US ARMY
+                   Department of Geography and Computer Science
+                        The United States Military Academy
+                            West Point, New York 10996
+                                                 
+                                                     

@@ -1,0 +1,160 @@
+(*   Program Author:  Frank Monaco
+                      679 Lowell Drive
+                      Marietta, GA 30060
+                      404-424-1460
+                      
+Rewritten for blockread/write and improved filename i/o by:
+                Jim Gagne
+                Datamed Research
+                1433 Roscomare Road
+                Los Angeles, CA 90024
+                                                        *)
+                                                        
+
+program copyit;
+
+CONST  MaxArraySizeLess1 = 4095;
+       MaxBlocks         = 8;    {MaxArraySize DIV 512}
+       Testing           = false;
+
+TYPE  ArrayPointer = 0..MaxArraySizeLess1;
+
+var
+  InPointer, OutPointer, Insize, i, j: ArrayPointer;
+  InfileName, OutfileName: string [30];
+  typed: string;
+  Infile, Outfile: file;
+  OutChararray: PACKED ARRAY [0..511] OF char;
+  InChararray: PACKED ARRAY [ArrayPointer] OF char;
+
+
+PROCEDURE GetString (x,y, maxlength: integer);
+VAR j, k: integer;
+    Gotstring: boolean;
+    bell: char;
+BEGIN
+  bell := CHR (7);
+  Gotstring := false;
+  REPEAT
+    Gotoxy (x,y);
+    FOR j := 1 TO maxlength DO write ('.');
+    Gotoxy (x,y);
+    Readln (typed);
+    k := length (typed);
+    IF k > maxlength
+      THEN BEGIN
+        Gotoxy (x,y);
+        Write (' ':k);
+        Gotoxy (0,23);
+        Write (bell, 'You have entered too many characters in this line.  ',
+               'Please try again.')
+      END
+      ELSE Gotstring := true
+  UNTIL Gotstring;
+  Gotoxy ((x+k),y);
+  Write (' ':(maxlength - k));
+  Gotoxy (2,22);
+  Write (' ':70);
+  Gotoxy (0,73);
+  Write (' ':70)
+END (*GetString*);
+
+
+PROCEDURE GetFile;
+
+VAR gotfn: boolean;
+    bell, response: char;
+  
+BEGIN
+  Bell := CHR (7);
+  REPEAT
+    Gotoxy (11,20);
+    Write ('Please type the name of the desired input file.');
+    Gotoxy (15,21);
+    Write ('-->      ');
+    Gotoxy (11,22);
+    Write ('  (Or just press the <return> key if you wish to quit.)');
+    Typed := '';
+    GetString (20,21, 23);
+    IF LENGTH (typed) = 0
+      THEN BEGIN
+        Gotoxy (11,23);
+        Write ('Would you prefer to quit this program (Y/N)?     ');
+        Read (Keyboard, response);
+        Gotoxy (11,23);
+        Write (' ':47);
+        IF (Response = 'Y') OR (Response = 'y')
+          THEN EXIT (Program)
+      END
+      ELSE BEGIN
+        InfileName := Typed;
+        (*$I-*)
+        Reset (Infile, InfileName);
+        IF IORESULT > 0 THEN Reset (Infile, CONCAT (InfileName, '.TEXT'));
+        (*$I+*)
+        Gotfn := IORESULT = 0;
+        IF NOT Gotfn
+          THEN BEGIN
+            Gotoxy (0,23);
+            Write (bell, '<<**** ERROR ****>>   ',
+                   'Wrong volume or file name.  Type <space> to continue.');
+            REPEAT Read (Keyboard, Response) UNTIL Response = ' ';
+            Gotoxy (0,23);
+            Write (' ':78)
+          END
+      END(*else*)
+  UNTIL Gotfn;
+END (*GetFile*);
+
+
+  
+begin
+writeln('This program copies a textfile and removes extraneous line feeds.');
+GETFILE;
+Gotoxy (0,5);
+Write ('What is the name of the file to which you wish to send the copy?');
+GETSTRING (0,6, 23);
+OutfileName := Typed;
+Rewrite (Outfile, OutfileName);
+OutPointer := 0;
+IF testing THEN Write ('Outfile opened. ');
+while not eof (Infile) do
+   begin
+     i := Blockread (Infile, InChararray, MaxBlocks);
+     IF testing THEN Write ('Read ', i, ' blocks. ');
+     IF i > 0
+       THEN BEGIN
+         Insize := (i * 512) - 1;
+         IF testing THEN Writeln ('Insize = ', Insize);
+         FOR InPointer := 0 TO Insize DO
+           IF OutPointer < 512
+             THEN BEGIN 
+               IF InChararray [InPointer] <> CHR (10)
+                 THEN BEGIN
+                   OutChararray [OutPointer] := InChararray [InPointer];
+                   OutPointer := succ (OutPointer)
+                 END 
+             END
+             ELSE BEGIN
+               i := Blockwrite (Outfile, OutChararray, 1);
+               IF testing THEN Write ('Wrote ', i, ' blocks');
+               IF InChararray [InPointer] <> CHR (10)
+                 THEN BEGIN
+                   OutChararray [0] := InChararray [InPointer];
+                   OutPointer := 1;
+                 END
+                 ELSE OutPointer := 0
+             END;
+       END;
+    end;
+  IF OutPointer > 0 {Write out the last block,...}
+    THEN BEGIN      {zeroing the unused bytes.}
+      IF testing THEN Writeln ('Last OutPointer = ', OutPointer);
+      IF OutPointer < 512 THEN FOR OutPointer := OutPointer TO 511
+          DO OutChararray [OutPointer] := CHR (0);
+      i := Blockwrite (Outfile, OutChararray, 1);
+      IF testing THEN Write ('Last block written = ', i)
+    END;
+  close(Outfile,lock);
+end.
+  

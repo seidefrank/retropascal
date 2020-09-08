@@ -1,0 +1,963 @@
+
+(* FILE STATE HANDLERS *)
+
+PROCEDURE FINIT(*VAR F: FIB; WINDOW: WINDOWP; RECWORDS: INTEGER*);
+BEGIN
+  WITH F DO
+    BEGIN FSTATE := FJANDW;
+      FISOPEN := FALSE; FEOF := TRUE;
+      FEOLN := TRUE; FWINDOW := WINDOW;
+      IF (RECWORDS = 0) OR (RECWORDS = -2) THEN
+	BEGIN
+	  FWINDOW^[1] := CHR(0); FRECSIZE := 1;
+	  IF RECWORDS = 0 THEN FSTATE := FNEEDCHAR
+	END
+      ELSE
+	IF RECWORDS < 0 THEN
+	  BEGIN FWINDOW := NIL; FRECSIZE := 0 END
+	ELSE FRECSIZE := RECWORDS+RECWORDS
+    END
+END (*FINIT*) ;
+
+PROCEDURE RESETER(VAR F:FIB);
+  VAR BIGGER: BOOLEAN; 
+BEGIN
+  WITH F DO
+     BEGIN FREPTCNT := 0;
+	FEOLN := FALSE; FEOF := FALSE;
+	IF FISBLKD THEN
+	  BEGIN BIGGER := FNXTBLK > FMAXBLK;
+	    IF BIGGER THEN FMAXBLK := FNXTBLK;
+	    IF FSOFTBUF THEN
+	      BEGIN
+	        IF BIGGER THEN FMAXBYTE := FNXTBYTE
+	        ELSE
+	          IF FNXTBLK = FMAXBLK THEN
+	            IF FNXTBYTE > FMAXBYTE THEN
+	                BEGIN BIGGER := TRUE; FMAXBYTE := FNXTBYTE END;
+	        IF FBUFCHNGD THEN
+	          BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+	            IF BIGGER THEN
+	              FILLCHAR(FBUFFER[FNXTBYTE],FBLKSIZE-FNXTBYTE,0);
+	            UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,
+	                            FHEADER.DFIRSTBLK+FNXTBLK-1);
+	            IF BIGGER AND (FHEADER.DFKIND = TEXTFILE) 
+	                AND ODD(FNXTBLK) THEN
+	              BEGIN FMAXBLK := FMAXBLK+1;
+	                FILLCHAR(FBUFFER,FBLKSIZE,0);
+	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,
+	                                FHEADER.DFIRSTBLK+FNXTBLK)
+	              END
+	          END;
+	        FNXTBYTE := FBLKSIZE
+	      END;
+	    FNXTBLK := 0;
+	    IF FSOFTBUF AND (FHEADER.DFKIND = TEXTFILE) THEN
+	        FNXTBLK := 2
+	  END
+     END
+END (*RESETER*) ;
+
+PROCEDURE FOPEN(*VAR F: FIB; VAR FTITLE: STRING;
+	         FOPENOLD: BOOLEAN; JUNK PARAM*);
+  LABEL 1;
+  VAR LDIR: DIRP; LUNIT: UNITNUM; LINX: DIRRANGE;
+      LSEGS,NBYTES: INTEGER; LKIND: FILEKIND;
+      OLDHEAP: ^INTEGER; SWAPPED: BOOLEAN;
+      SAVERSLT: IORSLTWD; LVID: VID; LTID: TID;
+BEGIN SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN THEN SYSCOM^.IORSLT := INOTCLOSED
+    ELSE
+      IF SCANTITLE(FTITLE,LVID,LTID,LSEGS,LKIND) THEN
+	BEGIN (*GOT AN OK TITLE*)
+	  IF ORD(FOPENOLD) > 1 THEN (*OLD CODE SPECIAL CASE*)
+	    FOPENOLD := (ORD(FOPENOLD) = 2) OR (ORD(FOPENOLD) = 4);
+	  SWAPPED := FALSE;
+	  WITH SWAPFIB^ DO
+	    IF FISOPEN AND (SYSCOM^.GDIRP = NIL) THEN
+	      BEGIN MARK(OLDHEAP);
+	        NBYTES := ORD(SYSCOM^.LASTMP)-ORD(OLDHEAP);
+	        IF (NBYTES > 0) AND (NBYTES < SIZEOF(DIRECTORY)+400) THEN
+	          BEGIN
+	            NBYTES := ORD(OLDHEAP)-ORD(EMPTYHEAP);
+	            IF (NBYTES > 0) AND (NBYTES > SIZEOF(DIRECTORY)) AND
+	                (UNITABLE[FUNIT].UVID = FVID) THEN
+	              BEGIN
+	                UNITWRITE(FUNIT,EMPTYHEAP^,SIZEOF(DIRECTORY),
+	                                FHEADER.DFIRSTBLK);
+	                RELEASE(EMPTYHEAP); SWAPPED := TRUE
+	              END
+	          END
+	      END;
+	  LUNIT := VOLSEARCH(LVID,TRUE,LDIR);
+	  IF LUNIT = 0 THEN SYSCOM^.IORSLT := INOUNIT
+	  ELSE
+	    WITH UNITABLE[LUNIT] DO
+{.fs}         IF UISBLKD AND (LENGTH(LTID) = 0) THEN
+{.fs}           SYSCOM^.IORSLT := IBADTITLE { cannot FOPEN a disk device }
+{.fs}         ELSE
+	      BEGIN (*OK...OPEN UP FILE*)
+	        FISOPEN := TRUE; FMODIFIED := FALSE;
+	        FUNIT := LUNIT; FVID := LVID;
+	        FNXTBLK := 0; FISBLKD := UISBLKD;
+	        FSOFTBUF := UISBLKD AND (FRECSIZE <> 0);
+	        IF (LDIR <> NIL) AND (LENGTH(LTID) > 0) THEN
+	          BEGIN (*LOOKUP OR ENTER FHEADER IN DIRECTORY*)
+	            LINX := DIRSEARCH(LTID,FOPENOLD,LDIR);
+	            IF FOPENOLD THEN
+	              IF LINX = 0 THEN
+	                BEGIN SYSCOM^.IORSLT := INOFILE; GOTO 1 END
+	              ELSE FHEADER := LDIR^[LINX]
+	            ELSE (*OPEN NEW FILE*)
+	              IF LINX > 0 THEN
+	                BEGIN SYSCOM^.IORSLT := IDUPFILE; GOTO 1 END
+	              ELSE
+	                BEGIN (*MAKE A TEMP ENTRY*)
+	                  IF LKIND = UNTYPEDFILE THEN LKIND := DATAFILE;
+	                  LINX := ENTERTEMP(LTID,LSEGS,LKIND,LDIR);
+	                  IF (LINX > 0) AND (LKIND = TEXTFILE) THEN
+	                    WITH LDIR^[LINX] DO
+	                      BEGIN
+	                        IF ODD(DLASTBLK-DFIRSTBLK) THEN
+	                          DLASTBLK := DLASTBLK-1;
+	                        IF DLASTBLK-DFIRSTBLK < 4 THEN
+	                          BEGIN DELENTRY(LINX,LDIR); LINX := 0 END
+	                      END;
+	                  IF LINX = 0 THEN
+	                    BEGIN SYSCOM^.IORSLT := INOROOM; GOTO 1 END;
+	                  FHEADER := LDIR^[LINX]; FMODIFIED := TRUE;
+	                  WRITEDIR(LUNIT,LDIR)
+	                END
+	          END
+	        ELSE (*FHEADER NOT IN DIRECTORY*)
+		  BEGIN
+		    IF FOPENOLD AND (LENGTH(LTID) <> 0) THEN
+		      BEGIN
+			SYSCOM^.IORSLT := INOFILE; 
+			GOTO 1;
+			END;
+		    WITH FHEADER DO
+		      BEGIN (*DIRECT UNIT OPEN, SET UP DUMMY FHEADER*)
+			DFIRSTBLK := 0; DLASTBLK := MMAXINT;
+			IF UISBLKD THEN DLASTBLK := UEOVBLK;
+			DFKIND := LKIND; DTID := '';
+			DLASTBYTE := FBLKSIZE;
+			WITH DACCESS DO
+			  BEGIN MONTH := 0; DAY := 0; YEAR := 0 END
+		      END; {of WITH}
+	            END;  {of ELSE}
+		IF FOPENOLD THEN
+	          FMAXBLK := FHEADER.DLASTBLK-FHEADER.DFIRSTBLK
+	        ELSE FMAXBLK := 0;
+	        IF FSOFTBUF THEN
+	          BEGIN
+	            FNXTBYTE := FBLKSIZE; FBUFCHNGD := FALSE;
+	            IF FOPENOLD THEN FMAXBYTE := FHEADER.DLASTBYTE
+	            ELSE FMAXBYTE := FBLKSIZE;
+	            WITH FHEADER DO
+	              IF DFKIND = TEXTFILE THEN
+	                BEGIN FNXTBLK := 2;
+	                  IF NOT FOPENOLD THEN
+	                    BEGIN (*NEW .TEXT, PUT NULLS IN FIRST PAGE*)
+	                      FILLCHAR(FBUFFER,SIZEOF(FBUFFER),0);
+	                      UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK);
+	                      UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+1)
+	                    END
+	                END
+	          END;
+	        IF FOPENOLD THEN FRESET(F)
+	        ELSE RESETER(F); (*NO GET!*)
+	1:      IF SYSCOM^.IORSLT <> INOERROR THEN
+	          BEGIN FISOPEN := FALSE; FEOF := TRUE; FEOLN := TRUE END
+	      END;
+	  IF SWAPPED THEN
+	    BEGIN RELEASE(OLDHEAP); SYSCOM^.GDIRP := NIL;
+	      SAVERSLT := SYSCOM^.IORSLT;
+	      UNITREAD(SWAPFIB^.FUNIT,EMPTYHEAP^,SIZEOF(DIRECTORY),
+	                        SWAPFIB^.FHEADER.DFIRSTBLK);
+	      SYSCOM^.IORSLT := SAVERSLT
+	    END
+	END
+      ELSE SYSCOM^.IORSLT := IBADTITLE
+END (*FOPEN*) ;
+
+PROCEDURE FCLOSE(*VAR F: FIB; FTYPE: CLOSETYPE*);
+  LABEL 1;
+  VAR LINX,DUPINX: DIRRANGE; LDIR: DIRP; FOUND: BOOLEAN;
+BEGIN SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN AND (FWINDOW <> SYSTERM^.FWINDOW) THEN
+      BEGIN
+	IF FISBLKD THEN
+	  WITH FHEADER DO
+	    IF LENGTH(DTID) > 0 THEN
+	      BEGIN (*FILE IN A DISK DIRECTORY...FIXUP MAYBE*)
+		IF FTYPE = CCRUNCH THEN
+	          BEGIN FMAXBLK := FNXTBLK;
+	            DACCESS.YEAR := 100; FTYPE := CLOCK;
+	            IF FSOFTBUF THEN FMAXBYTE := FNXTBYTE
+	          END;
+	        RESETER(F);
+		IF FMODIFIED OR (DACCESS.YEAR = 100) OR (FTYPE = CPURGE) THEN
+	          BEGIN (*HAVE TO CHANGE DIRECTORY ENTRY*)
+		    IF FUNIT <> VOLSEARCH(FVID,FALSE,LDIR) THEN
+	              BEGIN SYSCOM^.IORSLT := ILOSTUNIT; GOTO 1 END;
+	            LINX := 1; FOUND := FALSE;
+	            WHILE (LINX <= LDIR^[0].DNUMFILES) AND NOT FOUND DO
+	              BEGIN (*LOOK FOR FIRST BLOCK MATCH*)
+	                FOUND := (LDIR^[LINX].DFIRSTBLK = DFIRSTBLK) AND
+	                         (LDIR^[LINX].DLASTBLK = DLASTBLK);
+	                LINX := LINX + 1
+	              END;
+	            IF NOT FOUND THEN
+	              BEGIN SYSCOM^.IORSLT := ILOSTFILE; GOTO 1 END;
+		    LINX := LINX - 1; (*CORRECT OVERRUN*)
+	            IF ((FTYPE = CNORMAL) AND (LDIR^[LINX].DACCESS.YEAR = 100)) 
+	                   OR (FTYPE = CPURGE) THEN
+	                DELENTRY(LINX,LDIR)  (*ZAP FILE OUT OF EXISTANCE*)
+	            ELSE
+	              BEGIN (*WELL...LOCK IN A PERM DIR ENTRY*)
+	                DUPINX := DIRSEARCH(DTID,TRUE,LDIR);
+			IF (DUPINX <> 0) AND (DUPINX <> LINX) THEN
+	                  BEGIN (*A DUPLICATE PERM ENTRY...ZAP OLD ONE*)
+	                    DELENTRY(DUPINX,LDIR);
+	                    IF DUPINX < LINX THEN LINX := LINX-1
+	                  END;
+	                IF LDIR^[LINX].DACCESS.YEAR = 100 THEN
+	                  IF DACCESS.YEAR = 100 THEN
+	                    DACCESS := THEDATE
+	                  ELSE (*LEAVE ALONE...FILER SPECIAL CASE*)
+	                ELSE
+	                  IF FMODIFIED AND (THEDATE.MONTH <> 0) THEN
+	                    DACCESS := THEDATE
+	                  ELSE
+	                    DACCESS := LDIR^[LINX].DACCESS;
+	                DLASTBLK := DFIRSTBLK+FMAXBLK;
+	                IF FSOFTBUF THEN DLASTBYTE := FMAXBYTE;
+			FHEADER.FILLER1 := 0;  {This had better work, Steve}
+	                FMODIFIED := FALSE; LDIR^[LINX] := FHEADER
+	              END;
+	            WRITEDIR(FUNIT,LDIR)
+	          END
+	      END;
+	IF FTYPE = CPURGE THEN
+	  IF LENGTH(FHEADER.DTID) = 0 THEN
+	    UNITABLE[FUNIT].UVID := '';
+1:      FEOF := TRUE; FEOLN := TRUE; FISOPEN := FALSE
+      END;
+END (*FCLOSE*) ;
+
+(* --- PASCALIO --- *)
+{.fs} { used to be separate UNIT; we include the PASCALIO IMPLEMENTATION here   }
+{Version II.0.A}
+
+  {.fs} { Apple Pascal 1.2 notes report issues here that we should fix.         }
+  {.fs} {  1. SEEK does not expand the file if going over at the end. PUT does. }
+  {.fs} {  2. SEEK to between new EOF and EOF at time of opening will not       }
+  {.fs} {     position/refill buffer correctly                                  }
+  PROCEDURE FSEEK(*VAR F: FIB; RECNUM: INTEGER*);
+    LABEL 1;
+    VAR BYTE,BLOCK,N: INTEGER;
+  BEGIN SYSCOM^.IORSLT := INOERROR;
+    IF F.FISOPEN THEN
+      WITH F,FHEADER DO
+	BEGIN 
+	  IF (RECNUM < 0) OR NOT FSOFTBUF OR
+		  ((DFKIND = TEXTFILE) AND (FRECSIZE = 1)) THEN
+	    GOTO 1; (*NO SEEK ALLOWED*)
+	  BLOCK :=RECNUM*(FRECSIZE DIV 512)
+		 +(RECNUM DIV 512)*(FRECSIZE MOD 512)
+		 +( (RECNUM MOD 512)*((FRECSIZE MOD 512) DIV 64)
+		   +((RECNUM MOD 512)*(FRECSIZE MOD 64)) DIV 64
+		  ) DIV 8
+		  + 1;
+		  {RECNUM*FRECSIZE DIV FBLKSIZE + 1;}
+	  BYTE := ( (RECNUM MOD 512)*(FRECSIZE MOD 32)
+		   +( (RECNUM MOD 16)*32*((FRECSIZE MOD 512) DIV 32) )
+		  ) MOD 512;
+		 {BYTE := RECNUM*FRECSIZE MOD FBLKSIZE;}
+	  IF BYTE = 0 THEN 
+	    BEGIN
+	      BYTE := FBLKSIZE;     
+	      BLOCK := BLOCK - 1;
+	      END;
+	  N := DLASTBLK-DFIRSTBLK;
+	  IF (BLOCK > N) OR ((BLOCK = N) AND (BYTE >= DLASTBYTE)) THEN
+	    BEGIN BLOCK := N; BYTE := DLASTBYTE END;
+	  IF BLOCK <> FNXTBLK THEN
+	    BEGIN
+	      IF FBUFCHNGD THEN
+		BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+		  UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1);
+		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+		END;
+	      IF (BLOCK <= FMAXBLK) AND (BYTE <> FBLKSIZE) THEN
+		BEGIN
+		  UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+BLOCK-1);
+		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+		END
+	    END;
+	  IF FNXTBLK > FMAXBLK THEN
+	    BEGIN FMAXBLK := FNXTBLK; FMAXBYTE := FNXTBYTE END
+	  ELSE
+	    IF (FNXTBLK = FMAXBLK) AND (FNXTBYTE > FMAXBYTE) THEN
+	      FMAXBYTE := FNXTBYTE;
+	  FEOF := FALSE; FEOLN := FALSE; FREPTCNT := 0;
+	  IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR;
+	  FNXTBLK := BLOCK; FNXTBYTE := BYTE
+	END
+    ELSE SYSCOM^.IORSLT := INOTOPEN;
+  1:
+  END (*FSEEK*) ;
+
+  PROCEDURE FREADREAL(*VAR F: FIB; VAR X: REAL*);
+    LABEL 1;
+    VAR CH: CHAR; NODEC,NEG,XVALID: BOOLEAN; IPOT,ICNT: INTEGER;
+  BEGIN
+    WITH F DO
+	BEGIN X := 0; NEG := FALSE; XVALID := FALSE;
+	    IPOT := 0; NODEC:=TRUE;
+	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+	  IF FEOF THEN GOTO 1;
+	  CH := FWINDOW^[0];
+	  IF (CH = '+') OR (CH = '-') THEN
+	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+	    BEGIN XVALID := TRUE;
+	      X := X*10 + (ORD(CH)-ORD('0'));
+	      FGET(F); CH := FWINDOW^[0]
+	    END;
+	  IF FEOF THEN GOTO 1;
+	  IF CH = '.' THEN
+	    BEGIN NODEC:=FALSE;
+	      REPEAT FGET(F); CH := FWINDOW^[0];
+		IF CH IN DIGITS THEN
+		  BEGIN XVALID := TRUE; IPOT := IPOT - 1;
+		    X := X*10 + (ORD(CH)-ORD('0'))
+		  END
+	      UNTIL FEOF OR NOT (CH IN DIGITS);
+	      IF FEOF THEN GOTO 1
+	    END;
+	  IF ((CH = 'e') OR (CH = 'E')) AND (XVALID OR NODEC) THEN
+	    BEGIN
+	      IF FSTATE = FJANDW THEN FGET(F)
+	      ELSE FSTATE := FNEEDCHAR;
+	      FREADINT(F,ICNT);
+	      IF FEOF THEN GOTO 1;
+	      IPOT:=ICNT+IPOT;
+	      IF NOT XVALID THEN X := 1; XVALID := TRUE;
+	    END;
+	  IF XVALID THEN
+	    IF NEG THEN X := -X
+	    ELSE
+	  ELSE SYSCOM^.IORSLT := IBADFORMAT
+	END;
+  1:   IF IPOT < 0 THEN X := X/PWROFTEN(ABS(IPOT))
+       ELSE X := X*PWROFTEN(IPOT);
+  END (*FREADREAL*) ;
+
+  PROCEDURE FWRITEREAL(*VAR F: FIB; X: REAL; W, D: INTEGER*);
+  VAR J, TRUNCX, EXPX: INTEGER;
+      NORMX: REAL;  S: STRING[30];
+
+  BEGIN
+  (* Check W and D for validity *)
+  IF (W < 0) OR (D < 0) THEN  BEGIN W := 0;  D := 0 END;
+
+  (* Take abs(x), normalize it and calculate exponent *)
+  IF X < 0 THEN  BEGIN X := -X;  S[1] := '-' END
+	   ELSE  S[1] := ' ';
+  EXPX := 0;  NORMX := X;
+  IF X >= PWROFTEN(0) THEN  (* divide down to size *)
+    WHILE NORMX >= PWROFTEN(1) DO
+      BEGIN EXPX := EXPX+1;  NORMX := X/PWROFTEN(EXPX) END
+  ELSE
+    IF X <> 0 THEN  (* multiply up to size *)
+      REPEAT
+	EXPX := EXPX-1;  NORMX := X*PWROFTEN(-EXPX)
+      UNTIL NORMX >= PWROFTEN(0);
+
+  (* Round number according to some very tricky rules *)
+  IF (D=0) OR (D+EXPX+1 > 6) THEN  (* scientific notation, or decimal places *)
+    NORMX := NORMX + 5/PWROFTEN(6)        (* overspecified *)
+  ELSE IF D+EXPX+1 >= 0 THEN
+    NORMX := NORMX + 5/PWROFTEN(D+EXPX+1);
+  (* if D+EXPX+1 < 0, then number is effectively 0.0 *)
+
+  (* If we just blew normalized stuff then fix it up *)
+  IF NORMX >= PWROFTEN(1) THEN
+    BEGIN  EXPX := EXPX+1;  NORMX := NORMX/PWROFTEN(1) END;
+
+  (* Put the digits into a string *)
+  FOR J := 3 TO 8 DO
+    BEGIN
+      TRUNCX := TRUNC(NORMX);
+      S[J] := CHR(TRUNCX+ORD('0'));
+      NORMX := (NORMX-TRUNCX)*PWROFTEN(1)
+    END;
+
+  (* Put number into proper form *)
+  IF (D=0) OR (EXPX >= 6) THEN  (* scientific notation *)
+    BEGIN
+      S[2] := S[3];
+      S[3] := '.';
+      J := 8;
+      IF EXPX <> 0 THEN 
+	BEGIN
+	  J := 10;
+	  S[9] := 'E';
+	  IF EXPX < 0 THEN
+	    BEGIN J := 11;  S[10] := '-';  EXPX := -EXPX END;
+	  IF EXPX > 9 THEN
+	    BEGIN
+	      S[J] := CHR(EXPX DIV 10 + ORD('0'));
+	      J := J+1;
+	    END;
+	  S[J] := CHR(EXPX MOD 10 + ORD('0'))
+	END;
+      S[0] := CHR(J);
+    END
+  ELSE  (* some kind of fixed point notation *)
+    IF EXPX >= 0 THEN
+      BEGIN
+	MOVELEFT(S[3], S[2], EXPX+1);
+	S[3+EXPX] := '.';
+	FILLCHAR(S[9], D-(5-EXPX), ' '); (* blank fill at end if precision *)
+	S[0] := CHR(3+D+EXPX);           (* was over-specified *)
+      END
+    ELSE
+      BEGIN
+	MOVERIGHT(S[3], S[3-EXPX], 6);  (* make room for leading zeroes *)
+	S[2] := '0';
+	S[3] := '.';
+	FILLCHAR(S[4], -EXPX-1, '0');  (* put in leading zeroes *)
+	FILLCHAR(S[9-EXPX], D-6+EXPX, ' ');(* put in blanks for over-precision*)
+	S[0] := CHR(3+D);
+      END;
+  IF W < LENGTH(S) THEN W := LENGTH(S);
+  FWRITESTRING( F, S, W );
+  END;  (*procedure write_real *)
+
+  PROCEDURE FWRITEDEC(*VAR F: FIB; D: DECMAX; RLENG: INTEGER*);
+  VAR S: STRING[38]; I: INTEGER;
+  BEGIN
+    STR(D,S);
+    FWRITESTRING(F,S,RLENG)
+  END (*FWRITEDEC*) ;
+
+
+  PROCEDURE FREADDEC(*VAR F:FIB; VAR D: STUNT; L: INTEGER*);
+    LABEL 1;
+    VAR CH: CHAR;
+	NEG,DVALID: BOOLEAN; DIG,I: INTEGER;
+  BEGIN
+    WITH F DO
+	BEGIN 
+	  WITH D DO
+	    CASE L OF
+	      2: W2 := 0;      3: W3 := 0;       4: W4 := 0;
+	      5: W5 := 0;      6: W6 := 0;       7: W7 := 0;
+	      8: W8 := 0;      9: W9 := 0;      10: W10 := 0
+	    END;
+	  NEG := FALSE; DVALID := FALSE;
+	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+	  IF FEOF THEN GOTO 1;
+	  CH := FWINDOW^[0];
+	  IF (CH = '+') OR (CH = '-') THEN
+	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+	    BEGIN DVALID := TRUE;
+	      DIG:=ORD(CH)-ORD('0');
+	      IF NEG THEN DIG:=-DIG;
+	      WITH D DO
+		CASE L OF
+		  2:W2:=10*W2+DIG;
+		  3:W3:=10*W3+DIG;
+		  4:W4:=10*W4+DIG;
+		  5:W5:=10*W5+DIG;
+		  6:W6:=10*W6+DIG;
+		  7:W7:=10*W7+DIG;
+		  8:W8:=10*W8+DIG;
+		  9:W9:=10*W9+DIG;
+		  10:W10:=10*W10+DIG;
+		END;
+	      FGET(F); CH := FWINDOW^[0]
+	    END;
+	  IF NOT (DVALID OR FEOF) THEN SYSCOM^.IORSLT := IBADFORMAT
+	END;
+  1:
+  END(*FREADDEC*) ;
+
+(* --- SYSTEM.C --- *)
+
+    (******************************************************************)
+    (*                                                                *)
+    (*  Copyright (c) 1978 Regents of the University of California.   *)
+    (*  Permission to copy or distribute this software or documen-    *)
+    (*  tation in hard or soft copy granted only by written license   *) 
+    (*  obtained from the Institute for Information Systems.          *)
+    (*                                                                *)
+    (******************************************************************)
+    
+(* INPUT-OUTPUT PRIMITIVES *)
+
+{.fs#} { removed since we include the actual functions in PASCALIO }
+{.fs# PROCEDURE XSEEK;        }
+{.fs# BEGIN                   }
+{.fs#   SYSCOM^.XEQERR := 11; } { NOT IMP ERR }
+{.fs#   EXECERROR             }
+{.fs# END (*XSEEK*) ;         }
+
+{.fs# PROCEDURE XREADREAL;    }
+{.fs# BEGIN                   }
+{.fs#   SYSCOM^.XEQERR := 11; { NOT IMP ERR }
+{.fs#   EXECERROR             }
+{.fs# END (*XREADREAL*) ;     }
+
+{.fs# PROCEDURE XWRITEREAL;   }
+{.fs# BEGIN                   }
+{.fs#   SYSCOM^.XEQERR := 11; { NOT IMP ERR }
+{.fs#   EXECERROR             }
+{.fs# END (*XWRITEREAL*) ;    }
+
+FUNCTION CANTSTRETCH(VAR F: FIB): BOOLEAN; (*REPLACED BY RJH 2Mar78*)
+  LABEL 1;
+  VAR LINX: DIRRANGE; FOUND,OK: BOOLEAN; LAVAILBLK: INTEGER; LDIR: DIRP;
+BEGIN CANTSTRETCH := TRUE; OK := FALSE;
+
+  WITH F,FHEADER DO
+    IF LENGTH(DTID) > 0 THEN
+      BEGIN (*IN A DIRECTORY FOR SURE*)
+	IF FUNIT <> VOLSEARCH(FVID,FALSE,LDIR) THEN
+	  BEGIN SYSCOM^.IORSLT := ILOSTUNIT; GOTO 1 END;
+	FOUND := FALSE; LINX := 1;
+	WHILE (LINX <= LDIR^[0].DNUMFILES) AND NOT FOUND DO
+	  BEGIN
+	    FOUND := (LDIR^[LINX].DFIRSTBLK = DFIRSTBLK) AND
+	             (LDIR^[LINX].DLASTBLK = DLASTBLK);
+	    LINX := LINX+1
+	  END;
+	IF NOT FOUND THEN
+	  BEGIN SYSCOM^.IORSLT := ILOSTFILE; GOTO 1 END;
+        IF LINX > LDIR^[0].DNUMFILES THEN
+	  LAVAILBLK := LDIR^[0].DEOVBLK
+	ELSE LAVAILBLK := LDIR^[LINX].DFIRSTBLK;
+	IF (DLASTBLK < LAVAILBLK) OR (DLASTBYTE < FBLKSIZE) THEN
+	  BEGIN
+	    WITH LDIR^[LINX-1] DO
+	      BEGIN
+	        DLASTBLK := LAVAILBLK; DLASTBYTE := FBLKSIZE;
+                WRITEDIR(FUNIT,LDIR);
+	        IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+	      END;
+	    FEOF := FALSE; FEOLN := FALSE;
+            IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR; (*RJH 2Mar78*)
+            DLASTBLK := LAVAILBLK; DLASTBYTE := FBLKSIZE;
+	    DACCESS.YEAR := 100; CANTSTRETCH := FALSE
+	  END;
+        OK := TRUE;
+      END;
+1:  IF NOT OK THEN
+      BEGIN F.FEOF := TRUE; F.FEOLN := TRUE END
+END (*CANTSTRETCH*) ;
+
+PROCEDURE FRESET(*VAR F: FIB*);
+BEGIN SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN THEN
+      BEGIN RESETER(F);
+	IF FRECSIZE > 0 THEN
+	  IF FSTATE = FJANDW THEN FGET(F)
+	  ELSE FSTATE := FNEEDCHAR
+      END
+END (*FRESET*) ;
+
+FUNCTION FBLOCKIO(*VAR F: FIB; VAR A: WINDOW; I: INTEGER;
+	           NBLOCKS,RBLOCK: INTEGER; DOREAD: BOOLEAN*);
+BEGIN FBLOCKIO := 0; SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN AND (NBLOCKS >= 0) THEN
+      IF FISBLKD THEN
+	WITH FHEADER DO
+	  BEGIN
+	    IF RBLOCK < 0 THEN RBLOCK := FNXTBLK;
+	    RBLOCK := DFIRSTBLK+RBLOCK;
+	    IF RBLOCK+NBLOCKS > DLASTBLK THEN
+	      IF NOT DOREAD THEN
+	        IF CANTSTRETCH( F ) THEN;
+	    IF RBLOCK+NBLOCKS > DLASTBLK THEN
+	      NBLOCKS := DLASTBLK-RBLOCK;
+	    FEOF := RBLOCK >= DLASTBLK;
+	    IF NOT FEOF THEN
+	      BEGIN
+	        IF DOREAD THEN
+	          UNITREAD(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+	        ELSE
+	          BEGIN FMODIFIED := TRUE;
+	            UNITWRITE(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+	          END;
+	        FBLOCKIO := NBLOCKS;
+	        RBLOCK := RBLOCK+NBLOCKS;
+	        FEOF := RBLOCK = DLASTBLK;
+	        FNXTBLK := RBLOCK-DFIRSTBLK;
+	        IF FNXTBLK > FMAXBLK THEN FMAXBLK := FNXTBLK
+	      END
+	  END
+      ELSE
+	BEGIN FBLOCKIO := NBLOCKS;
+	  IF DOREAD THEN
+	    UNITREAD(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK)
+	  ELSE
+	    UNITWRITE(FUNIT,A[I],NBLOCKS*FBLKSIZE,RBLOCK);
+	  IF IORESULT = ORD(INOERROR) THEN
+	    IF DOREAD THEN
+	      BEGIN RBLOCK := NBLOCKS*FBLKSIZE;
+	        RBLOCK := RBLOCK+SCAN(-RBLOCK,<>CHR(0),A[I+RBLOCK-1]);
+	        RBLOCK := (RBLOCK+FBLKSIZE-1) DIV FBLKSIZE;
+	        FBLOCKIO := RBLOCK;
+	        FEOF := RBLOCK < NBLOCKS
+	      END
+	    ELSE
+	  ELSE FBLOCKIO := 0
+	END
+    ELSE
+      SYSCOM^.IORSLT := INOTOPEN
+END (*FBLOCKIO*) ;
+
+PROCEDURE FGET(*VAR F: FIB*);
+  LABEL 1, 2;
+  VAR LEFTOGET,WININX,LEFTINBUF,AMOUNT: INTEGER;
+      DONE: BOOLEAN;
+BEGIN SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN THEN
+      BEGIN
+	IF FREPTCNT > 0 THEN
+	  BEGIN FREPTCNT := FREPTCNT-1; IF FREPTCNT > 0 THEN GOTO 2 END;
+	IF FSOFTBUF THEN
+	  WITH FHEADER DO
+	    BEGIN
+	      LEFTOGET := FRECSIZE; WININX := 0;
+	      REPEAT
+	        IF FNXTBLK = FMAXBLK THEN
+	          IF FNXTBYTE+LEFTOGET > FMAXBYTE THEN GOTO 1
+	          ELSE LEFTINBUF := DLASTBYTE-FNXTBYTE
+	        ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE;
+	        AMOUNT := LEFTOGET;
+	        IF AMOUNT > LEFTINBUF THEN AMOUNT := LEFTINBUF;
+	        IF AMOUNT > 0 THEN
+	          BEGIN
+	            MOVELEFT(FBUFFER[FNXTBYTE],FWINDOW^[WININX],AMOUNT);
+	            FNXTBYTE := FNXTBYTE+AMOUNT;
+	            WININX := WININX+AMOUNT;
+	            LEFTOGET := LEFTOGET-AMOUNT
+	          END;
+	        DONE := LEFTOGET = 0;
+	        IF NOT DONE THEN
+	          BEGIN
+	            IF FBUFCHNGD THEN
+	              BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1)
+	              END;
+	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+	            UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK);
+	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+	            FNXTBLK := FNXTBLK+1; FNXTBYTE := 0
+	          END
+	      UNTIL DONE
+	    END
+	ELSE
+	  BEGIN
+	    UNITREAD(FUNIT,FWINDOW^,FRECSIZE);
+	    IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+	  END;
+	IF FRECSIZE = 1 THEN (*FILE OF CHAR*)
+	  BEGIN FEOLN := FALSE;
+	    IF FSTATE <> FJANDW THEN FSTATE := FGOTCHAR;
+	    IF FWINDOW^[0] = CHR(EOL) THEN
+	      BEGIN FWINDOW^[0] := ' '; FEOLN := TRUE; GOTO 2 END;
+	    IF FWINDOW^[0] = CHR(DLE) THEN
+	      BEGIN FGET(F);
+	        AMOUNT := ORD(FWINDOW^[0])-32;
+	        IF (AMOUNT > 0) AND (AMOUNT <= 127) THEN
+	          BEGIN
+	            FWINDOW^[0] := ' ';
+	            FREPTCNT := AMOUNT;
+	            GOTO 2
+	          END;
+	        FGET(F)
+	      END;
+	    IF FWINDOW^[0] = CHR(0) THEN
+	      BEGIN (*EOF HANDLING*)
+	        IF FSOFTBUF AND (FHEADER.DFKIND = TEXTFILE) THEN
+	          BEGIN (*END OF 2 BLOCK PAGE*)
+	            IF ODD(FNXTBLK) THEN FNXTBLK := FNXTBLK+1;
+	            FNXTBYTE := FBLKSIZE; FGET(F)
+	          END
+	        ELSE
+	          BEGIN FWINDOW^[0] := ' '; GOTO 1 END
+	      END
+	  END
+      END
+    ELSE
+      BEGIN
+	SYSCOM^.IORSLT := INOTOPEN;
+1:      FEOF := TRUE; FEOLN := TRUE
+      END;
+2:
+END (*FGET*) ;
+
+{.fs} { Apple Pascal 1.2 notes report a bug that may exist here:              }
+{.fs  { SEEK to end then PUT may overwrite file following this one if no room }
+PROCEDURE FPUT(*VAR F: FIB*);
+  LABEL 1;
+  VAR LEFTOPUT,WININX,LEFTINBUF,AMOUNT: INTEGER;
+      DONE: BOOLEAN;
+BEGIN SYSCOM^.IORSLT := INOERROR;
+  WITH F DO
+    IF FISOPEN THEN
+      BEGIN
+	IF FSOFTBUF THEN
+	  WITH FHEADER DO
+	    BEGIN
+	      LEFTOPUT := FRECSIZE; WININX := 0;
+	      REPEAT
+	        IF DFIRSTBLK+FNXTBLK = DLASTBLK THEN
+	          IF FNXTBYTE+LEFTOPUT > DLASTBYTE THEN
+	            IF CANTSTRETCH( F ) THEN 
+	                BEGIN SYSCOM^.IORSLT := INOROOM; GOTO 1 END
+	            ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE
+	          ELSE LEFTINBUF := DLASTBYTE-FNXTBYTE
+	        ELSE LEFTINBUF := FBLKSIZE-FNXTBYTE;
+	        AMOUNT := LEFTOPUT;
+	        IF AMOUNT > LEFTINBUF THEN AMOUNT := LEFTINBUF;
+	        IF AMOUNT > 0 THEN
+	          BEGIN FBUFCHNGD := TRUE;
+	            MOVELEFT(FWINDOW^[WININX],FBUFFER[FNXTBYTE],AMOUNT);
+	            FNXTBYTE := FNXTBYTE+AMOUNT;
+	            WININX := WININX+AMOUNT;
+	            LEFTOPUT := LEFTOPUT-AMOUNT
+	          END;
+	        DONE := LEFTOPUT = 0;
+	        IF NOT DONE THEN
+	          BEGIN
+	            IF FBUFCHNGD THEN
+	              BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+	                UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1)
+	              END;
+	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+	            IF FNXTBLK < FMAXBLK THEN
+	              UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK)
+	            ELSE
+	              FILLCHAR(FBUFFER,FBLKSIZE,CHR(0));
+	            IF IORESULT <> ORD(INOERROR) THEN GOTO 1;
+	            FNXTBLK := FNXTBLK+1; FNXTBYTE := 0
+	          END
+	      UNTIL DONE;
+	      IF FRECSIZE = 1 THEN
+	        IF FWINDOW^[0] = CHR(EOL) THEN
+	          IF DFKIND = TEXTFILE THEN
+	            IF (FNXTBYTE >= FBLKSIZE-127) AND NOT ODD(FNXTBLK) THEN
+	              BEGIN
+	                FNXTBYTE := FBLKSIZE-1;
+	                FWINDOW^[0] := CHR(0);
+	                FPUT(F)
+	              END
+	    END
+	ELSE
+	  BEGIN
+	    UNITWRITE(FUNIT,FWINDOW^,FRECSIZE);
+	    IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+	  END
+      END
+    ELSE
+      BEGIN
+	SYSCOM^.IORSLT := INOTOPEN;
+1:      FEOF := TRUE; FEOLN := TRUE
+      END
+END (*FPUT*) ;
+
+FUNCTION FEOF(*VAR F: FIB*);
+BEGIN FEOF := F.FEOF END;
+
+(* TEXT FILE INTRINSICS *)
+
+FUNCTION FEOLN(*VAR F: FIB*);
+BEGIN FEOLN := F.FEOLN END;
+
+PROCEDURE FWRITELN(*VAR F: FIB*);
+BEGIN
+  F.FWINDOW^[0] := CHR(EOL); FPUT(F)
+END (*FWRITELN*) ;
+
+PROCEDURE FWRITECHAR(*VAR F: FIB; CH: CHAR; RLENG: INTEGER*);
+  LABEL  1;
+BEGIN
+  WITH F DO
+    IF FISOPEN THEN
+      IF FSOFTBUF THEN
+	BEGIN
+	  WHILE RLENG > 1 DO
+	    BEGIN FWINDOW^[0] := ' '; FPUT(F);
+	      RLENG := RLENG-1
+	    END;
+	  FWINDOW^[0] := CH; FPUT(F)
+	END
+      ELSE
+	BEGIN
+	  WHILE RLENG > 1 DO
+	    BEGIN FWINDOW^[0] := ' ';
+	      UNITWRITE(FUNIT,FWINDOW^,1);
+	      RLENG := RLENG-1
+	    END;
+	  FWINDOW^[0] := CH;
+	  UNITWRITE(FUNIT,FWINDOW^,1)
+	END
+    ELSE SYSCOM^.IORSLT := INOTOPEN;
+1:
+END (*FWRITECHAR*) ;
+
+PROCEDURE FWRITEINT(*VAR F: FIB; I,RLENG: INTEGER*);
+  LABEL 1;
+  VAR POT,COL: INTEGER; CH: CHAR;
+      SUPPRESSING: BOOLEAN; S: STRING[10];
+BEGIN COL := 1;
+  S[0] := CHR(10); SUPPRESSING := TRUE;
+  IF I < 0 THEN
+    BEGIN I := ABS(I); S[1] := '-'; COL := 2;
+      IF I = 0 THEN (*HARDWARE SPECIAL CASE*)
+	BEGIN S := '-32768'; GOTO 1 END
+    END;
+  FOR POT := 4 DOWNTO 0 DO
+    BEGIN CH := CHR(I DIV IPOT[POT] + ORD('0'));
+      IF (CH = '0') AND (POT > 0) AND SUPPRESSING THEN
+      ELSE (*FORMAT THE CHAR*)
+	BEGIN SUPPRESSING := FALSE;
+	  S[COL] := CH; COL := COL+1;
+	  IF CH <> '0' THEN I := I MOD IPOT[POT]
+	END
+    END;
+  S[0] := CHR(COL-1);
+1:IF RLENG < LENGTH(S) THEN
+    RLENG := LENGTH(S);
+  FWRITESTRING(F,S,RLENG)
+END (*FWRITEINT*) ;
+
+PROCEDURE FWRITESTRING(*VAR F: FIB; VAR S: STRING; RLENG: INTEGER*);
+  VAR SINX: INTEGER;
+BEGIN
+  WITH F DO
+    IF FISOPEN THEN
+      BEGIN
+{.fs}   SYSCOM^.IORSLT := INOERROR; { for empty string (cf. Apple Pascal 1.2 doc) }
+	IF RLENG <= 0 THEN RLENG := LENGTH(S);
+	IF RLENG > LENGTH(S) THEN
+	  BEGIN FWRITECHAR(F,' ',RLENG-LENGTH(S)); RLENG := LENGTH(S) END;
+	IF FSOFTBUF THEN
+	  BEGIN SINX := 1;
+	    WHILE (SINX <= RLENG) AND NOT FEOF DO
+	      BEGIN FWINDOW^[0] := S[SINX]; FPUT(F); SINX := SINX+1 END
+	  END
+	ELSE
+	  UNITWRITE(FUNIT,S[1],RLENG)
+      END
+    ELSE SYSCOM^.IORSLT := INOTOPEN
+END (*FWRITESTRING*) ;
+
+PROCEDURE FREADSTRING(*VAR F: FIB; VAR S: STRING; SLENG: INTEGER*);
+  VAR SINX: INTEGER; CH: CHAR;
+BEGIN
+  WITH F DO
+      BEGIN SINX := 1;
+{.fs}	S[0] := CHR(0);     { let UNITREAD emulation intercept a correct string }
+	IF FSTATE = FNEEDCHAR THEN FGET(F);
+{.fs#	S[0] := CHR(SLENG); (*NO INV INDEX*) }
+	WHILE (SINX <= SLENG) AND NOT (FEOLN OR FEOF) DO
+	  BEGIN CH := FWINDOW^[0];
+{.fs}	    S[0] := CHR(SINX); (*NO INV INDEX*)
+	    IF FUNIT = 1 THEN
+	      IF CHECKDEL(CH,SINX) THEN
+	      ELSE
+	        BEGIN S[SINX] := CH; SINX := SINX + 1 END
+	    ELSE
+	      BEGIN S[SINX] := CH; SINX := SINX + 1 END;
+{.fs}	    S[0] := CHR(SINX - 1);  { let UNITREAD emu intercept a correct string }
+	    FGET(F)
+	  END;
+	S[0] := CHR(SINX - 1);
+	WHILE NOT FEOLN DO FGET(F)
+      END
+END (*FREADSTRING*) ;
+
+PROCEDURE FWRITEBYTES(*VAR F: FIB; VAR A: WINDOW; RLENG,ALENG: INTEGER*);
+  VAR AINX: INTEGER;
+BEGIN
+  WITH F DO
+    IF FISOPEN THEN
+      BEGIN
+	IF RLENG > ALENG THEN
+	  BEGIN FWRITECHAR(F,' ',RLENG-ALENG); RLENG := ALENG END;
+	IF FSOFTBUF THEN
+	  BEGIN AINX := 0;
+	    WHILE (AINX < RLENG) AND NOT FEOF DO
+	      BEGIN FWINDOW^[0] := A[AINX]; FPUT(F); AINX := AINX+1 END
+	  END
+	ELSE
+	  UNITWRITE(FUNIT,A,RLENG)
+      END
+    ELSE SYSCOM^.IORSLT := INOTOPEN
+END (*FWRITEBYTES*) ;
+
+PROCEDURE FREADLN(*VAR F: FIB*);
+BEGIN
+  WHILE NOT F.FEOLN DO FGET(F);
+  IF F.FSTATE = FJANDW THEN FGET(F)
+  ELSE
+    BEGIN F.FSTATE := FNEEDCHAR; F.FEOLN := FALSE END
+END (*FREADLN*) ;
+
+PROCEDURE FREADCHAR(*VAR F: FIB; VAR CH: CHAR*);
+BEGIN
+  WITH F DO
+      BEGIN SYSCOM^.IORSLT := INOERROR;
+	IF FSTATE = FNEEDCHAR THEN FGET(F);
+	CH := FWINDOW^[0];
+	IF FSTATE = FJANDW THEN FGET(F)
+	ELSE FSTATE := FNEEDCHAR
+      END
+END (*FREADCHAR*) ;
+
+PROCEDURE FREADINT(*VAR F: FIB; VAR I: INTEGER*);
+  LABEL 1;
+  VAR CH: CHAR; NEG,IVALID: BOOLEAN; SINX: INTEGER;
+BEGIN
+  WITH F DO
+      BEGIN I := 0; NEG := FALSE; IVALID := FALSE;
+	IF FSTATE = FNEEDCHAR THEN FGET(F);
+	WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+	IF FEOF THEN GOTO 1;
+	CH := FWINDOW^[0];
+	IF (CH = '+') OR (CH = '-') THEN
+	  BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+	IF CH IN DIGITS THEN
+          BEGIN  IVALID := TRUE; SINX := 1;
+            REPEAT
+              I := I*10+ORD(CH)-ORD('0');
+              FGET(F); CH := FWINDOW^[0]; SINX := SINX+1;
+              IF FUNIT = 1 THEN
+                WHILE CHECKDEL(CH,SINX) DO
+                  BEGIN
+                    IF SINX = 1 THEN I := 0 ELSE I := I DIV 10;
+                    FGET(F); CH := FWINDOW^[0]
+                  END
+            UNTIL NOT (CH IN DIGITS) OR FEOLN
+          END;
+	IF IVALID OR FEOF THEN
+	  IF NEG THEN I := -I ELSE (*NADA*)
+	ELSE SYSCOM^.IORSLT := IBADFORMAT
+      END;
+1:
+END (*FREADINT*) ;

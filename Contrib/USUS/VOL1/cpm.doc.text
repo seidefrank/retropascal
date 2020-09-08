@@ -1,0 +1,55 @@
+
+             SOME MISCELLANEOUS 8080/Z-80 INTERPRETER DOCUMENTATION
+       PLUS NOTES ON THE 8080 I/O ROUTINES AND CP/M-UCSD DISK CONVERSIONS
+
+     THE INTERPRETER does not use ANYTHING in page 0 (0000 to 00FF hex) except 
+the BIOS jump address at location 0001 and 0002.  This area is available for
+your use.
+
+     The cold start and warm reboot jump vectors at the start of a standard 
+CP/M BIOS jump vector table are used only as place holders; to save space, 
+place any initializing code within the PINIT.ASM file, where it will be 
+overwritten by SYSTEM.PASCAL once the interpreter has been read in.  It's best 
+if those first two jump vectors jump to a RETurn instruction somewhere in your 
+BIOS.
+
+     Location 200 hex contains a jump vector that will always send you back 
+into whatever the system was supposed to be doing at the moment.  I've found 
+it useful, for instance, if I tried to save something I was editing with the 
+disks out of the drives, and the system crashed.  After stopping the 
+processor and reinserting the disks, I can generally get going again by 
+starting up at location 200, unless the whole thing is dead.
+
+     The closest thing to a warm reboot is a reinitialization, which occurs if 
+a) a run-time error occurs or b) you type an "I" while at the system Command 
+level.  Useful if your system is behaving strangely after something went 
+wrong.
+
+     The only way I know of to get going again after you've hung up in some
+way (ie, infinite loop in a program) is to totally reboot.
+
+     
+     THE 8080/Z-80 ASSEMBLY LANGUAGE I/O ROUTINES ON THIS DISK consist of two
+or three sets of everything, by different authors.  INOUTREADY.TEXT contains
+two versions of console status checking (whether a character has been typed)
+and direct port i/o routines. Direct disk reading (to a numbered track and
+sector) is provided by DISKREAD.TEXT, READCPM.TEXT, and RWCPM.TEXT.  Only the
+last file allows direct writing to a numbered track and sector, but the others
+should be easily altered.  Most of these routines require an intact CP/M-style
+jump vector table at the start of the BIOS, which I have dispensed with in
+reorganizing the i/o section of the interpreter (see the file BOOTER.ASM on
+a subsequent disk), so I have not personally checked them out.  Assemble them
+and stick them in your SYSTEM.LIBRARY.
+
+
+     THERE ARE TWO CP/M-UCSD disk conversion programs on this disk, both
+written primarily in Pascal but calling assembly language routines to do the
+actual reading and writing.  You'll need to have included the necessary 
+routines in your SYSTEM.LIBRARY as noted above.
+
+     The first program consists of GETCPM.TEXT, also present as GETCPM2.TEXT, 
+both written by Barry Cole.  I have not tried them myself but understand that 
+they work well.  Documentation on program workings is sparce.
+
+     The second is written entirely in Pascal, CPMCOPY.TEXT, by J. M. Wierda, 
+and is well documented.

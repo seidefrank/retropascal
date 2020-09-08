@@ -1,0 +1,118 @@
+  This file describes the files contained on this diskette.
+The files contain sources for two different separate
+compilation units, each of which was written to conform to
+the USUS Standard Remote Separate Compilation Unit of August
+1981.  One of the units makes no assumptions about the modem
+in use.  The other requires the Hayes Microcomputer Products
+Smartmodem.
+  The description of each group of files follows the
+directory listing of the files.
+
+
+HSM.TROOT.TEXT    16  5-Dec-81    6 Text
+HSM.TINC1.TEXT    16  5-Dec-81   22 Text
+HSM.TINC2.TEXT    14  5-Dec-81   38 Text
+  These files contain TERMINAL, a terminal emulation
+program.  This version of TERMINAL will emulate a dumb
+terminal as well as use the capabilities of auto-dial if the
+Remote Unit claims auto-dial support is available.  The
+program is also able to:
+--Log received characters into a memory buffer and move the
+  buffer to a user-named disk file.
+--Send a text file to the remote system.
+--Send logon text to the remote system.
+--Change log files during a session.
+--Purge the log file upon user request.
+--Optionally respond to Compuserve's VideoTex CRT control
+  codes.
+See the source code for additional comments.
+  To use the program, first compile a USUS Remote Unit.
+Edit HSM.TROOT.TEXT's unit reference to point to the Unit's
+code file.  Compile using HSM.TROOT.TEXT as the compiler
+input file.  Using LIBRARY, create a code file containing
+both the output of the HSM.TROOT.TEXT compile and the Remote
+Unit object code.
+
+
+HSM.UROOT.TEXT    22  5-Dec-81   52 Text
+HSM.UINC1.TEXT    16  5-Dec-81   74 Text
+HSM.UINC2.TEXT    14 22-Dec-81  158 Text
+  These files contain an implemetation of the USUS Remote
+Separate Compilation Unit of August 1981 which expects to
+use a Hayes Smartmodem.  To use the unit, compile
+HSM.UROOT.TEXT after editing in any changes required in the
+CR_SETCOMMUNICATIONS routine.  See the comments in
+HSM.UROOT.TEXT for additional guidance.
+
+STD.UNIT.TEXT     24 16-Nov-81   90 Text
+STD.UNIT.CODE     11 22-May-82  114 Code
+  This implementation of the USUS Remote Unit assumes the 
+minimum about the communications connection.  It is useful
+when using an acoustic coupler environment or direct connect
+modem which does not have auto-dial capabilities, as well as
+in hardwire situations.  It does assume a synchronous BIOS
+and a standard implementation of UnitStatus, UnitRead, and
+UnitWrite.  It has been compiled under IV.0 and used
+extensively.
+
+USERLIB.TEXT       4 22-May-82  139 Text
+  This is a user library file that points to the standard
+unit's code file.  By entering "x" followed by 
+"TERM.MAIN L=USERLIB" one executes the most recent version 
+of TERMINAL.
+
+TERM.EMUL.TEXT    10 29-May-82  172 Text
+TERM.MAIN.TEXT    20 29-May-82  182 Text
+TERM.INIT.TEXT    22 29-May-82  202 Text
+TERM.LOG.TEXT     14 29-May-82  125 Text
+TERM.UTIL.TEXT    22  3-Jun-82  232 Text
+TERM.MAIN.CODE    32  3-Jun-82  254 Code
+  These files also contain the source and object of
+TERMINAL.  However, this version is much improved over the
+other.  The code file is for version IV.0 and has been used
+extensively.
+  New and improved features of this version include:
+  1) The memory buffer is moved to disk using
+BLOCKWRITE, instead of the much slower WRITE/WRITELN. 
+In addition, the file created is a legal text file. 
+That is, each block pair ends with <return> followed by
+nulls.
+  2) TERMINAL tells you how large the log file is in
+blocks.  This allows you to monitor the file size in
+case your available space is limited.
+  3) The Menu has more information in it.  The options 
+selected, the name of the log file, and the logon text
+selected are all displayed in the menu.
+  4) When returning to terminal emulation from the
+menu, the last 10 lines of the log file are
+redisplayed.
+  5) The program has been reorganized and segmented 
+to fit smaller machines (like my 56K 8080).
+  6) Logon text, previously compiled into the program,
+is now stored in a file, along with default option
+settings.  The file can reside on any blocked volume in
+the set [4,5,9..17].  The program will search first the
+prefix volume, then the system volume, then #4, #5, #9,
+and up to #17:.
+  The segmentation uses more segments than are available
+in some versions of the p-System.  This may result in
+compile errors under I.4, I.5, and II.x if some routines are
+not removed from the list of segment procedures.  See the
+documentation in TERM.MAIN.TEXT for additional information.
+  To use the program, first compile a USUS Remote Unit. Edit
+TERM.MAIN.TEXT's unit reference to point to the Unit's code
+file.  Compile using TERM.MAIN.TEXT as the compiler input
+file.  Using LIBRARY, create a code file containing both the
+output of the HSM.TROOT.TEXT compile and the Remote Unit
+object code or use a user library.
+
+
+  If questions come up regarding programs contained on this 
+volume, contact the author at 
+        Bob Peterson
+        P.O. Box 1686
+        Plano, Texas  75074
+        (214) 995-0618 Central time zone business hours
+        70235,326 on Compuserve via EMail or MUSUS
+        *BVL1707 or *ZLZ1912 on GTE Telemail
+

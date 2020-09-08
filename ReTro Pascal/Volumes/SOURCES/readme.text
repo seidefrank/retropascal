@@ -1,0 +1,188 @@
+How to build
+------------
+
+ - set the SOURCES disk as the Prefix
+
+F P SOURCES:
+// if SOURCES: is the first non-SYSTEM disk then this is the default
+Q
+
+ - compile the following:
+
+    - C .xxx.TEXT $
+      where xxx in (S.SYSTEM, S.FILER, S.EDITOR, S.COMPILER, S.LINKER, LIBRARY)
+    - key strokes for copy-paste:
+C S.COMPILER
+$
+C S.SYSTEM
+$
+C S.FILER
+$
+C S.EDITOR
+$
+C S.LINKER
+$
+C LIBRARY
+$
+C LIBMAP
+$
+
+ - deploy in FILER
+
+   TS.=.CODE,*SYSTEM.=
+   TLIBRARY.CODE,*
+   TLIBMAP.CODE,*
+   TSYSTEM.SYNTAX,*
+ 
+ - SYSTEM.LIBRARY:
+
+C TURTLEGRAP
+$
+C APPLESTUFF
+$
+C RETROSTUFF
+$
+XLIBRARY
+*
+TURTLEGRAP
+1 0
+NAPPLESTUFF
+2 1
+NRETROSTUFF
+1 2
+Q
+
+ - SYSTEM.STARTUP (requires SYSTEM.LIBRARY in some form)
+
+C STARTUP
+$
+
+ - sync back:
+
+    cdvol
+    ROBOCOPY 4 "c:\Private\Projects\UCSD Pascal for Metro\UCSD Pascal for Metro\Retro Pascal\Volumes\RETRO" /E
+   or
+    ROBOCOPY 4 "c:\frank\UCSD Pascal for Metro\UCSD Pascal for Metro\Retro Pascal\Volumes\RETRO" /E
+
+ - or:
+
+    cd "%HOMEPATH%\AppData\Local\Packages\c45d4f76-b1cf-4443-bcb4-ec12069e26fb_t3n3q47tzshd8\LocalState\Volumes
+    COPY sources\ALL.SYSTEM.CODE SYSTEM2\SYSTEM.PASCAL[CODE] /y
+    COPY sources\ALL.EDITOR.CODE SYSTEM2\SYSTEM.EDITOR[CODE] /y
+    COPY sources\ALL.COMPLR.CODE SYSTEM2\SYSTEM.COMPILER[CODE] /y
+    COPY sources\ALL.LINKER.CODE SYSTEM2\SYSTEM.LINKER[CODE] /y
+    COPY sources\ALL.FILER.CODE SYSTEM2\SYSTEM.FILER[CODE] /y
+    COPY sources\LIBRARY.CODE SYSTEM2\LIBRARIAN.CODE /y
+    COPY sources\LIBMAP.CODE SYSTEM2\LIBMAP.CODE /y
+    COPY sources\ERRORS.TEXT SYSTEM2\SYSTEM.SYNTAX[TEXT] /y
+
+ - test:
+
+EAPPLE3:GRAFDEMO
+QUR
+
+How system was bootstrapped
+---------------------------
+
+ - purchased USD 55 Apple Pascal license :)
+   http://store.16sector.com/index.php?main_page=product_info&cPath=2&products_id=32&zenid=al63i8cks2rv23pgdjea829kt7
+ - compile ALL.COMPLR.TEXT with Apple SYSTEM.COMPILER, running under Apple SYSTEM.PASCAL
+   (called COMPAPPLE.CODE)
+ - install as SYSTEM.COMPILER
+ - use it to compile ALL.SYSTEM.TEXT, running under Apple SYSTEM.PASCAL
+   (called SYSTEM1.CODE)
+ - install as SYSTEM.PASCAL
+ - compile ALL.COMPLR.TEXT once more, running under our SYSTEM.PASCAL
+   (called COMPILER1.CODE)
+ - install as SYSTEM.COMPILER
+
+SYSTEM2 is the first full round of all-self-built one
+-----------------------------------------------------
+
+see README.TEXT in there
+
+How to get all errors that the compiler uses
+--------------------------------------------
+
+Problem:  SYSTEM.SYNTAX is not in the UCSD distro and copyright Apple.
+Solution: All errors that are used by UCSD compiler must be from original distro
+          and thus not copyrighted; so recover it by filtering for errors used in the compiler.
+          (The UCSD EDITOR does use the SYSTEM.SYNTAX file.)
+
+copy SOURCES\ERRORS.TEXT SOURCES\ERRORS.OLD
+
+cat SOURCES\all.complr.text | sed 's/(\*/ /' |tr '; \t'  '\n'| grep 'ERROR(' ^
+ | sort | grep -v ERRORNUM | gawk '{if ($0 != L) {print}; L=$0}' ^
+ > a
+
+cat a | sed -e 's/ERROR(/ /' -e 's/)/:/' > p
+
+cat SOURCES\ERRORS.OLD | sed 's/^^/ /' ^
+ | grep -F -f p ^
+ | sed 's/^^ //' ^
+ > b
+
+cat b | sed 's/$/#/' | tr # '\r' > b1
+
+diff b1 SOURCES\ERRORS.OLD
+2a3
+>   3: 'PROGRAM' expected
+29a31,32
+>  56: 'IF' expected
+>  57: 'FILE' expected
+42a46
+> 112: Index type must not be real
+47a52
+> 118: Forward reference type identifier in variable declaration
+52a58
+> 124: F-format for reals only
+54a61,62
+> 127: Illegal parameter substitution
+> 128: Result type does not agree with declaration
+76a85
+> 151: Assignment to formal function is not allowed
+77a87
+> 153: Type error in read
+80a91
+> 157: Too many cases in case statement
+85a97,98
+> 163: Missing variant in declaration
+> 164: Substition of standard proc/func not allowed
+90a104,108
+> 170: Value parameter expected
+> 171: Standard file was re-declared
+> 172: Undeclared external file
+> 174: Pascal function or procedure expected
+> 175: Actual parameter max string length < formal Max length
+107a126
+> 204: 8 or 9 in octal number
+109a129
+> 252: Too many forward references of procedure entries
+110a131,145
+> 254: Too many long constants in this procedure
+> 256: Too many external references
+> 257: Too many externals
+> 258: Too many local files
+> 259: Expression too complicated
+> 300: Division by zero
+> 301: No case provided for this value
+> 302: Index expression out of bounds
+> 303: Value to be assinged is out of bounds
+> 304: Element expression out of range
+> 350: No data segment allocated
+> 351: Segment used twice
+> 352: No code segment allocated
+> 353: Non-intrinsic unit called from intrinsic unit
+> 354: Too many segments for Seg Dictionary
+116a152
+> 404: Error in writing list file, not enough room
+118a155,157
+> 407: Too many libraries
+> 408: (*$S+*) needed to compile units
+> 500: General assembler error
+
+wc b1 SOURCES\ERRORS.OLD
+ 118  666 4249 b1
+ 157  892 5696 SOURCES\ERRORS.OLD
+
+copy b1 SOURCES\ERRORS.TEXT

@@ -1,0 +1,212 @@
+{
+   Changes made by reviewer:
+        Replaced CHR(31) by RLF.
+        Replaced CHR(29) by CEOL.
+        Replaced PAGE(OUTPUT) by CLEARSCREEN.
+        Added code for screen control and line DEFINESTRINGS.
+        Cleaned up display (alignment, removal of previous
+          entries, etc.)
+        It was fairly easy to modify this program to (optionally)
+          send output to the PRINTER.  This was not done in this
+          version because the exact code depends on the capability
+          of the printer (presence or absence of form feeds for
+          example).
+                ---Henry E. Baumgarten
+}
+
+PROGRAM HOME_LOAN;
+
+TYPE    SHORTSTRING = STRING[3];
+
+VAR     CEOL,CEOP,RLF,CLEAR_LINE : SHORTSTRING;
+        A,R,Y,RATE,P,R12,R1,NP,FR,CM,CM1: REAL;
+        
+PROCEDURE CLEARSCREEN;    {Clears the TEXT screen}
+  VAR   CS : PACKED ARRAY[0..1] OF 0..255;
+  BEGIN
+    CS[0] := 27;
+    CS[1] := ORD('E');
+    UNITWRITE(1,CS,2)
+  END;
+
+PROCEDURE DEFINESTRINGS;
+  BEGIN
+    CEOL := '12';        {CEOL clears from cursor to end of line}
+    CEOL[1] := CHR(27);
+    CEOL[2] := 'K';
+    {The following was used by the Grundlers
+    CEOL := '1';
+    CEOL[1] := CHR(29);}
+    
+    RLF := '1';          {RLF is a reverse line feed}
+    RLF[1] := CHR(11);
+    {The following is for the H19
+    RLF := '12';
+    RLF[1] := CHR(27);
+    RLF[2] := 'I';}
+    {The following was used by the Grundlers
+    RLF := '1';
+    RLF[1] := CHR(31);}
+    
+    CEOP := '12';      {CEOP clears from cursor to end of page (screen)}
+    CEOP[1] := CHR(27);
+    CEOP[2] := 'J';
+    {The following was used by the Grundlers
+    CEOP := '1';
+    CEOP[1] := CHR(11);}
+    
+    CLEAR_LINE := '1';
+    CLEAR_LINE[1] := CHR(13);  {carriage return}
+    CLEAR_LINE := CONCAT(CEOL,CLEAR_LINE);
+  END;
+  
+FUNCTION INPUT_VALUE:REAL;
+
+{
+                                                 function by:  EDWARD J GRUNDLER
+}
+
+VAR I:INTEGER;
+    INP:STRING;
+    DEC,NEX,EX,NEG,OK:BOOLEAN;
+    EXPO,J,X:REAL;
+BEGIN
+  REPEAT
+    DEC:=FALSE;
+    EX:=FALSE;
+    READLN(INP);
+    IF LENGTH(INP)=0 THEN INP:='0';
+    OK:=NOT(INP[1]='E');
+    IF LENGTH(INP)>1 THEN
+      OK:=OK AND NOT((INP[1] IN ['+','-','.']) AND (INP[2]='E'));
+    FOR I:=1 TO LENGTH(INP) DO
+      BEGIN
+        OK:=OK AND (INP[I] IN ['.','-','+','E','0'..'9']);
+        IF (I>1) AND NOT EX THEN OK:=OK AND (INP[I] IN ['.','E','0'..'9']);
+        OK:=OK AND NOT(DEC AND(INP[I]='.'));
+        IF NOT DEC THEN DEC:=(INP[I]='.');
+        OK:=OK AND NOT(EX AND (INP[I]='E'));
+        IF NOT EX THEN EX:=(INP[I]='E');
+        IF I>1 THEN
+          OK:=OK AND NOT(EX AND (INP[I] IN ['+','-']) AND NOT(INP[I-1]='E'));
+        OK:=OK AND NOT(EX AND (INP[I]='.'))
+      END;
+    OK:=OK AND (INP[LENGTH(INP)] IN ['0'..'9','.']);
+    OK:=OK AND NOT(EX AND NOT(INP[LENGTH(INP)] IN ['0'..'9']));
+    IF NOT OK THEN WRITE(RLF,'Read Error. Try Again ',CEOL)
+  UNTIL OK;
+  X:=0;
+  DEC:=FALSE;
+  EXPO:=0;
+  NEG:=FALSE;
+  EX:=FALSE;
+  J:=1;
+  FOR I:=1 TO LENGTH(INP) DO
+    BEGIN
+      IF NOT DEC THEN DEC:=(INP[I]='.');
+      IF NOT NEG THEN NEG:=NOT EX AND (INP[I]='-');
+      IF NOT NEX THEN NEX:=EX AND (INP[I]='-');
+      IF NOT EX THEN EX:=(INP[I]='E');
+      IF EX AND NOT(INP[I] IN ['+','-','E']) THEN
+        EXPO:=EXPO*10+ORD(INP[I])-ORD('0');
+      IF NOT EX THEN
+        BEGIN
+          IF DEC AND NOT(INP[I] IN ['.','+','-']) THEN
+            BEGIN
+              J:=J/10;
+              X:=X+(ORD(INP[I])-ORD('0'))*J
+            END
+          ELSE
+            IF NOT(INP[I] IN ['.','+','-']) THEN X:=X*10+ORD(INP[I])-ORD('0')
+        END
+    END;
+  IF EX AND NEX THEN EXPO:=-EXPO;X:=X*EXP(LN(10)*EXPO);
+  IF NEG THEN INPUT_VALUE:=-X ELSE INPUT_VALUE:=X
+END;
+
+PROCEDURE GET_DATA;
+VAR CH: CHAR;
+BEGIN
+  CLEARSCREEN;
+  WRITE(' Type <space> to continue or Q(uit');
+  READ(KEYBOARD,CH);
+  IF CH IN ['Q','q'] THEN EXIT(HOME_LOAN);
+  WRITELN;
+  WRITE('Amt. of loan = '); A:=INPUT_VALUE;
+  WRITE('Annual percent interest rate = '); RATE:=INPUT_VALLUE;
+  WRITE('Length of loan (years) = '); Y:=INPUT_VALUE;
+END; { procedure GET_DATA }
+  
+PROCEDURE PAYMENT;
+  FUNCTION POWER(A,B:REAL):REAL;
+  BEGIN POWER:=EXP(B*LN(A)) END;
+BEGIN
+  R:=RATE/100;
+  R12:=R/12;
+  P:=A*R12/(1-POWER(1+R12,-12*Y))
+END;
+
+PROCEDURE DISPLAY;
+VAR YR,MO,NEXTYR: INTEGER;
+    BEGBAL,PAYINT,PAYPRIN,ENDBAL,TOTINT,TOTPRIN: REAL;
+    CH: CHAR;
+PROCEDURE FIRST_STUFF;
+BEGIN
+  CLEARSCREEN;
+  WRITELN(' Amt of Loan = ',A:12:2,'         Interest rate = ',RATE:6:2,' percent');
+  WRITELN(' Length of loan = ',Y:6:2,' years      Monthly payment = ',P:8:2);
+  R1:=RATE/1200+1;
+  NP:=12*Y;
+  FR:=0.5;
+  CM:=NP+LN(1-FR*(1-EXP(-NP*LN(R1))))/LN(R1);
+  WRITELN('The loan is ',(1-FR)*100:5:2,' percent paid off at ',TRUNC(CM/12)+1,
+               ' years ',CM-12*TRUNC(CM/12):5:2,' months');
+  CM1:=NP+LN(0.5)/LN(R1)+1;
+  WRITELN('Cross-over payment : ',TRUNC(CM1/12)+1,' years ',
+                CM1-12*TRUNC(CM1/12):5:2,' months');
+  WRITELN;
+END;
+BEGIN
+  FIRST_STUFF;
+  WRITELN('             Beginning Payment   Applied to  Ending');
+  WRITELN(' Year Month   Balance  Interest  Principal   Balance');
+  YR:=1; MO:=1; BEGBAL:=A; 
+  TOTINT:=0; TOTPRIN:=0;
+  WHILE BEGBAL>0 DO
+    BEGIN
+      PAYINT:=BEGBAL*R12;
+      PAYPRIN:=P-PAYINT;
+      ENDBAL:=BEGBAL-PAYPRIN;
+      IF (YR=1) OR (YR=Y) OR (YR=NEXTYR) THEN
+        begin
+          WRITELN(YR:4,MO:6,BEGBAL:11:2,PAYINT:9:2,PAYPRIN:12:2,ENDBAL:11:2);
+          TOTINT:=TOTINT+PAYINT; TOTPRIN:=TOTPRIN+PAYPRIN;
+          IF MO=12 THEN
+            begin
+              WRITELN;
+              WRITELN('   Totals for year:  Interest = ',TOTINT:8:2,
+                '    Principal = ',TOTPRIN:8:2);
+              WRITELN;
+              WRITE('Enter next year you want printed (0 to quit): ',CEOL);
+              NEXTYR:=TRUNC(INPUT_VALUE);
+              IF NEXTYR=0 THEN EXIT(DISPLAY);
+              TOTINT:=0; TOTPRIN:=0;
+              GOTOXY(0,7)
+            end;
+        end;
+      BEGBAL:=ENDBAL;
+      IF MO<12 THEN MO:=MO+1
+               ELSE begin MO:=1; YR:=YR+1 END;
+    END;
+END;
+
+BEGIN { main program HOME_LOAN }
+  DEFINESTRINGS;
+  REPEAT
+    GET_DATA;
+    PAYMENT;
+    DISPLAY
+  UNTIL FALSE;
+END.
+
+

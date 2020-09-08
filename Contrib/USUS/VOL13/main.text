@@ -1,0 +1,440 @@
+ 
+{**********************************************************************
+ 
+  READ_FIL_NAMES as it's name implies, reads an input and output file
+  name from the user's terminal. The two names can be seperated by a
+  comma, or a carriage return. If the comma is not followed by a name,
+  or the output file name prompt is given a carriage return, the output
+  name defaults to the input name, and a slash is prefixed to the front.
+ 
+  If either or both names are followed by a period, no extensions are
+  added to the end of that name. Otherwise, the extension .TEXT is
+  added to the name. In the case of the default output name, the exten-
+  sion depends upon whether the input name has been followed by a period.
+  If only a volume name is provided for the output name, it need not
+  be followed by a period to inhibit the extension, as this is checked for.
+ 
+  If either the file name, or a volume name prefix are too long, (see
+  UCSD Pascal manual) they are truncated without warning. The same is
+  true when adding the .TEXT extension, or the default prefix.  
+ 
+  When the file names have been formed, they are checked for bad char-
+  acters, and the existance of the appropiate disk files and volume
+  names. An input name must contain a file name, and certain volume
+  names are illegal. The output name need not contain a file name,
+  that is to say, it need only contain a volume name such as PRINTER:.
+  Any output volume name is acceptable so long as it is on line.
+ 
+  Any errors resulting from the above operations cause an error message
+  to be sent to the terminal, and the input sequence is started again.
+  READ_FIL_NAMES is exited when the file names are succesfully read, or
+  a blank input name is entered, or the EOF character (ctrl-C) is
+  entered any time during the the input sequence.
+ 
+ 
+  TEST_FILE tests for the existance of the file name and/or volume name
+  provided.
+ 
+  STRIP_SPACES strips any and all spaces out of the file name provided.
+ 
+  BAD_CHARS_IN tests if any characters occur in the file name that are  
+  not in the set of characters provided. If there are any, they are
+  bad characters.
+ 
+  TEST_NAME tests and truncates the length of the volume name, and the
+  file name. To the length of the file name are added the lengths of the
+  default prefix, and the extension, if any. Bad characters are tested
+  for, and on the input name, the volume name if any is compared to the
+  list of illegal volume names. The volume name, file name, and prefix,
+  and extension are then concatenated toegether.
+ 
+  MAKE_NAME calls TEST_NAME with the appropiate parameters after deciding
+  if the name passed it is suffixed with a period.
+ 
+***********************************************************************}
+ 
+ 
+ 
+Procedure read_fil_names(var in_name,
+                             out_name : string;
+                         var empty    : boolean);
+ 
+const
+   filenamelen = 15;
+   volnamelen  = 7;
+   suffix      = '.text';
+   prefix      = '/';
+   inp_delim   = ',';
+   vol_delim   = ':';
+   nul         = '';
+   star        = '*';
+ 
+type
+   warningtype = (clear,  badinp, badvol, badfil,
+                  volerr, filerr, illopp);
+   file_type   = (inp, out);
+   char_set    = set of char;
+   err_set     = set of 1..10;
+ 
+var
+   inp_string : string;
+   delim_pos  : posint;
+   fil_chars,
+   vol_chars  : char_set;
+   inp_errs,
+   out_errs   : err_set;
+   warning    : warningtype;
+   err_name   : string;
+   default    : boolean;
+ 
+ 
+ 
+ 
+      Procedure test_file(f_name    : string;
+                          err_codes : err_set);
+ 
+      var
+         error : posint;
+ 
+ 
+            Function file_status(f_name : string) : posint;
+ 
+            begin
+               {$I-} 
+                  reset(f, f_name);
+                  file_status := ioresult;
+                  close(f);
+               {$I+} 
+            end; { file_status }
+ 
+ 
+      begin  { test_file }
+ 
+         error := file_status(f_name);
+ 
+         if error in err_codes then
+            case error of
+               3  : warning := illopp;
+               9  : warning := volerr;
+               10 : warning := filerr;
+            end;
+ 
+      end; { test_file }
+ 
+ 
+ 
+ 
+      Procedure strip_spaces(var astring : string);
+ 
+      var
+         blank_pos : posint;
+ 
+      begin
+         blank_pos := pos(blank_char, astring);
+ 
+         while blank_pos > 0 do
+            begin
+               delete(astring, blank_pos, 1);
+               blank_pos := pos(blank_char, astring);
+            end;
+      end; { strip_spaces }
+ 
+ 
+ 
+ 
+      Function bad_chars_in(astring    : string;
+                            good_chars : char_set) : boolean;
+ 
+      var
+         char_pos     : posint;
+         illegal_char : boolean;
+ 
+      begin
+         char_pos := 1;
+         illegal_char := false;
+ 
+         while (char_pos <= length(astring)) and (not illegal_char) do
+            begin
+               if not(astring[char_pos] in good_chars)
+                  then illegal_char := true
+                  else char_pos := char_pos + 1;   
+            end;
+ 
+         bad_chars_in := illegal_char;
+      end; { bad_chars_in }
+ 
+ 
+ 
+ 
+      Procedure test_name(var f_name   : string;
+                              prefix,
+                              suffix   : string;
+                              fil_type : file_type);
+ 
+      var
+         vol_id,
+         fil_id  : string;
+         add_len,
+         vol_pos : integer;
+ 
+      begin
+         add_len := length(suffix) + length(prefix);
+ 
+         vol_pos := pos(vol_delim, f_name);
+ 
+         vol_id := copy(f_name, 1, vol_pos - 1);
+         fil_id := copy(f_name, vol_pos + 1, length(f_name) - vol_pos);
+ 
+         if length(vol_id) > volnamelen then
+            vol_id := copy(vol_id, 1, volnamelen);
+ 
+         if length(fil_id) > (filenamelen - add_len) then
+            fil_id := copy(fil_id, 1, filenamelen - add_len);
+ 
+         if bad_chars_in(vol_id, vol_chars) then
+            warning := badvol
+         else
+            if bad_chars_in(fil_id, fil_chars) then
+               warning := badfil
+            else
+               if (length(fil_id) = 0) and (fil_type = inp) then
+                  warning := badinp
+               else
+                  if (fil_type = inp) and
+                       ((vol_id = '#1') or
+                        (vol_id = '#2') or
+                        (vol_id = 'remin') or
+                        (vol_id = 'remout') or
+                        (vol_id = 'console') or
+                        (vol_id = 'printer') or
+                        (vol_id = 'keyboard')) then
+                      warning := illopp
+                  else
+                     if vol_id <> nul then
+                        begin
+                           if (vol_pos = length(f_name)) and
+                              (fil_type = out) then
+                                 f_name := concat(vol_id,
+                                                  vol_delim)
+                           else
+                              f_name := concat(vol_id,
+                                               vol_delim,
+                                               prefix,
+                                               fil_id,
+                                               suffix);
+                        end
+                     else
+                        f_name := concat(prefix,
+                                         fil_id,
+                                         suffix);
+ 
+      end; { test_name }
+ 
+ 
+ 
+ 
+      Procedure make_name(var fil_name : string;
+                              prefix,
+                              suffix   : string;
+                              fil_type : file_type;
+                              dsk_errs : err_set);
+ 
+      var
+         nam_len : posint;
+ 
+      begin
+         nam_len := length(fil_name);
+ 
+         if fil_name = dot then
+            warning := badinp
+         else
+            if fil_name[nam_len] = dot then
+               begin
+                  delete(fil_name, nam_len, 1);   
+                  test_name(fil_name, prefix, nul, fil_type)
+               end
+            else
+               test_name(fil_name, prefix, suffix, fil_type);
+ 
+         if warning = clear then
+            test_file(fil_name, dsk_errs);
+      end; { make_name }
+ 
+ 
+ 
+ 
+begin  { read_fil_names }
+ 
+   empty := false;
+   inp_errs := [3, 9, 10];
+   out_errs := [3, 9];
+   fil_chars := ['a'..'z'] + ['A'..'Z'] + ['0'..'9'] +
+                   ['-', '/', '\', '_', '.'];
+   vol_chars := fil_chars + [pound] + [star];
+ 
+   repeat
+      in_name := nul;
+      out_name := nul;
+      err_name := 'INPUT';
+      warning := clear;
+      default := false;
+ 
+      write('Input file: ');
+ 
+      readln(inp_string);
+      strip_spaces(inp_string);
+ 
+      if (inp_string = nul) or eof(input) then
+         empty := true
+      else
+         begin
+            delim_pos := pos(inp_delim, inp_string);
+ 
+            if delim_pos = 0 then
+               begin
+                  in_name := inp_string;
+                  write('Output file: ');
+ 
+                  readln(inp_string);
+                  strip_spaces(inp_string);
+ 
+                  if eof(input) then
+                     empty := true
+                  else
+                     if inp_string = nul then
+                        begin
+                           default := true;
+                           out_name := in_name;
+                        end
+                     else
+                        out_name := inp_string;
+               end
+            else
+               if delim_pos = 1 then
+                  warning := badinp
+               else
+                  begin
+                     in_name := copy(inp_string,
+                                     1,
+                                     delim_pos - 1);
+                     out_name := copy(inp_string,
+                                      delim_pos + 1,
+                                      length(inp_string) - delim_pos);
+                     if out_name = nul then   
+                        begin
+                           default := true;
+                           out_name := in_name;
+                        end;
+                  end;
+ 
+            if (warning = clear) and (not empty) then
+               begin
+                  make_name(in_name,
+                            nul,
+                            suffix,
+                            inp,
+                            inp_errs);
+ 
+                  if warning = clear then
+                     begin
+                       err_name := 'OUTPUT';
+ 
+                       if default then
+                          make_name(out_name,
+                                    prefix,
+                                    suffix,
+                                    out,
+                                    out_errs)
+                       else
+                          make_name(out_name,
+                                    nul,
+                                    suffix,
+                                    out, 
+                                    out_errs);
+                     end;
+               end;
+ 
+            if warning <> clear then
+               begin
+                  writeln;
+                  write('ERROR IN ', err_name, ' FILE SPECIFICATION : ');
+                  case warning of
+                     badinp : writeln('No file name supplied');
+                     badvol : writeln('Illegal character in volume name');
+                     badfil : writeln('Illegal character in file name');
+                     volerr : writeln('No such volume on line');
+                     filerr : writeln('No such file on disk');
+                     illopp : writeln('Illegal volume name');
+                  end; { case }
+                  writeln;
+               end;
+ 
+         end; { if }
+ 
+   until (empty or (warning = clear));
+ 
+end; { read_fil_names }
+
+{**********************************************************************
+ 
+  FRONT_END is RUNON's driver.  It consists of a single loop that
+  repeats until the user types EOF (^C) at the terminal. The file
+  names are read, the system global variables are then initialized,
+  and the input file is processed.
+ 
+**********************************************************************}
+ 
+ 
+Procedure front_end;
+ 
+var
+   empty_name : boolean;
+ 
+ 
+begin   { front end ( user interface and main loop )  }
+ 
+   init_const;
+ 
+   repeat
+      writeln;
+      read_fil_names(file_in, file_out, empty_name);
+      writeln;
+ 
+      if not empty_name then
+         begin
+            init_vars;
+ 
+            reset(s0, file_in);
+            rewrite(dest, file_out);
+ 
+            writeln(file_in, ' --> ', file_out);
+            writeln;
+ 
+            process_file(s0, false);
+ 
+            close(s0);
+            close(dest, lock);
+         end;
+   until eof(input);
+ 
+end;  { front end }
+ 
+{**********************************************************************
+ 
+  Main program.  Prints a greeting at the user's terminal, and
+  calls FRONT_END.
+ 
+**********************************************************************}
+ 
+begin   {* main program *}
+ 
+   writeln;
+   writeln('RUNON Text Formatter [', version_number, ']');
+ 
+   front_end;
+ 
+end   { program }.
+ 
+ 
+ 
+

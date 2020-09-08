@@ -1,0 +1,246 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.PRNT.TEXT               revised 31-May-82             *
+*                                                                       *
+************************************************************************}
+
+
+
+
+{************************************************************************
+*                                                                       *
+*  The three procedures which follow print the B-tree as a B-tree and   *
+*  traverse the tree both inorder and postorder.  For a useful program, *
+*  these procedures must be deleted and new data output procedures      *
+*  written.  Since personal taste and intended use play such signif-    *
+*  cant role in determining what is a suitable format, no attempt has   *
+*  been made to suggest alternatives.                                   *
+*                                                                       *
+************************************************************************}
+
+
+
+procedure PRINTTREE(N,BTREE_LEVEL:integer);
+var I:integer;          {loop control variable}
+    PERSONS:PERSFILE;
+begin
+  if not(N<0) then begin        {if N<0 then node is "null" node}
+    write(OUTFILE,N:4);
+    reset(PERSONS,PERSON_FILE);   {open the data file for display}
+    seek(PERSONS,N);            {set file window to node N}
+    get(PERSONS);               {load file buffer}
+    for I:=1 to BTREE_LEVEL do write(OUTFILE,'    ');
+      {provides horizontal indication of different levels}
+    for I:=1 to PERSONS^.NODESIZE do write(OUTFILE,PERSONS^.DATA[I].KEY:12);
+      {print out persons in node}
+    writeln(OUTFILE);
+    PRINTTREE(PERSONS^.P0,BTREE_LEVEL+1);  {print out lessor successor node}
+    for I:=1 to PERSONS^.NODESIZE do       {print out other successor nodes}
+      PRINTTREE(PERSONS^.DATA[I].SUCC_NODE,BTREE_LEVEL+1);
+  end; {if not(N<0)}
+  close(PERSONS)                {close the file}
+end; {PRINTTREE}
+
+procedure INORDER(NODENUM:integer);
+{************************************************************************
+*                                                                       *
+*  This procedure traverses a btree in order and prints out the data    *
+*  in the correct order.  For this program, it will print out the data  *
+*  in alphabetical order of the keys.  Duplicate keys will be printed   *
+*  in whatever order they are in linked list.  It should be noted that  *
+*  for ASCII characters alphebetical order implies that "0" comes       *
+*  before "9" which comes before "a" which, in turn, comes before "A".  *
+*                                                                       *
+************************************************************************}
+var  SLOT:integer;              {which data element being visited}
+begin
+  if NODENUM>0 then exit(INORDER);
+    {no such record exists...  prevents useless search when
+     FILE_LEN.PERSON_ROOT=-1}
+  SLOT:=0;                      {initialize slot}
+  seek(PERSONS,NODENUM);        {set file window to node NODENUM}
+  get(PERSONS);                 {load file buffer}
+  {if PERSONS^.NODESIZE<1 then exit(INORDER);}   {node is empty}
+  if DUPLICATE then begin       {print out duplicate nodes}
+    for SLOT:=1 to PERSONS^.NODESIZE do begin
+      write(OUTFILE,NODENUM:4,'    ');
+      writeln(OUTFILE,PERSONS^.DATA[SLOT].KEY,'  ',PERSONS^.DATA[SLOT].FIRST)
+    end; {for SLOT}
+    if PERSONS^.P0>=0 then INORDER(PERSONS^.P0);
+      {more duplicate keys exists so print them out}
+    DUPLICATE:=false;           {reset flag/control variable}
+  end  {if DUPLICATE}
+  else begin
+    if PERSONS^.P0>=0 then begin
+      {if P0>=0 then there is a key with a value less than DATA[1].KEY}
+      INORDER(PERSONS^.P0);       {see if there are more "lessor" keys}
+      seek(PERSONS,NODENUM);      {reset the file windown to node NODENUM}
+      get(PERSONS)                {load file buffer}
+    end; {if PERSONS^.P0>=0}
+{************************************************************************
+*                                                                       *
+*  The for..do loop which follows prints DATA[SLOT] of node number      *
+*  NODENUM, and checks to see if there are some data greater than the   *
+*  datum   DATA[SLOT] in a successor node.  If there are, the successor *
+*  node is checked.  Finally the file window is reset in order to       *
+*  repeat the entire process for each datum in the node NODENUM.        *
+*                                                                       *
+************************************************************************}
+    for SLOT:=1 to PERSONS^.NODESIZE do begin
+      write(OUTFILE,NODENUM:4,'    ');
+      writeln(OUTFILE,PERSONS^.DATA[SLOT].KEY,'  ',PERSONS^.DATA[SLOT].FIRST);
+         {print data}
+      if PERSONS^.DATA[SLOT].DUPE>=0 then begin {a duplicate key exists}
+        DUPLICATE:=true;        {set flag to print out duplicate keys}
+        INORDER(PERSONS^.DATA[SLOT].DUPE);      {print them out}
+        seek(PERSONS,NODENUM);  {reset file window to node "NODENUM"}
+        get(PERSONS)            {load file buffer}
+      end; {if PERSONS^.DATA[SLOT].DUPE>=0}
+      if PERSONS^.DATA[SLOT].SUCC_NODE>=0 then begin
+          {keys with a value > DATA[SLOT].KEY exist in a successor node}
+        INORDER(PERSONS^.DATA[SLOT].SUCC_NODE);   {check successor node}
+        seek(PERSONS,NODENUM);    {reset file window to node NODENUM}
+        get(PERSONS)              {load file buffer}
+      end  {if PERSONS^.DATA[SLOT].SUCC_NODE>=0}
+    end; {for SLOT}
+  end  {else begin}
+end; {INORDER}
+
+procedure POSTORDER(NODENUM:integer);
+{************************************************************************
+*                                                                       *
+*  This procedure traverses a btree in postorder and prints out the     *
+*  data in inverse order.  For this program, it will print out the data *
+*  in reverse alphabetical order of the keys.  Duplicate keys will be   *
+*  printed out in whatever order they are in in the linked list.  It    *
+*  should be noted that for ASCII characters alphabetical order implies *
+*  that "0" comes before "9" which comes before "a" which, in turn,     *
+*  comes before "A".                                                    *
+*                                                                       *
+************************************************************************}
+var  SLOT:integer;              {loop control variable}
+begin
+  if NODENUM>0 then exit(POSTORDER);
+    {no such record exists...  prevents useless search when
+     FILE_LEN.PERSON_ROOT=-1}
+  SLOT:=0;                      {initialize SLOT}
+  seek(PERSONS,NODENUM);        {set file window to node NODENUM}
+  get(PERSONS);                 {load file buffer}
+  {if PERSONS^.NODESIZE<1 then exit(POSTORDER);} {node is empty}
+  if DUPLICATE then begin       {print out duplicate nodes}
+    for SLOT:=1 to PERSONS^.NODESIZE do begin
+      write(OUTFILE,NODENUM:4,'    ');
+      writeln(OUTFILE,PERSONS^.DATA[SLOT].KEY,'  ',PERSONS^.DATA[SLOT].FIRST)
+    end; {for SLOT}
+    if PERSONS^.P0>=0 then INORDER(PERSONS^.P0);
+      {more duplicate keys exists so print them out}
+    DUPLICATE:=false;           {reset flag/control variable}
+  end  {if DUPLICATE}
+  else begin
+    if PERSONS^.DATA[PERSONS^.NODESIZE].SUCC_NODE>=0 then begin
+      {there are data greater than PERSONS^.DATA[PERSONS^.NODESIZE].KEY}
+      POSTORDER(PERSONS^.DATA[PERSONS^.NODESIZE].SUCC_NODE);  {check them}
+      seek(PERSONS,NODENUM);      {reset file window to node NODENUM}
+      get(PERSONS)                {load file buffer}
+    end; {if PERSONS^.DATA[PERSONS^.NODESIZE].SUCC_NODE>=0}
+{************************************************************************
+*                                                                       *
+*  The for..do loop which follows prints DATA[SLOT] of node number      *
+*  NODENUM, and checks to see if there are some data lessor than the    *
+*  datum   DATA[SLOT] in a successor node.  If there are, the successor *
+*  node is checked.  Finally the file window is reset in order to       *
+*  repeat the entire process for each datum in the node NODENUM.        *
+*                                                                       *
+************************************************************************}
+    for SLOT:=PERSONS^.NODESIZE downto 1 do begin
+      write(OUTFILE,NODENUM:4,'    ');
+      writeln(OUTFILE,PERSONS^.DATA[SLOT].KEY,'  ',PERSONS^.DATA[SLOT].FIRST);
+         {print datum}
+      if PERSONS^.DATA[SLOT].DUPE>=0 then begin {a duplicate key exists}
+        DUPLICATE:=true;        {set flag to print out duplicate keys}
+        INORDER(PERSONS^.DATA[SLOT].DUPE);      {print them out}
+        seek(PERSONS,NODENUM);  {reset file window to node "NODENUM"}
+        get(PERSONS)            {load file buffer}
+      end; {if PERSONS^.DATA[SLOT].DUPE>=0}
+      if SLOT>1 then begin
+          {if SLOT=1 then runtime error results because DATA[SLOT-1]
+           would be DATA[0] which doesn't exist}
+        if PERSONS^.DATA[SLOT-1].SUCC_NODE>=0 then begin
+            {there is lessor data}
+          POSTORDER(PERSONS^.DATA[SLOT-1].SUCC_NODE);     {check it}
+          seek(PERSONS,NODENUM);  {reset file window to node NODENUM}
+          get(PERSONS)            {load file buffer}
+        end  {if PERSONS^.DATA[SLOT-1].SUCC_NODE>=0}
+      end  {if SLOT>1}
+{************************************************************************
+*                                                                       *
+*  The next line checks to see if there is any lessor data than         *
+*  the datum in DATA[1] in a successor node, and if so it checks that   *
+*  successor node.                                                      *
+*                                                                       *
+************************************************************************}
+      else if PERSONS^.P0>=0 then POSTORDER(PERSONS^.P0);
+    end  {for SLOT}
+  end  {else begin}
+end; {POSTORDER}
+
+procedure PRINT_IT;
+{************************************************************************
+*                                                                       *
+*  Print out the btree and inorder and postorder traversals.            *
+*                                                                       *
+************************************************************************}
+begin
+  CLEARSCREEN;
+  gotoxy(0,4);
+  write('Print out B-tree?  (y/n)  ');
+  if YES then begin
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,'--> PERSON B-TREE');
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,' Node');
+    writeln(OUTFILE);
+    PRINTTREE(FILE_LEN.PERSON_ROOT,1);   {print the b-tree}
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+  end; {if YES}
+  writeln;
+  writeln;
+  write('Traverse b-tree inorder?  (y/n)  ');
+  if YES then begin {do it}
+    reset(PERSONS,PERSON_FILE); {open data file}
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,'--> INORDER TRAVERSAL');
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,' Node');
+    writeln(OUTFILE);
+    INORDER(FILE_LEN.PERSON_ROOT);     {traverse tree}
+    close(PERSONS,lock);        {close the data file}
+  end; {if CH in}
+  writeln;
+  writeln;
+  write('Traverse b-tree in postorder?  (y/n)  ');
+  if YES then begin {do it}
+    reset(PERSONS,PERSON_FILE); {open data file}
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,'--> POSTORDER TRAVERSAL');
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+    writeln(OUTFILE,' Node');
+    writeln(OUTFILE);
+    POSTORDER(FILE_LEN.PERSON_ROOT);   {traverse tree}
+    close(PERSONS,lock);        {close the data file}
+    writeln(OUTFILE);
+    writeln(OUTFILE);
+  end  {if CH in}
+end; {PRINT_IT}
+
+
+
+
+

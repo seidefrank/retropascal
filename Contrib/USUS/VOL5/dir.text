@@ -1,0 +1,233 @@
+PROGRAM   DIR;
+
+{ This program was originally written by Frank Monaco, I believe, and appears
+  in its original form as part of UNIT.GOOD.  I've been hankering after a
+  decent directory lister for a while; so I took over and basically rewrote
+  the program, though chunks of Frank's code are scattered here and there.
+  Now I like it.  You may feel the screen is too cluttered and want to remove
+  the last column of the directory list, the first block no., but I find this
+  useful.  
+  
+  Meagre attempts were made to format the display properly for terminals with 
+  less than 80-column lines, though you will have to pay attention to that if 
+  you have a narrow screen.  It should work OK for terminals of any number of
+  lines if you correct the constant LastLine.  The constant UserPicksUnit gives
+  you the option (at compile time) to fix the unit # of the directory to be
+  displayed, or to ask for it at run time.
+  
+  This program is for NONcommercial use only, without written permission from
+  the authors.  Jim Gagne, Datamed Research, 1433 Roscomare Road, Los Angeles,
+  California 90024.}
+  
+CONST
+        ScreenWidth = 80;
+        LastLine = 23;          {last line no. on screen, starting from line 0.}
+        MaxDirEnt   = 77;
+        Testing = true; 
+        UserPicksUnit = true;   
+{if false, name the program by the unit number and just type, for example, 
+ "X)ecute 4" to see the directory of Unit 4}
+        
+        FixedUnitNum = 4;
+{used only if UserPicksUnit = false; choose whichever unit you want to display}
+
+TYPE 
+
+     DATEREC = PACKED RECORD
+                        MONTH: 0..12;
+                        DAY: 0..31;
+                        YEAR: 0..100
+               END;
+
+     DIRRANGE = 0..MaxDirEnt;
+
+     VID = STRING[7];
+     TID = STRING[15];
+     FILEKIND = (UNTYPED,XDISK,CODE,TEXT,
+                 INFO,DATA,GRAF,FOTO,SECUREDIR);
+
+     DIRENTRY = RECORD
+                  DFIRSTBLK: INTEGER;
+                  DLASTBLK: INTEGER;
+                  CASE DFKIND:FILEKIND OF
+                    SECUREDIR,UNTYPED: 
+                                       (DVID:VID;
+                                        DEOVBLK,
+                                        DLOADTIME,
+                                        DBLOCKS:INTEGER;
+                                        DLASTBOOT:DATEREC);
+                    XDISK,CODE,TEXT,INFO,DATA,
+                    GRAF,FOTO: 
+                               (DTID:TID;
+                                DLASTBYTE:1..512;
+                                DACCESS:DATEREC)
+                END;
+
+     DIRP = ^DIRECTORY;
+     DIRECTORY = ARRAY[DIRRANGE] OF DIRENTRY;
+
+
+VAR 
+
+    UNITNUM, I, J, RoomLeft, TotlBlocks, SCount, FCount,
+      DirLinesThatFit: INTEGER;
+    CHBUF : char;
+    IdxArry: ARRAY [DIRRANGE] OF Integer;
+    BUFR: PACKED ARRAY[0..2048] OF CHAR;
+    DIRX: DIRECTORY;
+
+
+PROCEDURE AlphabetizeDirectory;
+VAR i, j, k, temp: integer;
+    Done: boolean;
+
+BEGIN
+  Write (i, j);         {I don't know why I need this statement, but without
+                         it I get a value range error, because the assignment
+                         statements for i & j do not appear to execute.}
+  i := 1;
+  j := Dirx[0].DLOADTIME;
+  REPEAT
+    IF Length (DIRX[i].DTID) > 0
+      THEN IdxArry[i] := i
+      ELSE IdxArry[i] := 0;
+    i := i + 1
+  UNTIL i > j;
+  FOR i := 2 TO DIRX[0].DLOADTIME DO IF IdxArry[i] > 0
+    THEN BEGIN
+      j := i;
+      k := j;
+      REPEAT k := k - 1 UNTIL (IdxArry [k] > 0) OR (k = 0);
+      Done := false;
+      REPEAT IF (k > 0) AND (j > 1) 
+        THEN IF (DIRX [IdxArry [j]].DTID < DIRX [IdxArry [k]].DTID) 
+          THEN BEGIN
+            temp := IdxArry[k];
+            IdxArry[k] := IdxArry[j];
+            IdxArry[j] := temp;
+            j := j - 1;
+            k := j;
+            REPEAT k := k-1 UNTIL (IdxArry[k] > 0) OR (k = 0);
+          END
+          ELSE Done := true
+        ELSE Done := true
+      UNTIL Done;
+    END {then};
+END {AlphabetizeDirectory};
+
+
+PROCEDURE WriteDate (Date: DateRec);
+BEGIN
+  WITH Date DO
+    BEGIN
+      WRITE(DAY:3,'-');
+      CASE MONTH OF
+        1: WRITE('Jan');
+        2: WRITE('Feb');
+        3: WRITE('Mar');
+        4: WRITE('Apr');
+        5: WRITE('May');
+        6: WRITE('Jun');
+        7: WRITE('Jul');
+        8: WRITE('Aug');
+        9: WRITE('Sep');
+        10: WRITE('Oct');
+        11: WRITE('Nov');
+        12: WRITE('Dec');
+      END {case};
+      WRITE('-',YEAR:2);
+    END {with};
+END;
+
+
+PROCEDURE ListUnusedBlocks;
+VAR i, j, Next: integer;
+
+BEGIN
+  i := 1;
+  WHILE (Length (DIRX[0].DTID) = 0) AND (i < TotlBlocks) DO i := i + 1;
+  Next := DIRX[i].DLASTBLK;
+  Write ('Unused blocks = ');
+  FOR i := i + 1 TO DIRX[0].DLOADTIME DO WITH DIRX[i] DO
+    IF Length (DTID) > 0
+      THEN BEGIN
+        IF DFIRSTBLK > Next
+          THEN Write (Next, '-', DFIRSTBLK - 1, '=', DFIRSTBLK - Next, ', ');
+        Next := DLASTBLK;
+      END;
+  IF Next < TotlBlocks
+    THEN Write (Next, '-', TotlBlocks - 1, '=', TotlBlocks - Next)
+END;
+  
+
+BEGIN
+IF UserPicksUnit
+  THEN BEGIN
+   {note: extend the prompt if you really do have units 9 & 10 on line}
+     WRITE ('Enter the unit number (4 or 5) for the directory you wish --> ');
+     REPEAT Read (keyboard, chbuf) UNTIL (chbuf IN ['4', '5', '9', '1']);
+     Unitnum := ORD (chbuf) - ORD ('0');
+     IF Unitnum = 1 then Unitnum := 10;
+     Writeln (Unitnum);
+  END
+  ELSE Unitnum := FixedUnitNum;
+  {$I-}
+  UNITREAD(UNITNUM,DIRX[0],2048,2);
+  {$I+}
+  IF IORESULT <> 0
+    THEN
+      BEGIN
+        WRITELN('Unit No. ', Unitnum, 'is not on line.');
+        EXIT(DIR);
+      END;
+  AlphabetizeDirectory;
+  Gotoxy (0,LastLine);
+  Writeln; Writeln; Writeln; {clear screen}
+  Gotoxy ((ScreenWidth - 44) DIV 2, 1);
+  WITH DIRX[0] DO 
+    BEGIN
+      WRITELN ('Directory of Unit #', Unitnum, ' -**- Volume ', DVID,':');
+      RoomLeft := DBLOCKS;
+      TotlBlocks := DBLOCKS;
+    END;
+  I := 1;
+  WHILE (Length (DIRX[I].DTID) = 0) AND (I < DIRX[0].DLOADTIME) DO I := I + 1;
+  RoomLeft := RoomLeft - DIRX[I].DFIRSTBLOCK;
+  SCount := 0;
+  FCount := 0;
+  DirLinesThatFit := LastLine - 4;
+  FOR I:=1 TO DIRX[0].DLOADTIME DO
+    BEGIN
+      IF IdxArry[I] > 0 THEN WITH DIRX[IdxArry[I]] DO
+        BEGIN
+          Gotoxy 
+      ((SCount DIV DirLinesThatFit) * 40, (SCount MOD DirLinesThatFit) + 3);
+          SCount := SCount + 1;
+          J := DLASTBLK-DFIRSTBLK;
+          WRITE(DTID,' ':16-LENGTH(DTID), J: 3, ' ');
+          RoomLeft := RoomLeft - J;
+          WriteDate ( DACCESS );
+          Write (DFIRSTBLK:5);
+        END {then};
+     if SCount mod (DirLinesThatFit * 2) = 0
+       then begin
+         gotoxy ((ScreenWidth - 32) DIV 2, LastLine);
+         write ('tap <space bar> to continue ');
+         SCount := 0;
+         FCount := FCount + (DirLinesThatFit * 2);
+         repeat
+           read ( chbuf )
+         until chbuf = ' ';
+       end;
+    END {for};
+  Gotoxy ((ScreenWidth - 52) DIV 2, LastLine-1);
+  SCount := SCount + FCount;
+  Write (SCount);
+  IF SCount = 1 THEN Write (' file; ') ELSE Write (' files; '); 
+  Writeln (TotlBlocks - RoomLeft, ' blocks used, ', 
+    RoomLeft, ' remaining, ', TotlBlocks, ' total.');
+  ListUnusedBlocks;
+END.
+
+
+

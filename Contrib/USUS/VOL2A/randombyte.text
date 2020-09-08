@@ -1,0 +1,9 @@
+        .FUNC    RANDIT,0
+        LD      A,R
+        LD      B,0
+        LD      C,A
+        POP     HL
+        PUSH    BC
+        JP      (HL)
+        .END
+

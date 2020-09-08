@@ -1,0 +1,358 @@
+{$S+}
+{$L-PLOT_FUNC.LIST}
+
+{
+                                              program by:  EDWARD J GRUNDLER
+                                        modifications by:  KEN GAAL
+                                        modifications by:  DENNIS E GRUNDLER
+                                               edited by:  Henry E. Baumgarten
+                                                           Clifford L. Bettis
+   Changes made in editing and notes:
+     Changed CEOL (clear_to_end_of_line) and RLF (reverse_line_feed)
+       and removed these to the unit SCREEN_STUFF.  For use with the Terak
+       the reviewer used Terak emulator code in SCREEN_STUFF.  RLF did not
+       appear to function properly in all instances, but the screen display
+       was legible. The orginal version would appear to be acceptable for the
+       Terak in the TK emulator mode.
+     Changed all instances of PAGE(OUTPUT) to CLEARSCREEN, which
+       clears the text but not graphics portion of the screen (required
+       by versions 1.5 and 2.0 from Terak). Changed the Boolean variable
+       CLEAR_SCREEN to CLR_SCREEN.
+     Initialized PSCALE to 6.0.  Was not initialized in original, leading
+       on occasion to run-time errors depending on what was pointed to
+       by PSCALE.
+     Hiplot routines could not be checked on the Terak.  To test these
+       the external procedures, DRAWLINE and THROTTLE, in the GRAPHICS unit
+       were replaced with the commented-out procedures given there 
+       (which should function acceptably but may not be as fast as the assembly
+       language routines provided as intrinsics by Terak)  and all UNITWRITE's
+       to unit 3 were commented out.  With these revisions the hard copy
+       routines appeared to duplicate the screen output.  Note, however,
+       that the plotter pen may hit the stops, and the plots are rather crude
+       by current standards.  The routines are intended only for the small,
+       dumb Hiplot, although they could be edited to function with any of
+       the Hiplot series.
+     POST_ENTRY_OF_FUNCTION may be replaced by POST_FIX if the extra features
+       of the latter are desired.
+     Despite assertions in the source program, the reviewers find that undefined
+       values of F(X) ARE plotted (as the last defined value) and error counts
+        are not reported.
+}
+PROGRAM FUNC;
+USES {$U GRAPH.LIBRARY} SCREEN_STUFF,POST_ENTRY_OF_FUNCTION,GRAPHICS;
+
+VAR NEW_FUNCTION,NEW_LIMITS,CLR_SCREEN,BREAK,HARDCOPY,TICK_MARKS:BOOLEAN;
+    LF,ANS,CH:CHAR;
+    R,I,XSTART,YSTART,YSTOP,ERROR_COUNT:INTEGER;
+    X,X1,XL,XR,YL,YU,XRNG,YRNG,XINC,YINC,Y1,Y2,YTOP,YBOT,XTICK,YTICK:REAL;
+    DEVICE:UNITTYPE;
+    FIRST_TIME:BOOLEAN;
+
+{  The modifications that were made by KEN GAAL served to make the number of
+ dots along the X and Y axes equally proportional.  These modifications also
+ changed the method of labeling the X and Y axes.  The SCREEN had boundaries
+ placed upon it for a more appealing output. }
+ 
+{  The modifications made by DENNIS E GRUNDLER were extensive modifications
+ which enhanced the operation of the program considerably.  The user may now
+ enter a constant expression when asked for a value (*even pi may be entered*).
+   
+   Many sections of the code were rewritten for clarification.  (* several of
+ these modifications were fairly minor *) 
+ 
+   The major modification was to bind in a unit (GRAPHICS) which allows the
+ user to drive either the PLOTTER or the SCREEN or BOTH devices.  The unit
+ gives the programmer more time to concentrate upon the program rather than
+ having to figure out how to make the plot.}
+ 
+FUNCTION INPUT_VALUE(PROMPT:STRING):REAL;
+
+VAR SAVED_FUNCTION:STRING;
+
+BEGIN
+   SAVED_FUNCTION:=ENTERED_FUNCTION;
+   WRITE(RLF,PROMPT,CEOL);
+   GET_FUNCTION;
+   INPUT_VALUE:=F(0,0,0);
+   ENTERED_FUNCTION:=SAVED_FUNCTION;
+   REPLACE_FUNCTION;
+END;
+
+PROCEDURE HELP;
+BEGIN
+  CLEARSCREEN;
+  WRITELN('THIS PROGRAM PLOTS THE ENTERED FUNCTION');
+  WRITELN;
+  WRITELN('THE OPERATOR IS ASKED FOR THE FOLLOWING INPUTS:');
+  WRITELN;
+  WRITELN('F(X) = ');
+  WRITELN('THE LOWER VALUE OF "X"');
+  WRITELN('THE UPPER VALUE OF "X"');
+  WRITELN('THE LOWER VALUE OF "Y"');
+  WRITELN('THE UPPER VALUE OF "Y"');
+  WRITELN;
+  WRITELN('IF THE FUNCTION IS EVALUATED AT AN UNDEFINED POINT,');
+  WRITELN('NOTHING IS PLOTTED');
+  WRITELN;
+  WRITELN('press RETURN to continue');
+  READLN;
+  CLEARSCREEN
+END;
+
+         
+PROCEDURE INITIALIZE;
+
+FUNCTION QUERY(PROMPT:STRING):BOOLEAN;
+
+BEGIN
+   WRITELN(RLF,PROMPT,CEOL);
+   READ(KEYBOARD,ANS);
+   QUERY:=ANS IN ['Y','y'];
+END;
+
+BEGIN {INITIALIZE}
+  ERROR_COUNT:=0;
+  GOTOXY(0,0);
+  WRITE(CEOL,LF,CEOL,LF,CEOL);
+  GOTOXY(0,0);
+  IF NOT NEW_FUNCTION THEN
+    BEGIN
+      NEW_FUNCTION:=QUERY('DO YOU WANT TO ENTER A NEW FUNCTION? ');
+    END;
+  IF NEW_FUNCTION THEN
+    REPEAT
+      WRITE(RLF,'F(X) = ',CEOL);
+      GET_FUNCTION;
+      WRITE(CEOL,LF,CEOL);
+      IF ERROR THEN
+        CASE ERROR_CODE OF
+        1:WRITELN('UNBALANCED PARENTHESES',RLF);
+        2:WRITELN('UNRECOGNIZED SYMBOL',RLF);
+        3:WRITELN('MULTIPLE DECIMAL POINTS IN A CONSTANT',RLF)
+        END; {OF CASE}
+      NEW_FUNCTION:=FALSE
+    UNTIL NOT ERROR;
+  GOTOXY(0,0);
+  HARDCOPY:=QUERY('DO YOU WANT A HARDCOPY? ');
+  IF NOT NEW_LIMITS THEN
+         NEW_LIMITS:=QUERY('DO YOU WANT NEW LIMITS ON THE DISPLAY? ');
+  IF NEW_LIMITS THEN
+    BEGIN
+      CLR_SCREEN:=TRUE;
+      REPEAT
+        CLEARSCREEN;
+        XL:=INPUT_VALUE('ENTER THE LOWER VALUE OF "X" ');
+        XR:=INPUT_VALUE('ENTER THE UPPER VALUE OF "X" ')
+      UNTIL XL<XR;
+      REPEAT
+        CLEARSCREEN;
+        YL:=INPUT_VALUE('ENTER THE LOWER VALUE OF "Y" ');
+        YU:=INPUT_VALUE('ENTER THE UPPER VALUE OF "Y" ')
+      UNTIL YL<YU;
+      XRNG:=XR-XL;
+      YRNG:=YU-YL;
+      XINC:=XRNG/200;
+      YINC:=YRNG/200;
+      IF HARDCOPY THEN
+        REPEAT
+          GOTOXY(0,0);
+          PSCALE:=INPUT_VALUE('SCALING FOR THE PLOTTER (6 for full size plot) = ');
+        UNTIL (PSCALE>0.0) AND (PSCALE<20);
+      GOTOXY(0,0);
+      TICK_MARKS:=QUERY('DO YOU WANT CONTROL OF THE TICK MARKS ON THE GRAPH? ');
+      IF TICK_MARKS THEN
+        BEGIN
+          REPEAT
+            XTICK:=INPUT_VALUE('TICKS AT WHAT INTERVAL ALONG X-AXIS? ');
+          UNTIL XTICK>0.0;
+          REPEAT
+            YTICK:=INPUT_VALUE('TICKS AT WHAT INTERVAL ALONG Y-AXIS? ');
+          UNTIL YTICK>0.0;
+        END;
+    END;
+  IF NOT CLR_SCREEN THEN 
+         CLR_SCREEN:=QUERY('DO YOU WANT THE SCREEN CLEARED? ');
+END;
+
+PROCEDURE SET_SCREEN;
+
+VAR XTEMP,YTEMP:INTEGER;
+    TEMP_PSCALE:REAL;
+
+BEGIN
+  IF HARDCOPY THEN DEVICE:=BOTH ELSE DEVICE:=SCREEN;
+  IF FIRST_TIME THEN
+    BEGIN
+      TEMP_PSCALE:=PSCALE;
+      SETUP(DEVICE);
+      PSCALE:=TEMP_PSCALE;
+      FIRST_TIME:=FALSE;
+    END
+                ELSE NEXT_FRAME(DEVICE,CLR_SCREEN,ALL,ALL,NOT_DONE);
+  IF CLR_SCREEN THEN
+    BEGIN
+      PICTURE(0,239,319,0,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      PICTURE(319,0,-319,0,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      PICTURE(29,24,201,0,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      PICTURE(230,24,0,200,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      PICTURE(230,224,-200,0,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      PICTURE(30,224,0,-200,DOWN);
+      IF XL*XR <= 0 THEN PICTURE(30+ROUND(-XL/XINC),24,0,200,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      IF YU*YL <= 0 THEN PICTURE(230,224-ROUND(-YL/YINC),-200,0,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+      NEW_LIMITS:=FALSE;
+      CLEARSCREEN;
+      IF  TICK_MARK THEN
+        BEGIN
+          FOR I:= TRUNC(YU/YTICK) DOWNTO TRUNC(YL/YTICK) DO 
+            BEGIN
+              YTEMP:= 24+ROUND((I*YTICK-YL)/YINC);
+              PICTURE(25,YTEMP,5,0,DOWN);
+              IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+              GOTOXY(0,24-(YTEMP DIV 10));
+              WRITE(I*YTICK:2:2);
+            END;
+          FOR I:= TRUNC(XL/XTICK) TO TRUNC(XR/XTICK) DO 
+            BEGIN
+              XTEMP:=30+ROUND((I*XTICK-XL)/XINC);
+              PICTURE(XTEMP,229,0,-5,DOWN);
+              IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+              GOTOXY((XTEMP DIV 4)-3,23);
+              WRITE(I*XTICK:7:4);
+            END;
+        END
+                    ELSE
+        BEGIN
+          FOR I:=0 TO 10 DO PICTURE(25,24+I*20,5,0,DOWN);
+          IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+          FOR I:=0 TO 10 DO PICTURE(30+I*20,229,0,-5,DOWN);
+          IF ESCAPE_PLOT THEN EXIT(SET_SCREEN);
+          GOTOXY(0,2);
+          FOR I:=0 TO 10 DO
+            BEGIN
+              WRITELN(YU-I*YRNG/10:2:2);
+              IF I<>10 THEN WRITELN
+            END;
+          FOR I:=0 TO 5 DO
+            BEGIN
+              GOTOXY(2+10*I,23);
+              WRITE(XL+I*XRNG/5:10:5);
+            END
+        END;
+      CLR_SCREEN:=FALSE
+    END;
+  IF HARDCOPY THEN DRAW(XLOC,YLOC,NEW_COLOR);
+  GOTOXY(0,0);
+  WRITELN('F(X) = ',ENTERED_FUNCTION,CEOL);
+  WRITE(CEOL);
+END;
+
+PROCEDURE TABLE;
+VAR ANS: BOOLEAN;
+    XSTART,DX,X: REAL;
+    J: INTEGER;
+    CH: CHAR;
+BEGIN
+  ANS:=TRUE;
+  REPEAT
+    GOTOXY(60,0); WRITELN('(X,F(X)) TABLE');
+    GOTOXY(50,1); WRITELN('enter XSTART and X INCREMENT');
+    GOTOXY(57,2); XSTART:=INPUT_VALUE('XSTART= ');
+    GOTOXY(57,3); DX:=INPUT_VALUE('X INC = ');
+    GOTOXY(50,1); WRITE(CEOL); 
+    GOTOXY(57,2); WRITE(CEOL); GOTOXY(57,3); WRITE(CEOL);
+    GOTOXY(62,1); WRITELN('X',' ':8,'F(X)');
+    FOR J:=0 TO 20 DO
+      begin
+        GOTOXY(58,J+2); X:=XSTART+J*DX;
+        WRITE(X:10:6,F(X,0,0):10:6)
+      end;
+    GOTOXY(60,0); WRITE(CEOL);
+    GOTOXY(50,0); WRITE('another table? (Y/N)');
+    READ(KEYBOARD,CH); GOTOXY(50,0); WRITE(CEOL);
+    ANS:=CH IN ['Y','y'];
+    FOR J:=2 TO 23 DO
+      begin GOTOXY(58,J); WRITE(CEOL) end;
+  UNTIL ANS=FALSE;
+END;
+    
+FUNCTION BOUNDS(Y:REAL):REAL;
+BEGIN
+  IF Y>YTOP THEN BOUNDS:=YTOP ELSE BOUNDS:=Y;
+  IF Y<YBOT THEN BOUNDS:=YBOT
+END;
+
+PROCEDURE PLOT_IT;
+
+BEGIN
+  YTOP:=YU+24*YINC;
+  YBOT:=YL-15*YINC;
+  Y1:=BOUNDS(F(XL,0,0));
+  FOR I:=30 TO 229 DO
+    BEGIN
+      X:=XL+(I-30)*XINC;
+      X1:=X+XINC;
+      Y2:=BOUNDS(F(X1,0,0));
+      IF ERROR THEN Y2:=Y1;
+      Y1:=BOUNDS(F(X,0,0));
+      IF ERROR THEN
+        BEGIN
+          Y1:=Y2;
+          ERROR_COUNT:=ERROR_COUNT+1
+        END;
+      YSTART:=ROUND(224-(Y1-YL)/YINC);
+      YSTOP:=ROUND(224-(Y2-YL)/YINC);
+      PICTURE(I,YSTART,1,YSTOP-YSTART,DOWN);
+      IF ESCAPE_PLOT THEN EXIT(PLOT_IT);
+    END;
+  DRAW(0,ROUND(1434/PSCALE),UP);
+  IF ESCAPE_PLOT THEN EXIT(PLOT_IT);
+  IF ERROR_COUNT>0 THEN
+    BEGIN
+      GOTOXY(0,1);
+      WRITE(ERROR_COUNT,' POINT');
+      IF ERROR_COUNT>1 THEN WRITE('S');
+      WRITE(' NOT PLOTTED BECAUSE OF EVALUATION ERRORS')
+    END;
+END;
+
+
+BEGIN {MAIN PROGRAM}
+  PSCALE:=6.0;
+  DEFINESTRINGS;
+  LF:=CHR(10);
+  QUIET:=FALSE;
+  FIRST_TIME:=TRUE;
+  NEW_FUNCTION:=TRUE;
+  NEW_LIMITS:=TRUE;
+  CLR_SCREEN:=TRUE;
+  CLEARSCREEN;
+  WRITELN('HELP IS AVAILABLE BY PRESSING "H" OR "?"');
+  WRITELN;
+  WRITELN('press SPACE to continue');
+  READ(KEYBOARD,CH);
+  IF CH IN ['H','h','/','?'] THEN HELP;
+  REPEAT
+    ESCAPE_PLOT:=FALSE;
+    INITIALIZE;
+    SET_SCREEN;
+    PLOT_IT;
+    GOTOXY(0,1);
+    WRITE(CEOL);
+    GOTOXY(30,1);
+    WRITE('do you want a table of (x,F(x))? (Y/N)');
+    READ(KEYBOARD,CH); GOTOXY(30,1); WRITE(CEOL);
+    IF CH='Y' THEN TABLE;
+    GOTOXY(40,0);
+    WRITE('press RETURN to CONTINUE or "Q" to QUIT');
+    READ(KEYBOARD,CH)
+  UNTIL CH IN ['Q','q'];
+  NEXT_FRAME(DEVICE,CLEAR,OFF,ALL,DONE);
+  CLEARSCREEN
+END.

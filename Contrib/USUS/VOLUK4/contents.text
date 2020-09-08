@@ -1,0 +1,99 @@
+USUS(UK) SOFTWARE LIBRARY VOLUME 4                           30-AUG-82
+
+The following material was submitted by Chris Lee, INMOS     10-Feb-82
+----------------------------------------------------------------------
+
+The APL program is an adaptation for UCSD pascal of a program by Alan
+M Kaniss that appears in the Byte Book Of Pascal. The changes made
+were very small, so it is still fairly inefficient.  There are still
+probably a few typos in it as well as common or garden bugs.  The APL
+subset that has been implemented so far is fairly small and limiting,
+such as no character strings, plus things like restictions on where
+generalised matrices may be used (bracketing them sometimes helps).
+If you find any bugs or write any enhancements I would be grateful if
+you could forward them on to me Greg Nunan either via USUS or Inmos
+Ltd., Whitefriars, Lewins Mead, Bristol BS1 2NP, England.  
+
+APL.TEXT              The APL Interpreter with its associated include files.
+APLPARSE1.TEXT  
+APLPARSE2.TEXT  
+APLPROCS.TEXT
+APLPARSE3.TEXT
+APLHEAP.TEXT
+APLINIT.TEXT  
+APLCHERS.TEXT 
+APLPARSE0.TEXT
+
+The following materail was submitted by Morton Ogilvie, ERCC  23-Aug-82
+-----------------------------------------------------------------------
+
+SORT/MERGE Package Release 1.3 
+SORT.DOC.TEXT    - Full user documentation of the Package, for use
+                   under versions II.0, II.1 and IV.0 of the UCSD
+                   p-System;
+
+SORT.MERGE.TEXT  - Pascal source of the main program supporting the
+                   primary SORT, MERGE and CHECK procedures:
+                   configured for use under version IV.0, but with
+                   comments indicating modifications required for
+                   use under versions II.0 and II.1;
+
+SORT.DUMUN.TEXT  - Pascal source of the minimal User-provided Unit
+                   required in addition to the main program, to the
+                   define file and record structures and key comparison
+                   specifications of the SORT, MERGE and CHECK
+                   procedures, and to define intialisation and
+                   termination procedures: suitable for TEXT or
+                   FILE OF STRING files, with comments indicating
+                   modifications required for other file types;
+
+SORT.TXTUN.TEXT  - Pascal source of a more generalised User-provided
+                   Unit defining file structures and specifications for
+                   SORT, MERGE and CHECK operations for TEXT or FILE
+                   OF STRING files, for use under version II.0, II.1
+                   or IV.0;
+
+
+
+
+UK Volume 4 continued 
+
+The following material was submitted by Jim McNicol, SCRI     23-Aug-82
+-----------------------------------------------------------------------
+
+SPBSSTUFF is an Intrinsic Unit of procedures and functions designed to
+ease the problems of error checking in conversational style programs. 
+Including Screenops it adds 18 blocks of diskspace to the
+SYSTEM.LIBRARY.
+          
+SPBSSTUFF.TEXT
+SPBSSTUFF.CODE
+SPBSSDOC1.TEXT
+SPBSSDOC2.TEXT
+
+The contents of SPBSSTUFF are:-
+          Procedure PrintLine(x,y:integer;s:string);
+          Function GetChar(okchars:setofchar):char;
+          Function GetCHoice(options:setofchar):char;
+          Procedure Goodbye;
+          Procedure GetString(var s:string;maxlen:integer;okchars:setofchar);
+          Procedure OpenNewFile (var nameoffile:string;s1,s2:string);          
+          Procedure OpenOldFile (var nameoffile:string;s1,s2:string);             
+          Procedure GetTextfileName(var s:string;s1,s2:string);
+          Procedure IoError(ioresult:integer);
+          Procedure WriteIoError(ioresult:integer);
+          Procedure IntNum(var num:integer;var good:boolean;s:string);
+          Procedure RealNum(var num:real;var good:boolean;s:string);
+          Procedure GetRealNo(var num:real;termchars:setofchar);
+          Procedure GetIntNo(var num:integer;var ok:boolean;maxlen : 
+                           integer;termchars: setofchar);
+          Function GetReal(x,y:integer;min,max:real):real;
+          Function GetInt(x,y:integer;min,max:integer):integer;
+          Procedure CheckPrinter;
+          Procedure Continue (x,y:integer);
+          Procedure Yes:boolean;
+          Procedure Bell (times:integer);
+
+
+CONTENTS.TEXT      This list.
+          

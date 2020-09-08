@@ -1,0 +1,37 @@
+program primenumbers (input,output);
+  const
+    firstprime=2;
+    maximum=30000;
+    tab=9;
+  var
+    sieve : packed array[firstprime ..maximum] of boolean;
+    leftin,range,factor,multiple: 0..maximum;
+  begin
+    writeln('PRIME NUMBER GENERATOR');
+    write('Enter upper bound: ');
+    read(range);
+    for factor:=firstprime to range do
+      sieve[factor]:=true;
+    leftin:=range-firstprime+1;
+    factor:=firstprime-1;
+    repeat
+      factor:=factor+1;
+      if sieve[factor]
+        then {factor is a prime }
+          begin
+            writeln(factor{,chr(tab)});
+            multiple:=1;
+            while factor*multiple<=range do
+              begin
+                if sieve[factor*multiple]
+                  then
+                    begin
+                      sieve[factor*multiple]:=false;
+                      leftin:=leftin-1
+                    end;
+                  multiple:=multiple+1
+                end  { while }
+                end
+              until leftin=0
+          end. {primenumbers}
+

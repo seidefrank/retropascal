@@ -1,0 +1,204 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTRE.FIND2.TEXT          revised 31-May-82                  *
+*                                                                       *
+************************************************************************}
+
+
+procedure START_NEW_PERSON;
+label 1;
+begin
+  GET_NEW_PERSON(V);      {get the data}
+1:if V.KEY<>INPUTKEY then begin
+{************************************************************************
+*                                                                       *
+*  This "if..then" statement allows user to catch errors in the data    *
+*  inputed in regards to the key which will be used to fetch the data.  *
+*  User can put in a special key which could not easily be discovered.  *
+*  (i.e. if normal key = BJONES and user inputed FSMITH)                *
+*                                                                       *
+************************************************************************}
+    CLEARSCREEN;
+    gotoxy(0,11);
+    writeln('The computed key does not match the input key.');
+    writeln;
+    writeln;
+    writeln;
+    writeln('Do you want to verify the data you inputed?  (y/n)  ');
+    if YES then begin
+      PRINT_PERSON(V);
+      writeln;
+      writeln;
+      writeln('Is the above correct?  (y/n)  ');
+      if not YES then PERSON_CHANGE(V);
+      goto 1
+    end; {if YES}
+    writeln('Do you want the input key or the computed key?  (I/C)  ');
+    writeln;
+    writeln;
+    writeln('INPUTKEY = ':25,FAKE_KEY);   {user inputed key}
+    TEMP_KEY:=V.KEY;                      {protect V.KEY}
+    INVERT_KEY(TEMP_KEY,2);               {convert to "user format"}
+    writeln;
+    write('COMPUTED KEY = ':25,TEMP_KEY); {display results}
+    CH:=READKEY(['C','I','c','i']);       {"bomb proofing"}
+    if CH in ['C','c'] then begin
+       {location for the insertion was based on INPUTKEY so get back
+        to where the process can be started all over again using the
+        computed key}
+      CLEARSCREEN;
+      PRINTAT(0,8,'You changed the key so...');
+      LEAVE:=true;        {set exit flag}
+      WRONG:=true;        {user inputed key was wrong}
+      NEW_HEIGHT:=false;  {prevent strange things from happening}
+      FOUND:=true         {we found a place to insert the incorrect key}
+    end  {if CH in}
+    else V.KEY:=INPUTKEY; {use the user key}
+  end  {if V.KEY<>INPUTKEY}
+end; {START_NEW_PERSON}
+
+begin {SEARCH}
+{We search key INPUTKEY in the record number "A"...NEW_HEIGHT=false}
+  if A=-1 then begin {item with key INPUTKEY not in b-tree}
+    NEW_HEIGHT:=true;   {at this point NEW_HEIGHT only means something is to be
+                         added or inserted into the b-tree}
+    if FOUND then exit(SEARCH); {found new location for changed node}
+    CLEARSCREEN;                {clear CRT}
+    gotoxy(0,8);                {position cursor}
+    writeln('Person <',FAKE_KEY,'> address file not found.');
+    writeln;
+    write('Is the key correct?  (y/n)  ');
+    if YES then begin
+      WRONG:=false;             {the key was correct}
+      writeln;
+      writeln;
+      write('Start a new address file?  (y/n)  ');
+      if YES then START_NEW_PERSON
+      else begin  {don't start a new address file}
+        LEAVE:=true;            {set flag to return to calling procedure ASAP}
+        NEW_HEIGHT:=false;      {B-tree is not growing}
+        FOUND:=true             {we found a place to put the correct key}
+      end  {else begin}
+    end  {if YES}
+    else begin          {user inputed key incorrectly}
+      WRONG:=true;      {key is incorrect}
+      NEW_HEIGHT:=false;  {prevent strange things from happening}
+      FOUND:=false;     {flag to get new key}
+      LEAVE:=true       {set flag to return to calling procedure ASAP}
+    end  {else begin}
+  end  {if A=-1}
+  else begin    {we have not reached a "null" or terminal node yet}
+    seek(PERSONS,A);            {set the file window to the record to search}
+    write('.');                 {show user something is happending}
+    get(PERSONS);               {load the file buffer}
+    with PERSONS^ do begin
+      if DUPLICATE then begin   {check duplicate nodes}
+        for J:=1 to NODESIZE do if PERSON_FOUND(DATA[J],J)
+          then exit(SEARCH);    {we found it!}
+        SEARCH(INPUTKEY,P0,V,FOUND,WRONG);      {not found...continue search}
+        if LEAVE then exit(SEARCH);
+            {if LEAVE=true then either the key is incorrect or user
+             decided not to make an entry}
+        if NEW_HEIGHT then begin
+{************************************************************************
+*                                                                       *
+*  In the original program each recursive call of "SEARCH" was coded    *
+*  so that the "person record" passed was "U" and not "V".  When the    *
+*  code to handle changed nodes was added, it was necessary to pass     *
+*  that changed node back down to the original calling procedure and    *
+*  back up to the search and insert routines.                           *
+*                                                                       *
+*  The simplist method of achieving this was to modify all of the       *
+*  recursive calls of "SEARCH" to pass "V" rather than "U".  However,   *
+*  the "INSERT" procedure uses "U" to insert the new record.  Rather    *
+*  than rewriting "INSERT" and suffering through all of the "joys" of   *
+*  debugging that would surely result, I elected to simply add the      *
+*  "U:=V" which is found below and prior to every other call of         *
+*  "INSERT".                                                            *
+*                                                                       *
+************************************************************************}
+          U:=V;
+          INSERT     {insert new duplicate key}
+        end  {if NEW_HEIGHT}
+      end  {if DUPLICATE}
+      else begin        {continue search for key}
+        L:=1;           {set left limit}
+        R:=NODESIZE;    {set right limit}
+        repeat   {binary search for INPUTKEY}
+          K:=(L+R) div 2;
+          if INPUTKEY<=DATA[K].KEY then R:=K-1;         {reset right limit}
+          if INPUTKEY>=DATA[K].KEY then L:=K+1;         {reset left limit}
+        until R<L;
+        if L-R>1 then begin {We found a key that matches}
+          if PERSON_FOUND(DATA[K],K) then exit(SEARCH) {We found it!!}
+          else begin            {we didn't find it}
+            DUPLICATE:=true;    {set flag to check for possible duplicates}
+            SEARCH(INPUTKEY,DATA[K].DUPE,V,FOUND,WRONG);
+              {initiate search for duplicate keys}
+            if NEW_HEIGHT then begin    {must enter first duplicate key}
+              seek(PERSONS,FILE_LEN.PERSON_AVAIL);
+                {set file window to head of linked list of available nodes}
+              write('.');       {show user something is happending}
+              get(PERSONS);     {load file buffer}
+              I:=P0;            {save link information}
+              NODESIZE:=0;      {initialize node}
+              P0:=-1;           {initialize node}
+              R:=MAX_NODE_SIZE+1;       {prevent unwanted action in INSERT}
+              A1:=A;            {save primary key location}
+              A:=FILE_LEN.PERSON_AVAIL; {initialize for INSERT}
+              U:=V;             {for INSERT to function properly}
+              INSERT;           {insert it (finally!)}
+              A:=A1;            {restore primary key location}
+              seek(PERSONS,A);  {reset file window to primary key node}
+              write('.');       {show user something is happending}
+              get(PERSONS);     {load file buffer}
+              DATA[K].DUPE:=FILE_LEN.PERSON_AVAIL;
+                {store location of duplicate key}
+              Z:=PERSONS^;      {hold buffer data while seeking}
+              seek(PERSONS,A);  {reset file window to primary key node}
+              write('.');       {show user something is happending}
+              PERSONS^:=Z;      {load file buffer}
+              put(PERSONS);     {write file buffer to disk}
+              FILE_LEN.PERSON_AVAIL:=I; {reset link list pointer to head node}
+              FILE_LEN.PERSON_UNUSED:=FILE_LEN.PERSON_UNUSED-1
+                {correct number of empty or unused nodes}
+            end  {if NEW_HEIGHT}
+          end  {else begin}
+        end  {if L-R>1}
+        else begin  {item is not in this b-tree node}
+          if R=0 then Q:=P0     {if R=0 then INPUTKEY<any KEY in this node}
+          else Q:=DATA[R].SUCC_NODE;  {INPUTKEY>DATA[R].KEY}
+          SEARCH(INPUTKEY,Q,V,FOUND,WRONG);
+            {search the appropriate successor node}
+          if LEAVE then exit(SEARCH);
+            {if LEAVE=true then either the key is incorrect or user
+             decided not to make an entry}
+{************************************************************************
+*                                                                       *
+*  The conditional statement and the included "seek" and "get" are the  *
+*  elusive keys which make the SEARCH and INSERT procecures work        *
+*  correctly.  It is essential that the window be reset to the value    *
+*  after the recursive call, before INSERT is called.                   *
+*                                                                       *
+************************************************************************}
+   {if SPLIT then record/node number A is not in file buffer,
+   and both INSERT and KEY_INSERT reference that record/node}
+          if SPLIT then begin   {if SPLIT then file window was moved}
+            seek(PERSONS,A);    {reset file window}
+            write('.');         {show user something is happending}
+            get(PERSONS);       {load file buffer}
+          end; {if SPLIT}
+          if NEW_HEIGHT then begin
+            U:=V;               {for INSERT to function properly}
+            INSERT     {insert new unique key}
+          end  {if NEW_HEIGHT}
+        end  {else begin}
+      end  {with PERSONS^}
+    end  {else begin}
+  end  {else begin}
+end; {SEARCH}
+
+
+
+
+

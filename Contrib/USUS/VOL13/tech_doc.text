@@ -1,0 +1,181 @@
+
+.comment                !---------------------------------!   
+.comment                !                                 !
+.comment                !        RUNON documentation      !
+.comment                !       Technical description     ! 
+.comment                !                                 !
+.comment                !---------------------------------!
+
+
+.title " Technical Description " .page .center " ^&Data Structures\& "  
+
+.noautopara .skip 1
+The following are the main data structures of the program:
+.skip 1
+There are three main storage areas for text. These are known as the
+<&input, <&internal, and <&output buffers:
+ 
+.skip 2 .center " ^^input buffer\^ "
+ 
+This is used to store a line of up to 132 characters from the
+input file.  The .ST index points at the first character of
+scannable text.  The .EN index points at the last character.
+ 
+.skip 2 .center " ^^internal buffer\^ "
+ 
+This contains the scanned version of the input buffer.  All of
+the special commands have been processed, and are no longer  
+present in the text.  The text is represented as an array of
+records, each of which contains: a character; the 'visible length'
+of the character, in spaces; a set of attributes (characteristics)
+the character possesses; and a 'malleability' value that says
+whether or not the character, if it is a space, can be expanded
+during justification.  Thus, malleability really has meaning only
+for space characters.  When in filling mode, the .ST index always
+points at one past the end of the word just placed into the output buffer.
+The .EN index points at the last record of the buffer.  <^runon
+uses the condition (.ST > .EN) to signify the emptiness of
+the buffer.  This is also true of the output buffer.
+ 
+.skip 2 .center " ^^output buffer\^ "
+ 
+This buffer is of the same type as the internal buffer. When <^runon is in non-
+filling mode, they are identical. In filling and justification modes, however,
+the output buffer contains a justifiable copy of the internal buffer, with all 
+extra blanks removed. <^runon places as many words as it can into the output
+buffer, and then, if we are in justification mode rather than filling mode,
+justifies it.
+ 
+.skip 2
+The other data structures are:
+ 
+.skip 3 .center " <^sysvars "
+ 
+This record contains all of the global values that affect
+filling. These are the values that need to be protected by the
+Time-warp effect.  The fields are:
+ 
+.skip 1 .testpage 3
+<^version:
+.break
+'Points to' current set of values (see Time-warp section).
+.skip 1
+<^fill__mode:
+.break
+States whether in justify, fill, or nofill mode.
+.skip 1
+<^paging:
+.break
+States whether or not the output file is to be broken into
+pages.
+.skip 1
+<^numbering:
+.break
+Pages numbered / unnumbered.
+.skip 1
+<^lm, <^rm:
+.break
+These are the values of the left and right margins, respectively.
+They represent columns on the page.
+.skip 1
+<^ap__skip:
+.break
+Contains the number of lines to drop down when executing an automatic 
+paragraph.
+.skip 1
+<^ap__indent:
+.break
+Contains the number of spaces to skip as the indent for an auto-paragraph.
+.skip 1
+<^paper__width:
+.break
+Width in columns of the paper.
+.skip 1
+<^paper__length:
+.break
+Length in lines of the paper.
+.skip 1
+<^chars__in__line:
+.break
+Number of visible characters in output buffer between
+left and right margins. Used solely by <^move__word.
+.skip 1
+<^printable__lines:
+.break
+Number of usable lines on page (page length minus border size).
+.skip 1
+<^spacing:
+.break
+Standard typewriter spacing, e.g. spacing 1 yields no blank lines
+on output.
+ 
+.skip 3 .center " <^pageinfo "
+ 
+This record contains miscellaneous information pertaining to the
+page.
+.skip 1
+<^currline:
+.break
+Number of lines from bottom of header.
+.skip 1
+<^currpage:
+.break
+Current page number.
+.skip 1
+<^figure__set:
+.break
+Indicates that there is a figure to put out, and it may be
+put out immediately.
+.skip 1
+<^figure__pending:
+.break
+Indicates that program is waiting to output figure at top of 
+next page.
+.skip 1
+<^figure__size:
+.break
+Contains size of next figure to be output.
+.skip 1
+<^title:
+.break
+String representing current document title.
+ 
+.skip 3 .center " ^^File Stack\^ "
+ 
+The File__stack is a structure consisting of .PTR, which is the pointer to the
+current top-of-stack, and .STACK, which is an array of ^^stack__entry\^s. Each
+<^stack__entry consists of a <^.name, a <^.line, and an <^.in__buf.  The
+<^.name contains the name of an included file, the <^.line contains the line
+number of the file that was being processed when <^.name was included. The
+<^.in__buf is a copy of the current input buffer when <^.name was included.
+This allows the dot-command processor to continue with any other commands on
+the line when the file was included.
+ 
+.autopara .autoset 2 5 .page .center " ^&Time-warp Effect\& "
+
+  When in fill mode, it is possible for an incomplete line of text to be
+accumulated in the output buffer, and then to encounter a dot command, such as   
+<^rightmargin, which would cause the output buffer to be changed and otherwise
+wrongly processed. The problem is caused by commands which affect the line- or
+paper-width after the output buffer has started to be processed.
+
+  In order to get around this little snafu, <^runon keeps two
+versions of <^sysvars, and a 'pointer' to the one currently in effect.
+This 'pointer' can assume two values, <^new and
+<^old.  If a new output line has been started, and a dot command
+is then received, only the values in <^sysvars[new] are changed.
+The version pointer is changed to point at the version containing
+the pre-dot command values.  When the line is finished, the
+version pointer is changed to <^new.
+
+  The pointer to the current values is kept in <^sysvars[new].version,
+so if we use this value as an 'indirect address', we can easily
+reference the correct field of <^sysvars.  Using a construction
+of the type
+.nofill
+
+   ^^sysvars[sysvars[new].version].\^field
+ 
+.justify
+allows you to reference field 'field' of the current values.
+

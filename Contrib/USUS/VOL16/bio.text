@@ -1,0 +1,88 @@
+ (*------------------------------------------------------------------*)
+ PROCEDURE bread (*VAR f : btree; r: btpointer*);
+ (*      Read a btree record *)
+ 
+ BEGIN
+ 
+         SEEK(f, r); GET(f); 
+ 
+ END; (* PROCEDURE bread *)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE bwrite(VAR f: btree; r:btpointer);
+ (*      Write current btree record to file *)
+ 
+ BEGIN
+         SEEK (f, r); PUT(f); 
+ 
+ END; (*PROCEDURE bwrite *)
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION bopen (*VAR f: btree; name: STRING) : BOOLEAN*);
+ (*      Open B-tree file name *)
+ 
+ BEGIN
+         RESET(f, name);
+         bopen := (ioresult = 0);
+ 
+ END; (* FUNCTION bopen *)
+ 
+ (*------------------------------------------------------------------*)
+ PROCEDURE bclose (*VAR f: btree*);
+ (*      Close btree file f *)
+ 
+ BEGIN
+         CLOSE(f);
+ 
+ END; (* PROCEDURE bclose *)
+ 
+ (*------------------------------------------------------------------*)
+ FUNCTION bnew(*name: STRING; npages: btpointer) : BOOLEAN*);
+ (*      Create a new btree named name *)
+ 
+ VAR
+         f: btree;
+ 
+ BEGIN
+ 
+ REWRITE(f, name);
+ IF ioresult = 0 THEN BEGIN
+ 
+         bnew := TRUE;
+         
+         WITH f^ DO BEGIN
+                 use := 1;       (* mark as descriptor rec *)
+                 desc.nrec := 2; (* record 2 is first in free chain *)
+                 desc.freehead := 2;     (* first free rec *)
+                 desc.maxrec := npages;  (* space to allocate *)
+                 desc.root:= 1;  (* record 1 is root of empty tree *)
+         END; (* WITH*)
+         PUT(f);
+ 
+         WITH f^.pg DO BEGIN     (* create empty root *)
+                 f^.use := 2;    (* mark as page *)
+                 count:= 0;      (* empty *)
+                 bpointer[0] := 0; (*initialize pointer*)
+                 prntpage := 0;          (*init backpointer*)
+                 prntentry := 0;         (*ditto*)
+         END; (* WITH *)
+         PUT(f);
+ 
+         WITH f^ DO BEGIN
+                 use := 0;       (* mark as free record *)
+                 nextfree := 0;  (* end of free chain *)
+         END; (* WITH *)
+         PUT(f);
+ 
+         SEEK(f, npages);        (* allocate space *)
+         PUT(f);
+         CLOSE(f,LOCK);
+ 
+ END  {If goodio}
+ 
+ ELSE bnew := false;
+ 
+ END; (* PROCEDURE bnew *)
+ 
+
+

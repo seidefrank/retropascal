@@ -1,0 +1,315 @@
+{
+        SRCCOM - source file comparison program.
+                 adapted from program COMPARE,
+                 Pascal News #12.
+ 
+        Copyright (C) 1977,1978
+        James F. Miner
+        Social Science Research Facilities Center
+        25 Blegan Hall
+        269 19th Ave. So
+        University of Minnesota
+        Minneapolis, Minnesota 55455
+ 
+        General permission to make fair use in non-profit activites
+        of all or part of this material is granted provided that this
+        is given.
+}
+
+PROGRAM SRCCOM;
+  USES (*$U FASTREAD.CODE*) FASTREAD;
+  { Reference: Pascal News, Issue 13 }
+  CONST
+    VERSION = '1.3';
+    LINELENGTH = 120;
+    MINLINESFORMATCH = 6;
+    
+  TYPE
+    LINEPOINTER = ^LINE;
+    LSTRING = LONGSTRING;
+    LINE = 
+      PACKED RECORD
+        NEXTLINE: LINEPOINTER;
+        IMAGE: LSTRING
+      END;
+      
+    STREAM =
+      RECORD
+        CURSOR, HEAD, TAIL: LINEPOINTER;
+        CURSORLINENO, HEADLINENO, TAILLINENO: INTEGER;
+        ENDFILE: BOOLEAN
+      END;
+      
+    VAR
+      OUTFILE:          TEXT;
+      FILEA, FILEB:     FFILE;
+      FCBA,  FCBB:      FCB;
+      A, B:             STREAM;
+      MATCH:            BOOLEAN;
+      ENDFILE:          BOOLEAN;
+      OUTLFN, NAME1, NAME2: STRING[30];
+      
+      TEMPLINE: LSTRING;
+        
+      FREELINES: LINEPOINTER;
+      
+      SAME: BOOLEAN;
+      
+    PROCEDURE COMPAREFILES;
+    
+      FUNCTION ENDSTREAM(VAR X: STREAM): BOOLEAN;
+      BEGIN { ENDSTREAM }
+        ENDSTREAM := (X.CURSOR = NIL) AND X.ENDFILE
+      END;  { ENDSTREAM }
+      
+      PROCEDURE MARK(VAR X: STREAM);
+        VAR 
+          P: LINEPOINTER;
+      BEGIN { MARK }
+        WITH X DO
+          IF HEAD <> NIL THEN
+            BEGIN
+              WHILE HEAD <> CURSOR DO
+                BEGIN
+                  WITH HEAD^ DO
+                    BEGIN P := NEXTLINE;
+                      NEXTLINE := FREELINES;
+                      FREELINES := HEAD
+                    END;
+                  HEAD := P;
+                END;
+              HEADLINENO := CURSORLINENO;
+              IF CURSOR = NIL THEN
+                BEGIN TAIL := NIL; TAILLINENO := CURSORLINENO END;
+            END
+      END;  { MARK }
+
+      PROCEDURE MOVECURSOR(VAR X: STREAM; VAR FCBX: FCB; VAR INFILE: FFILE);
+      
+        PROCEDURE READLINE;
+          VAR
+            NEWLINE: LINEPOINTER;
+            J: INTEGER; 
+        BEGIN { READLINE }
+          IF NOT X.ENDFILE THEN
+            BEGIN
+              GETSTRING(FCBX, INFILE, TEMPLINE);
+              NEWLINE := FREELINES;
+              IF NEWLINE = NIL THEN NEW(NEWLINE)
+              ELSE FREELINES := FREELINE^.NEXTLINE;
+              NEWLINE^.IMAGE := TEMPLINE;
+              NEWLINE^.NEXTLINE := NIL;
+              IF X.TAIL = NIL THEN
+                BEGIN X.HEAD := NEWLINE;
+                  X.TAILLINENO := 1; X.HEADLINENO := 1
+                END
+              ELSE
+                BEGIN X.TAIL^.NEXTLINE := NEWLINE;
+                  X.TAILLINENO := X.TAILLINENO + 1;
+                END;
+              X.TAIL := NEWLINE;
+              X.ENDFILE := FCBX.ENDFILE;
+            END
+        END; { READLINE }
+        
+      BEGIN { MOVECURSOR }
+        IF X.CURSOR <> NIL THEN
+          BEGIN
+            IF X.CURSOR = X.TAIL THEN READLINE;
+            X.CURSOR := X.CURSOR^.NEXTLINE;
+            IF X.CURSOR = NIL THEN ENDFILE := TRUE;
+            X.CURSORLINENO := X.CURSORLINENO + 1;
+          END
+        ELSE
+          IF NOT X.ENDFILE THEN
+            BEGIN
+              READLINE; X.CURSOR := X.HEAD;
+              X.CURSORLINENO := X.HEADLINENO;
+            END
+          ELSE
+            ENDFILE := TRUE;
+      END; { MOVECURSOR }
+                
+              
+      PROCEDURE BACKTRACK(VAR X: STREAM; VAR XLINES: INTEGER);
+      BEGIN { BACKTRACK }
+        XLINES := X.CURSORLINENO + 1 - X.HEADLINENO;
+        X.CURSOR := X.HEAD; X.CURSORLINENO := X.HEADLINENO;
+        ENDFILE := ENDSTREAM(A) OR ENDSTREAM(B)
+      END;  { BACKTRACK }
+      
+      PROCEDURE COMPARELINES(VAR MATCH: BOOLEAN);
+      BEGIN { COMPARELINES }
+        IF (A.CURSOR = NIL) OR (B.CURSOR = NIL) THEN
+          MATCH := ENDSTREAM(A) AND ENDSTREAM(B)
+        ELSE
+          MATCH := (A.CURSOR^.IMAGE = B.CURSOR^.IMAGE);
+      END;  { COMPARELINES }
+      
+      PROCEDURE FINDMISMATCH;
+      BEGIN { FINDMISMATCH }
+        REPEAT { COMPARENEXTLINES }
+          MOVECURSOR(A, FCBA, FILEA); MOVECURSOR(B, FCBB, FILEB);
+          MARK(A); MARK(B);
+          COMPARELINES(MATCH);
+        UNTIL ENDFILE OR NOT MATCH;
+      END;  { FINDMISMATCH }
+      
+      PROCEDURE FINDMATCH;
+        VAR ADVANCEB: BOOLEAN;
+        
+        PROCEDURE SEARCH(VAR X: STREAM; VAR FCBX: FCB; VAR FILEX: FFILE;
+                         VAR Y: STREAM; VAR FCBY: FCB; VAR FILEY: FFILE);
+          VAR COUNT: INTEGER;
+          
+          PROCEDURE CHECKFULLMATCH;
+            VAR N: INTEGER;
+              SAVEXCUR, SAVEYCUR: LINEPOINTER;
+              SAVEXLINE, SAVEYLINE: INTEGER;
+          BEGIN { CHECKFULLMATCH }
+            SAVEXCUR := X.CURSOR; SAVEYCUR := Y.CURSOR;
+            SAVEXLINE := X.CURSORLINENO; SAVEYLINE := Y.CURSORLINENO;
+            COMPARELINES(MATCH);
+            N := MINLINESFORMATCH - 1;
+            WHILE MATCH AND (N <> 0) DO
+              BEGIN MOVECURSOR(X, FCBX, FILEX); MOVECURSOR(Y, FCBY, FILEY);
+                COMPARELINES(MATCH); N := N - 1;
+              END;
+            X.CURSOR := SAVEXCUR; X.CURSORLINENO := SAVEXLINE;
+            Y.CURSOR := SAVEYCUR; Y.CURSORLINENO := SAVEYLINE;
+          END;  { CHECKFULLMATCH }
+
+        BEGIN { SEARCH }
+          MOVECURSOR(Y, FCBY, FILEY); BACKTRACK(X, COUNT);
+          CHECKFULLMATCH; COUNT := COUNT - 1;
+          WHILE (COUNT <> 0) AND NOT MATCH DO
+            BEGIN
+              MOVECURSOR(X, FCBX, FILEY); COUNT := COUNT - 1;
+              CHECKFULLMATCH;
+            END
+        END;  { SEARCH }
+        
+        PROCEDURE PRINTMISMATCH;
+          VAR
+            EMPTYA, EMPTYB: BOOLEAN;
+            
+          PROCEDURE WRITETEXT(P, Q: LINEPOINTER);
+          BEGIN { WRITETEXT }
+            WRITELN(OUTFILE);
+            WHILE (P <> NIL) AND (P <> Q) DO
+              BEGIN WRITE(OUTFILE, ' * ');
+                WITH P^ DO
+                  WRITELN(OUTFILE, IMAGE);
+                P := P^.NEXTLINE
+              END;
+            IF P = NIL THEN WRITELN(OUTFILE, ' *** EOF ***');
+            WRITELN(OUTFILE);
+          END; { WRITETEXT }
+          
+          PROCEDURE WRITELINENO(VAR X: STREAM);
+            VAR
+              F, L: INTEGER;
+          BEGIN { WRITELINENO }
+            F := X.HEADLINENO; L := X.CURSORLINENO - 1;
+            WRITE(OUTFILE, 'LINE');
+            IF F = 1 THEN WRITE(OUTFILE, ' ', F:1)
+            ELSE WRITE(OUTFILE, 'S ', F:1, ' TO ', L:1);
+            IF X.CURSOR = NIL THEN WRITE(OUTFILE, ' (BEFORE EOF)');
+          END;  { WRITELINENO }
+          
+          PROCEDURE PRINTEXTRATEXT(VAR X: STREAM; XNAME: STRING;
+                                   VAR Y: STREAM; YNAME: STRING);
+          BEGIN { PRINTEXTRATEXT }
+            WRITE(OUTFILE, ' EXTRA TEXT ON "', XNAME, '", ');
+            WRITELINENO(X); WRITELN(OUTFILE);
+            IF Y.HEAD = NIL THEN
+              WRITELN(OUTFILE, ' BEFORE EOF ON FILE "', YNAME, '"')
+            ELSE
+              WRITELN(OUTFILE, ' BETWEEN LINES ', Y.HEADLINENO-1:1, ' AND ',
+                Y.HEADLINENO:1, ' OF "', YNAME, '"');
+            WRITETEXT(X.HEAD, X.CURSOR)
+          END;  { PRINTEXTRATEXT }
+          
+        BEGIN { PRINTMISMATCH }
+          WRITELN(OUTFILE, '***************************************');
+          EMPTYA := (A.HEAD = A.CURSOR);
+          EMPTYB := (B.HEAD = B.CURSOR);
+          IF EMPTYA OR EMPTYB THEN
+            IF EMPTYA THEN PRINTEXTRATEXT(B, NAME2, A, NAME1)
+            ELSE PRINTEXTRATEXT(A, NAME1, B, NAME2)
+          ELSE
+            BEGIN
+              WRITELN(OUTFILE, ' MISMATCH:'); WRITELN(OUTFILE);
+              WRITE(OUTFILE, ' "', NAME1, '", '); WRITELINENO(A); WRITELN(OUTFILE, ':');
+              WRITETEXT(A.HEAD, A.CURSOR);
+              WRITE(OUTFILE, ' "', NAME2, '", '); WRITELINENO(B); WRITELN(OUTFILE, ':');
+              WRITETEXT(B.HEAD, B.CURSOR)
+            END
+        END; { PRINTMISMATCH }
+        
+      BEGIN { FINDMATCH }
+        ADVANCEB := TRUE;
+        REPEAT
+          IF NOT ENDFILE THEN ADVANCEB := NOT ADVANCEB
+          ELSE ADVANCEB := ENDSTREAM(A);
+          IF ADVANCEB THEN SEARCH(A, FCBA, FILEA, B, FCBB, FILEB)
+          ELSE SEARCH(B, FCBB, FILEB, A, FCBA, FILEA)
+        UNTIL MATCH;
+        PRINTMISMATCH;
+      END; { FINDMISMATCH }
+      
+  BEGIN { COMPAREFILES }
+    MATCH := TRUE;
+    REPEAT 
+      IF MATCH THEN FINDMISMATCH
+      ELSE
+        BEGIN
+          SAME := FALSE;
+          FINDMATCH
+        END
+    UNTIL ENDFILE AND MATCH
+  END;  { COMPAREFILES }
+  
+  PROCEDURE INITIALIZE;
+  
+    PROCEDURE INITSTREAM(VAR X: STREAM; VAR FCBX: FCB;
+                         VAR FILEX: FFILE; VAR LFN: STRING);
+    BEGIN { INITSTREAM }
+      WITH X DO
+        BEGIN
+          CURSOR := NIL; TAIL := NIL;
+          CURSORLINENO := 0; HEADLINENO := 0; TAILLINENO := 0
+        END;
+      WRITE('File name: ');
+      READLN(LFN);
+      OPENFILE(FCBX, FILEX, LFN);
+      X.ENDFILE := FCBX.ENDFILE;
+    END; { INITSTREAM }
+    
+  BEGIN { INITIALIZE }
+    INITSTREAM(A, FCBA, FILEA, NAME1); INITSTREAM(B, FCBB, FILEB, NAME2);
+    ENDFILE := A.ENDFILE OR B.ENDFILE;
+    FREELINES := NIL;
+    WRITE('Output file? '); READLN(OUTLFN); 
+    IF OUTLFN = '' THEN OUTLFN := 'CONSOLE:';
+    REWRITE(OUTFILE, OUTLFN);
+  END;  { INITIALIZE }
+  
+BEGIN { COMPARE }
+  INITIALIZE;
+  PAGE(OUTFILE);
+  WRITELN(OUTFILE, 'SRCCOM - V', VERSION);
+  WRITELN(OUTFILE);
+  WRITELN(OUTFILE, ' Match criterion = ', MINLINESFORMATCH:1, ' lines.');
+  WRITELN(OUTFILE);
+  IF A.ENDFILE THEN WRITELN(OUTFILE, '"', NAME1, ' IS EMPTY.');
+  IF B.ENDFILE THEN WRITELN(OUTFILE, '"', NAME2, ' IS EMPTY.');
+  IF NOT ENDFILE THEN
+    BEGIN 
+      SAME := TRUE;
+      COMPAREFILES;
+      IF SAME THEN WRITELN(OUTFILE, ' NO DIFFERENCES.')
+    END;
+  CLOSE(OUTFILE, LOCK);
+END. { COMPARE }
+       

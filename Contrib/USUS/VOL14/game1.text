@@ -1,0 +1,250 @@
+   (* included from game.text*)
+   procedure init_play;
+      var
+         i : integer;
+      begin
+      num_players := 1; player_x := home_x + 1; player_y := home_y + 1; 
+      hyperspace(player_x, player_y, player); { position randomly }
+      num_live_demons := num_demons;
+      for i := 1 to num_live_demons do with demon_data[i] do begin
+      { position randomly }
+         x := home_x + 1; y := home_y + 1; hyperspace(x,y,demon);
+         { establish initial inertial direction randomly }
+         direction := empty; change_direction(x,y,direction);
+         alive := true;
+         end;
+      { "kill" the other demons }
+      for i := (num_live_demons + 1) to max_demons do
+         demon_data[i].alive := false;
+      gotoxy(70,0); write('Demons: ', num_live_demons);
+      end; { init_play }
+      
+   procedure kill_player;
+      begin
+      num_players := num_players - 1;
+      end; { kill_player }
+   
+   function demon_right(var x,y : integer) : boolean;
+      { try to move demon right: return true if successful }
+      var
+         board_element : t_obstacle;
+      begin
+      demon_right := true;
+      board_element := board[y,x+1];
+      if (board_element = empty) then x := x + 1
+      else if (board_element = player) then begin
+         x := x + 1; kill_player; end
+      else if (board_element = demon) then hyperspace(x,y,demon)
+      else demon_right := false;
+      end; { demon_right }
+   
+   function demon_left(var x,y : integer) : boolean;
+      { try to move demon left: return true if successful }
+      var
+         board_element : t_obstacle;
+      begin
+      demon_left := true;
+      board_element := board[y,x-1];
+      if (board_element = empty) then x := x - 1
+      else if (board_element = player) then begin
+         x := x - 1; kill_player; end
+      else if (board_element = demon) then hyperspace(x,y,demon)
+      else demon_left := false;
+      end; { demon_left }
+   
+   function demon_up(var x,y : integer) : boolean;
+      { try to move demon up: return true if successful }
+      var
+         board_element : t_obstacle;
+      begin
+      demon_up := true;
+      board_element := board[y-1,x];
+      if (board_element = empty) then y := y - 1
+      else if (board_element = player) then begin
+         y := y - 1; kill_player; end
+      else if (board_element = demon) then hyperspace(x,y,demon)
+      else demon_up := false;
+      end; { demon_up }
+   
+   function demon_down(var x,y : integer) : boolean;
+      { try to move demon down: return true if successful }
+      var
+         board_element : t_obstacle;
+      begin
+      demon_down := true;
+      board_element := board[y+1,x];
+      if (board_element = empty) then y := y + 1
+      else if (board_element = player) then begin
+         y := y + 1; kill_player; end
+      else if (board_element = demon) then hyperspace(x,y,demon)
+      else demon_down := false;
+      end; { demon_down }
+   
+   procedure move_same_direction(demon_num : integer);
+      { move demon inertially }
+      begin
+      with demon_data[demon_num] do begin
+         update_board(x,y,empty);
+         case ord(direction) of
+            ord_right : if not demon_right(x,y) then begin
+               change_direction(x,y,direction); 
+               move_same_direction(demon_num); 
+               end;
+            ord_left : if not demon_left(x,y) then begin
+               change_direction(x,y,direction); 
+               move_same_direction(demon_num); 
+               end;
+            ord_up : if not demon_up(x,y) then begin
+               change_direction(x,y,direction); 
+               move_same_direction(demon_num); 
+               end;
+            ord_down : if not demon_down(x,y) then begin
+               change_direction(x,y,direction); 
+               move_same_direction(demon_num); 
+               end;
+            end; { case }
+         update_board(x,y,demon);
+         end; { with }
+      end; { move_same_direction }
+      
+   procedure move_towards_player(demon_num : integer);
+      { move demon towards player }
+      var
+         index : integer;
+         trash : boolean;
+      begin
+      with demon_data[demon_num] do begin
+         update_board(x,y,empty);
+         index := 0;
+         { right two quadrants }
+         if (player_x > x) then index := index + 1
+         { vertically adjacent }
+         else if (player_x = x) then index := index + 2;
+         { upper two quadrants }
+         if (player_y > y) then index := index + 4
+         { horizontally adjacent }
+         else if (player_y = y) then index := index + 8;
+         { angle is between +/- 45 degrees or between 135 and 225 degrees }
+         if (abs(player_x - x) > abs(player_y - y)) then index := index + 16;
+         case index of
+            0 : if not demon_up(x,y) then trash := demon_left(x,y);
+            1 : if not demon_up(x,y) then trash := demon_right(x,y);
+            2 : if not demon_up(x,y) then 
+                if not demon_right(x,y) then trash := demon_left(x,y);
+            4 : if not demon_down(x,y) then trash := demon_left(x,y);
+            5 : if not demon_down(x,y) then trash := demon_right(x,y);
+            6 : if not demon_down(x,y) then
+                if not demon_left(x,y) then trash := demon_right(x,y);
+            16 : if not demon_left(x,y) then trash := demon_up(x,y);
+            17 : if not demon_right(x,y) then trash := demon_up(x,y);
+            20 : if not demon_left(x,y) then trash := demon_down(x,y);
+            21 : if not demon_right(x,y) then trash := demon_down(x,y);
+            24 : if not demon_left(x,y) then 
+                 if not demon_down(x,y) then trash := demon_up(x,y);
+            25 : if not demon_right(x,y) then 
+                 if not demon_down(x,y) then trash := demon_up(x,y);
+            3, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 22, 23, 26 :
+             writeln('case selector error ', index);
+            end; { case }
+         update_board(x,y,demon);
+         end; { with }
+      end; { move_towards_player }
+      
+   procedure move_demon(demon_num : integer);
+      begin
+      case demon_motion of
+         inertial_demon : move_same_direction(demon_num);
+         heat_seeking_demon : move_towards_player(demon_num);
+         end; { case }
+      end; { move_demon }
+   
+   procedure play_game;
+      var
+         quit : boolean;
+         i, demon_num : integer;
+         ch : char;
+      begin
+      gotoxy(0,0); eeoln;
+      write('Play: up, down, right, left, H(yper, M(ode, 0..9=Level, Q(uit');
+      quit := false;
+      init_play;
+      demon_num := 0;
+      repeat
+         { delay if necessary for slow player }
+         for i := 1 to speed_control do begin end;
+         if key_hit then move_player(quit);
+         repeat
+            demon_num := demon_num + 1; 
+            if (demon_num > max_demons) then demon_num := 1;
+            if demon_data[demon_num].alive then move_demon(demon_num);
+            until demon_data[demon_num].alive or (num_live_demons = 0);
+         until (num_live_demons = 0) or (num_players = 0) or quit;
+      if key_hit then read(keyboard,ch);
+      gotoxy(0,0); eeoln;
+      if (num_live_demons = 0) then write('Congratulations: you win!')
+      else if (num_players = 0) then write('Too bad: the Demons gotcha!');
+      update_board(player_x,player_y,empty);
+      for i := 1 to max_demons do with demon_data[i] do
+         if alive then update_board(x,y,empty);
+      if not quit then 
+         for i := 1 to 4500 do begin end; { delay }
+      end; { play_game }
+   
+   procedure initialize;
+      var
+         y : integer;
+      begin
+      writeln('Video Game Program. Jon Bondy. 11/81.');
+      for y := 1 to 800 do begin end;
+      old_random := 13157;
+      {$I-}
+      reset(pattern,'default.gpat');
+      {$I+}
+      if (ioresult <> 0) then clear_board
+      else for y := home_y to l_screen do begin
+        board[y] := pattern^; get(pattern); end;
+      show_board;
+      close(pattern);
+      num_demons := 5;
+      demon_motion := inertial_demon;
+      speed_control := 50;
+      end; { initialize }
+   
+   begin { game }
+   initialize;
+   repeat
+      gotoxy(0,0); eeoln;
+      write('GAME: S(etup, demon M(ode');
+      if (demon_motion = inertial_demon) then write('(I)')
+      else if (demon_motion = heat_seeking_demon) then write('(H)');
+      write(', L(evel(', speed_control div 10,'), P(lay, Q(uit : ');
+      repeat
+         i := random; { more randomness! }
+         until key_hit;
+      read(ch);
+      case ch of
+         's','S' : setup;
+         'm','M' : if (demon_motion = inertial_demon) then
+            demon_motion := heat_seeking_demon
+            else demon_motion := inertial_demon;
+         'l','L' : begin
+            gotoxy(0,0); eeoln; write('Enter level (0..9) [9 is slowest] : ');
+            repeat read(ch) until (ch in ['0'..'9']);
+            speed_control := (ord(ch) - ord('0')) * 10;
+            end;
+         '0' : speed_control := 0;
+         '1' : speed_control := 10;
+         '2' : speed_control := 20;
+         '3' : speed_control := 30;
+         '4' : speed_control := 40;
+         '5' : speed_control := 50;
+         '6' : speed_control := 60;
+         '7' : speed_control := 70;
+         '8' : speed_control := 80;
+         '9' : speed_control := 90;
+         'p','P' : play_game;
+         'q','Q' : begin end;
+         end; { case }
+      until (ch = 'q') or (ch = 'Q');
+   end. { game }
+

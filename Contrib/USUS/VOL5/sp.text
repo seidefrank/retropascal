@@ -1,0 +1,188 @@
+
+PROGRAM SP (*  converts Fortran Carriage Controls inserted by selecting
+               the ".lpt" option in "Fmt" to ascii printer controls *);
+
+
+(*
+*******************************************************
+*     FORTRAN CARRIAGE CONTROL                        *
+*        1....sends    FF                             *
+*        +....sends    CR                             *
+*******************************************************
+*)
+
+
+
+VAR 
+    FIRSTPART, FILENAME                       : STRING;
+    F                                         : TEXT;
+    FIRSTPOS, BOLDFACE, FORTRANCONTROLS       : BOOLEAN;
+    I                                         : INTEGER;
+    CH, LASTCH                                : CHAR;
+
+
+PROCEDURE PUTP;
+EXTERNAL;
+(*  ASSEMBLY ROUTINE THAT PUTS ONE CHARACTER 
+INTO THE H14'S SERIAL BOARD AT 177514. 
+ALSO CHECKS BIT 15 (RTS)  OF 177510 TO
+VERIFY STATUS OF FIFO BUFFER.
+; THIS PROCEDURE MUST BE ASSEMBLED AND THE ".CODE"
+; FILE MUST BE PLACED IN '*SYSTEM.LIBRARY'
+;
+;
+; TESTS H14 INTERFACE SIO AND SENDS ONE 
+; CHARACTER TO PRINTER WHEN BOTH TRANSMIT
+; STATUS AND RTS (BUFFER) ARE READY
+; THIS ALLOWS OPERATION AT 4800 BAUD 
+; (MAXIMUM) WITH FULL HANDSHAKING
+; 
+;
+; THIS CODE IS WRITTEN IN UCSD PASCAL 
+; ASSEMBLER FOR THE LSI11/2 (HEATHKIT H11A)
+; AND MUST BE RE-WRITTEN FOR THE PARTICULAR
+; PROCESSOR THE UCSD PASCAL OPERATING SYSTEM
+; IS RUNNING UNDER.
+;
+;
+.PROC        PUTP                               ; EXTERNAL PROCEDURE TO PASCAL 
+                                                ; HOST
+            .PUBLIC        CH                   ; GLOBAL VARIABLE BETWEEN 
+                                                ; PASCAL HOST AND "PUTP"               
+PRS         .EQU           177510               ; PRINTER RECEIVE STATUS
+PXS         .EQU           177514               ; PRINTER TRANSMIT STATUS
+PXB         .EQU           177516               ; PRINTER TRANSMIT BUFFER
+L1:         TSTB           @#PXS                ; TRANSMIT READY?
+            BPL            L1                   ; NO - WAIT
+L2:         BIT            #100000,@#PRS        ; RTS READY (FIFO BUFFER)?
+            BNE            L2                   ; NO - WAIT
+            MOVB           @#CH,@#PXB           ; EVERYTHING READY: PRINT CH
+            MOV            (SP)+,R0             ; SET UP RETURN TO PASCAL HOST
+            JMP            @R0                  ; AND RETURN
+           .END                                 ; END EXTERNAL PROCEDURE
+
+
+
+    
+                      NOTE!!!  IF YOUR PRINTER DRIVER IS 
+                   BOUND IN TO YOUR PASCAL SYSTEM, SUBSTITUTE
+                        THE FOLLOWING IN LINE FOR PUTP:
+                        
+                      SPECIAL NOTE:  IN ORDER FOR THIS TO 
+                    WORK, YOUR PRINTER DRIVER MUST BE ABLE 
+                     TO UNDERSTAND THE DIFFERENCE BETWEEN 
+                      A CARRIAGE RETURN AND A LINE FEED!!!
+                       OTHERWISE, REWRITE "PUTP" FOR YOUR
+                                   PRINTER!!!
+
+                    PROCEDURE PUTP;
+                    VAR
+                      CHBUF : PACKED ARRAY [ 0 .. 1 ] OF CHAR;
+                    BEGIN
+                      CHBUF [ 0 ] := CH;
+                      UNITWRITE ( 6, CHBUF, 1 )
+                    END;
+                                        
+                                        
+                                       *)
+
+
+
+
+PROCEDURE FORTRAN; (* USES THE CHARACTER IN COLUMN ONE FOR CARRIAGE CONTROL *)
+
+BEGIN
+  BOLDFACE := FALSE;
+  WHILE NOT EOF(F) DO
+    BEGIN
+      FIRSTPOS := TRUE;
+      WHILE NOT EOLN (F) DO
+        BEGIN
+          IF FIRSTPOS
+            THEN
+              BEGIN
+                READ(F,CH);
+                CASE CH OF
+                  '1' : BEGIN    (* TOP OF FORM CASE *)
+                          CH := CHR(12);  (*  ASCII FF *)
+                          PUTP;
+                          FIRSTPOS := FALSE
+                        END;
+                  '+' : BEGIN    (* OVERSTRIKE CASE *)
+                          BOLDFACE := TRUE;
+                          FIRSTPOS := FALSE
+                        END
+                END; (*CASE*)
+                IF FIRSTPOS
+                  THEN
+                    BEGIN
+                      LASTCH := CH;
+                      CH := CHR(10); (* ASCII LF *)
+                      PUTP;
+                      CH := LASTCH;
+                      PUTP;
+                      WRITE(CH);
+                      FIRSTPOS := FALSE
+                    END;
+              END
+            ELSE
+              BEGIN
+                IF BOLDFACE
+                  THEN   (* COMPENSATE FOR '+' IN COLUMN ONE *)
+                    BEGIN
+                      BOLDFACE := FALSE;
+                      CH := ' ';
+                      PUTP
+                    END
+                  ELSE
+                    BEGIN
+                      READ(F,CH);
+                      PUTP;
+                      WRITE(CH)
+                    END
+              END
+        END;
+      READLN(F);
+      IF FIRSTPOS 
+        THEN
+          CH := CHR ( 10 )   (*  ASCII LF *)
+        ELSE
+          CH := CHR(13);     (*  ASCII CR *)
+      PUTP;
+      WRITELN;
+    END;
+END; (* PROCEDURE FORTRAN *)
+
+
+
+
+PROCEDURE GETFILE; (* SOLICIT FILE NAME TO BE PRINTED FROM USER *)
+
+BEGIN
+  WRITE('Please enter text file name--> ');
+  READLN(INPUT,FIRSTPART);
+  FILENAME := CONCAT(FIRSTPART,'.text');
+  RESET(F,FILENAME); 
+END;
+
+PROCEDURE ASKFORMORE; (* MORE FILES TO PRINT? *)
+
+BEGIN
+  WRITE('Do you want to print any more files? ');
+  READLN(KEYBOARD,CH);
+  CLOSE ( F , NORMAL )
+END; (*ASKFORMORE*)
+
+
+
+BEGIN (* SP *)
+
+
+  REPEAT
+    GETFILE;
+    FORTRAN;
+    ASKFORMORE
+  UNTIL CH IN ['n','N'];
+
+
+END. (* SP *)

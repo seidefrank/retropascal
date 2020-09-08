@@ -1,0 +1,633 @@
+program AUNIT ; { This is REMUNIT for a TI-990 }
+{xL printer: }
+{$S+}
+
+unit REMUNIT ;
+interface
+
+
+{============== Copyright Notice =============================================}
+{$c Copyright 1980, 1981 by Robert W. Peterson }
+{============== Copyright Notice =============================================}
+
+
+{ 
+  This is a separate compilation unit intended to stand between application
+  code and a communications line.  Implementation of this unit follows the
+  specifications and suggestions set out in the January 1981 draft of the 
+  USUS remote unit specification.
+  
+  This unit is designed to interface to the following model codes:
+     DS1
+     DS2
+     990
+     990/4
+     990/5
+     990/10
+     990/12
+
+  This unit assumes the compiler understands and the BIOS (or SBIOS)
+  implements UNITSTATUS in the standard manner.
+  
+}
+
+type
+  CR_DIALRESULT     = ( CR_OFF_HOOK, CR_DIALERROR, CR_NOAUTODIAL ) ;
+  CR_BAUD_RESULT    = ( CR_BAD_PARAMETER, 
+                        CR_BAD_RATE, 
+                        CR_RATE_SET_OK, 
+                        CR_SELECT_NOT_SUPPORTED ) ;
+  CR_WHOAMI         = ( CR_ORIG, CR_ANS ) ;
+  CR_REM_PORT       = packed record
+                        PART1 : integer ;
+                        PART2 : integer ;
+                        end ; { T_REM_PORT }
+                        
+var
+  CR_ATTENCHAR      : char ;
+  CR_CURRENT_PORT   : CR_REM_PORT ;
+
+{    Initialization and termination. }
+procedure CR_COMMINIT(   DIR                 : CR_WHOAMI ;
+                         ATTENTION_CHARACTER : char ;
+                     var REMOTE_EXISTS       : boolean ;
+                     var DIALER_EXISTS       : boolean ) ;
+
+procedure CR_COMMQUIT ;
+
+
+{    Input status. }
+function  CR_KBSTAT                 : boolean ;
+function  CR_REMSTAT                : boolean ;
+
+
+{    Input/Output operations. }
+function  CR_GETKB                  : char ;
+function  CR_GETREM                 : char ;
+procedure CR_PUTREM(   C            : char ) ;
+
+
+{    Control procedures.      }
+procedure CR_ANSWER ;
+procedure CR_BREAK ;
+function  CR_CARRIER                : boolean ;
+function  CR_CLEARTOSEND            : boolean ;
+procedure CR_DELAY( TENTHS          : integer ) ;
+procedure CR_DIAL( NUMBER           : string ;
+                WAITCHAR            : char ;
+            var RESULT              : CR_DIALRESULT ) ;
+procedure CR_HOOK( ON_HOOK          : boolean ) ;
+procedure CR_SETADDRESS( HIGHADDR   : integer ;
+                         LOWADDR    : integer ;
+                         VECTOR     : integer ) ;
+procedure CR_SETCOMMUNICATIONS(
+                PARITY              : boolean ;
+                EVEN                : boolean ;
+                RATE                : integer ;
+                CHARBITS            : integer ;
+                STOPBITS            : integer ;
+                DIR                 : CR_WHOAMI ;
+                MODEL               : string ;
+            var RESULT              : CR_BAUD_RESULT ) ;
+                
+implementation
+
+const
+  DEFAULT_RATE     = 300 ;
+  DEFAULT_MODE     = TRUE ; { Default is with parity enabled. }
+  DEFAULT_PARITY   = TRUE ; { Default is even parity enabled. }
+  DEFAULT_CHARBITS = 7 ;    { Default to 7 data bits.         }
+  DEFAULT_STOPBITS = 2 ;    { Default to 2 stop bits.         }
+  KB_UNIT          = 2 ;
+  REMIN_UNIT       = 7 ;
+  REMOUT_UNIT      = 8 ;
+  TIMER            = 500 ;
+  
+type
+  T_CLOCK = record
+            case boolean of 
+              { NOTE: TI uses binary representation for long integers.  }
+              true  : ( ticks      : integer[ 4 ] ) ;
+              false : ( hitime     : integer ;
+                        lotime     : integer ) ;
+              end ; { case }
+  
+  TRICK   = packed record
+            case integer of 
+            1 : ( A : packed array[ 0..80 ] of char ) ;
+            2 : ( S : string[ 80 ] ) ;
+            3 : ( I : integer ;
+                  J : integer ) ;
+            4 : ( L : array [0 .. 39] of integer ) ;
+            5 : ( B : array [0 .. 39] of boolean ) ;
+            6 : ( C : packed record
+                      CHARL : char ;
+                      CHARR : char ;
+                      end ) ;
+            end ; { P }
+
+var
+  BAUD_SETTABLE : boolean ;
+  CONTROL       : integer ;
+  CURRENT_BAUD  : integer ;
+  MODEL_ID      : string ;
+  OFF_HOOK      : boolean ;
+  
+{  --------------------------------------------------------------------------  }
+{                              EXTERNAL PROCEDURES                             }
+{  --------------------------------------------------------------------------  }
+
+procedure CLEARBIT( I : integer ) ;             external ;
+procedure LOADCRU ( I : integer ;
+                    J : integer ) ;             external ;
+procedure SETBASE ( I : integer ) ;             external ;
+procedure SETBIT  ( I : integer ) ;             external ;
+
+
+{  --------------------------------------------------------------------------  }
+{                              CONTROL PROCEDURES                              }
+{  --------------------------------------------------------------------------  }
+
+procedure CR_ANSWER ;
+var
+  WAITING      : boolean ;
+
+begin
+  WAITING := true ;
+  while WAITING do
+    begin
+    WAITING := not CR_CARRIER ;
+    if WAITING
+      then
+        if CR_KBSTAT
+          then
+            WAITING := CR_GETKB <> CR_ATTENCHAR ;
+    end ;
+  OFF_HOOK := not WAITING ;
+  if not WAITING
+    then
+      begin
+      unitclear( REMIN_UNIT ) ;
+      unitclear( REMOUT_UNIT ) ;
+      end ;
+end ; { CR_ANSWER }
+
+procedure CR_BREAK ;
+const
+  BASE_5  = { 1740H } 5952 ;       { This is the base address. }
+  BREAK_5 = 17 ;                   { This is the bit number. }
+begin
+  if (MODEL_ID = '990/5') or (MODEL_ID = 'DS2')
+    then
+      begin
+      SETBASE ( BASE_5  ) ;
+      SETBIT  ( BREAK_5 ) ;
+      CLEARBIT( BREAK_5 ) ;
+      end ;
+end ;
+
+function  CR_CARRIER{: boolean};
+var
+  P       : TRICK ;
+begin
+  unitstatus( REMIN_UNIT, P.L, 0 ) ;
+  CR_CARRIER  := P.B[1] ;
+  OFF_HOOK    := P.B[1] ;
+end ; { CR_CARRIER }
+
+function CR_CLEARTOSEND {: boolean } ;
+begin
+  CR_CLEARTOSEND := CR_CARRIER ;
+end ; { CR_CLEARTOSEND }
+
+procedure CR_DELAY{ TENTHS : integer } ;
+{ Purpose: delay 0.1 seconds for each tenth requested. }
+var
+  clock        : T_CLOCK ;
+  I            : integer ;
+  target       : integer[ 4 ] ;
+begin
+  
+  if TIMER <= 1
+    then
+      exit( CR_DELAY ) ;
+  I := TIMER ;
+  time( CLOCK.HITIME, CLOCK.LOTIME ) ;
+  TARGET := CLOCK.TICKS + 6 * TENTHS ; { 6 is 0.1 * 60 ticks/second }
+  repeat
+    I := I - 1 ;
+    time( CLOCK.HITIME, CLOCK.LOTIME ) ;
+  until (I = 0) or (CLOCK.TICKS >= TARGET) ;
+end ; { CR_DELAY }
+
+procedure CR_DIAL{ NUMBER   : string ;
+               var RESULT   : CR_DIALRESULT } ;
+begin
+  RESULT := CR_NOAUTODIAL ;
+end ; { DIAL }
+
+procedure CR_HOOK{ ON_HOOK : boolean } ;
+begin
+  OFF_HOOK := not ON_HOOK ;
+end ; { CR_HOOK }
+
+
+{  --------------------------------------------------------------------------  }
+{                               STATUS PROCEDURES                              }
+{  --------------------------------------------------------------------------  }
+
+function CR_KBSTAT {: boolean} ;
+var
+  P       : TRICK ;
+begin
+  unitstatus( KB_UNIT, P.S,  1 ) ;
+  CR_KBSTAT := (P.I > 0) ;
+end ; { CR_KBSTAT }
+
+function CR_REMSTAT {: boolean} ;
+var
+  P       : TRICK ;
+begin
+  unitstatus( REMIN_UNIT, P.S,  1 ) ;
+  CR_REMSTAT := P.I > 0 ;
+end ; { CR_REMSTAT }
+
+
+
+{  --------------------------------------------------------------------------  }
+{                            INPUT/OUTPUT OPERATIONS                           }
+{  --------------------------------------------------------------------------  }
+
+procedure IOERR( UNIT_NUM, ERR : integer ) ;
+begin
+  if ERR <> 0
+    then
+      begin
+      writeln ;
+      writeln( 'UNIT = ', UNIT_NUM:1, ' IOERROR = ', ERR:4, '   ' ) ;
+      writeln ;
+      end ;
+end ; { IOERR }
+
+function CR_GETKB {: char} ;
+var
+  ARAY         : TRICK ;
+begin 
+  repeat
+  until CR_KBSTAT ;
+  
+  unitread( KB_UNIT, ARAY.A, 1 ) ;
+  CR_GETKB := ARAY.A[0] ;
+  IOERR( KB_UNIT, ioresult ) ;
+end ;
+
+
+function CR_GETREM {: char} ;
+var
+  P         : TRICK ;
+begin
+(*----------------------- DELETED --------------------------------------
+  repeat
+  until REMSTAT ;
+----------------------------------------------------------------------*)
+  
+  unitread( REMIN_UNIT, P.A, 1, 0, CONTROL ) ;
+  CR_GETREM := P.A[0] ;
+
+(*----------------------- DELETED --------------------------------------
+  IOERR( REMIN_UNIT, ioresult ) ;
+----------------------------------------------------------------------*)
+end ; { CR_GETREM }
+
+procedure CR_PUTREM{ C : char } ;
+var
+  P         : TRICK ;
+begin
+  if CR_CARRIER
+    then
+      begin
+      P.A[0] := C ;
+      unitwrite( REMOUT_UNIT, P.A, 1, 0, CONTROL ) ;
+      IOERR( REMOUT_UNIT, ioresult ) ;
+      end ;
+end ; { CR_PUTREM }
+
+
+
+{  --------------------------------------------------------------------------  }
+{                         INITIALIZATION/TERMINATION                           }
+{  --------------------------------------------------------------------------  }
+
+procedure CR_SETADDRESS{ HIGHADDR      : integer ;
+                         LOWADDR       : integer ;
+                         VECTOR        : integer } ;
+begin
+  with CR_CURRENT_PORT do
+    begin
+    PART1 := HIGHADDR ;
+    PART2 := LOWADDR  ;
+    end ;
+end ; { CR_SETADDRESS }
+
+procedure CR_SETCOMMUNICATIONS{
+                      PARITY        : boolean ;
+                      EVEN          : boolean ;
+                      RATE          : integer ;
+                      CHARBITS      : integer ;
+                      STOPBITS      : integer ;
+                      DIR           : CR_WHOAMI ;
+                      MODEL         : string ;
+                  var RESULT        : CR_BAUD_RESULT } ;
+
+procedure SETDS1 ;
+
+const
+  CRUBASE      =   0 ;    { Plug P6; P7 = 352 }
+  LOADRG       =   8 ;
+      
+var
+  BAUD_WORD    : INTEGER ;
+
+begin
+
+  MODEL_ID := MODEL ;
+  
+  if PARITY
+    then
+      if EVEN
+        then
+          CONTROL := 16396
+        else
+          begin
+          RESULT := CR_BAD_PARAMETER ;
+          exit( SETDS1 ) ;
+          end
+    else
+      CONTROL := 12 ;
+      
+  SETBASE(CRUBASE);
+  
+  if RATE = 9600
+    then BAUD_WORD := 2048
+  else
+  if RATE = 4800
+    then BAUD_WORD := 2304
+  else
+  if RATE = 2400
+    then BAUD_WORD := 2560
+  else
+  if RATE = 1200
+    then BAUD_WORD := 2816
+  else 
+  if RATE = 600
+    then BAUD_WORD := 3072
+  else
+  if RATE = 300
+    then BAUD_WORD := 3328
+  else
+  if RATE = 150
+    then BAUD_WORD := 7168
+  else
+  if RATE = 110
+    then BAUD_WORD := -31232
+  else
+  if RATE = 75
+    then BAUD_WORD := 3840
+      else
+        begin
+        RESULT := CR_BAD_RATE ;
+        exit( SETDS1 ) ;
+        end ;
+  
+  SETBIT(LOADRG);
+  LOADCRU(BAUD_WORD,8);
+  CLEARBIT(LOADRG);
+
+  RESULT := CR_RATE_SET_OK ;
+
+  BAUD_SETTABLE := true ;
+  
+end ; { SET1 }
+
+procedure SET990_5 ;{ Set the 990/5's second RS-232
+                  port's baud rate.              }
+
+const
+  BASE                  =  { >1740 }   5952 ;
+  BAUD_BIT_COUNT        =                12 ;
+  B110                  =  { >0638 }   1592 ;
+  B300                  =  { >04D0 }   1232 ;
+  B1200                 =  { >01A1 }    417 ;
+  B2400                 =  { >00D0 }    208 ;
+  B4800                 =  { >0068 }    104 ;
+  B9600                 =  { >0034 }     52 ;
+  B19200                =  { >001A }     26 ;
+  MODE_BIT_COUNT        =                 8 ;
+  MODE_TRANSPARENT      =  { >4B00 }  19200 ;{ 2 stop bits, no parity, 4Mhz,
+                                               8 data bits                     }
+  MODE_EVEN_PARITY      =  { >AA00 } -22016 ;{ 1 stop bit, even parity, 4Mhz,
+                                               7 data bits                     }
+  MODE_ODD_PARITY       =  { >BA00 } -17920 ;{ 1 stop bit, odd parity, 4Mhz,
+                                               7 data bits                     }
+  RESET_PORT            =                31 ;
+  TIMER_BIT             =                13 ;
+  
+var
+  BAUD          : integer ;
+  
+begin
+
+  MODEL_ID := MODEL ;
+  
+  RESULT := CR_RATE_SET_OK ;
+  
+  if RATE = 110 then BAUD := B110
+    else
+    if RATE =   300 then BAUD :=   B300
+    else
+    if RATE =  1200 then BAUD :=  B1200
+    else
+    if RATE =  2400 then BAUD :=  B2400
+    else
+    if RATE =  4800 then BAUD :=  B4800
+    else
+    if RATE =  9600 then BAUD :=  B9600
+    else
+    if RATE = 19200 then BAUD := B19200
+    else
+      begin
+      RESULT := CR_BAD_RATE ;
+      exit( SET990_5 ) ;          { Get out if not a valid speed.         }
+      end ;
+  
+  SETBASE( BASE ) ;             { Set base address of second /5 port.   }
+
+  SETBIT ( RESET_PORT ) ;       { Reset the port.                       }
+
+  if PARITY
+    then
+      begin
+      CONTROL := 12 ;
+      LOADCRU( MODE_TRANSPARENT,
+               MODE_BIT_COUNT ) ;{ Set for transparent mode.            }
+      end
+    else
+      if EVEN
+        then
+          begin
+          CONTROL := 16396 ;
+          LOADCRU( MODE_EVEN_PARITY,
+               MODE_BIT_COUNT ) ;{ Set for even parity (IMS).           }
+          end
+        else
+          begin
+          CONTROL := 12 ;
+          LOADCRU( MODE_ODD_PARITY,
+               MODE_BIT_COUNT ) ;{ Set for odd parity.                  }
+          end ;
+  CLEARBIT( TIMER_BIT ) ;       { Turn off the timer.                   }
+  
+  LOADCRU( BAUD, BAUD_BIT_COUNT ) ;{ Set the baud rate.                 }
+  
+  SETBIT  ( 16 ) ;              { Misc. settings                        }
+  SETBIT  ( 18 ) ;
+  CLEARBIT( 19 ) ;
+  CLEARBIT( 20 ) ;
+  CLEARBIT( 21 ) ;
+  
+  BAUD_SETTABLE := true ;
+  
+end ; { SET5 }
+
+procedure SET990 ;
+begin
+  if PARITY
+    then
+      if EVEN
+        then
+          CONTROL := 16396 
+        else
+          CONTROL := 12
+    else
+      CONTROL := 12 ;
+  RESULT := CR_RATE_SET_OK ;
+end ; { SET990 }
+
+begin
+
+  MODEL_ID := '' ;
+
+  BAUD_SETTABLE := false ;
+  
+  RESULT := CR_SELECT_NOT_SUPPORTED ;
+
+  if MODEL = 'DS1'
+    then
+      SETDS1
+    else if (MODEL = 'DS2') OR (MODEL = '990/5')
+    then
+      SET990_5
+    else if length( MODEL )>2 then if (copy(MODEL,1,3) = '990')
+    then
+      SET990
+    else
+      CONTROL := 12 ;
+  
+end ; { CR_SETCOMMUNICATIONS }
+
+procedure NOT_IMPLEMENTED( UNIT_NUM : integer ;
+                       var NOT_THERE : boolean ) ;
+var
+  RESULT       : integer ;
+begin
+  unitclear( UNIT_NUM ) ;
+  RESULT := ioresult ;
+  if RESULT <> 0
+    then
+      begin
+      writeln ;
+      writeln ;
+      if RESULT = 9
+        then
+          begin
+          writeln( 'Unit ', UNIT_NUM, ' not implemented!' ) ;
+          end
+        else
+          begin
+          writeln( 'Error in UNITCLEAR(', UNIT_NUM, ') : ', RESULT ) ;
+          end ;
+      NOT_THERE := true ;
+      end 
+    else
+      NOT_THERE := false ;
+end ;
+
+procedure CR_COMMINIT{ DIRECTION           : CR_WHOAMI ;
+                       ATTENTION_CHARACTER : char ;
+                   var REMOTE_EXISTS       : boolean ;
+                   var DIALER_EXISTS       : boolean } ;
+
+var
+  RESULT          : CR_BAUD_RESULT ;
+  UNIT_NOT_THERE  : boolean ;
+
+begin
+  { Set no auto-dial. }
+  DIALER_EXISTS := false ;
+  
+  { Check that the required units are implemented. }
+  REMOTE_EXISTS := true ;
+  NOT_IMPLEMENTED( REMIN_UNIT, UNIT_NOT_THERE ) ;
+  if UNIT_NOT_THERE
+    then
+      begin
+      REMOTE_EXISTS := false ;
+      exit( CR_COMMINIT ) ;
+      end ;
+  NOT_IMPLEMENTED( REMOUT_UNIT, UNIT_NOT_THERE ) ;
+  if UNIT_NOT_THERE
+    then
+      begin
+      REMOTE_EXISTS := false ;
+      exit( CR_COMMINIT ) ;
+      end ;
+
+  MODEL_ID := '' ;
+  
+  OFF_HOOK := false ;
+  
+  BAUD_SETTABLE := false ;
+  
+  CR_ATTENCHAR := ATTENTION_CHAR ;
+  
+  CR_SETCOMMUNICATIONS( DEFAULT_MODE,
+                        DEFAULT_PARITY,
+                        DEFAULT_RATE,
+                        DEFAULT_CHARBITS,
+                        DEFAULT_STOPBITS,
+                        DIR,
+                        MODEL_ID,
+                        RESULT ) ;
+
+end ;
+
+procedure CR_COMMQUIT ;
+var
+  RESULT        : CR_BAUD_RESULT ;
+begin
+  OFF_HOOK := false ;
+  if BAUD_SETTABLE
+    then
+      CR_SETCOMMUNICATIONS( DEFAULT_PARITY, 
+                            DEFAULT_MODE, 
+                            DEFAULT_RATE, 
+                            DEFAULT_CHARBITS,
+                            DEFAULT_STOPBITS,
+                            CR_ORIG,
+                            MODEL_ID,
+                            RESULT ) ;
+end;
+
+end.
+
+

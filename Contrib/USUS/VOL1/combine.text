@@ -1,0 +1,77 @@
+
+PROGRAM Combine;
+
+VAR  i: integer;
+     yn: char;
+     Fileno: string [6];
+     Infilename, Outfilename: string [20];
+     s: string[200];
+     Infile1, Infile2, Infile3, Infile4, Outfile: text;
+
+BEGIN
+   Writeln ('This program combines 2 to 4 textfiles.');
+   Writeln (
+      'Please note that the filetype ".TEXT" is assumed, and should NOT'
+   );
+   WRITELN ('be included when you type the file names.');
+   Writeln;
+   Write ('Please type the name of the OUTPUT file:  ');
+   READLN (Outfilename);
+   Outfilename := CONCAT (outfilename, '.TEXT');
+   REWRITE (outfile, outfilename);
+   Writeln;
+   Write ('Please type the name of the first file to be combined:  ');
+   READLN (infilename);
+   Infilename := CONCAT (infilename, '.TEXT');
+   reset (Infile1, infilename);
+j  WHILE NOT eof (Infile1) DO
+      BEGIN
+         Readln (Infile1, s);
+         Writeln (Outfile, s)
+      END;
+   Writeln ('File copied.');
+   yn := 'Y';
+   i := 1;
+   While ((yn = 'Y') or (yn = 'y')) AND (i < 4) do
+      BEGIN
+         i := succ (i);
+         CASE i OF
+            2: Fileno := 'second';
+            3: Fileno := 'third';
+            4: Fileno := 'fourth'
+         END;
+         Write ('Please type the name of the ',
+                Fileno, ' file you wish to add:  ');
+         READLN (Infilename);
+         Infilename := CONCAT (Infilename, '.TEXT');
+         CASE i OF
+            2: BEGIN
+                  RESET (Infile2, Infilename);
+                  WHILE NOT eof (Infile2) DO
+                     BEGIN
+                        Readln (Infile2, s);
+                        Writeln (Outfile, s)
+                     END
+               END;
+            3: BEGIN
+                  RESET (Infile3, Infilename);
+                  WHILE NOT eof (Infile3) DO
+                     BEGIN
+                        Readln (Infile3, s);
+                        Writeln (Outfile, s)
+                     END
+               END;
+            4: BEGIN
+                  RESET (Infile4, Infilename);
+                  WHILE NOT eof (Infile4) DO
+                     BEGIN
+                        Readln (Infile4, s);
+                        Writeln (Outfile, s)
+                     END
+               END
+         END (*case*);
+         Write ('File copied.  Got more files (y/n)? ');
+         READ (yn);
+      END;
+   CLOSE (outfile, lock)
+END.

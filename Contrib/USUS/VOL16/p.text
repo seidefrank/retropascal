@@ -1,0 +1,431 @@
+PROGRAM P;                                                                                                                                                                                           
+ VAR ifile,ofile         : TEXT;
+     temp,page,linat,  
+     temp1,temp2,nlwg    : INTEGER; 
+     oline,iline,  
+     ifilename,
+     lmarg,pmarg,token   : STRING;     
+     newpar,epar         : BOOLEAN;
+     format : FILE OF RECORD
+               tmgin,pmgin,
+               lmgin,rmgin,lsize,psize : INTEGER; 
+               ofilename     : STRING;
+               mflg,rflg,pflg,sflg          : BOOLEAN; 
+              END;
+
+PROCEDURE Clear;
+ BEGIN
+  gotoxy (0, 0 );
+  WRITE(CHR(27),CHR(69));   {H-19 specific}
+ END;
+ 
+PROCEDURE Clr;  
+ BEGIN
+  WRITE(CHR(27),chr(75));   {h-19 specific}
+ END;
+
+ (*$I p.inc.text*)
+ 
+ PROCEDURE Chgformat;    
+  BEGIN
+   RESET(format,'pformat');            
+   SEEK(format,0);
+   GET(format);
+   Dispformat;
+   REPEAT 
+    GOTOXY(0,0); 
+    Clr;
+    WRITE('command ? ');                   
+    READ(ch2);    
+    WITH format^ DO 
+    CASE ch2 OF 
+     'H','h' : Help;
+     'P','p' : BEGIN GOTOXY(28,2); Clr; READLN(pmgin); END;  
+     'L','l' : BEGIN GOTOXY(28,3); Clr; READLN(lmgin); END;  
+     'R','r' : BEGIN 
+                GOTOXY(28,4); Clr; GOTOXY(40,4); 
+                WRITELN('H)elp'); GOTOXY(28,4);
+                READLN(rmgin); 
+               END;       
+     'T','t' : BEGIN 
+                GOTOXY(28,5); Clr; GOTOXY(40,5);   
+                WRITELN('Q)uit'); GOTOXY(28,5);
+                READLN(tmgin); 
+               END;  
+     'C','c' : BEGIN GOTOXY(28,6); Clr; READLN(lsize); END;       
+     'N','n' : BEGIN GOTOXY(28,7); Clr; READLN(psize); END;  
+     'O','o' : BEGIN GOTOXY(28,8); Clr; READLN(ofilename); END;   
+     'S','s' : BEGIN GOTOXY(0,0);  Clr;   
+                WRITE('which switch (1,2 or 3) --->');
+                READ(ch3);
+                CASE ch3 OF
+                 '1' : BEGIN GOTOXY(28,11); Clr; READ(ch4);                    
+                        IF ch4 IN ['Y','y'] THEN 
+                        BEGIN rflg := TRUE; GOTOXY(28,11); WRITELN('Yes'); END                   
+                        ELSE
+                        BEGIN rflg := FALSE; GOTOXY(28,11); WRITELN('No'); END;
+                       END;     
+                 '2' : BEGIN GOTOXY(28,12); Clr; READ(ch4);                       
+                        IF ch4 IN ['Y','y'] THEN     
+                        BEGIN pflg := TRUE; GOTOXY(28,12); WRITELN('Yes'); END            
+                        ELSE   
+                        BEGIN pflg := FALSE; GOTOXY(28,12); WRITELN('No'); END;
+                       END;     
+                 '3' : BEGIN GOTOXY(28,13); Clr; READ(ch4); 
+                        IF ch4 IN ['Y','y'] THEN       
+                        BEGIN sflg := TRUE; GOTOXY(28,13); WRITELN('Yes'); END
+                        ELSE 
+                        BEGIN sflg := FALSE; GOTOXY(28,13); WRITELN('No'); END;  
+                       END;     
+                 '4' : BEGIN GOTOXY(28,14); Clr; READ(ch4);         
+                        IF ch4 IN ['Y','y'] THEN         
+                        BEGIN mflg := TRUE; GOTOXY(28,14); WRITELN('Yes'); END
+                        ELSE 
+                        BEGIN mflg := FALSE; GOTOXY(28,14); WRITELN('No'); END;
+                       END;     
+                 END;   
+               END;   
+     END;
+    UNTIL ch2 IN ['Q','q'];  
+    FOR temp1 := 16 TO 23 DO
+     BEGIN     
+      GOTOXY(0,temp1);              
+      Clr;
+     END;
+    GOTOXY(0,18);
+    WRITE('update ?');
+    READ(ch2);
+    IF ch2 IN ['Y','y'] THEN
+     BEGIN
+      SEEK(format,0);
+      PUT(format);
+     END;
+    CLOSE(format);
+  END;  
+  
+ 
+ BEGIN 
+  {$I-}
+  RESET(format,'pformat'); 
+  {$I+}  
+  IF IORESULT <> 0 THEN Makeformat;
+  CLOSE(format);
+  REPEAT 
+   Clear;
+   WRITELN('Welcome to the P)rint program.');
+   WRITELN;
+   WRITELN;
+   WRITELN('enter a ''H'' followed by a <return> for Help,'); 
+   WRITELN('or enter a ''^'' followed by a <return> to change the format,');  
+   WRITELN('or enter a lone <return> to exit the program,');  
+WRITELN('or enter the filename of a file to be printed followed by <return>.');
+   WRITELN;
+   WRITE('----->');
+   READLN(ifilename);  
+   IF LENGTH(ifilename)=0 THEN 
+    BEGIN  
+     Clear;
+     EXIT(P);        
+    END;
+   IF LENGTH(ifilename)=1 THEN IF ifilename[1] IN ['H','h'] THEN Help1; 
+   IF POS('^',ifilename)=1 THEN Chgformat; 
+   FOR temp1 := 1 TO LENGTH(ifilename) DO
+    IF ifilename[temp1] IN ['a'..'z'] THEN 
+     ifilename[temp1] := CHR(ORD(ifilename[temp1])-32);
+   IF POS('.TEXT',ifilename)=0 THEN ifilename := CONCAT(ifilename,'.TEXT');                  
+  {$I-} 
+  RESET(ifile,ifilename);          
+  {$I+} 
+ UNTIL IORESULT=0;
+END;     
+ 
+  
+ PROCEDURE Chkline;
+ VAR ch : CHAR;
+  BEGIN 
+   IF format^.ofilename<>'#2:' THEN WRITE('.');          
+   linat := linat + 1; 
+   IF format^.pflg AND (linat=format^.psize-3)  THEN     
+    BEGIN
+     linat := 0;
+     page := page + 1; 
+     IF NOT (EOF(ifile) AND (page=1)) THEN  
+      BEGIN
+       WRITELN(ofile);   
+       WRITE(ofile,' ':((format^.lsize DIV 2)-3)); 
+       WRITELN(ofile,'Page ',page:3);
+       WRITELN(ofile);
+       IF format^.sflg THEN   
+        BEGIN
+         WRITELN;  
+         WRITE('<cr> to continue, <esc> to quit >');      
+         READ(keyboard,ch);                 
+         WRITELN;
+         IF ch = CHR(27) THEN  
+          BEGIN
+           Clear;
+           CLOSE(ofile,lock);
+           EXIT(P);
+          END;      
+         IF format^.ofilename <> '#2:' THEN WRITE('printing '); 
+        END;  
+      END    
+     ELSE FOR temp1 := 1 TO 3 DO WRITELN(ofile);
+    END;
+  END;
+  
+PROCEDURE Straightout;          
+ BEGIN  
+  IF format^.ofilename<>'#2:' THEN
+   BEGIN
+    WRITELN;        
+    WRITE  ('printing ');
+   END;
+  WHILE NOT(EOF(ifile)) DO
+   BEGIN
+    IF format^.mflg THEN WRITE(ofile,lmarg);
+    READLN(ifile,oline); 
+    WRITELN(ofile,oline);
+    Chkline; 
+   END; 
+ END;  
+     
+PROCEDURE Rjustify; FORWARD;                
+
+PROCEDURE Outline;
+ BEGIN  
+  (*
+  WRITE('outline called w/  '); 
+  IF epar THEN WRITE('epar true,') ELSE WRITE('epar false,');  
+  IF newpar THEN WRITELN(' newpar true') ELSE WRITELN(' newpar false');  
+  *)
+  IF NOT epar THEN Rjustify;       
+  WRITE(ofile,lmarg);      
+  IF newpar THEN WRITE(ofile,pmarg);  
+  WRITELN(ofile,oline);   
+  Chkline;
+  IF newpar AND (LENGTH(oline)<>0) THEN newpar := FALSE; 
+  oline := token;         
+  token := '';
+ END;
+
+PROCEDURE Getnext; 
+ BEGIN
+  REPEAT
+   iline := '';        
+   READLN(ifile,iline);  
+   IF (LENGTH(iline)=0) OR (POS(' ',iline)=1) OR (POS('~',iline)<>0)              
+   THEN                    
+    BEGIN
+     epar := TRUE;    
+     WHILE POS(' ',iline)=1 DO DELETE(iline,1,1);   
+     IF LENGTH(oline)<>0 THEN Outline;     
+     epar := FALSE; newpar := TRUE;
+     IF LENGTH(iline)=0 THEN  
+      BEGIN
+       WRITELN(ofile);   
+       Chkline;  
+      END;
+     IF POS('~',iline)<>0 THEN
+      BEGIN
+       WHILE POS('~',iline)<>0 DO DELETE(iline,POS('~',iline),1);
+       REPEAT
+        IF format^.mflg THEN WRITE(ofile,lmarg);
+        WRITELN(ofile,iline); 
+        Chkline;
+        READLN(ifile,iline);       
+       UNTIL (EOF(ifile)) OR (POS('~',iline)<>0);  
+       WHILE POS('~',iline)<>0 DO DELETE(iline,POS('~',iline),1);  
+       WHILE POS(' ',iline)=1 DO DELETE(iline,1,1);
+       IF LENGTH(iline)=0 THEN  
+        BEGIN
+         WRITELN(ofile);   
+         Chkline;
+        END;
+      END;  
+    END;   
+  UNTIL (LENGTH(iline)<>0) OR (EOF(ifile));  
+ END; 
+
+PROCEDURE Getoken;    
+ BEGIN
+  token := '';    
+  REPEAT 
+   IF LENGTH(iline)=0 THEN Getnext; 
+   IF POS(' ',iline)<>0 THEN             
+    BEGIN    
+     token := COPY(iline,1,POS(' ',iline)-1);             
+     DELETE(iline,1,POS(' ',iline));    
+    END
+   ELSE
+    BEGIN  
+     token := iline;  
+     iline := '';
+    END;
+  UNTIL (LENGTH(token)<>0) OR (EOF(ifile));     
+ END;   
+     
+FUNCTION Addable : BOOLEAN;    
+ VAR intb : BOOLEAN;  
+     temp3 : INTEGER;
+ BEGIN 
+  intb := FALSE;    
+  temp3 := 0;    
+  temp3 := LENGTH(oline)+LENGTH(token)+1;      
+  IF newpar THEN temp3 := temp3 + format^.pmgin;
+  WITH format^ DO IF temp3 <= (lsize-lmgin-rmgin) THEN intb := TRUE;       
+  Addable := intb; 
+ END;      
+ 
+PROCEDURE Rjustify;            
+ VAR srt,srted,pspace,lwg   : ARRAY[0..50] OF INTEGER;         
+     numtoadd               : INTEGER;          
+     
+ PROCEDURE Addtoall(i : INTEGER);      
+  VAR lstcharspace : BOOLEAN;                  
+  BEGIN  
+   temp1 := 0;  
+   lstcharspace := FALSE;      
+   WHILE temp1 < LENGTH(oline) DO                   
+    BEGIN
+     temp1 := temp1 + 1;    
+     IF oline[temp1]<>' ' THEN            
+      IF lstcharspace THEN                   
+       BEGIN
+        FOR temp2 := 1 TO i DO INSERT(' ',oline,temp1);                  
+        temp1 := temp1 + i;        
+        lstcharspace := FALSE;                
+       END
+      ELSE
+     ELSE lstcharspace := TRUE;       
+    END;        
+  END; 
+  
+ PROCEDURE Addrems(i : INTEGER);        
+  VAR prevhi,temp3 : INTEGER;                    
+  BEGIN
+   FOR temp1 := 1 TO i DO    
+    BEGIN          
+     prevhi := 0;                        
+     FOR temp2 := 1 TO i DO   
+      IF srted[temp2] > prevhi THEN 
+       BEGIN    
+        prevhi := srted[temp2];        
+        temp3 := temp2;
+       END;        
+     INSERT(' ',oline,pspace[srted[temp3]]+ 
+      (srted[temp3]-1)*(numtoadd DIV nlwg));        
+     srted[temp3] := 0;     
+    END;   
+  END; 
+  
+ PROCEDURE Sortlwg;
+  VAR prevhi : INTEGER;          
+  BEGIN
+   FOR temp1 := 1 TO nlwg DO srt[temp1] := lwg[temp1];                 
+   FOR temp1 := 1 TO nlwg DO      
+    BEGIN
+     prevhi := 0;
+     FOR temp2 := 1 TO nlwg DO 
+      IF srt[temp2]>prevhi THEN         
+       BEGIN
+        prevhi := srt[temp2];         
+        srted[temp1] := temp2;                             
+       END;
+     srt[srted[temp1]] := 0;          
+    END;
+  END;     
+ 
+  BEGIN (* Rjustify *)         
+   temp1 := 0;                                      
+   nlwg := 0;    
+   WHILE temp1 < LENGTH(oline) DO                           
+    BEGIN
+     temp1 := temp1 + 1;
+     IF oline[temp1]=' ' THEN                    
+      BEGIN 
+       nlwg := nlwg + 1;             
+       pspace[nlwg] := temp1;   
+      END;    
+    END;
+   pspace[0] := 0;    
+   pspace[nlwg+1] := LENGTH(oline)+1;         
+   FOR temp1 := 1 TO nlwg DO         
+    lwg[temp1] := pspace[temp1+1] - pspace[temp1-1] - 1;                                    
+   Sortlwg;
+   WITH format^ DO numtoadd := lsize - lmgin - rmgin - LENGTH(oline);               
+   IF newpar THEN numtoadd := numtoadd - format^.pmgin;                     
+   IF nlwg <> 0 THEN                           
+    BEGIN
+     IF numtoadd DIV nlwg >= 1 THEN Addtoall(numtoadd DIV nlwg);    
+     IF numtoadd MOD nlwg >= 1 THEN Addrems(numtoadd MOD nlwg);  
+    END;   
+  END; 
+
+
+PROCEDURE Justout;       
+ BEGIN  
+  IF format^.ofilename<>'#2:' THEN
+   BEGIN
+    WRITELN;  
+    WRITE  ('printing ');
+   END;
+  
+  pmarg := '';   
+  oline := '';
+  iline := '';
+  
+  FOR temp1 := 1 TO format^.pmgin DO pmarg := CONCAT(pmarg,' ');        
+  
+  epar := FALSE;         
+  newpar := TRUE;
+  
+  WHILE NOT EOF(ifile) DO         
+   BEGIN
+    Getoken;
+    IF Addable THEN 
+     BEGIN 
+      IF LENGTH(oline)<>0 THEN oline := CONCAT(oline,' ',token)     
+                          ELSE oline := token;  
+     END
+    ELSE Outline;
+   END;
+  
+  END;  
+
+BEGIN (* P *)   
+ REPEAT
+  Clear;     
+  Chkformat;   
+  
+  GOTOXY(0,20);
+  Clr;
+  
+  WRITE('enter a carriage return when ready >');    
+  READLN;
+  
+  IF format^.rflg OR format^.mflg THEN linat := format^.tmgin
+                  ELSE linat := 0;    
+  page  := 0;
+  
+  REWRITE(ofile,format^.ofilename);
+   
+  lmarg := '';    
+  FOR temp1 := 1 TO format^.lmgin DO lmarg := CONCAT(lmarg,' ');        
+  IF format^.rflg OR format^.mflg THEN   
+   FOR temp1 := 1 TO format^.tmgin DO WRITELN(ofile);
+ 
+  IF NOT format^.rflg THEN Straightout ELSE Justout;    
+    
+  IF format^.pflg AND (linat <> 0) THEN    
+   REPEAT
+    WRITELN(ofile);  
+    Chkline;
+   UNTIL linat = 0;
+    
+  CLOSE(ofile,lock);
+  CLOSE(ifile);
+ 
+ UNTIL FALSE; 
+END.
+

@@ -1,0 +1,327 @@
+SEGMENT PROCEDURE CHG;
+     
+PROCEDURE MODIFY;
+VAR
+     ERR: BOOLEAN;
+     I, J, ANS: INTEGER;
+
+FUNCTION CHANGE(WHAT: STRING): BOOLEAN;
+(* This asks if WHAT is to be changed.  Returns true if the answer is yes.
+   Returns false otherwise.
+*)
+BEGIN
+  CHANGE := YESNO(CONCAT('Change ',WHAT),'N');
+END;   (* of change *)
+
+FUNCTION GETNUMFOR(WHAT: STRING;  MAX: INTEGER): INTEGER;
+(* This function prompts for a number that tells which WHAT is to be changed.
+   It returns a value between 1 and MAX.
+*)
+VAR  ANS: INTEGER;
+BEGIN
+  GETNUM(1,MAX,-1,CONCAT('Enter ',WHAT,' # to Change'),ANS);
+  GETNUMFOR := ANS;
+END;   (* of getnumfor *)
+
+PROCEDURE CHANGEPAGES;
+VAR
+     ERR, LASTPAGE, NUMPAGES: INTEGER;
+     AWINDOW: WINDOWTYPE;
+     PAGES: STRING[2];
+BEGIN
+  SETNUM(1,MAXPAGES,'Pages',LASTPAGE,MSG_LINE);
+  ONEMOMENT('Opening Data File');
+  WITH FORM_DAT_DESC, DIRECTORY^ DO BEGIN
+    RESET(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+    USEDHEAP := FALSE;
+    CHECKERR(5,FALSE,OLDREC);
+    DAT_OPEN := TRUE;
+    BLKSPERPAGE := ( (THEMAXROW*THEMAXCOL) + WINDOWSIZE ) DIV ( WINDOWSIZE+1 );
+    NUMPAGES := NO_PAGES;
+    IF LASTPAGE > NUMPAGES THEN  (* need to add pages *)
+      BEGIN
+        ONEMOMENT('Opening Title file');
+        IF NOT OPEN_TIT(REQUESTED_FORM) THEN CHECKERR(8,FALSE,OLDREC);
+        REPEAT
+          NUMPAGES := NUMPAGES + 1;
+          SET_PAGE(NUMPAGES,FALSE,TRUE,NEWREC,ERR); (* get info and add page *)
+          IF ERR <> 0 THEN
+            BEGIN  IF ERR = 1 THEN ERROR(2);  LASTPAGE := NUMPAGES-1 END
+        UNTIL NUMPAGES >= LASTPAGE;
+        CLOSE(FORM_TIT_FILE,LOCK);  TIT_OPEN := FALSE
+      END;
+    (* Position file pointer after last block in the file *)
+    IF BLOCKREAD(FORM_DAT_FILE,AWINDOW,1,BLKSPERPAGE*LASTPAGE-1) <> 1 THEN;
+    NO_PAGES := LASTPAGE;
+    CLOSE(FORM_DAT_FILE,CRUNCH);  DAT_OPEN := FALSE
+  END;
+  DISPLAYDIR(OUTPUT,TRUE,FALSE,RECNUMBER);  (* display directory record *)
+END;   (* of changepages *)
+
+PROCEDURE ROWCHANGE(NUM: INTEGER; COND: SETTYPE;  DISPLAYHEAD: BOOLEAN;
+                        VAR ERR: BOOLEAN );
+BEGIN
+  IF DISPLAYHEAD THEN PUTCTRLHEAD('Row',DIRECTORY^.NO_ROWS);
+  SEEKCTL(FORM_CTL_FILE,FALSE,NUM,ANDGET);
+  SET_CTRL_REC(FORM_CTL_FILE^,TRUE,NUM,TRUE,ERR,COND);
+  IF NOT ERR THEN SEEKCTL(FORM_CTL_FILE,FALSE,NUM,ANDPUT)
+END;
+
+PROCEDURE COLCHANGE(NUM: INTEGER; COND: SETTYPE;  DISPLAYHEAD: BOOLEAN;
+                        VAR ERR: BOOLEAN );
+BEGIN
+  IF DISPLAYHEAD THEN PUTCTRLHEAD('Col',DIRECTORY^.NO_COLS);
+  SEEKCTL(FORM_CTL_FILE,TRUE,NUM,ANDGET);
+  SET_CTRL_REC(FORM_CTL_FILE^,FALSE,NUM,TRUE,ERR,COND);
+  IF NOT ERR THEN SEEKCTL(FORM_CTL_FILE,TRUE,NUM,ANDPUT)
+END;
+
+PROCEDURE CHANGECTLS(VAR NUM: INTEGER; MAX: INTEGER; DOINGROW: BOOLEAN;
+                         WHAT: STRING);
+VAR CNT: INTEGER;
+
+PROCEDURE SWAPRECS(FIRST, LAST, OFFSET, DELTA: INTEGER);
+VAR
+     CNT, K: INTEGER;
+
+BEGIN  (* SWAPRECS *)
+  ONEMOMENT(CONCAT('Moving ',WHAT,'s'));
+  CNT := FIRST - OFFSET;
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO
+    WHILE CNT <> (LAST + DELTA + OFFSET) DO  (* swap fields in control file *)
+      BEGIN
+        CNT := CNT + OFFSET;
+        SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,CNT-DELTA,ANDGET);
+        SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,CNT      ,ANDPUT)
+      END;
+  K := 0;
+  WITH DIRECTORY^ DO  (* swap data in each page of dat file *)
+    REPEAT
+      K := K + 1;
+      CNT := FIRST - OFFSET;
+      WHILE CNT <> (LAST + DELTA + OFFSET) DO
+        BEGIN
+          CNT := CNT + OFFSET;
+          MOVEFORMDATA(DOINGROW,K,CNT-DELTA,CNT);
+        END
+    UNTIL K = NO_PAGES;
+END;   (* of swaprecs *)
+
+PROCEDURE CHANGECALC(VAR CTLREC: CTLRECORD; FOCALPT, DELTA: INTEGER;
+                           DELIT: BOOLEAN);
+VAR
+     I, ANS: INTEGER;
+     TEMP: STRING[L_CALC];
+
+FUNCTION ENDOFNUM(START: INTEGER): INTEGER;
+BEGIN
+  WHILE (START < LENGTH(TEMP)) AND (TEMP[START] IN DIGITS) DO
+    START := START + 1;
+  ENDOFNUM := START - 1;
+END;
+
+BEGIN  (* CHANGECALC *)
+  IF CTLREC.CTL_TYPE IN [INITIALC,FINALC] THEN
+    WITH CTLREC DO BEGIN
+      TEMP := CONCAT(CTL_CALC,'#');
+      CTL_CALC := '';
+      REPEAT
+        IF TEMP[1] IN ['C','c'] THEN I := ENDOFNUM(2)
+        ELSE
+          IF TEMP[1] IN DIGITS THEN
+            BEGIN
+              I := ENDOFNUM(1);
+              VALUE(TRUE,COPY(TEMP,1,I),FAKE,ANS);
+              IF (ANS >= (FOCALPT + DELTA)) AND DELIT THEN ANS := ANS - DELTA
+              ELSE IF (ANS >= FOCALPT) AND NOT DELIT THEN  ANS := ANS + DELTA
+            END
+          ELSE
+            BEGIN
+              I := 1;
+              WHILE (I < LENGTH(TEMP)) AND
+                 NOT (TEMP[I] IN (DIGITS + ['C','c'])) DO I := I + 1;
+              I := I - 1
+            END;
+        IF TEMP[1] IN DIGITS THEN
+          ENCODE(ANS,IS)
+        ELSE
+          IS := COPY(TEMP,1,I);
+        CTL_CALC := CONCAT(CTL_CALC,IS);
+        DELETE(TEMP,1,I)
+      UNTIL LENGTH(TEMP) = 1;
+    END;
+END;   (* of changecalc *)
+
+PROCEDURE DOINSERT;
+VAR  NEWCNT, NEWNUM: INTEGER;
+BEGIN
+  GETNUM(0,NUM,-1,CONCAT('Enter ',WHAT,' # to Insert After'),ANS);
+  CNT := MAX - NUM;   (* Maximum number that could be inserted *)
+  GETNUM(1,CNT,1,CONCAT('Insert how many ',WHAT,'s ?'),CNT);
+  ANS := ANS + 1;
+  NUM := NUM + CNT;
+  IF (NUM-CNT) >= ANS THEN SWAPRECS(NUM,ANS+1,-1,CNT);
+  I := ANS;
+  WHILE I <= (ANS + CNT - 1) DO
+    BEGIN
+      IF DOINGROW THEN ROWCHANGE(I,NEWREC,I=ANS,ERR)
+      ELSE             COLCHANGE(I,NEWREC,I=ANS,ERR);
+      IF ERR THEN
+        BEGIN
+          IF YESNO(CONCAT('Abort all ',WHAT,'s inserted'),'N') THEN
+            BEGIN  NEWCNT := 0;        NEWNUM := NUM - CNT           END
+          ELSE
+            BEGIN  NEWCNT := I - ANS;  NEWNUM := NUM + NEWCNT - CNT  END;
+          IF (NUM - CNT) >= ANS THEN  SWAPRECS(ANS+NEWCNT,NUM-1,1,NEWCNT-CNT);
+          NUM := NEWNUM;
+          CNT := NEWCNT
+        END
+      ELSE I := I + 1
+    END;
+  IF ( (NUM-CNT) >= ANS ) AND (CNT <> 0) THEN
+    BEGIN
+      ONEMOMENT('Adjusting calculation strings');
+      FOR I := 1 TO NUM DO
+        IF NOT (I IN [ANS..ANS+CNT-1]) THEN
+          BEGIN
+            J := I;
+            SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,J,ANDGET);
+            CHANGECALC(FORM_CTL_FILE^,ANS,CNT,FALSE);
+            SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,J,ANDPUT)
+          END
+    END
+END;   (* of doinsert *)
+
+PROCEDURE DODELETE;
+BEGIN
+  GETNUM(1,NUM,-1,CONCAT('Enter Starting ',WHAT,' # to Delete'),ANS);
+  CNT := NUM - ANS + 1;
+  IF CNT = NUM THEN CNT := CNT - 1;  (* don't let all be deleted *)
+  GETNUM(1,CNT,1,CONCAT('Delete how many ',WHAT,'s ?'),CNT);
+  I := 0;
+  REPEAT       (* Display all of the items that will be deleted *)
+    GOTOXY(0,MSG_LINE+1);
+    SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,ANS+I,ANDGET);
+    WRITEAREC(OUTPUT,ANS+I,FORM_CTL_FILE^);
+    I := I + 1;
+    IF I < CNT THEN
+      PRESSRETURN(CONCAT('To see the next ',WHAT),MSG_LINE+2)
+  UNTIL I >= CNT;
+  ERASE(MSG_LINE+2);
+  IF YESNO('Do you still want to Delete','N') THEN
+    BEGIN
+      ERASE(MSG_LINE+1);
+      NUM := NUM - CNT;
+      IF (NUM + 1) > ANS THEN
+        BEGIN
+          SWAPRECS(ANS,NUM+CNT-1,1,-CNT);
+          FOR I := 1 TO NUM DO
+            BEGIN
+              J := I;
+              SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,J,ANDGET);
+              CHANGECALC(FORM_CTL_FILE^,ANS,CNT,TRUE);
+              SEEKCTL(FORM_CTL_FILE,NOT DOINGROW,J,ANDPUT)
+            END
+        END
+    END
+  ELSE
+    ERASE(MSG_LINE+1)
+END;   (* of dodelete *)
+
+BEGIN  (* CHANGECTLS *)
+  WHILE CHANGE(CONCAT('Number of ',WHAT,'s')) DO
+    WITH FORM_CTL_FILE^, DIRECTORY^ DO BEGIN
+      IF NOT DAT_OPEN THEN
+        IF NOT OPEN_DAT(REQUESTED_FORM,FORM_DAT_FILE,FORM_DAT_DESC,
+                  'FORMS,CHG,MOVEFORMDATA',TRUE) THEN CHECKERR(5,FALSE,OLDREC);
+      IF NUM < MAX THEN
+        IF YESNO(CONCAT('Insert ',WHAT,'(s)'),'N') THEN DOINSERT;
+      IF NUM > 1 THEN                        (* WAS 0, BUG FIX  SDA 8/28/80 *)
+        IF YESNO(CONCAT('Delete ',WHAT,'(s)'),'N') THEN DODELETE
+    END
+END;   (* of changectls *)
+
+BEGIN   (* MODIFY *)
+  DISPLAYDIR(OUTPUT,TRUE,FALSE,RECNUMBER);  (* display dir record *)
+  ONEMOMENT('Opening Control and Data files');
+  IF NOT OPEN_CTL(REQUESTED_FORM) THEN CHECKERR(4,FALSE,OLDREC);
+  
+  MEMORY;
+  
+  WITH DIRECTORY^ DO BEGIN
+    REPEAT
+      IF CHANGE('User ID') THEN GETUSERID;
+      IF CHANGE('Form description') THEN GETFORMDESC;
+      IF CHANGE('Form creation date') THEN GETDATE;
+      IF CHANGE('Number of Pages') THEN CHANGEPAGES;
+      IF CHANGE('Number of Constants') THEN
+        SETNUM(0,MAXCONSTS,'Constants',NO_CONSTS,MSG_LINE);
+      IF DIRECTORY^.NO_CONSTS > 0 THEN
+        WHILE CHANGE('Value of a Constant') DO
+          BEGIN
+            IF NOT CON_OPEN THEN  (* Open file containing Constants *)
+              BEGIN
+                ONEMOMENT('Opening Constant file');
+                IF NOT OPEN_CON(REQUESTED_FORM) THEN CHECKERR(12,FALSE,OLDREC)
+              END;
+            GET_CONSTANT(GETNUMFOR('Constant',NO_CONSTS),MSG_LINE,TRUE)
+          END;
+      IF CON_OPEN THEN
+        BEGIN  CLOSE(FORM_CON_FILE,LOCK);  CON_OPEN := FALSE  END;
+      CHANGECTLS(NO_ROWS,THEMAXROW,TRUE,'Row');
+      CHANGECTLS(NO_COLS,THEMAXCOL,FALSE,'Column');
+      DISPLAYDIR(OUTPUT,TRUE,FALSE,RECNUMBER)   (* Show changed Dir record *)
+    (*$B 40COL- *)
+    UNTIL YESNO('Are these new specifications ok','Y');
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    UNTIL YESNO('New specifications ok','Y');
+    (*$E 40COL  *)
+
+    IF DAT_OPEN THEN
+      BEGIN
+        ONEMOMENT('Closing Data File');
+        CLOSE_DAT(FORM_DAT_FILE,FORM_DAT_DESC,ERR);
+        IF ERR THEN ERROR(10)
+      END;
+    
+    REPEAT
+      WHILE CHANGE('Page Titles') DO
+        BEGIN
+          IF NOT TIT_OPEN THEN    (* Open file containing Titles *)
+            BEGIN
+              ONEMOMENT('Opening Title file');
+              IF NOT OPEN_TIT(REQUESTED_FORM) THEN CHECKERR(8,FALSE,OLDREC)
+            END;
+          ANS := GETNUMFOR('Page',NO_PAGES);
+          SET_PAGE(ANS,FALSE,FALSE,OLDREC,I)
+        END;
+      IF TIT_OPEN THEN
+        BEGIN  CLOSE(FORM_TIT_FILE,LOCK);  TIT_OPEN := FALSE  END;
+      WHILE CHANGE('Row controls')    DO
+        ROWCHANGE(GETNUMFOR('Row',NO_ROWS),OLDREC,TRUE,ERR);
+      DISPLAYDIR(OUTPUT,TRUE,FALSE,RECNUMBER);  (* Show changed Dir record *)
+      WHILE CHANGE('Column controls') DO
+        COLCHANGE(GETNUMFOR('Column',NO_COLS),OLDREC,TRUE,ERR);
+      DISPLAYDIR(OUTPUT,TRUE,FALSE,RECNUMBER)   (* Show changed Dir record *)
+    (*$B 40COL- *)
+    UNTIL YESNO('Are these new specifications ok','Y');
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    UNTIL YESNO('New specifications ok','Y');
+    (*$E 40COL  *)
+  END;
+  ONEMOMENT('Updating Directory');
+  SEEKDIR(RECNUMBER,ANDPUT);
+END;    (* of modify *)
+
+BEGIN   (* CHG *)
+  PUTMAINHEAD;
+  WRITELN(OUTPUT,'Modify FORM controls');
+  IF DISK_DIR THEN
+    BEGIN
+      IF NAME_FORM(REQUESTED_FORM, RECNUMBER) THEN MODIFY;
+      FINISHUP
+    END
+END;   (* of chg *)
+

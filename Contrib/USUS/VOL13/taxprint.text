@@ -1,0 +1,245 @@
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+segment procedure printer;
+var     detail  : boolean;
+        lines   : integer;
+        print_what,
+        ch1     : char;
+
+procedure print_date;
+var     cmonth  : string [ 3 ];
+begin
+   case month of
+      1 : cmonth := 'Jan';
+      2 : cmonth := 'Feb';
+      3 : cmonth := 'Mar';
+      4 : cmonth := 'Apr';
+      5 : cmonth := 'May';
+      6 : cmonth := 'Jun';
+      7 : cmonth := 'Jul';
+      8 : cmonth := 'Aug';
+      9 : cmonth := 'Sep';
+     10 : cmonth := 'Oct';
+     11 : cmonth := 'Nov';
+     12 : cmonth := 'Dec';
+   end;
+   writeln ( p, day:2, ' ', cmonth, ' ', '19', year:2 );
+end;
+      
+procedure heading ( title : filename );
+begin
+   line ( '*', 79 );
+   writeln ( p );
+   write ( p, tlines [ 6 ].name );
+   write ( p, 'Tax year ':( 44 - length ( tlines [ 6 ].name )));
+   writeln ( p, tlines [ 7 ].taxyear:4, title:29 );
+   write ( p, 'Filing status ' );
+   case tlines [ 7 ].fs of
+     1 : write ( p, '1' );
+     2 : write ( p, '2' );
+     3 : write ( p, '3' );
+     4 : write ( p, '4' );
+     5 : write ( p, '5' );
+   end;
+   write ( p, '             exemptions ' );
+   write ( p, tlines [ 7 ].exem, ' ':27 );
+   print_date;
+   line ( '*', 79 );
+   writeln ( p );
+   if fstat in [ 2, 3 ] then
+      writeln ( p, ' ':40, ' Husband ':12, '   Wife   ':12, '  Total   ':12 )
+   else writeln ( p );
+   lines := 4;
+end;
+
+procedure detail_print ( first, last : tline_num; title : filename );
+{prints an item by tax line}
+var     ln      : tline_num;
+        obj,
+        hdol,
+        wdol,
+        tdol    : string [ 10 ];
+        nextptr : pointer;
+
+begin
+   obj := '';
+   if screen then clear;
+   heading ( title );
+   for ln := first to last do
+      if tlines [ ln ].iptr <> nil then
+         begin   {do not bother unless line has an item}
+            case print_what of
+              'A','a' : write ( p, ( ln - minaline + 1 ):2 );
+              'B','b' : write ( p, ( ln - minbline + 1 ):2 );
+              'Z','z' : write ( p, ( ln ):2 );
+            end;
+            writeln ( p, ' ', titles [ ln ] );  {print name of line}
+            lines := succ ( lines );            {increment the line counter}
+            nextptr := tlines [ ln ].iptr;      {first pointer}
+            while nextptr <> nil do             {until the last item}
+               begin
+                  with nextptr^ do
+                     begin
+                        write ( p, name );
+                        pdol ( amt, obj );      {convert long int to string}
+                        case whose of
+                          h_own : begin
+                                     write ( p, 'Hus':( 25 - length ( name )));
+                                     writeln ( p, obj:25 );
+                                  end;
+                          w_own : begin
+                                     write ( p, 'Wif':( 25 - length ( name )));
+                                     writeln ( p, obj:38 );
+                                  end;
+                          t_own : begin
+                                     write ( p, 'Tot':( 25 - length ( name )));
+                                     writeln ( p, obj:51 );
+                                  end;
+                        end;
+                        lines := succ ( lines );
+                        nextptr := nptr;
+                     end;
+               end;
+      with tlines [ ln ] do
+         begin
+            pdol ( hus, hdol );         
+            pdol ( wif, wdol );
+            pdol ( tot, tdol );
+            if fstat in [ 2, 3 ] then
+               writeln ( p, 'Total', hdol:45, wdol:13, tdol:13 )
+            else writeln ( p, 'Total', ' ':58, tdol:13 );
+            writeln ( p );
+            lines := succ ( lines );
+         end;
+      if screen then
+         if ( 16 - lines ) < 0 then
+            begin
+               wait;
+               clear;
+               lines := 0;
+            end
+         else if ( 54 - lines ) < 0 then
+            begin
+               write ( p, chr ( 12 ) );
+               heading ( title );
+            end;
+      end;
+   if screen then wait;
+   write ( p, chr ( 12 ));
+end;
+
+
+procedure print ( first, last : tline_num; title : filename );
+const   s1      = '  ----------  ----------  ----------';
+
+var     ln      : tline_num;
+        hdol,
+        wdol,
+        tdol    : string [ 10 ];
+begin
+   hdol := '';
+   wdol := '';
+   tdol := '';
+   if screen then clear;
+   heading ( title );
+   for ln := first to last do
+      with tlines [ln ] do
+         begin
+            pdol ( hus, hdol );
+            pdol ( wif, wdol );
+            pdol ( tot, tdol );
+            case print_what of
+               'A','a' : write ( p, ( ln - minaline + 1 ):2 );
+               'B','b' : write ( p, ( ln - minbline + 1 ):2 );
+               'Z','z' : write ( p, ( ln ):2 );
+            end;
+            writeln ( p, '  ', titles [ ln ], ' ':5, hdol:12, wdol:12, 
+                      tdol:12);
+            if ln in dlineset then writeln ( p, s1:79 );
+            if ln in slineset then 
+               begin
+                  line ( '=', 79 );
+                  writeln ( p );
+               end;
+            if screen and ( ln in spageset ) then
+               begin
+                  wait;
+                  clear;
+               end;
+            if ( not screen ) and ( ln = 37 ) then
+               begin
+                  write ( p, chr ( 12 ) );
+                  heading ( title );
+               end;
+         end;
+      if print_what in [ 'Z', 'z' ] then
+         begin
+            write ( p, '  Maximum Tax Bracket', ' ':18 );
+            writeln ( p, max_tax [ h_own ]:12, max_tax [ w_own ]:12,
+                         max_tax [ t_own ]:12 );
+         end;
+      if screen then wait;
+      write ( p, chr ( 12 ) );
+end;
+
+
+begin  {printer}
+   {a separate line is printed after a line in slineset}
+   slineset := [ 22, 30, 37, 47, 54, 62, 66, 76, 82, 86, 90, 95, 98,
+                 107, 109, 111 ];
+   {a dashed line is printed after a line slineset}
+   dlineset := [ 21, 29, 33, 36, 45, 46, 53, 61, 69, 72, 81, 85, 89,
+                 92, 94, 97, 106, 113 ];
+   {last lines in a screen page are in spageset}
+   spageset := [ 22, 37, 54, 76, 90, 98 ];
+   clear;
+   mem;
+   repeat
+      detail := false;   {contro to print deatil}
+      clear;
+      write ( 'Printer Command --> A(sched A  B(sched B  Z(form 1040 ' );
+      write ( ' #(for detail   Q(uit ' );
+      repeat
+         read ( keyboard, print_what );
+         if print_what = '#' then detail := true;
+      until print_what in [ 'A','a','B','b','Z','z','Q','q' ];
+      if not ( print_what in [ 'Q','q' ] ) then
+         begin
+            writeln;
+            write ( 'Do you want to output to --> P(rinter  S(creen  ' );
+            repeat
+               read ( keyboard, ch1 );
+            until ch1 in [ 'P','p','S','s' ];
+            close ( p );
+            if ch1 in [ 'S','s' ] then
+               begin
+                  screen := true;
+                  rewrite ( p, 'console:' );
+               end
+            else 
+               begin
+                  screen := false;
+                  rewrite ( p , 'printer:' );
+               end;
+            if detail then
+               case print_what of
+                 'A','a' : detail_print ( 67, 107, 'Schedule A' );
+                 'B','b' : detail_print ( 108, 115, 'Schedule B' );
+                 'Z','z' : detail_print ( 8, 66, 'Form 1040' );
+               end
+            else case print_what of
+                   'A','a' : print ( 67, 107, 'Schedule A' );
+                   'B','b' : print ( 108, 115, 'Schedule B' );
+                   'Z','z' : print ( 8, 66, 'Form 1040' );
+                 end;
+        end;
+   close ( p );
+   until print_what in [ 'Q','q' ];
+end;  {printer}
+               

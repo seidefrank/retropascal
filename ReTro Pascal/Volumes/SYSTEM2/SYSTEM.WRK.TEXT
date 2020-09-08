@@ -1,0 +1,22 @@
+
+{ Welcome to Retro Pascal and the screen-oriented editor. }
+
+{ This editor is different. Unlike Windows, you cannot just start typing.   }
+{ Instead, you must use commands like I(nsert and D(elete to change your text.  }
+{ Try it: }
+{  - Move the cursor to the empty string '' in the WRITELN statement below.     }
+{    Use the arrow keys. On a touch keyboard, letter O means cursor up, L down. }
+{  - Type I to get into I(nsert mode. Type something, for example Hello World!  }
+{  - Hold down the Ctrl key and type Enter, or on a touch screen, touch <etx>.  }
+{  - You have inserted the text.                                                }
+{ Now try to delete text:                                                       }
+{  - Move the cursor to the P of 'Please enjoy' below.                          }
+{  - Type D for D(elete mode. Move the cursor keys; or O for up, L for down.    }
+{  - Hold down the Ctrl key and type Enter, or on a touch screen, touch <etx>.  }
+{  - You have deleted the text.                                                 }
+{ The H(elp command explains the other commands.                                }
+
+PROGRAM HELLOWORLD;
+BEGIN WRITELN('Please enjoy your new Pascal system!');
+  WRITELN('');
+END.

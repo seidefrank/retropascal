@@ -1,0 +1,99 @@
+
+(* Conway's Game Of Life demo for Retro Pascal ][ -- by Frank Seide, 2013 *)
+
+program gameoflife;
+  
+  uses turtlegraphics, applestuff;
+  
+  const xmax = 255; ymax = 255;
+  
+  type fieldt = array [0..ymax] of packed array [0..xmax] of boolean; (*[row,col]*)
+       fieldtp = ^fieldt;
+  
+  var field1,field2: fieldtp;   (* we do double buffering *)
+      whichfield: boolean;
+      width,height: integer;    (* used dimension *)
+      xoffset,yoffset: integer; (* rendering rectangle offset *)
+      scale: integer;           (* scaling for drawing *)
+      i,j: integer;             (* loop vars *)
+      threshold: integer;          (* random threshold for initialization *)
+      swidth,sheight,xscale,yscale: integer;    (* temp vars for determining dim *)
+
+  (* from http://en.wikipedia.org/wiki/Conway%27s_Game_of_Life:
+     Any live cell with...
+      fewer than two live neighbours dies, as if caused by under-population.
+      two or three live neighbours lives on to the next generation.
+      more than three live neighbours dies, as if by overcrowding.
+      exactly three live neighbours becomes a live cell, as if by reproduction.
+  *)
+  procedure life(fin,fout: fieldtp);
+    var i,j,n,scalearg: integer;
+  begin
+    (* let user mess with life *)
+    if button(0) then begin
+      i:=trunc(paddle(0) / 256.0 * swidth);  (* screen coordinates *)
+      j:=trunc(paddle(1) / 256.0 * sheight);
+      i:=i-xoffset; j:=j-yoffset;
+      i:=i div scale; j:=j div scale;        (* field coordinates *)
+      if (i>=0) and (i<width) and (j>0) and (j<width) then
+        fin^[j,i]:=true;
+    end;
+    (* draw current *)
+    if scale=1 then scalearg:=0 else scalearg:=8+scale-2; (* drawblock mode *)
+    drawblock(fin^,(xmax+1+15) div 16 * 2,0,0,width,height,
+              xoffset,yoffset,10+256*scalearg);
+    (* update life *)
+    for j:=0 to height-1 do for i:=0 to width-1 do begin
+      (* count alive cells around this *)
+      n:=0;
+      if (fin^[(j-1) mod height,(i-1) mod width]) then n:=n+1;
+      if (fin^[(j-1) mod height,i]) then n:=n+1;
+      if (fin^[(j-1) mod height,(i+1) mod width]) then n:=n+1;
+      if (fin^[j,(i-1) mod width]) then n:=n+1;
+      if (fin^[j,(i+1) mod width]) then n:=n+1;
+      if (fin^[(j+1) mod height,(i-1) mod width]) then n:=n+1;
+      if (fin^[(j+1) mod height,i]) then n:=n+1;
+      if (fin^[(j+1) mod height,(i+1) mod width]) then n:=n+1;
+      (* apply rule *)
+      fout^[j,i]:=(fin^[j,i] and (n=2)) or (n=3);
+    end;
+  end;
+
+begin
+  page(output);
+  writeln; writeln('Welcome to Conway''s Game Of Life!');
+  writeln; writeln('Tap or click to stir up life.');
+  writeln; write('Enter density in % (1..99): ');
+  readln(threshold);
+  if (threshold<=0) or (threshold>=100) then exit(gameoflife);
+  threshold:=round(threshold * 32767.0 / 100.0);
+  
+  (* figure out the screen dimensions *)
+  viewport(0,maxint,0,maxint);  (* switch to native resolution *)
+  initturtle;
+  swidth:=turtlex*2; sheight:=turtley*2;  (* idiom to get screen size *)
+  (* uniform scale factor in X and Y dimension *)
+  xscale:=swidth div (xmax+1); yscale:=sheight div (ymax+1);
+  scale:=xscale; if (yscale>scale) then scale:=yscale;
+  if (scale>9) then scale:=9 else if (scale=0) then scale:=1;
+  (* now we know the quantization step: get the actual dimensions *)
+  width:=swidth div scale; height:=sheight div scale;
+  if (width > xmax) then width:=xmax+1;
+  if (height > ymax) then height:=ymax+1;
+  xoffset:=(swidth-width*scale) div 2; yoffset:=sheight-height*scale;
+  
+  (* initialization *)
+  new(field1); new(field2);
+  whichfield:=false;
+  randomize;
+  for j:=0 to height-1 do for i:=0 to width-1 do
+    field1^[j,i]:=random < threshold;
+  
+  (* loop *)
+  repeat
+    if (whichfield) then life(field2,field1) else life(field1, field2);
+    whichfield:=not whichfield;
+  until keypress;
+  writeln('That''s all, folks!');
+end.
+

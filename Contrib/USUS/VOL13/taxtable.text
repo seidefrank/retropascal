@@ -1,0 +1,372 @@
+(*$S+*)
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+program taxtable;
+type    tfactors        = ( lower, upper, base, per );
+        factorray       = array [ 1..16, tfactors ] of integer [ 9 ];
+        t               = array [ 1..4 ] of factorray;
+var     ty              : t;
+        tfile           : file of t;
+
+procedure writefile;
+begin
+   rewrite ( tfile, 'factors.ftax' );
+   tfile^ := ty;
+   put ( tfile );
+   close ( tfile, lock );
+end;
+
+procedure init1a;
+{schedule X single tax payers lower bracket limit}
+begin
+    ty [ 1,  1, lower ] := 230000;
+    ty [ 1,  2, lower ] := 340000;
+    ty [ 1,  3, lower ] := 440000;
+    ty [ 1,  4, lower ] := 650000;
+    ty [ 1,  5, lower ] := 850000;
+    ty [ 1,  6, lower ] := 1080000;
+    ty [ 1,  7, lower ] := 1290000;
+    ty [ 1,  8, lower ] := 1500000;
+    ty [ 1,  9, lower ] := 1820000;
+    ty [ 1, 10, lower ] := 2350000;
+    ty [ 1, 11, lower ] := 2880000;
+    ty [ 1, 12, lower ] := 3410000;
+    ty [ 1, 13, lower ] := 4150000;
+    ty [ 1, 14, lower ] := 5530000;
+    ty [ 1, 15, lower ] := 8180000;
+    ty [ 1, 16, lower ] := 10830000;
+ end;
+ 
+ procedure init1b;
+ {schedule X single taxpayers upper limit bracket}
+ begin
+    ty [ 1,  1, upper ] := 340000;
+    ty [ 1,  2, upper ] := 440000;
+    ty [ 1,  3, upper ] := 650000;
+    ty [ 1,  4, upper ] := 850000;
+    ty [ 1,  5, upper ] := 1080000;
+    ty [ 1,  6, upper ] := 1290000;
+    ty [ 1,  7, upper ] := 1500000;
+    ty [ 1,  8, upper ] := 1820000;
+    ty [ 1,  9, upper ] := 2350000;
+    ty [ 1, 10, upper ] := 2880000;
+    ty [ 1, 11, upper ] := 3410000;
+    ty [ 1, 12, upper ] := 4150000;
+    ty [ 1, 13, upper ] := 5530000;
+    ty [ 1, 14, upper ] := 8180000;
+    ty [ 1, 15, upper ] := 10830000;
+    ty [ 1, 16, upper ] := 999999999;
+ end;
+
+procedure init1c;
+{schedule X single taxpayers base tax}
+begin
+    ty [ 1,  1, base ] := 00;
+    ty [ 1,  2, base ] := 15400; 
+    ty [ 1,  3, base ] := 31400; 
+    ty [ 1,  4, base ] := 62900; 
+    ty [ 1,  5, base ] := 107200; 
+    ty [ 1,  6, base ] := 155500; 
+    ty [ 1,  7, base ] := 205900; 
+    ty [ 1,  8, base ] := 260500; 
+    ty [ 1,  9, base ] := 356500; 
+    ty [ 1, 10, base ] := 536700; 
+    ty [ 1, 11, base ] := 743400; 
+    ty [ 1, 12, base ] := 976600; 
+    ty [ 1, 13, base ] := 1339200;
+    ty [ 1, 14, base ] := 2098200;
+    ty [ 1, 15, base ] := 3767700; 
+    ty [ 1, 16, base ] := 5569700;  
+ end;
+    
+ 
+procedure init1d;
+{schedule X single taxpayers tax rate}
+begin
+    ty [ 1,  1, per ] := 14;
+    ty [ 1,  2, per ] := 16;    
+    ty [ 1,  3, per ] := 18;    
+    ty [ 1,  4, per ] := 19;    
+    ty [ 1,  5, per ] := 21;     
+    ty [ 1,  6, per ] := 24;     
+    ty [ 1,  7, per ] := 26;     
+    ty [ 1,  8, per ] := 30;     
+    ty [ 1,  9, per ] := 34;     
+    ty [ 1, 10, per ] := 39;     
+    ty [ 1, 11, per ] := 44;     
+    ty [ 1, 12, per ] := 49;     
+    ty [ 1, 13, per ] := 55;     
+    ty [ 1, 14, per ] := 63;     
+    ty [ 1, 15, per ] := 68; 
+    ty [ 1, 16, per ] := 70;       
+ end;
+ 
+ procedure init2a;
+ {schedule Y married taxpayers lower bracket limit}
+ begin
+    ty [ 2,  1, lower ] := 340000;
+    ty [ 2,  2, lower ] := 550000;
+    ty [ 2,  3, lower ] := 760000;
+    ty [ 2,  4, lower ] := 1190000;
+    ty [ 2,  5, lower ] := 1600000;
+    ty [ 2,  6, lower ] := 2020000;
+    ty [ 2,  7, lower ] := 2460000;
+    ty [ 2,  8, lower ] := 2990000;
+    ty [ 2,  9, lower ] := 3520000;
+    ty [ 2, 10, lower ] := 4580000;
+    ty [ 2, 11, lower ] := 6000000;
+    ty [ 2, 12, lower ] := 8560000;
+    ty [ 2, 13, lower ] := 10940000;
+    ty [ 2, 14, lower ] := 16240000;
+    ty [ 2, 15, lower ] := 21540000;
+    ty [ 2, 16, lower ] := 99999999;
+ end;
+ 
+ procedure init2b;
+ begin
+    ty [ 2,  1, upper ] := 550000;
+    ty [ 2,  2, upper ] := 760000;
+    ty [ 2,  3, upper ] := 1190000;
+    ty [ 2,  4, upper ] := 1600000;
+    ty [ 2,  5, upper ] := 2020000;
+    ty [ 2,  6, upper ] := 2460000;
+    ty [ 2,  7, upper ] := 2990000;
+    ty [ 2,  8, upper ] := 3520000;
+    ty [ 2,  9, upper ] := 4580000;
+    ty [ 2, 10, upper ] := 6000000;
+    ty [ 2, 11, upper ] := 8560000;
+    ty [ 2, 12, upper ] := 10940000;
+    ty [ 2, 13, upper ] := 16240000;
+    ty [ 2, 14, upper ] := 21540000;
+    ty [ 2, 15, upper ] := 999999999;
+    ty [ 2, 16, upper ] := 999999999;
+ end;
+ 
+ procedure init2c;
+ begin
+    ty [ 2,  1, base ] := 00;
+    ty [ 2,  2, base ] := 29400; 
+    ty [ 2,  3, base ] := 63000;  
+    ty [ 2,  4, base ] := 140040; 
+    ty [ 2,  5, base ] := 226500; 
+    ty [ 2,  6, base ] := 327300; 
+    ty [ 2,  7, base ] := 450500; 
+    ty [ 2,  8, base ] := 620100; 
+    ty [ 2,  9, base ] := 816200; 
+    ty [ 2, 10, base ] := 1272000;
+    ty [ 2, 11, base ] := 1967800;
+    ty [ 2, 12, base ] := 3350200; 
+    ty [ 2, 13, base ] := 4754400; 
+    ty [ 2, 14, base ] := 8146400; 
+    ty [ 2, 15, base ] := 11750400; 
+    ty [ 2, 16, base ] := 11750400; 
+ end;
+    
+procedure init2d;
+begin
+    ty [ 2,  1, per ] := 14;
+    ty [ 2,  2, per ] := 16; 
+    ty [ 2,  3, per ] := 18; 
+    ty [ 2,  4, per ] := 21; 
+    ty [ 2,  5, per ] := 24; 
+    ty [ 2,  6, per ] := 28; 
+    ty [ 2,  7, per ] := 32; 
+    ty [ 2,  8, per ] := 37; 
+    ty [ 2,  9, per ] := 43; 
+    ty [ 2, 10, per ] := 49;
+    ty [ 2, 11, per ] := 54;
+    ty [ 2, 12, per ] := 59; 
+    ty [ 2, 13, per ] := 64; 
+    ty [ 2, 14, per ] := 68; 
+    ty [ 2, 15, per ] := 70; 
+    ty [ 2, 16, per ] := 70; 
+ end;
+ 
+procedure init3a;
+{schedule YS married taxpayers filing separately}
+begin
+    ty [ 3,  1, lower ] := 170000;
+    ty [ 3,  2, lower ] := 275000;
+    ty [ 3,  3, lower ] := 380000;
+    ty [ 3,  4, lower ] := 595000; 
+    ty [ 3,  5, lower ] := 800000; 
+    ty [ 3,  6, lower ] := 1010000;
+    ty [ 3,  7, lower ] := 1230000;
+    ty [ 3,  8, lower ] := 1495000;
+    ty [ 3,  9, lower ] := 1760000;
+    ty [ 3, 10, lower ] := 2290000;
+    ty [ 3, 11, lower ] := 3000000;
+    ty [ 3, 12, lower ] := 4280000;
+    ty [ 3, 13, lower ] := 5470000; 
+    ty [ 3, 14, lower ] := 8120000; 
+    ty [ 3, 15, lower ] := 10770000;
+    ty [ 3, 16, lower ] := 99999999;
+ end;
+
+procedure init3b;
+begin
+    ty [ 3,  1, upper ] := 275000;
+    ty [ 3,  2, upper ] := 380000;
+    ty [ 3,  3, upper ] := 595000; 
+    ty [ 3,  4, upper ] := 800000; 
+    ty [ 3,  5, upper ] := 1010000;
+    ty [ 3,  6, upper ] := 1230000;
+    ty [ 3,  7, upper ] := 1490000;
+    ty [ 3,  8, upper ] := 1760000;
+    ty [ 3,  9, upper ] := 2290000;
+    ty [ 3, 10, upper ] := 3000000;
+    ty [ 3, 11, upper ] := 4280000;
+    ty [ 3, 12, upper ] := 5470000; 
+    ty [ 3, 13, upper ] := 8120000; 
+    ty [ 3, 14, upper ] := 10770000;
+    ty [ 3, 15, upper ] := 99999999;
+    ty [ 3, 16, upper ] := 99999999;
+ end;
+
+procedure init3c;
+begin
+    ty [ 3,  1, base ] := 00;
+    ty [ 3,  2, base ] := 14700; 
+    ty [ 3,  3, base ] := 31500;  
+    ty [ 3,  4, base ] := 70200;  
+    ty [ 3,  5, base ] := 113250; 
+    ty [ 3,  6, base ] := 163650; 
+    ty [ 3,  7, base ] := 225250; 
+    ty [ 3,  8, base ] := 310050; 
+    ty [ 3,  9, base ] := 408100; 
+    ty [ 3, 10, base ] := 636000; 
+    ty [ 3, 11, base ] := 983900; 
+    ty [ 3, 12, base ] := 1675100; 
+    ty [ 3, 13, base ] := 2377200; 
+    ty [ 3, 14, base ] := 4073200; 
+    ty [ 3, 15, base ] := 5875200;  
+    ty [ 3, 16, base ] := 5875200;  
+ end;
+
+procedure init3d;
+begin
+    ty [ 3,  1, per ] := 14;
+    ty [ 3,  2, per ] := 16; 
+    ty [ 3,  3, per ] := 18; 
+    ty [ 3,  4, per ] := 21; 
+    ty [ 3,  5, per ] := 24; 
+    ty [ 3,  6, per ] := 28; 
+    ty [ 3,  7, per ] := 32; 
+    ty [ 3,  8, per ] := 37; 
+    ty [ 3,  9, per ] := 43; 
+    ty [ 3, 10, per ] := 49;
+    ty [ 3, 11, per ] := 54;
+    ty [ 3, 12, per ] := 59; 
+    ty [ 3, 13, per ] := 64; 
+    ty [ 3, 14, per ] := 68; 
+    ty [ 3, 15, per ] := 70; 
+    ty [ 3, 16, per ] := 70; 
+ end;
+
+procedure init4a;
+{schedule Z head of household}
+begin
+    ty [ 4,  1, lower ] := 230000;
+    ty [ 4,  2, lower ] := 440000;
+    ty [ 4,  3, lower ] := 650000;
+    ty [ 4,  4, lower ] := 870000;  
+    ty [ 4,  5, lower ] := 1180000; 
+    ty [ 4,  6, lower ] := 1500000;
+    ty [ 4,  7, lower ] := 1820000;
+    ty [ 4,  8, lower ] := 2350000;
+    ty [ 4,  9, lower ] := 2880000;
+    ty [ 4, 10, lower ] := 3410000;
+    ty [ 4, 11, lower ] := 4470000;
+    ty [ 4, 12, lower ] := 6060000;
+    ty [ 4, 13, lower ] := 8180000; 
+    ty [ 4, 14, lower ] := 10800000;
+    ty [ 4, 15, lower ] := 16130000;
+    ty [ 4, 16, lower ] := 99999999;
+ end;
+
+procedure init4b;
+begin
+    ty [ 4,  1, upper ] := 440000;
+    ty [ 4,  2, upper ] := 650000;
+    ty [ 4,  3, upper ] := 870000;
+    ty [ 4,  4, upper ] := 1180000; 
+    ty [ 4,  5, upper ] := 1500000; 
+    ty [ 4,  6, upper ] := 1820000;
+    ty [ 4,  7, upper ] := 2350000;
+    ty [ 4,  8, upper ] := 2880000;
+    ty [ 4,  9, upper ] := 3410000;
+    ty [ 4, 10, upper ] := 4470000;
+    ty [ 4, 11, upper ] := 6060000;
+    ty [ 4, 12, upper ] := 8180000;
+    ty [ 4, 13, upper ] := 10830000;
+    ty [ 4, 14, upper ] := 16130000;
+    ty [ 4, 15, upper ] := 99999999;
+    ty [ 4, 16, upper ] := 99999999;
+ end;
+
+procedure init4c;
+begin
+    ty [ 4,  1, base ] := 00;
+    ty [ 4,  2, base ] := 29400; 
+    ty [ 4,  3, base ] := 63000; 
+    ty [ 4,  4, base ] := 102600; 
+    ty [ 4,  5, base ] := 170800; 
+    ty [ 4,  6, base ] := 247600; 
+    ty [ 4,  7, base ] := 330800; 
+    ty [ 4,  8, base ] := 495100; 
+    ty [ 4,  9, base ] := 685900; 
+    ty [ 4, 10, base ] := 908500; 
+    ty [ 4, 11, base ] := 1396100;
+    ty [ 4, 12, base ] := 2254700; 
+    ty [ 4, 13, base ] := 3505500; 
+    ty [ 4, 14, base ] := 5175000; 
+    ty [ 4, 15, base ] := 8779000;  
+    ty [ 4, 16, base ] := 9999999; 
+ end;
+
+procedure init4d;
+begin
+    ty [ 4,  1, per ] := 14;
+    ty [ 4,  2, per ] := 16; 
+    ty [ 4,  3, per ] := 18; 
+    ty [ 4,  4, per ] := 22; 
+    ty [ 4,  5, per ] := 24; 
+    ty [ 4,  6, per ] := 26; 
+    ty [ 4,  7, per ] := 31; 
+    ty [ 4,  8, per ] := 36; 
+    ty [ 4,  9, per ] := 43; 
+    ty [ 4, 10, per ] := 46;
+    ty [ 4, 11, per ] := 54;
+    ty [ 4, 12, per ] := 59; 
+    ty [ 4, 13, per ] := 63; 
+    ty [ 4, 14, per ] := 68; 
+    ty [ 4, 15, per ] := 70; 
+    ty [ 4, 16, per ] := 70; 
+ end;
+
+begin
+   init1a;
+   init1b;
+   init1c;
+   init1d;
+   init2a;
+   init2b;
+   init2c;
+   init2d;
+   init3a;
+   init3b;
+   init3c;
+   init3d;
+   init4a;
+   init4b;
+   init4c;
+   init4d;
+   writefile;
+end.
+

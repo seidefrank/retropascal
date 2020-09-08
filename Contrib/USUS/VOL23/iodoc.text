@@ -1,0 +1,81 @@
+                        IOUNIT and IOTEST
+
+        IOUNIT is intended to read and write text files.  It
+includes replacements for the standard procedures READ, WRITE,
+READLN, and WRITELN which run 5 to 10 times faster than the 
+standard procedures. IOTEST illustrates the use of IOUNIT and
+allows a direct comparison to be made between the fast
+procedures and the standard procedures.
+
+        Before using IOUNIT, use IOTEST to send a text file to
+disk using both the fast and standard procedures, then run a
+source compare to ensure that the files are identical. Note that
+the input and output file lengths may not be equal; WRITECHAR
+and WRITELINE minimize file length by packing and by using DLE
+expansions only if required.
+
+OPENING FILES
+        IOUNIT includes the functions RESETFILE and
+REWRITEFILE, which provide a minimal user interface for opening
+files.  Both functions expect a string containing a filename and 
+assume a text file is to be opened. The default volume is
+assumed unless otherwise specified.  A "dot" (".") is assumed
+to delimit a file extension.  If the filename does not contain a
+dot, and a colon (":") is not the last character in the filename
+(as in PRINTER:), then ".TEXT" is appended to the filename.
+
+        I/O checking is turned off while an attempt is made to
+open the file.  If the attempt is successful, the functions
+return TRUE. If the attempt fails, a new filename is requested
+and the process repeats.  If no filename is supplied (just a
+return was entered) the functions return FALSE and it is up to 
+the calling procedure to take appropriate action.  In any case,
+the filename is updated to reflect the latest filename to be
+entered.
+
+        PRINTER: and CONSOLE: are both legal. If drive #5
+contains volume WRK: with the files TRIER.TEXT and TRIER.BACK
+then #5:TRIER.TEXT, and WRK:TRIER.BACK are both legal.  If the
+prefix is WRK: then TRIER.TEXT, TRIER.BACK, and TRIER are
+also legal, but TRIER will get TRIER.TEXT. SYSTEM.WRK.TEXT
+must be entered in its entirety, and a filename with no
+extension cannot be accessed.
+
+READING FILES
+        The procedure READLINE returns the next string in a 
+textfile.  It also sets EOFFLAG to TRUE if the string is the 
+last string in the file.  The textfile is read using BLOCKREAD.  
+A string is isolated from the blockread buffer, a DLE sequence 
+is expanded to the required number of spaces, and the string is 
+placed in a buffer.  Subsequent calls to READLINE get the string 
+from the buffer and refill the buffer with the next string from 
+the file.
+
+        The procedure READCHAR returns the next character from 
+the string buffer.  It also sets EOLNFLAG to true if the 
+character is the last character in the line.  READLINE must be 
+called in order to refill the buffer with the next string from 
+the file.
+
+WRITING FILES
+        The procedure WRITECHAR simply places the character to 
+be written in a buffer and returns.  The procedure WRITELINE 
+converts any leading spaces to a DLE sequence and places the 
+resulting string in a blockwrite buffer.  If the string will 
+overflow the blockwrite buffer then the blockwrite buffer is 
+padded with nulls and written to the destination before the new 
+string is added.
+
+        The procedure CLOSEOUTFILE pads the blockwrite buffer 
+with nulls, writes it to the destination, then closes and locks 
+the destination file.
+
+        Because the output file is written a block at a time, 
+output to the CONSOLE: or PRINTER: comes in block-sized chunks.  
+This could be avoided by using a UNITWRITE on each string that is 
+going to these destinations, at the expense of slowing output to
+a disk file because of the additional overhead involved in 
+testing for the destination type.
+
+                                CR
+

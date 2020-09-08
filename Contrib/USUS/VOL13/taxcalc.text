@@ -1,0 +1,240 @@
+{From "FIT - A Federal Income Tax Program in UCSD Pascal" by Edward Heyman
+ appearing in the Feburary 1982 issue of Byte magazine.  Copyright 1982
+ Byte Publications, Inc.  Used with permission of Byte Publications, Inc.}
+ 
+{This program is not EXACTLY the original, it has been patched is several
+ places.  Specifically, some of the data in TAXTABLE.TEXT has been changed}
+ 
+
+segment procedure calculate;
+var     ln      : tline_num;
+
+procedure ad ( first, second, sum : tline_num );
+{add two lines}
+var     ln : tline_num;
+begin
+   tlines [ sum ].hus := tlines [ first ].hus + tlines [ second ].hus;
+   tlines [ sum ].wif := tlines [ first ].wif + tlines [ second ].wif;
+   tlines [ sum ].tot := tlines [ first ].tot + tlines [ second ].tot;
+end;
+
+procedure add ( start, finish, sum : tline_num );
+var     ln      : tline_num;
+begin
+   for ln := start to finish do
+      begin
+         tlines [ sum ].hus := tlines [ sum ].hus + tlines [ ln ].hus;
+         tlines [ sum ].wif := tlines [ sum ].wif + tlines [ ln ].wif;
+         tlines [ sum ].tot := tlines [ sum ].tot + tlines [ ln ].tot;
+      end;
+end;
+
+procedure sub ( first, second, dif : tline_num );
+{subtract two lines}
+var     ln      : tline_num;
+begin
+   tlines [ dif ].hus := tlines [ first ].hus - tlines [ second ].hus;
+   tlines [ dif ].wif := tlines [ first ].wif - tlines [ second ].wif;
+   tlines [ dif ].tot := tlines [ first ].tot - tlines [ second ].tot;
+end;
+
+procedure taxcalc;
+{the thx calculation is done here}
+var     ch      : char;
+        htaxable,
+        wtaxable,
+        ttaxable: longint;
+        xfs     : filing_status;
+        i       : 1..16;
+        which   : longint;
+
+procedure gettax ( tt : tax_table;
+                   tax_able : longint;
+                   var tax : longint;
+                   w : owner );
+{get factors from the taxtable ad do calculate the tax}
+begin
+   for i := 1 to 16 do {search the array for the correct tax bracket}
+      if ( tax_able > taxray [ tt, i, lower ] ) and
+         ( tax_able <= taxray [ tt, i, upper ] ) then
+            begin   {bracked found, now calculate tax}
+               tax := taxray [ tt, i, base ] + ( taxray [ tt, i, percent ] ) *
+                 (( tax_able - taxray [ tt, i, lower ] ) div 100 );
+               max_tax [ w ] := taxray [ tt, i, percent ];
+               exit ( gettax );
+            end;
+end;
+
+begin  {taxcalc}
+   fstat := tlines [ 7 ].fs;   {get filing status}
+   if fstat in [ 2, 3 ] then  {get exemptions for married}
+      begin
+         htaxable := tlines [ 34 ].hus - 100000;
+         wtaxable := tlines [ 34 ].wif - 100000;
+         ttaxable := tlines [ 34 ].tot - 100000 * ( tlines [ 7 ].exem );
+         {calculate total as joint return use tax table Y}
+         gettax ( y, ttaxable, tlines [ 35 ].tot, t_own );
+         repeat
+            clear;
+            writeln ( 'should the individual taxes be calculated ' );
+            write ('        as M(arried filing separatelu  U(nmarried ' );
+            read ( keyboard, ch );
+         until ch in [ 'M','m','U','u' ];
+         if ch in [ 'U','u' ] then
+            begin
+            {calculate taxes for husband and wife as if they 
+              could file as individuals}
+               gettax ( x, htaxable, tlines [ 35 ].hus, h_own );
+               gettax ( x, wtaxable, tlines [ 35 ].wif, w_own );
+            end
+         else
+            begin
+            {calculate taxes for husband and wife as filing separate}
+               gettax ( ys, htaxable, tlines [ 35 ].hus, h_own );
+               gettax ( ys, wtaxable, tlines [ 35 ].wif, w_own );
+            end;
+      end
+   else
+      begin  {get exemptions for unmarried}
+         ttaxable := tlines [ 34 ].tot - 100000 * ( tlines [ 7 ].exem );
+         case fstat of
+           1 : gettax ( x, ttaxable, tlines [ 35 ].tot, t_own );
+           2 : gettax ( z, ttaxable, tlines [ 35 ].tot, t_own );
+           3 : gettax ( y, ttaxable, tlines [ 35 ].tot, t_own );
+         end;
+      end;
+end;
+
+procedure linea40;
+{compensate for zero base}
+begin
+   if tlines [ 7 ].fs in [ 2, 3 ] then
+      begin
+         tlines [ 106 ].hus := 170000;
+         tlines [ 106 ].wif := 170000;
+         tlines [ 106 ].tot := 340000;
+      end
+   else
+      case tlines [ 7 ].fs of
+        1,4 : tlines [ 106 ].tot := 230000;
+        5   : tlines [ 106 ].tot := 340000;
+      end;
+end;
+
+procedure calsch_a;
+{do calculations required by schedule A}
+begin
+   tlines [ 69 ].hus := tlines [ 31 ].hus div 100; {line A 3}
+   tlines [ 69 ].wif := tlines [ 31 ].wif div 100; {line A 3}
+   tlines [ 69 ].tot := tlines [ 31 ].tot div 100; {line A 3}
+   sub ( 68, 69, 70 );                             {line A 4}
+   with tlines [ 70 ] do
+      begin
+         if hus < 0 then hus := 0;                 {line A 4}
+         if wif < 0 then wif := 0;                 {line A 4}
+         if tot < 0 then tot := 0;                 {line A 4}
+      end;
+   add ( 70, 72, 73 );
+   tlines [ 74 ].hus := 3 * tlines [ 69 ].hus;     {line A 7}
+   tlines [ 74 ].wif := 3 * tlines [ 69 ].wif;     {line A 8}
+   tlines [ 74 ].tot := 3 * tlines [ 69 ].tot;     {line A 8}
+   sub ( 73, 74, 75 );
+   with tlines [ 75 ] do
+      begin
+         if hus < 0 then hus := 0;                 {line A 9}
+         if wif < 0 then wif := 0;                 {line A 9}
+         if tot < 0 then tot := 0;                 {line A 9}
+      end;
+   ad ( 67, 75, 76 );                              {line A 10}
+   tlines [ 99 ] := tlines [ 76 ];                 {line A 33}
+   add ( 77, 81, 82 );                             {line A 16}
+   tlines [ 100 ] := tlines [ 82 ];                {line A 34}
+   add ( 83, 85, 86 );                             {line A 20}
+   tlines [ 101 ] := tlines [ 86 ];                {line A 35}
+   add ( 87, 89, 90 );                             {line A 24}
+   tlines [ 102 ] := tlines [ 90 ];                {line A 36}
+   sub ( 91, 92, 93 );                             {line A 27}
+   if tlines [ 93 ].hus < 10000 then tlines [ 94 ].hus := tlines [ 93 ].hus
+                                else tlines [ 94 ].hus := 10000;
+   if tlines [ 93 ].wif < 10000 then tlines [ 94 ].wif := tlines [ 93 ].wif
+                                else tlines [ 94 ].wif := 10000;
+   if tlines [ 93 ].tot < 10000 then tlines [ 94 ].tot := tlines [ 93 ].tot
+                                else tlines [ 94 ].tot := 10000;
+   sub ( 93, 94, 95 );                             {line A 29}
+   tlines [ 103 ] := tlines [ 95 ];                {line A 37}
+   add ( 96, 97, 98 );                             {line A 32}
+   tlines [ 104 ] := tlines [ 98 ];                {line A 38}
+   add ( 99, 104, 105 );                           {line A 39}
+   linea40;
+   sub ( 105, 106, 107 );                          {line A 41}
+   tlines [ 33 ] := tlines [ 107 ];
+end;
+
+procedure calsch_b;
+begin
+   tlines [ minbline + 1 ] := tlines [ minbline ];      {line B 1}
+   tlines [ 9 ] := tlines [ minbline + 1 ];
+   tlines [ minbline + 3 ] := tlines [ minbline + 2 ];  {line B 3}
+   add ( minbline + 3, minbline + 5, minbline + 6 );    {line B 6}
+   sub ( minbline + 3, minbline + 6, minbline + 7 );    {line B 7}
+   tlines [ 10 ] := tlines [ minbline + 7 ];
+end;
+
+begin  {calcuate}
+   gotoxy ( 0, 0 );
+   eeol;
+   write ( 'calculating ... ' );
+   for ln := 8 to maxline do if ln in calcset then
+      begin
+         tlines [ ln ].hus := 0;
+         tlines [ ln ].wif := 0;
+         tlines [ ln ].tot := 0;
+      end;
+   calsch_b;
+   with tlines [ 10 ] do
+      begin   {dividend exclusion}
+         hus := hus - 10000;
+         if hus < 0 then hus := 0;
+         wif := wif - 10000;
+         if wif < 0 then wif := 0;
+         tot := hus + wif;
+      end;
+   add ( 8, 21, 22 );                           {total income}
+   add ( 23, 29, 30 );                          {total adjustments}
+   sub ( 22, 30, 31 );                          {adjusted gross}
+   tlines [ 32 ] := tlines [ 31 ];              {transfer 31 to 32}
+   calsch_a;
+   sub ( 32, 33, 34 );                          {income for start of tax
+                                                 calculation}
+   taxcalc;
+   add ( 35, 36, 37 );                          {total taxes}
+   add ( 38, 45, 46 );                          {total credits}
+   sub ( 37, 46, 47 );                          {balance}
+   add ( 47, 53, 54 );                          {balance}
+   add ( 55, 61, 62 );                          {total tax payments}
+   sub ( 54, 62, 63 );                          {taxes-tax payments}
+   if tlines [ 63 ].hus < 0 then
+      tlines [ 63 ].hus := -1 * tlines [ 63 ].hus       {overpayment}
+   else
+      begin
+         tlines [ 66 ].hus := tlines [ 63 ].hus;        {balance due}
+         tlines [ 63 ].hus := 0;
+      end;
+   if tlines [ 63 ].wif < 0 then
+      tlines [ 63 ].wif := -1 * tlines [ 63 ].wif
+   else
+      begin
+         tlines [ 66 ].wif := tlines [ 63 ].wif;
+         tlines [ 63 ].wif := 0;
+      end;
+   if tlines [ 63 ].tot < 0 then
+      tlines [ 63 ].tot := -1 * tlines [ 63 ].tot
+   else 
+      begin
+         tlines [ 66 ].tot := tlines [ 63 ].tot;
+         tlines [ 63 ].tot :=0;
+      end;
+   for ln := 8 to maxline do if ( ln in calcset ) then 
+      tlines [ ln ].iptr := nil;
+end; {calculate}
+         

@@ -1,0 +1,84 @@
+PROGRAM WRITLABELS;
+USES (*$U crtinput.code*) CRTINPUT;
+
+CONST
+  LinesPerLabel = 12;
+  Labelwidth = 50 {pica characters};
+
+VAR
+  LabelsPerSheet: integer;
+  ch: char;
+  WantsDECFormat: boolean;
+  TypedIn, VolumeLine: STRING;
+  DECNote: string;
+  S: ARRAY [1..LinesPerLabel] OF string;
+  List: text;
+  
+
+PROCEDURE GetVolumeData;
+VAR     OK: boolean;
+BEGIN
+  REPEAT
+    ClearScreen;  Gotoxy(0,12);  TypedIn := '';  WantsDECFormat := false;
+    Writeln('You are set up for ', LabelsPerSheet , ' labels per sheet.');
+    Write ('Please type volume number:  ');  GetString (2, TypedIn);
+    VolumeLine := CONCAT ('          VOLUME ', TypedIn, ' -***-  ');
+    Writeln;
+    Write (
+'Is the disk format: U)CSD, C)P/M, or W)estern Digital ("U", "C", or "W")? ');
+    REPEAT Read (keyboard,ch) UNTIL (ch IN ['U','u','C','c','W','w']);
+    CASE ch OF
+      'U', 'u':  BEGIN
+                   WantsDECFormat := true;
+                   VolumeLine := CONCAT (VolumeLine, 'UCSD format')
+                 END;
+      'C', 'c':  VolumeLine := CONCAT (VolumeLine, 'CP/M format');
+      'W', 'w':  VolumeLine := CONCAT (VolumeLine, 'W/D format')
+    END;
+    Writeln;
+    Writeln ('The new label is "', VolumeLine,'".');
+    OK := Yes ('Answer when ready to print:  is this label correct');
+    IF NOT OK THEN IF Yes('Want to quit') THEN EXIT(program)
+  UNTIL OK
+END;
+
+
+PROCEDURE DoWrite;
+VAR     LabelNo, i, j: integer;
+BEGIN
+  IF VolumeLine = '' THEN GetVolumeData 
+    ELSE BEGIN
+      Gotoxy(0,0);  UnitClear(1);
+      IF Yes ('Do you want to print the same label again')
+        THEN GoAndClearLine(0)
+        ELSE IF Yes('Want to quit') THEN EXIT(program) ELSE GetVolumeData;
+    END;
+  IF WantsDECFormat THEN i := 11 ELSE i := 12;
+  FOR LabelNo := 1 to LabelsPerSheet DO
+    BEGIN
+      Writeln(List,VolumeLine);  IF WantsDECFormat THEN Writeln(List,DECNote);
+      FOR j := 2 TO i DO Writeln(list, S[j]);
+      IF (LabelNo MOD 2 = 0) AND (LabelsPerSheet = 3) THEN Writeln(list);
+    END;
+  FOR j := 1 to 6 DO Writeln(list) {eject sheet};
+END;
+
+
+BEGIN {main program}
+  S [2]  := '';
+  S [3]  := '              USUS Software Library               ';
+  S [4]  := '               Jim Gagne, Chairman';
+  S [5]  := '              DATAMED RESEARCH, INC.';
+  S [6]  := '          Los Angeles, California 90077';
+  S [7]  := '';
+  S [8]  := '   For not-for-profit use by USUS members only.';
+  S [9]  := '   May be used & distributed only according to';
+  S [10] := '     the authors'' wishes and stated policy.';
+  S [11] := '';
+  S [12] := '';
+  DECNote :=' (ie, Skew = 6; Interleave = 2; First track = 1) ';
+  Write ('How many labels per sheet? ');  Readln(LabelsPerSheet);
+  VolumeLine := '';  Rewrite (list, 'PRINTER:');
+  REPEAT DoWrite UNTIL false
+END.
+

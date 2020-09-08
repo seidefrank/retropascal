@@ -1,0 +1,321 @@
+PROCEDURE SAVE;
+BEGIN
+  PROMPT('Save',MSG_LINE-1);
+  SAVEPAGE
+END;   (* of save *)
+
+PROCEDURE SET_WORK_PAGE;
+(* This procedure copies the REAL_PAGE from the real file to the work file and
+   then sets all the page numbers of the blocks in memory to zero so NUMBER
+   will go to the disk to get numbers rather than using those in memory *)
+VAR
+     I, LOC: INTEGER;
+     AWINDOW: WINDOWTYPE;
+     
+BEGIN
+  CUR_PAGE := 1;
+  
+  MEMORY;
+  
+  WITH FORM_DAT_DESC DO BEGIN
+    LOC := (REAL_PAGE - 1) * BLKSPERPAGE;
+    FOR I := 0 TO BLKSPERPAGE - 1 DO
+      BEGIN
+        IF BLOCKREAD (TRUE_DAT_FILE, AWINDOW, 1, LOC + I) = 1 THEN;
+        IF BLOCKWRITE(FORM_DAT_FILE, AWINDOW, 1, I)       = 1 THEN
+      END;
+    I := LISTHEAD;    (* Set Page #'s to 0 & CHANGED to False to fool NUMBER *)
+    WHILE I <> 0 DO
+      WITH LIST[I] DO
+        BEGIN  DPAGE := 0; CHANGED := FALSE; I := AFTER  END  (* SDA 4/24/81 *)
+  END
+END;   (* of set_work_page *)
+
+PROCEDURE SAVEPAGE;
+(* This routine is only called if a WORK_PAGE condition exists.  The first
+   thing it does is make sure that the work file on disk jives with the numbers
+   in memory by writing to disk any numbers that are in a CHANGED window.  It
+   then copies the blocks in the workfile to the right place in the real file *)
+VAR
+     I, LOC: INTEGER;
+     AWINDOW: WINDOWTYPE;
+     
+BEGIN
+  ONEMOMENT('Saving current Page');
+  
+  MEMORY;
+  
+  WITH FORM_DAT_DESC DO BEGIN
+    I := LISTHEAD;
+    WHILE I <> 0 DO
+      WITH LIST[I] DO BEGIN
+        IF CHANGED THEN
+          BEGIN
+            IF BLOCKWRITE(FORM_DAT_FILE,WINDOW^,1,DBLOCK) <> 1 THEN;
+            CHANGED := FALSE
+          END;
+        I := AFTER
+      END;
+    LOC := (REAL_PAGE - 1) * BLKSPERPAGE;
+    FOR I := 0 TO BLKSPERPAGE-1 DO
+      BEGIN
+        IF BLOCKREAD (FORM_DAT_FILE,AWINDOW,1,I)     = 1 THEN;
+        IF BLOCKWRITE(TRUE_DAT_FILE,AWINDOW,1,LOC+I) = 1 THEN
+      END
+  END;
+  DIDDLED := FALSE
+END;   (* of savepage *)
+
+PROCEDURE SET_TITLE;
+BEGIN
+  IF PLANE = ROWCOL THEN                (* Changes made  SDA 5/6/81 *)
+   IF OPEN_TIT( REQUESTED_FORM ) THEN
+     BEGIN
+       SEEKTIT(FORM_TIT_FILE,REAL_PAGE,ANDGET);
+       PAGE_TITLE := FORM_TIT_FILE^;
+       CLOSE(FORM_TIT_FILE);  TIT_OPEN := FALSE
+     END
+   ELSE  BEGIN  ERROR(8);  PAGE_TITLE := ''  END
+  ELSE    (* Plane is either Pagecol or Rowpage *)
+    BEGIN
+      GETCTLREC( PLANE=ROWPAGE, REAL_PAGE );
+      PAGE_TITLE := FORM_CTL_FILE^.CTL_DESC
+    END
+END;   (* of set_title *)
+
+PROCEDURE GETPNUM{ DEFAULT: INTEGER;  VAR ANS: INTEGER };
+(* This is a special edition of GETNUM *)
+VAR  
+     MAX: INTEGER;
+     WHAT: STRING[7];
+     MAXSTR, DEFSTR: STRING[3];
+     xdummy : sc_key_command;
+
+BEGIN
+  
+  MEMORY;
+  
+  WITH DIRECTORY^ DO
+    CASE PLANE OF      (* Addition  SDA 5/6/81 *)
+      ROWCOL:  BEGIN  WHAT := 'Page';     MAX := NO_PAGES  END;
+      PAGECOL: BEGIN  WHAT := 'Row';      MAX := NO_ROWS   END;
+      ROWPAGE: BEGIN  WHAT := 'Column';   MAX := NO_COLS   END
+    END;
+  
+    IF MAX = 1 THEN    (* Set page to edit and the bool MAP_PAGE too *)
+      BEGIN  COMMAND := '*';  ANS := 1  END
+    ELSE
+      BEGIN
+        ENCODE(MAX,MAXSTR);  ENCODE(DEFAULT, DEFSTR);
+        REPEAT
+          PROMPT(CONCAT('Enter ',WHAT,' # ',DEFSTR,'    (max. is ',MAXSTR,')'),
+                  MSG_LINE);
+          GOTOXY(9+LENGTH(WHAT),MSG_LINE);          (* Change  SDA 5/6/81 *)
+          ACCEPTNUM(TRUE,3,IS,COMMAND,xdummy);   (* put ending char into COMMAND *)
+          IF (IS = '') OR (IS = 'INVALID') THEN ANS := DEFAULT
+          ELSE VALUE(TRUE, IS, FAKE, ANS)
+        UNTIL ANS IN [1..MAX]
+      END;
+  MAP_PAGE := (COMMAND IN ['M','m']) AND (PLANE = ROWCOL)   (* SDA 5/6/81 *)
+END;   (* of getpnum *)
+
+PROCEDURE GETCTLREC{ COL: BOOLEAN;  REC: INTEGER };
+BEGIN
+  SEEKCTL(FORM_CTL_FILE,COL,REC,ANDGET);
+  (* NOTE:  May want to check IORESULT here in the future *)
+  (* Set FORMAT to an integer if MAP_PAGE is true         *)
+  IF MAP_PAGE THEN
+    FORM_CTL_FILE^.CTL_FORMAT := MAP_FORMAT
+END;   (* of get next ctl rec *)
+
+PROCEDURE BEFOREAFTER{ FORMAT: STRING };
+(* This procedure, given FORMAT, sets the global variables BEFORE and AFTER
+   to the number of places to be put BEFORE and AFTER the decimal point     *)
+BEGIN
+  BEFORE := SCAN( LENGTH( FORMAT ), ='.', FORMAT[1] );
+  AFTER := LENGTH( FORMAT ) - BEFORE - 1;
+  IF AFTER < 0 THEN AFTER := 0;
+END;  (* of beforeafter *)
+
+PROCEDURE CALLNUMBER{ Z, Y, X: INTEGER;  WHAT: ACTIONTYPE };
+BEGIN
+  CASE PLANE OF
+    ROWCOL:  NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,Z,Y,X,ANUMBER,WHAT,ERR);
+    PAGECOL: NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,Y,Z,X,ANUMBER,WHAT,ERR);
+    ROWPAGE: NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,X,Y,Z,ANUMBER,WHAT,ERR);
+  END
+END;   (* of callnumber *)
+
+PROCEDURE WRITENUM{ ROW, COL: INTEGER };
+(* Expects the cursor to be at the correct position, and BEFORE and AFTER to
+   be set correctly.  It writes out the number specified by ROW and COL from
+   the current page's FORM array *)
+VAR  ANS: STRING[17];  (* 17 picked to be bigger than Maxfrac+Maxwhole+2 *)
+BEGIN
+  CALLNUMBER(CUR_PAGE,ROW,COL,ANDGET);   (* Change  SDA 5/6/81 *)
+  NUMTOSTR(ANS, ANUMBER, BEFORE, AFTER);
+  GOTOXY(COL_POS[COL-1]-XOFFSET, ROW-YOFFSET);
+  WRITE(OUTPUT,ANS);
+END;
+
+PROCEDURE DISPLAY{ CLEARFIRST: BOOLEAN };
+(* This procedure will display a page on the screen, given ST_COL, and
+   ST_ROW.  It will set XOFFSET, YOFFSET, LAST_COL, and LAST_ROW.        *)
+VAR  I, J: INTEGER;
+     TOOFAR: BOOLEAN;
+
+PROCEDURE SETTHEFORMAT( INDEX: INTEGER );
+BEGIN
+  WITH THEFORMAT[ INDEX ] DO BEGIN
+    BEF := BEFORE;
+    AFT := AFTER
+  END
+END;   (* of settheformat *)
+
+PROCEDURE COLDESC;
+BEGIN
+  GOTOXY(COL_POS[J-1]-XOFFSET, DESCLINE);
+  IF PLANE = ROWPAGE THEN                 (* Change  SDA 5/6/81 *)
+    BEGIN
+      WRITE(OUTPUT,'Page ',J);
+      GETCTLREC(TRUE,CUR_PAGE)
+    END
+  ELSE
+    BEGIN
+      GETCTLREC(TRUE, J);
+      WRITE(OUTPUT, FORM_CTL_FILE^.CTL_DESC)
+    END
+END;
+
+PROCEDURE ROWDESC;
+BEGIN
+  GOTOXY(1, I-YOFFSET);
+  IF PLANE = PAGECOL THEN                 (* Change  SDA 5/6/81 *)
+    BEGIN
+      WRITE(OUTPUT,'Page ',I);
+      GETCTLREC(FALSE,CUR_PAGE)
+    END
+  ELSE
+    BEGIN
+      GETCTLREC(FALSE, I);
+      WRITE(OUTPUT, FORM_CTL_FILE^.CTL_DESC)
+    END;
+  LEGAL[ I - YOFFSET ] := FORM_CTL_FILE^.CTL_TYPE <> HEADING
+END;
+
+BEGIN  (* DISPLAY *)
+  (* set last_col and row and x and yoffset *)
+  XOFFSET := COL_POS[ ST_COL-1 ] - COL_POS[ 0 ];
+  LAST_COL := ST_COL - 1;
+  REPEAT
+    LAST_COL := LAST_COL + 1;
+    TOOFAR := ( COL_POS[ LAST_COL-1 ] - GAP + 1 - XOFFSET ) >= S_WIDTH;
+  UNTIL TOOFAR OR ( LAST_COL > NUM_COLS );          (* Change  SDA 5/6/81 *)
+  IF TOOFAR THEN LASTCOL := LASTCOL - 1;
+  LAST_COL := LAST_COL - 1;
+  YOFFSET := ST_ROW - DESCLINE - 1;
+  IF (MSG_LINE-DESCLINE-3) < MAXLINES THEN LAST_ROW := MSG_LINE-DESCLINE-3
+  ELSE                                     LAST_ROW := MAXLINES;
+  LAST_ROW := LAST_ROW + ST_ROW - 1;
+  IF LAST_ROW > NUM_ROWS THEN LASTROW := NUM_ROWS;  (* Change  SDA 5/6/81 *)
+  
+  (* display the data now *)
+  WITH FORM_CTL_FILE^ DO BEGIN
+    IF CLEARFIRST THEN {WRITE(OUTPUT, CLEAR)} sc_clr_screen;
+    GOTOXY(1, TITLELINE);
+    WRITE(OUTPUT, PAGE_TITLE);
+    IF DIRECTORY^.FORMAT = FROW THEN (* write stuff out a row at a time *)
+      BEGIN
+        FOR J := ST_COL TO LAST_COL DO COLDESC;  (* write all col descs. *)
+        FOR I := ST_ROW TO LAST_ROW DO
+          BEGIN
+            ROWDESC;                     (* write the row desc for row I *)
+            IF CTL_TYPE <> HEADING THEN
+              BEGIN
+                BEFOREAFTER(CTL_FORMAT);         (* set Before and After *)
+                SETTHEFORMAT(I-ST_ROW);          (* Bug Fix  SDA 3/5/81  *)
+                FOR J := ST_COL TO LAST_COL DO WRITENUM(I,J)
+              END
+          END
+      END
+    ELSE                             (* write stuff out a col at a time *)
+      BEGIN
+        FOR I := ST_ROW TO LAST_ROW DO ROWDESC;  (* write all row descs *)
+        FOR J := ST_COL TO LAST_COL DO
+          BEGIN
+            COLDESC;                    (* Write the col desc for col J *)
+            BEFOREAFTER(CTL_FORMAT);
+            SETTHEFORMAT(J-ST_COL);              (* Bug Fix  SDA 3/5/81 *)
+            FOR I := ST_ROW TO LAST_ROW DO       (* Bug Fix  SDA 4/8/80 *)
+              IF LEGAL[ I - YOFFSET ] THEN WRITENUM(I,J)
+          END
+      END
+  END
+END;   (* of display *)
+
+FUNCTION GETCOMMAND(VAR COMMAND: CHAR): BOOLEAN;
+BEGIN
+  
+  MEMORY;
+  
+  REPEAT
+    (*$B 40COL- *)
+    GETRESPONSE(TRUE,'Enter Command => ','',
+                    '      A,U,M,Z,N,L,S,<ESC>  (H for Help)',1,IS);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETRESPONSE(TRUE,'Command => ','',
+                    '  A,U,M,Z,N,L,S,H(elp),ESC',1,IS);
+    (*$E 40COL  *)
+    LCTOUC(IS);
+  UNTIL (IS='A') OR (IS='U') OR (IS='M') OR (IS='Z') OR (IS='L') OR
+        (IS='H') OR (IS='N') OR (IS='S') OR (IS='ESCAPE');
+  IF IS <> 'ESCAPE' THEN
+    BEGIN GETCOMMAND := TRUE; COMMAND := IS[1] END
+  ELSE
+    BEGIN
+      GETCOMMAND := FALSE;
+      IF DIDDLED AND WORK_PAGE THEN
+        IF YESNO('Save page before leaving','Y') THEN SAVEPAGE
+    END
+END;   (* of getcommand *)
+
+BEGIN  (* DATAIN *)
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  WRITELN(OUTPUT,'F R E E F O R M   D A T A   E N T R Y');
+  IF DISK_DIR THEN
+    IF NAME_FORM(REQUESTED_FORM, RECNUMBER) THEN
+      BEGIN
+        ONEMOMENT('Opening Control file');
+        IF NOT OPEN_CTL(REQUESTED_FORM) THEN ERROR(4)
+        ELSE
+          BEGIN
+            INIT;
+            DISPLAY(TRUE);
+            WHILE GETCOMMAND(COMMAND) DO
+              BEGIN
+                CASE COMMAND OF
+                  'A': ANCHOR;
+                  'U': UPDATE;
+                  'M': IF (NOT MAP_PAGE) AND (PLANE = ROWCOL) THEN MATH;
+                  'Z', 'N', 'L': LISTORZERO;
+                  'S': IF WORK_PAGE THEN SAVE;
+                  'H': HELP
+                END;
+                ERASE(MSG_LINE-1)
+              END;
+            IF WORK_PAGE THEN
+              BEGIN
+                CLOSE(FORM_DAT_FILE,PURGE);  DAT_OPEN := FALSE;
+                FREEMEM(FORM_DAT_DESC);
+                CLOSE(TRUE_DAT_FILE)
+              END;
+            VARDISPOSE( CALC_LIST,  SIZE_CALC_LIST  );
+            VARDISPOSE( CROSS_CALC, SIZE_CROSS_CALC )
+          END
+      END;
+  FINISHUP
+END;   (* of datain *)
+
+

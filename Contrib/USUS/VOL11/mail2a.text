@@ -1,0 +1,487 @@
+{Mail2A - Letter part 1}
+{
+22-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+
+SEGMENT PROCEDURE Letter;                                 
+ {DirStr is the directive character for letter processing - default is '~'}
+ 
+ VAR  DirStr                              : STRING[1];
+      tline,line,oline                    : bstring;
+      lmarg,pmarg,Lettername              : STRING[60];
+                                          {limits max left and para maragins}
+      token,greet                         : STRING[90];      
+                                          {length is maximum of fields}
+      ljustify,sjustify                   : justification;   
+      tpmgin,temp3,temp4,pageat,  
+      pmgin,tlmgin,tlsize,
+      nlwg,numtoadd,linat,lmgin,lsize     : INTEGER; 
+      epar,newpar,pgflg,FileEnd,
+      LastPageWritten                     : BOOLEAN;         
+      spc                                 : 1..3; 
+      ch,tempch                           : char;
+     
+FUNCTION Flgsok : BOOLEAN;        
+  VAR intb : BOOLEAN;
+      numarray : ARRAY[1..48] OF (t,f,n);
+  BEGIN    
+   temp3 := POS('{%',line)+2;       
+   tline := COPY(line,temp3,LENGTH(line)-temp3+1);        
+   intb := FALSE;           
+   FOR temp := 1 TO 48 DO numarray[temp] := n;   
+   REPEAT
+    temp3 := POS('/',tline);  
+    temp := VAL(tline);       
+    IF (temp3 <> 0) AND (temp3<5) THEN DELETE(tline,1,temp3);
+    IF (temp3<5) AND (temp>0) AND (temp<=48) THEN numarray[temp] := t;
+    IF (temp3<5) AND (temp<0) AND (temp>=-48) THEN numarray[-1*temp] := f;
+   UNTIL (temp3 = 0) OR (temp3>4);   
+   IF format^.loption THEN                          
+    BEGIN
+     intb := TRUE; 
+     FOR temp := 1 to 48 DO
+      BEGIN              
+       IF numarray[temp]=t THEN IF NOT disk^.flags[temp] THEN intb := FALSE;
+       IF numarray[temp]=f THEN IF disk^.flags[temp] THEN intb := FALSE;
+      END;
+    END      
+   ELSE     
+    BEGIN
+     FOR temp := 1 TO 48 DO   
+      BEGIN  
+       IF numarray[temp]=t THEN IF disk^.flags[temp] THEN intb := TRUE;  
+       IF numarray[temp]=f THEN IF NOT(disk^.flags[temp]) THEN intb := TRUE;
+      END;
+    END;      
+   Flgsok := intb;        
+   IF intb THEN  
+    BEGIN
+     temp4 := POS('{%',line);           
+     tline := COPY(line,1,temp4-1);  
+     DELETE(line,1,temp4+1);          
+     WHILE (POS('/',line)<5) AND (POS('/',line)<>0) DO
+       DELETE(line,1,POS('/',line));                                        
+     line := CONCAT(tline,line);
+    END;    
+   END;    
+
+  PROCEDURE Skptpt;       
+   VAR tline : STRING[255];          
+       level : INTEGER;
+   BEGIN
+    tline := COPY(line,1,POS('{%',line)-1);       
+    DELETE(line,1,POS('{%',line)+1);
+    level := 1;
+    REPEAT
+     IF (POS('%}',line)=0) AND (POS('{%',line)=0) THEN      
+      IF NOT EOF(infile) THEN READLN(infile,line) ELSE line := '';  
+     IF (POS('{%',line)<>0) AND    
+        (((POS('%}',line)<>0) AND (POS('%}',line)>POS('{%',line))      
+           OR (POS('%}',line)=0))) THEN   
+        BEGIN
+         level := level + 1;  
+         DELETE(line,1,POS('{%',line)+1);
+        END
+     ELSE IF (POS('%}',line)<>0) AND       
+      (((POS('{%',line)<>0) AND (POS('{%',line)>POS('%}',line))            
+       OR (POS('{%',line)=0))) THEN               
+        BEGIN
+         level := level - 1;
+         DELETE(line,1,POS('%}',line)+1);     
+        END;    
+    UNTIL (level=0) OR EOF(infile);                      
+    line := CONCAT(tline,line);                        
+   END;    
+  
+  PROCEDURE Prflgs;         
+   BEGIN  
+    REPEAT
+     WHILE (POS('%}',line)<>0) AND   
+      ((POS('{%',line)=0) OR (POS('{%',line)>POS('%}',line)))
+       DO DELETE(line,POS('%}',line),2);    
+     WHILE POS('{%',line)<>0 DO         
+      IF NOT Flgsok THEN Skptpt;              
+    UNTIL (POS('{%',line)=0) AND (POS('%}',line)=0); 
+   END;
+
+PROCEDURE Chkorquit;   
+ var ch1:char;
+ BEGIN
+ IF format^.foption THEN        
+  BEGIN
+  IF format^.ofilename<>'#2:' THEN WRITELN;    
+  WRITE('<space> to continue, <esc> to quit:');
+  REPEAT
+   READ(KEYBOARD,ch1);   
+  UNTIL (ch1=CHR(27)) OR (ch1=' '); 
+  WRITELN;
+  IF ch1 = CHR(27) THEN  
+   BEGIN
+    SC_Clr_Screen;
+    CLOSE(infile); 
+    CLOSE(odisk,lock); 
+    EXIT(Letter); 
+   END; 
+ END;
+END;
+
+
+ 
+PROCEDURE Getgreet;
+  type farray = array [1..48] of boolean;
+  
+  procedure greet1(var greet:string; var farr:farray);
+  begin
+   IF (stdflg[1]<>0) THEN
+    IF farr[stdflg[1]] AND (LENGTH(disk^.prefx)<>0) THEN     
+     greet := CONCAT(greet,disk^.prefx);                 
+   IF (stdflg[2]<>0) THEN 
+    IF farr[stdflg[2]] AND (LENGTH(disk^.fname)<>0) THEN
+     BEGIN
+      IF LENGTH(greet)<>0 THEN greet := CONCAT(greet,' ');             
+      greet := CONCAT(greet,disk^.fname);                             
+     END;
+   IF (stdflg[3]<>0) THEN
+    IF farr[stdflg[3]] AND (LENGTH(disk^.minit)<>0) THEN    
+     BEGIN
+      IF LENGTH(greet)<>0 THEN greet := CONCAT(greet,' ');   
+      greet := CONCAT(greet,disk^.minit);           
+     END;
+   IF (stdflg[4]<>0) THEN
+    IF farr[stdflg[4]] AND (LENGTH(disk^.lname)<>0) THEN        
+     BEGIN
+      IF LENGTH(greet)<>0 THEN greet := CONCAT(greet,' ');       
+      greet := CONCAT(greet,disk^.lname);               
+     END;
+   IF (stdflg[5]<>0) THEN
+    IF farr[stdflg[5]] AND (LENGTH(disk^.suffx)<>0) THEN          
+     BEGIN
+      IF LENGTH(greet)<>0 THEN greet := CONCAT(greet,' ');
+      greet := CONCAT(greet,disk^.suffx);                   
+     END;              
+  end;
+  
+  BEGIN
+   greet := '';                    
+   temp1 := 0;
+   greet1(greet,disk^.flags); {try from actual record}
+   {if not try from the entries S(et in O(ptions F(lags}
+   if length(greet)=0 then greet1(greet,format^.fflags);
+   
+   IF LENGTH(greet)=0 THEN  
+    IF (LENGTH(disk^.lname)<>0) and (length(disk^.prefx)<>0)  THEN
+      greet := CONCAT(disk^.prefx,' ',disk^.lname);  
+   
+   IF LENGTH(greet)=0 THEN                 
+    IF (LENGTH(disk^.fname)>1) THEN
+      begin
+        IF (disk^.fname[2]<>'.')  THEN
+        {first name present and not an initial} greet := disk^.fname;
+      end;
+    
+  IF LENGTH(greet)=0 THEN greet := 'Sir';  
+ END;      
+  
+ FUNCTION Hasmgin : BOOLEAN;           
+  VAR intb : BOOLEAN;
+  BEGIN 
+   intb := FALSE;
+   WHILE  ( ( POS(':]',token)<POS('[:',token) ) AND (POS(':]',token)<>0) ) OR   
+          ( ( POS('[:',token)=0 ) AND (POS(':]',token)<>0) ) DO 
+    DELETE(token,POS(':]',token),2);
+   IF (POS(':]',token)<>0) AND (POS('[:',token)<>0) THEN intb := TRUE;   
+   Hasmgin := intb;
+  END;
+    
+ procedure SetPLMargins(p,l:integer);
+ begin
+   if length(pmarg)<>p then pmarg:=copy(concat(Spaces30,Spaces30),1,p);
+   if length(lmarg)<>l then lmarg:=copy(concat(Spaces30,Spaces30),1,l);
+ end;
+ 
+ function ValorDefault(Val,Default:integer):integer;
+ begin
+   if val=-9999 then ValOrDefault:=Default else ValorDefault:=Val;
+ end;
+ 
+ PROCEDURE Getmgin;      
+  BEGIN  
+   IF token[POS('[:',token)+2] IN ['L','l'] THEN      
+    BEGIN
+     temp := tlmgin;
+     tlmgin := ValOrDefault(Val(COPY(token,POS('[:',token)+3,3)),lmgin);
+     tlsize := tlsize + temp - tlmgin;           
+    END 
+   ELSE IF token[POS('[:',token)+2] IN ['R','r'] THEN
+    BEGIN          
+     tlsize := format^.lchar - tlmgin         
+              - ValOrDefault(Val(COPY(token,POS('[:',token)+3,3)),
+                             format^.lrmgin);
+    END
+   ELSE IF token[POS('[:',token)+2] IN ['P','p'] THEN 
+    BEGIN
+     tpmgin := ValOrDefault(Val(COPY(token,POS('[:',token)+3,3)),pmgin); 
+    END
+   ELSE IF token[POS('[:',token)+2] IN ['S','s'] THEN                      
+    BEGIN
+     temp := Val(COPY(token,POS('[:',token)+3,3));
+     IF (temp>0) AND (temp<=3) THEN spc := temp;      
+    END;
+   IF tlmgin<0 THEN tlmgin := format^.llmgin;    
+   IF tlsize<=0 THEN
+    tlsize := format^.lchar-format^.lrmgin-format^.llmgin;         
+   DELETE(token,POS('[:',token),
+          POS(':]',token)-POS('[:',token)+2);                 
+   IF ((NOT newpar) AND (LENGTH(oline)<tlsize)) 
+    OR (newpar AND (LENGTH(oline)<tlsize-tpmgin)) THEN     
+   BEGIN  
+    {these may have been altered by directives within line just output}
+    lsize := tlsize;
+    if (pmgin<>tpmgin) or (lmgin<>tlmgin) then
+      begin
+        pmgin := tpmgin;
+        lmgin := tlmgin;
+        SetPLMargins(pmgin,lmgin);
+      end;
+   END;      
+  END;    
+  
+PROCEDURE Rjustify;
+ VAR srt,srted,pspace,lwg   : ARRAY[0..50] OF INTEGER;       
+     
+ PROCEDURE Addtoall(i : INTEGER);      
+  VAR lstcharspace : BOOLEAN;              
+  BEGIN  
+   temp1 := 0;  
+   lstcharspace := FALSE;  
+   WHILE temp1 < LENGTH(oline) DO                 
+    BEGIN
+     temp1 := temp1 + 1;
+     IF oline[temp1]<>' ' THEN        
+      IF lstcharspace THEN          
+       BEGIN
+        FOR temp2 := 1 TO i DO INSERT(' ',oline,temp1);              
+        temp1 := temp1 + i;    
+        lstcharspace := FALSE;                
+       END
+      ELSE
+     ELSE lstcharspace := TRUE;     
+    END;
+  END; 
+  
+ PROCEDURE Addrems(i : INTEGER);  
+  VAR prevhi,temp3 : INTEGER;        
+  BEGIN
+   FOR temp1 := 1 TO i DO    
+    BEGIN    
+     prevhi := 0;                        
+     FOR temp2 := 1 TO i DO 
+      IF srted[temp2] > prevhi THEN 
+       BEGIN    
+        prevhi := srted[temp2];        
+        temp3 := temp2;
+       END;
+     INSERT(' ',oline,pspace[srted[temp3]]+ 
+      (srted[temp3]-1)*(numtoadd DIV nlwg));        
+     srted[temp3] := 0; 
+    END;   
+  END; 
+  
+ PROCEDURE Sortlwg;
+  VAR prevhi : INTEGER;  
+  BEGIN
+   FOR temp1 := 1 TO nlwg DO srt[temp1] := lwg[temp1];         
+   FOR temp1 := 1 TO nlwg DO  
+    BEGIN
+     prevhi := 0;
+     FOR temp2 := 1 TO nlwg DO 
+      IF srt[temp2]>prevhi THEN       
+       BEGIN
+        prevhi := srt[temp2];        
+        srted[temp1] := temp2;               
+       END;
+     srt[srted[temp1]] := 0;      
+    END;
+  END;     
+ 
+  BEGIN (* Rjustify *)         
+   temp1 := 0;                                
+   nlwg := 0;  
+   WHILE temp1 < LENGTH(oline) DO             
+    BEGIN
+     temp1 := temp1 + 1;
+     IF oline[temp1]=' ' THEN            
+      BEGIN 
+       nlwg := nlwg + 1;     
+       pspace[nlwg] := temp1;   
+      END;
+    END;
+   pspace[0] := 0;    
+   pspace[nlwg+1] := LENGTH(oline)+1;         
+   FOR temp1 := 1 TO nlwg DO       
+    lwg[temp1] := pspace[temp1+1] - pspace[temp1-1] - 1;
+   Sortlwg;
+   numtoadd := lsize - LENGTH(oline);       
+   IF newpar THEN numtoadd := numtoadd - format^.lpin;                     
+   IF nlwg <> 0 THEN         
+    BEGIN
+     IF numtoadd DIV nlwg >= 1 THEN Addtoall(numtoadd DIV nlwg); 
+     IF numtoadd MOD nlwg >= 1 THEN Addrems(numtoadd MOD nlwg);  
+    END;  
+  END;
+  
+  procedure PutTopMargin;
+  begin
+    for temp:=1 to format^.lvtab do writeln(odisk);
+    linat:=format^.lvtab;
+  end;
+  
+  PROCEDURE Chkpage;  
+   VAR ch1 : CHAR;
+   BEGIN
+    linat := linat + ORD(spc);    
+    IF pgflg OR FileEnd OR
+       ((epar OR newpar) AND ((linat+5+format^.lpwid)>format^.lpsiz)) OR
+       (linat+5>format^.lpsiz) THEN
+     BEGIN
+      if NOT(LastPageWritten) then
+        begin
+          FOR temp := linat TO format^.lpsiz-3 DO WRITELN(odisk);
+          IF NOT(FileEnd AND (pageat=format^.lspage)) THEN                   
+            WRITE(odisk,lmarg,' ':(lsize DIV 2)-3,'- ',pageat,' -');   
+          FOR temp1 := 1 TO 3 DO WRITELN(odisk);                
+          if format^.ffeed then write(odisk,chr(12)); {formfeed}
+          ChkorQuit;
+          if NOT(FileEnd) then
+            begin
+              PutTopMargin;
+              pageat := pageat + 1;
+            end
+          else LastPageWritten:=true;
+          pgflg := FALSE;        
+        end;
+     END; 
+   END;  
+    
+  PROCEDURE Outline;           
+   BEGIN    
+    IF (format^.joption) AND (POS('\\',line)<>1) AND (NOT(FileEnd)) AND
+       (NOT(epar)) AND (POS(DirStr,line)=0) THEN Rjustify;
+    
+    IF newpar THEN WRITE(odisk,pmarg);     
+    WRITE(odisk,lmarg,oline);     
+    FOR temp4 := 1 TO ORD(spc) DO WRITELN(odisk); 
+    
+    newpar := FALSE;   
+    IF format^.ofilename <> '#2:' THEN WRITE('.');     
+    IF format^.poption THEN Chkpage;     
+    IF (NOT epar) AND (POS(DirStr,line)=0) THEN oline := token           
+                                        ELSE oline := '';
+    {these may have been altered within the line just output}
+    lsize := tlsize;
+    pmgin := tpmgin;
+    lmgin := tlmgin;
+    SetPLMargins(pmgin,lmgin);
+   END;          
+  
+  
+
+PROCEDURE Chgtokens;        
+ VAR  ltoken,leqpart,lfield               : bstring;
+      seqpart,   
+      legalfchrs,legal2chrs,
+      stoken                              : STRING[90];
+                                          {max length of fields}
+      lfsize,sfsize,lposinline,sposinline : INTEGER;   
+      rflg,lflg                           : BOOLEAN;
+         
+PROCEDURE Putone(just : justification;               
+          ins : bstring;
+          fsz,pos : INTEGER;    
+          VAR ln : bstring);    
+  BEGIN
+   tline := '';       
+   FOR temp1 := 2 TO fsz - LENGTH(ins) DO
+    tline := CONCAT(tline,' '); 
+   CASE just OF                
+    right   : BEGIN
+               INSERT(ins,ln,pos);  
+               INSERT(tline,ln,pos);
+              END;
+    center  : BEGIN            
+               INSERT(COPY(tline,1,(LENGTH(tline)+1) DIV 2),ln,pos);
+               INSERT(ins,ln,pos);
+               INSERT(COPY(tline,1,(LENGTH(tline)) DIV 2),ln,pos);
+              END;            
+    left    : BEGIN        
+               INSERT(tline,ln,pos);
+               INSERT(ins,ln,pos);
+              END;
+   END; 
+  END; 
+  
+ PROCEDURE Getmtoken;    
+  VAR tline : STRING[90];
+  BEGIN
+   temp1 := temp2 - 15;
+   tline := disk^.misc;
+   FOR temp3 := 1 TO temp1 DO 
+    IF POS('\',tline)<>0 THEN
+     BEGIN
+      stoken := COPY(tline,1,POS('\',tline)-1);
+      DELETE(tline,1,POS('\',tline));
+     END
+    ELSE
+     BEGIN
+      stoken := tline;
+      tline := '';
+     END;
+  END; 
+  
+ PROCEDURE Chg1(VAR s : bstring);     
+  BEGIN  
+   tmpstr := COPY(stoken,1,2);    
+   Uppercase(tmpstr);      
+   temp1 := POS(tmpstr,'GRPRFNMNLNSUTICNADCISTZIPNCOMIM0M1M2M3M4M5M6M7M8M9');  
+   temp2 := (temp1 + 1) DIV 2;   
+   IF temp2 * 2 <> temp1 + 1 THEN temp2 := 0;
+   stoken := ''; 
+   WITH disk^ DO
+   CASE temp2 OF
+    1 : stoken := greet;
+    2 : stoken := prefx; 
+    3 : stoken := fname;  
+    4 : stoken := minit;    
+    5 : stoken := lname;      
+    6 : stoken := suffx;
+    7 : stoken := title; 
+    8 : stoken := coname;
+    9 : stoken := address;      
+    10: stoken := city;    
+    11: stoken := state;   
+    12: stoken := zip;                            
+    13: stoken := phone;
+    14: stoken := country;            
+    15: stoken := misc;     
+    16,17,18,19,20,21,22,23,24,25 : Getmtoken; 
+   END;  
+   IF LENGTH(stoken)<>0 THEN INSERT(seqpart,s,sposinline);              
+    IF NOT(
+           (LENGTH(stoken)=0) AND       
+           (NOT rflg) AND
+           (NOT lflg)) THEN     
+    Putone(sjustify,stoken,sfsize,sposinline,s);    
+  END; 
+  
+
+

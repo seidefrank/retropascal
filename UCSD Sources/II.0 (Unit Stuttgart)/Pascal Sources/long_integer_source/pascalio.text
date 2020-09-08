@@ -1,0 +1,274 @@
+(*$U-*)
+(*$S+*)
+
+(*$I GLOBALS.TEXT*)
+
+(*----------------------------------------------------------*)
+
+SEPARATE UNIT PASCALIO;
+{Version II.0.A}
+INTERFACE
+
+  TYPE DECMAX = INTEGER[36];
+       STUNT = RECORD CASE INTEGER OF
+		 2:(W2:INTEGER[4]);
+		 3:(W3:INTEGER[8]);
+		 4:(W4:INTEGER[12]);
+		 5:(W5:INTEGER[16]);
+		 6:(W6:INTEGER[20]);
+		 7:(W7:INTEGER[24]);
+		 8:(W8:INTEGER[28]);
+		 9:(W9:INTEGER[32]);
+		 10:(W10:INTEGER[36])
+	       END;
+
+
+  PROCEDURE FSEEK(VAR F: FIB; RECNUM: INTEGER);
+  PROCEDURE FREADREAL(VAR F: FIB; VAR X: REAL);
+  PROCEDURE FWRITEREAL(VAR F: FIB; X: REAL; W, D: INTEGER);
+  PROCEDURE FREADDEC(VAR F: FIB; VAR D: STUNT; L: INTEGER);
+  PROCEDURE FWRITEDEC(VAR F: FIB; D: DECMAX; RLENG: INTEGER);
+
+IMPLEMENTATION
+
+  PROCEDURE FSEEK(*VAR F: FIB; RECNUM: INTEGER*);
+    LABEL 1;
+    VAR BYTE,BLOCK,N: INTEGER;
+  BEGIN SYSCOM^.IORSLT := INOERROR;
+    IF F.FISOPEN THEN
+      WITH F,FHEADER DO
+	BEGIN 
+	  IF (RECNUM < 0) OR NOT FSOFTBUF OR
+		  ((DFKIND = TEXTFILE) AND (FRECSIZE = 1)) THEN
+	    GOTO 1; (*NO SEEK ALLOWED*)
+	  BLOCK :=RECNUM*(FRECSIZE DIV 512)
+		 +(RECNUM DIV 512)*(FRECSIZE MOD 512)
+		 +( (RECNUM MOD 512)*((FRECSIZE MOD 512) DIV 64)
+		   +((RECNUM MOD 512)*(FRECSIZE MOD 64)) DIV 64
+		  ) DIV 8
+		  + 1;
+		  {RECNUM*FRECSIZE DIV FBLKSIZE + 1;}
+	  BYTE := ( (RECNUM MOD 512)*(FRECSIZE MOD 32)
+		   +( (RECNUM MOD 16)*32*((FRECSIZE MOD 512) DIV 32) )
+		  ) MOD 512;
+		 {BYTE := RECNUM*FRECSIZE MOD FBLKSIZE;}
+	  IF BYTE = 0 THEN 
+	    BEGIN
+	      BYTE := FBLKSIZE;     
+	      BLOCK := BLOCK - 1;
+	      END;
+	  N := DLASTBLK-DFIRSTBLK;
+	  IF (BLOCK > N) OR ((BLOCK = N) AND (BYTE >= DLASTBYTE)) THEN
+	    BEGIN BLOCK := N; BYTE := DLASTBYTE END;
+	  IF BLOCK <> FNXTBLK THEN
+	    BEGIN
+	      IF FBUFCHNGD THEN
+		BEGIN FBUFCHNGD := FALSE; FMODIFIED := TRUE;
+		  UNITWRITE(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+FNXTBLK-1);
+		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+		END;
+	      IF (BLOCK <= FMAXBLK) AND (BYTE <> FBLKSIZE) THEN
+		BEGIN
+		  UNITREAD(FUNIT,FBUFFER,FBLKSIZE,DFIRSTBLK+BLOCK-1);
+		  IF IORESULT <> ORD(INOERROR) THEN GOTO 1
+		END
+	    END;
+	  IF FNXTBLK > FMAXBLK THEN
+	    BEGIN FMAXBLK := FNXTBLK; FMAXBYTE := FNXTBYTE END
+	  ELSE
+	    IF (FNXTBLK = FMAXBLK) AND (FNXTBYTE > FMAXBYTE) THEN
+	      FMAXBYTE := FNXTBYTE;
+	  FEOF := FALSE; FEOLN := FALSE; FREPTCNT := 0;
+	  IF FSTATE <> FJANDW THEN FSTATE := FNEEDCHAR;
+	  FNXTBLK := BLOCK; FNXTBYTE := BYTE
+	END
+    ELSE SYSCOM^.IORSLT := INOTOPEN;
+  1:
+  END (*FSEEK*) ;
+
+  PROCEDURE FREADREAL(*VAR F: FIB; VAR X: REAL*);
+    LABEL 1;
+    VAR CH: CHAR; NODEC,NEG,XVALID: BOOLEAN; IPOT,ICNT: INTEGER;
+  BEGIN
+    WITH F DO
+	BEGIN X := 0; NEG := FALSE; XVALID := FALSE;
+	    IPOT := 0; NODEC:=TRUE;
+	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+	  IF FEOF THEN GOTO 1;
+	  CH := FWINDOW^[0];
+	  IF (CH = '+') OR (CH = '-') THEN
+	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+	    BEGIN XVALID := TRUE;
+	      X := X*10 + (ORD(CH)-ORD('0'));
+	      FGET(F); CH := FWINDOW^[0]
+	    END;
+	  IF FEOF THEN GOTO 1;
+	  IF CH = '.' THEN
+	    BEGIN NODEC:=FALSE;
+	      REPEAT FGET(F); CH := FWINDOW^[0];
+		IF CH IN DIGITS THEN
+		  BEGIN XVALID := TRUE; IPOT := IPOT - 1;
+		    X := X*10 + (ORD(CH)-ORD('0'))
+		  END
+	      UNTIL FEOF OR NOT (CH IN DIGITS);
+	      IF FEOF THEN GOTO 1
+	    END;
+	  IF ((CH = 'e') OR (CH = 'E')) AND (XVALID OR NODEC) THEN
+	    BEGIN
+	      IF FSTATE = FJANDW THEN FGET(F)
+	      ELSE FSTATE := FNEEDCHAR;
+	      FREADINT(F,ICNT);
+	      IF FEOF THEN GOTO 1;
+	      IPOT:=ICNT+IPOT;
+	      IF NOT XVALID THEN X := 1; XVALID := TRUE;
+	    END;
+	  IF XVALID THEN
+	    IF NEG THEN X := -X
+	    ELSE
+	  ELSE SYSCOM^.IORSLT := IBADFORMAT
+	END;
+  1:   IF IPOT < 0 THEN X := X/PWROFTEN(ABS(IPOT))
+       ELSE X := X*PWROFTEN(IPOT);
+  END (*FREADREAL*) ;
+
+  PROCEDURE FWRITEREAL(*X:REAL;  W, D: INTEGER*);
+  VAR J, TRUNCX, EXPX: INTEGER;
+      NORMX: REAL;  S: STRING[30];
+
+  BEGIN
+  (* Check W and D for validity *)
+  IF (W < 0) OR (D < 0) THEN  BEGIN W := 0;  D := 0 END;
+
+  (* Take abs(x), normalize it and calculate exponent *)
+  IF X < 0 THEN  BEGIN X := -X;  S[1] := '-' END
+	   ELSE  S[1] := ' ';
+  EXPX := 0;  NORMX := X;
+  IF X >= PWROFTEN(0) THEN  (* divide down to size *)
+    WHILE NORMX >= PWROFTEN(1) DO
+      BEGIN EXPX := EXPX+1;  NORMX := X/PWROFTEN(EXPX) END
+  ELSE
+    IF X <> 0 THEN  (* multiply up to size *)
+      REPEAT
+	EXPX := EXPX-1;  NORMX := X*PWROFTEN(-EXPX)
+      UNTIL NORMX >= PWROFTEN(0);
+
+  (* Round number according to some very tricky rules *)
+  IF (D=0) OR (D+EXPX+1 > 6) THEN  (* scientific notation, or decimal places *)
+    NORMX := NORMX + 5/PWROFTEN(6)        (* overspecified *)
+  ELSE IF D+EXPX+1 >= 0 THEN
+    NORMX := NORMX + 5/PWROFTEN(D+EXPX+1);
+  (* if D+EXPX+1 < 0, then number is effectively 0.0 *)
+
+  (* If we just blew normalized stuff then fix it up *)
+  IF NORMX >= PWROFTEN(1) THEN
+    BEGIN  EXPX := EXPX+1;  NORMX := NORMX/PWROFTEN(1) END;
+
+  (* Put the digits into a string *)
+  FOR J := 3 TO 8 DO
+    BEGIN
+      TRUNCX := TRUNC(NORMX);
+      S[J] := CHR(TRUNCX+ORD('0'));
+      NORMX := (NORMX-TRUNCX)*PWROFTEN(1)
+    END;
+
+  (* Put number into proper form *)
+  IF (D=0) OR (EXPX >= 6) THEN  (* scientific notation *)
+    BEGIN
+      S[2] := S[3];
+      S[3] := '.';
+      J := 8;
+      IF EXPX <> 0 THEN 
+	BEGIN
+	  J := 10;
+	  S[9] := 'E';
+	  IF EXPX < 0 THEN
+	    BEGIN J := 11;  S[10] := '-';  EXPX := -EXPX END;
+	  IF EXPX > 9 THEN
+	    BEGIN
+	      S[J] := CHR(EXPX DIV 10 + ORD('0'));
+	      J := J+1;
+	    END;
+	  S[J] := CHR(EXPX MOD 10 + ORD('0'))
+	END;
+      S[0] := CHR(J);
+    END
+  ELSE  (* some kind of fixed point notation *)
+    IF EXPX >= 0 THEN
+      BEGIN
+	MOVELEFT(S[3], S[2], EXPX+1);
+	S[3+EXPX] := '.';
+	FILLCHAR(S[9], D-(5-EXPX), ' '); (* blank fill at end if precision *)
+	S[0] := CHR(3+D+EXPX);           (* was over-specified *)
+      END
+    ELSE
+      BEGIN
+	MOVERIGHT(S[3], S[3-EXPX], 6);  (* make room for leading zeroes *)
+	S[2] := '0';
+	S[3] := '.';
+	FILLCHAR(S[4], -EXPX-1, '0');  (* put in leading zeroes *)
+	FILLCHAR(S[9-EXPX], D-6+EXPX, ' ');(* put in blanks for over-precision*)
+	S[0] := CHR(3+D);
+      END;
+  IF W < LENGTH(S) THEN W := LENGTH(S);
+  FWRITESTRING( F, S, W );
+  END;  (*procedure write_real *)
+
+  PROCEDURE FWRITEDEC(*VAR F: FIB; D: DECMAX; RLENG: INTEGER*);
+  VAR S: STRING[38]; I: INTEGER;
+  BEGIN
+    STR(D,S);
+    FWRITESTRING(F,S,RLENG)
+  END (*FWRITEDEC*) ;
+
+
+  PROCEDURE FREADDEC(*VAR F:FIB; VAR D: STUNT; L: INTEGER*);
+    LABEL 1;
+    VAR CH: CHAR;
+	NEG,DVALID: BOOLEAN; DIG,I: INTEGER;
+  BEGIN
+    WITH F DO
+	BEGIN 
+	  WITH D DO
+	    CASE L OF
+	      2: W2 := 0;      3: W3 := 0;       4: W4 := 0;
+	      5: W5 := 0;      6: W6 := 0;       7: W7 := 0;
+	      8: W8 := 0;      9: W9 := 0;      10: W10 := 0
+	    END;
+	  NEG := FALSE; DVALID := FALSE;
+	  IF FSTATE = FNEEDCHAR THEN FGET(F);
+	  WHILE (FWINDOW^[0] = ' ') AND NOT FEOF DO FGET(F);
+	  IF FEOF THEN GOTO 1;
+	  CH := FWINDOW^[0];
+	  IF (CH = '+') OR (CH = '-') THEN
+	    BEGIN NEG := CH = '-'; FGET(F); CH := FWINDOW^[0] END;
+	  WHILE (CH IN DIGITS) AND NOT FEOF DO
+	    BEGIN DVALID := TRUE;
+	      DIG:=ORD(CH)-ORD('0');
+	      IF NEG THEN DIG:=-DIG;
+	      WITH D DO
+		CASE L OF
+		  2:W2:=10*W2+DIG;
+		  3:W3:=10*W3+DIG;
+		  4:W4:=10*W4+DIG;
+		  5:W5:=10*W5+DIG;
+		  6:W6:=10*W6+DIG;
+		  7:W7:=10*W7+DIG;
+		  8:W8:=10*W8+DIG;
+		  9:W9:=10*W9+DIG;
+		  10:W10:=10*W10+DIG;
+		END;
+	      FGET(F); CH := FWINDOW^[0]
+	    END;
+	  IF NOT (DVALID OR FEOF) THEN SYSCOM^.IORSLT := IBADFORMAT
+	END;
+  1:
+  END(*FREADDEC*) ;
+
+
+END { PASCALIO } ;
+
+(*Dummy level 0 outerblock*)
+BEGIN END.
+

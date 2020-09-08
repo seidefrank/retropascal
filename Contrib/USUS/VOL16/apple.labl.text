@@ -1,0 +1,60 @@
+program TypeAppleLabels;
+uses (*$U crtinput.code *) crtinput;
+
+const
+        maxlines = 7;           {lines per label}
+        needxtraline = true;    {if actual lines per label include a 1/2 line}
+        maxcol = 45;            {characters per label}
+        forever = false;
+        
+type
+        arraylmt = 1..maxlines;
+
+var
+        firsttime: boolean;
+        totallines, labelno: integer;
+        volumeno: string [5];
+        s: ARRAY [arraylmt] OF string;
+        list: text;
+
+
+procedure printlabel;
+VAR     i, j: integer;
+BEGIN
+  S[2] := CONCAT ('VOLUME ', volumeno, ' -**- APPLE format');
+  FOR labelno := 1 to 4 DO                      {print one pair of labels}
+    BEGIN
+      FOR i := 1 to maxlines DO
+        BEGIN
+          j := (MaxCol - Length(s[i])) DIV 2;
+          IF j > 0 THEN Write(list,' ':j);  writeln(list, s[i])
+        END;
+      IF needxtraline AND (labelno = 2) THEN Writeln (List);
+    END;
+  FOR I := 1 TO 6 DO WRITELN(LIST)
+END;
+
+
+PROCEDURE GetLabel;
+BEGIN
+  Write ('For what APPLE volume do you wish labels? <ret> to quit ');
+  Readln (Volumeno);
+  IF Volumeno = '' THEN EXIT (program)
+END;
+
+
+BEGIN
+  s[1] := 'USUS SOFTWARE LIBRARY';
+  s[3] := 'Jim Gagne, Chairman';
+  s[4] := 'DATAMED RESEARCH, INC.';
+  s[5] := 'Los Angeles, CA 90077';
+  s[6] := 'For use by USUS members only.';
+  s[7] := 'May not be published for profit.';
+  Rewrite (list, 'PRINTER:');  FirstTime := true;
+  REPEAT
+    IF FirstTime THEN GetLabel
+      ELSE IF NOT Yes('Want the same label again') THEN GetLabel;
+    Printlabel;  FirstTime := false
+  UNTIL forever;
+END.
+

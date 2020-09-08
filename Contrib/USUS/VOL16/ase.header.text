@@ -1,0 +1,54 @@
+(* ASE File Header Page  12 Jul 82
+                                   |xjm$v|nx|f8|ejb|. *)
+
+(* This is the current (ASE 0.4 through ASE 0.9) version of the ASE
+   Header Page which is the first two blocks of an ASE text file.
+   Please note that it may be changed in the future, and the first
+   field will be used to reflect this change.                       *)
+
+
+PROGRAM ASEHeaderPage (INPUT, OUTPUT);
+
+TYPE
+
+  MarkRange         = 0..29;   (* Marker Numbers *)
+  MSwRange          = 0..135;  (* Maximum ScreenWidth *)
+  Offset            = 0..1023; (* Byte offset within a page *)
+  Name              = PACKED ARRAY [0..7] OF CHAR;  (* of a Marker *)
+  TabAttribute      = (None, LeftJust, RightJust, DecimalStop);
+
+  DateRec           = PACKED RECORD  (*As used by rest of UCSD system*)
+      Month         : 0..12;
+      Day           : 0..31;
+      Year          : 0..100
+      END;
+
+  Content           = RECORD
+      Defined       : INTEGER;  (* Current version is 4 *)
+      Count         : INTEGER;  (* Count of valid markers *)
+      MarkName      : ARRAY [MarkRange] OF Name;
+      PageN         : ARRAY [MarkRange] OF INTEGER;
+      POffset       : ARRAY [MarkRange] OF Offset;
+      TabStop       : PACKED ARRAY [0..127] OF TabAttribute;
+      AutoIndent    : BOOLEAN;
+      Filling       : BOOLEAN;
+      TokDef        : BOOLEAN;
+      LMargin       : MSwRange;
+      RMargin       : MSwRange;
+      ParaMargin    : MSwRange;
+      RunOffCh      : CHAR;
+      Created       : DateRec;
+      LastUpd       : DateRec;
+      Revision      : INTEGER;
+      AutoPage      : BOOLEAN
+      END;
+  
+  Header            = RECORD CASE INTEGER OF
+    0 : ( Dummy     : ARRAY [0..511] OF INTEGER );
+    1 : ( Data      : Content )
+    END;
+
+BEGIN (* ASEHeaderPage *)
+  WRITELN ('Actual size of used Data Content is ', SIZEOF(Content), ' Bytes');
+  WRITELN ('Size of a Header Page is ', SIZEOF(Header), ' Bytes')
+  END (* ASEHeaderPage *).

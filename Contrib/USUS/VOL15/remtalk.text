@@ -1,0 +1,526 @@
+{ Mark Allen's Box to Box Talker }
+{$I-,R-}
+program talker;
+const
+  readunit=7;
+  writeunit=8;
+  filestringsize=40;
+  blockmax=511; {# of bytes in a packet - 1. must be (512/(2**n))-1 n=0..7}
+  tempmax=686;  {=ceiling((blockmax+1)*4/3)+4 - 1 (4 for checksum)}
+type
+  commands=
+    (nocommand,sendblock,resendblock,getblock,regetblock,
+     resetfile,rewritefile,gotoprompt,closefile,success,
+     sumerror,diskerror,closerror,openerror);
+  setofchar=set of char;
+  bufftype=packed array[0..0,0..blockmax] of char;
+  
+var
+  commandtoch:packed array[commands] of char;
+  chtocommand:packed array[char] of commands;
+  ch:packed array[0..1] of char;
+  tempbuff:packed array[0..tempmax] of 0..255;
+  f:file;
+  C : TEXT;
+  ReDir : BOOLEAN;
+  buff:^bufftype;
+  charcnt,buffpos,bufffirst,bufflast,buffsize:integer;
+  buffbyte:packed record case integer of
+             0:(int:integer);
+             1:(bit05:0..63;
+                bit67:0..3;
+                fill1:0..255);
+             2:(bit03:0..15;
+                bit47:0..15;
+                fill2:0..255);
+             3:(bit01:0..3;
+                bit27:0..63;
+                fill3:0..255);
+           end;
+
+  FUNCTION ReDirect : BOOLEAN;
+  BEGIN
+    ReDir := ReDir AND NOT EOF (C);
+    ReDirect := ReDir
+    END;
+
+  FUNCTION ReadChar : CHAR;
+  VAR
+    Ch : CHAR;
+  BEGIN
+    IF ReDirect
+      THEN READ (C, Ch)
+      ELSE READ (KeyBoard, Ch);
+    ReadChar := Ch
+    END;
+
+  PROCEDURE ReadLine (VAR Str : STRING);
+  BEGIN
+    IF ReDirect
+      THEN BEGIN
+        READLN (C, Str);
+        WRITELN (Str)
+        END
+      ELSE READLN (Str)
+    END;
+
+  function prompt(message:string; okset:setofchar):char;
+  var ch:char;
+  begin
+    write(message);
+    repeat
+      Ch := ReadChar;
+      if ch in ['a'..'z'] then
+        ch:=chr(ord(ch)-ord('a')+ord('A'));
+      IF NOT (Ch IN OkSet)
+        THEN ReDir := FALSE
+    until ch in okset;
+    writeln(ch);
+    prompt:=ch;
+  end;
+  
+  procedure error(message:string);
+  begin
+    writeln;
+    writeln('ERROR: ',message);
+  end;
+  
+  procedure outchar(ch:char);
+  begin
+    if charcnt>=40 then
+    begin
+      writeln;
+      charcnt:=0;
+    end;
+    write(ch);
+    charcnt:=charcnt+1;
+  end;
+  
+  procedure initialize;
+  type block=packed array[0..511] of char;
+  var comm:commands;
+      blockp:^block;
+      ch:char;
+  begin
+    for ch:=chr(0) to chr(255) do
+      chtocommand[ch]:=nocommand;
+    for comm:=nocommand to openerror do
+    begin
+      ch:=chr(ord('1')+ord(comm));
+      commandtoch[comm]:=ch;
+      chtocommand[ch]:=comm;
+    end;
+    ReDir := FALSE;
+    buffsize:=0;
+    mark(buff);
+    while ((memavail<0) or (memavail>3600)) and (buffsize<62) do
+    begin
+      new(blockp);
+      buffsize:=buffsize+1;
+    end;
+    buffsize:=(512 div (blockmax+1))*buffsize;
+  end;
+  
+  procedure sendcommand(comm:commands);
+  begin
+    ch[0]:=commandtoch[comm];
+    unitwrite(writeunit,ch[0],1);
+  end;
+  
+  function waitcommand:commands;
+  begin
+    unitread(readunit,ch[0],1);
+    waitcommand:=chtocommand[ch[0]];
+  end;
+  
+  procedure initbuffer;
+  begin
+    buffpos:=-1;
+    bufffirst:=0;
+    bufflast:=-1;
+  end;
+  
+  function fillbuffer:commands;
+  var size:integer;
+  begin
+    size:=blockread(f,buff^[0],buffsize div (512 div (blockmax+1)));
+    bufffirst:=bufflast+1;
+    bufflast:=bufffirst+(512 div (blockmax+1))*size-1;
+    if ioresult=0 then
+      if size=0 then
+        fillbuffer:=closefile
+      else
+        fillbuffer:=success
+    else
+      begin
+        fillbuffer:=diskerror;
+        error('reading from file');
+      end;
+  end;
+  
+  function dumpbuffer:boolean;
+  var size:integer;
+      ok:boolean;
+  begin
+    size:=(buffpos-bufffirst+1) div (512 div (blockmax+1));
+    ok:=(blockwrite(f,buff^[0],size)=size) and (ioresult=0);
+    if not ok then
+      error('writing to file');
+    dumpbuffer:=ok;
+    bufffirst:=buffpos+1;
+  end;
+  
+  procedure xferout(isretry:boolean);
+  var tempcnt,state,bytecnt,checksum:integer;
+  begin
+    state:=0;
+    tempcnt:=0;
+    checksum:=0;
+    for bytecnt:=0 to blockmax do
+    begin
+      buffbyte.int:=ord(buff^[buffpos-bufffirst,bytecnt]);
+      checksum:=checksum+buffbyte.int;
+      case state of
+        0:begin
+            tempbuff[tempcnt]:=ord(odd(buffbyte.int) and odd(63)){.bit05}+32;
+            tempcnt:=tempcnt+1;
+            tempbuff[tempcnt]:=16*buffbyte.bit67+32;
+            state:=1;
+          end;
+        1:begin
+            tempbuff[tempcnt]:=tempbuff[tempcnt]+
+                               ord(odd(buffbyte.int) and odd(15)){.bit03};
+            tempcnt:=tempcnt+1;
+            tempbuff[tempcnt]:=4*buffbyte.bit47+32;
+            state:=2;
+          end;
+        2:begin
+            tempbuff[tempcnt]:=tempbuff[tempcnt]+
+                               ord(odd(buffbyte.int) and odd(3)){.bit01};
+            tempcnt:=tempcnt+1;
+            tempbuff[tempcnt]:=buffbyte.bit27+32;
+            tempcnt:=tempcnt+1;
+            state:=0;
+          end;
+      end;
+    end;
+    checksum:=abs(checksum);
+    if isretry then
+      outchar('?') else
+      outchar('.');
+    tempbuff[tempmax-3]:=ord('0')+checksum div 4096 mod 16;
+    tempbuff[tempmax-2]:=ord('0')+checksum div 256 mod 16;
+    tempbuff[tempmax-1]:=ord('0')+checksum div 16 mod 16;
+    tempbuff[tempmax  ]:=ord('0')+checksum mod 16;
+    unitwrite(writeunit,tempbuff,tempmax+1);
+  end;
+  
+  function xferin:boolean;
+  var tempbyte,i,sentcheck,checksum,tempcnt,state,bytecnt:integer;
+  begin
+    sendcommand(success);
+    unitread(readunit,tempbuff,tempmax+1);
+    state:=0;
+    tempcnt:=0;
+    buffbyte.int:=0;
+    checksum:=0;
+    for bytecnt:=0 to blockmax do
+    begin
+      case state of
+        0:begin
+            buffbyte.int{.bit05}:=ord(odd(tempbuff[tempcnt]) and odd(127))-32;
+            tempcnt:=tempcnt+1;
+            tempbyte:=ord(odd(tempbuff[tempcnt]) and odd(127))-32;
+            buffbyte.bit67:=tempbyte div 16;
+            state:=1;
+          end;
+        1:begin
+            buffbyte.int{.bit03}:=ord(odd(tempbyte) and odd(15));
+            tempcnt:=tempcnt+1;
+            tempbyte:=ord(odd(tempbuff[tempcnt]) and odd(127))-32;
+            buffbyte.bit47:=tempbyte div 4;
+            state:=2;
+          end;
+        2:begin
+            buffbyte.int{.bit01}:=ord(odd(tempbyte) and odd(3));
+            tempcnt:=tempcnt+1;
+            buffbyte.bit27:=ord(odd(tempbuff[tempcnt]) and odd(127))-32;
+            tempcnt:=tempcnt+1;
+            state:=0;
+          end;
+      end;
+      buff^[buffpos-bufffirst,bytecnt]:=chr(buffbyte.int);
+      checksum:=checksum+buffbyte.int;
+    end;
+    checksum:=abs(checksum);
+    sentcheck:=0;
+    for i:=tempmax-3 to tempmax do
+      sentcheck:=16*sentcheck+tempbuff[i]-ord('0');
+    if sentcheck=checksum then
+      outchar('.') else
+      outchar('?');
+    xferin:=sentcheck=checksum;
+  end;
+  
+  procedure master;
+  var filename:string;
+      result,answer:commands;
+      ok:boolean;
+      i:integer;
+        
+    procedure send;
+    begin
+      repeat
+        write('    Send what file? ');
+        ReadLine (FileName);
+        if length(filename)=0 then
+          exit(send);
+        close(f);
+        reset(f,filename);
+        IF IORESULT <> 0
+          THEN ReDir := FALSE
+      until ioresult=0;
+      repeat
+        write('    To what remote file? ');
+        ReadLine (FileName);
+        if length(filename)=0 then
+          exit(send);
+        sendcommand(rewritefile);
+        answer:=waitcommand;
+        for i:=length(filename)+1 to filestringsize do
+          filename[i]:=' ';
+        unitwrite(writeunit,filename[1],filestringsize);
+        answer:=waitcommand;
+        IF Answer <> Success
+          THEN ReDir := FALSE
+      until answer=success;
+      initbuffer;
+      repeat
+        buffpos:=buffpos+1;
+        if buffpos>bufflast then
+        begin
+          answer:=fillbuffer;
+          if answer=diskerror then
+            exit(send);
+        end else
+          answer:=success;
+        if answer=success then
+        begin
+          sendcommand(sendblock);
+          answer:=waitcommand;
+          if answer=success then
+          begin
+            xferout(false);
+            answer:=waitcommand;
+            while answer=sumerror do
+            begin
+              sendcommand(resendblock);
+              answer:=waitcommand;
+              xferout(true);
+              answer:=waitcommand;
+            end;
+          end;
+        end;
+      until answer<>success;
+      writeln;
+      if answer=closefile then
+      begin
+        sendcommand(closefile);
+        if waitcommand<>success then
+          error('closing remote file');
+      end else
+        error('writing to remote file');
+    end;
+  
+    procedure receive;
+    begin
+      repeat
+        write('    Receive what remote file? ');
+        ReadLine (FileName);
+        if length(filename)=0 then
+          exit(receive);
+        sendcommand(resetfile);
+        answer:=waitcommand;
+        for i:=length(filename)+1 to filestringsize do
+          filename[i]:=' ';
+        unitwrite(writeunit,filename[1],filestringsize);
+        answer:=waitcommand;
+        IF Answer <> Success
+          THEN ReDir := FALSE
+      until answer=success;
+      repeat
+        write('    To what file? ');
+        ReadLine (FileName);
+        if length(filename)=0 then
+          exit(receive);
+        close(f);
+        rewrite(f,filename);
+        IF IORESULT <> 0
+          THEN ReDir := FALSE
+      until ioresult=0;
+      initbuffer;
+      repeat
+        sendcommand(getblock);
+        answer:=waitcommand;
+        if answer=success then
+        begin
+          buffpos:=buffpos+1;
+          while not xferin do
+          begin
+            sendcommand(regetblock);
+            answer:=waitcommand;
+          end;
+        end;
+        if (buffpos-bufffirst+1=buffsize) or (answer=closefile) then
+          if not dumpbuffer then
+            exit(receive);
+      until answer in [closefile,diskerror];
+      writeln;
+      if answer=closefile then
+      begin
+        close(f,lock);
+        if ioresult<>0 then
+          error('closing file');
+      end else
+        error('reading from remote file');
+    end;
+  
+    PROCEDURE FromFile;
+    VAR
+      FN : STRING;
+    BEGIN
+      ReDir := FALSE;
+      CLOSE (C, LOCK);
+      REPEAT
+        WRITE ('    Get cmds from file : ');
+        READLN (FN);
+        IF LENGTH (FN) = 0 THEN EXIT (FromFile);
+        FN := CONCAT (FN, '.TEXT');
+        RESET (C, FN);
+        UNTIL IORESULT = 0;
+      ReDir := TRUE
+      END;
+  
+  begin (*Master*)
+    repeat
+      charcnt:=0;
+      case prompt('  S(end R(eceive F(ile Q(uit ',['S','R','F','Q']) of
+        'S':send;
+        'R':receive;
+        'Q':begin
+              sendcommand(gotoprompt);
+              answer:=waitcommand;
+              exit(master);
+            end;
+        'F': FromFile
+      end;
+    until false;
+  end;
+  
+  procedure slave;
+  var filename:string;
+      i:integer;
+      answer,command:commands;
+  begin
+    answer:=nocommand;
+    repeat
+      if answer<>nocommand then
+        sendcommand(answer);
+      answer:=nocommand;
+      command:=waitcommand;
+      case command of
+        getblock,
+        regetblock:
+          begin
+            if command=getblock then
+              buffpos:=buffpos+1;
+            if buffpos>bufflast then
+              answer:=fillbuffer else
+              answer:=success;
+            if answer=success then
+            begin
+              sendcommand(success);
+              answer:=waitcommand;
+              xferout(command=regetblock);
+              answer:=nocommand;
+            end;
+          end;
+        sendblock,
+        resendblock:
+          begin
+            answer:=success;
+            if command=sendblock then
+            begin
+              if buffpos-bufffirst+1=buffsize then
+                if not dumpbuffer then
+                  answer:=diskerror;
+              buffpos:=buffpos+1;
+            end;
+            if answer=success then
+              if not xferin then
+                answer:=sumerror;
+          end;
+        resetfile,
+        rewritefile:
+          begin
+            writeln;
+            initbuffer;
+            charcnt:=0;
+            sendcommand(success);
+            unitread(readunit,filename[1],filestringsize);
+            i:=filestringsize;
+            while (i>0) and (filename[i]=' ') do
+              i:=i-1;
+            filename[0]:=chr(i);
+            close(f);
+            if command=resetfile then
+            begin
+              write('Sending ');
+              reset(f,filename);
+            end else
+            begin
+              write('Receiving ');
+              rewrite(f,filename);
+            end;
+            if ioresult=0 then
+              answer:=success else
+              answer:=openerror;
+            writeln(filename);
+          end;
+        closefile:
+          begin
+            answer:=diskerror;
+            if dumpbuffer then
+            begin
+              close(f,lock);
+              if ioresult=0 then
+                answer:=success;
+            end;
+          end;
+        gotoprompt:
+          begin
+            sendcommand(success);
+            writeln;
+            exit(slave);
+          end;
+      end;
+    until false;
+  end;
+  
+begin
+  initialize;
+  unitclear(readunit);
+  unitclear(writeunit);
+  writeln;
+  writeln('Remtalk [14 Feb 82]');
+  writeln(' 1) Let both machines reach this prompt');
+  writeln(' 2) Press S(lave on one machine');
+  writeln(' 3) Press M(aster on the other');
+  repeat
+    case prompt('M(aster S(lave Q(uit ',['M','S','Q']) of
+      'M':master;
+      'S':slave;
+      'Q':exit(program);
+    end;
+  until false;
+end.

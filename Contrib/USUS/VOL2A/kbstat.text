@@ -1,0 +1,20 @@
+        .FUNC   KBSTAT,0
+        .PRIVATE RETADDR
+        POP     HL
+        LD      (RETADDR),HL
+        POP     HL              ;CORRECT STACK
+        POP     HL
+        LD      HL,RADDR        ; RETURN ADDRESS
+        PUSH    HL
+        LD      HL,(1)
+        LD      L,6
+        JP      (HL)
+RADDR   OR      A               ; SET FLAGS
+        LD      HL,1
+        JP      NZ,DONE         ;READY
+        LD      HL,0            ;FALSE
+DONE    PUSH    HL
+        LD      HL,(RETADDR)
+        JP      (HL)
+        .END
+

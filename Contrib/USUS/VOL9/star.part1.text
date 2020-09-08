@@ -1,0 +1,346 @@
+                        {beginning of STAR.PART1.TEXT}
+
+TYPE digits = 0..max_digit;
+     quad_range = 0..galaxy_size;
+     sect_range = 0..quad_size;
+     quad_rec = RECORD
+                  is_history : BOOLEAN;         {seen in long range scanner}
+                  kling_base_num,               {number of klingon bases}
+                  kling_num,                    {number of klingons}
+                  fed_base_num,                 {number of federation bases}
+                  star_num : digits;            {number of stars}
+                END {of quad_rec};
+     objects = (s_nothing, s_star, s_enterprise, s_nova, s_klingon,
+                s_fed_base, s_kling_base);
+     cond_types = (c_green, c_red, c_yellow, c_black, c_docked);
+     sect_x_y = RECORD
+                  x, y : sect_range;
+                END {of sect_x_y};
+     quad_x_y = RECORD
+                  x, y : quad_range;
+                END {of quad_x_y};
+     klingon_rec = RECORD
+                     position : sect_x_y;
+                     energy_left : INTEGER;
+                   END {of klingon_rec};
+     device_rec = RECORD
+                    name : STRING[20];
+                    down_time : INTEGER;
+                  END {of device_rec};
+
+VAR seed : REAL;
+    bell : CHAR;
+    cur_year, start_year, end_year, cur_energy, cur_torps,
+      start_klingons, total_k_bases, total_klingons, bad_points : INTEGER;
+    cur_sect : sect_x_y;
+    cur_quad : quad_x_y;
+    device : ARRAY [min_device..max_device] OF device_rec;
+    quadrant : ARRAY [sect_range, sect_range] OF objects;
+    galaxy : ARRAY [quad_range, quad_range] OF quad_rec;
+    klingons : ARRAY [0..max_klingons] OF klingon_rec;
+    symbols : PACKED ARRAY [objects] OF CHAR;
+    cond_names : ARRAY [cond_types] OF STRING[10];
+    condition : cond_types;
+
+FUNCTION random (low, hi : INTEGER) : INTEGER;
+{Return a random number between two bounds}
+BEGIN
+  seed := ((seed * 11.0) + 7.0);
+  seed := seed - TRUNC (seed / 1999.0) * 1999.0;
+  random := TRUNC (seed / 1999.0 * (hi - low + 1)) + low;
+END {of random};
+
+FUNCTION distance (pos_1_x, pos_1_y : sect_range; pos_2 : sect_x_y) : INTEGER;
+BEGIN
+  distance := ROUND (SQRT (SQR (pos_1_x - pos_2.x) + SQR (pos_1_y - pos_2.y)));
+END {of distance};
+    
+FUNCTION radians (degrees : INTEGER) : REAL;
+BEGIN
+  radians := degrees * 0.0174533;
+END {of radians};
+
+FUNCTION interval (number, min_value, max_value : INTEGER) : INTEGER;
+BEGIN
+  IF number < min_value THEN
+    interval := min_value
+  ELSE
+    IF number > max_value THEN
+      interval := max_value
+    ELSE
+      interval := number;
+END {of interval};
+
+PROCEDURE re_initialize;
+VAR ch : CHAR;
+BEGIN
+  cur_energy := ent_energy;
+  cur_torps := start_torps;
+  FOR ch := min_device TO max_device DO
+    device[ch].down_time := 0;
+END {of re_initialize};
+
+PROCEDURE initialize;
+VAR r_num, total_fed_base, i, j : INTEGER;
+BEGIN
+  device['0'].name := 'Warp Engines';
+  device['1'].name := 'Short Range Sensors';
+  device['2'].name := 'Long Range Sensors';
+  device['3'].name := 'Phaser Control';
+  device['4'].name := 'Photon Tubes';
+  device['5'].name := 'Damage Control';
+  device['6'].name := 'History Computers';
+  device['7'].name := 'Self Destruct';
+  symbols[s_nothing] := no_sym;
+  symbols[s_star] := star_sym;
+  symbols[s_enterprise] := ent_sym;
+  symbols[s_nova] := nova_sym;
+  symbols[s_klingon] := kling_sym;
+  symbols[s_fed_base] := f_base_sym;
+  symbols[s_kling_base] := k_base_sym;
+  cond_names[c_red] := 'Red';
+  cond_names[c_green] := 'Green';
+  cond_names[c_yellow] := 'Yellow';
+  cond_names[c_black] := 'Black';
+  cond_names[c_docked] := 'Docked';
+  cur_sect.x := random (0, quad_size);
+  cur_sect.y := random (0, quad_size);
+  cur_quad.x := random (0, galaxy_size);
+  cur_quad.y := random (0, galaxy_size);
+  total_klingons := 0;
+  total_k_bases := 0;
+  FOR i := 0 TO galaxy_size DO
+    FOR j := 0 TO galaxy_size DO
+      WITH galaxy[i, j] DO
+        BEGIN
+          is_history := FALSE;
+          r_num := random (0, SQR (galaxy_size));
+          IF random (0, SQR (galaxy_size)) <= 6 THEN
+            kling_base_num := 1
+          ELSE
+            kling_base_num := 0;
+          total_k_bases := total_k_bases + kling_base_num;
+          kling_num := TRUNC (EXP (-random (0, galaxy_size)) * max_digit) DIV 2;
+          total_klingons := total_klingons + kling_num;
+          IF random (0, SQR (galaxy_size)) < 3 THEN
+            fed_base_num := 1
+          ELSE
+            fed_base_num := 0;
+          total_fed_base := total_fed_base + fed_base_num;
+          star_num := random (0, quad_size);
+        END {of WITH};
+  start_klingons := total_klingons;
+  IF total_fed_base = 0 THEN
+    galaxy[random (0, galaxy_size), random (0, galaxy_size)].fed_base_num := 1;
+  IF total_k_bases = 0 THEN
+    BEGIN
+      galaxy[random (0, galaxy_size), random (0, galaxy_size)].kling_base_num 
+                                                                          := 1;
+      total_k_bases := 1;
+    END {of IF};
+  cur_year := random (3000, 4000);
+  start_year := cur_year;
+  end_year := start_year + random (10, 40);
+  bad_points := 0;
+  bell := CHR (alarm);
+  re_initialize;
+END {of initialize};
+
+PROCEDURE set_condition;
+VAR i, j : INTEGER;
+BEGIN
+  IF galaxy[cur_quad.x, cur_quad.y].kling_base_num <> 0 THEN
+    condition := c_black
+  ELSE
+    IF galaxy[cur_quad.x, cur_quad.y].kling_num <> 0 THEN
+      condition := c_red
+    ELSE
+      IF cur_energy < ent_energy DIV 10 THEN
+        condition := c_yellow
+      ELSE
+        condition := c_green;
+  FOR i := cur_sect.x - 1 TO cur_sect.x + 1 DO
+    FOR j := cur_sect.y - 1 TO cur_sect.y + 1 DO
+      IF quadrant[interval (i, 0, quad_size), interval (j, 0, quad_size)] =
+         s_fed_base THEN
+        condition := c_docked;
+END {of set_condition};
+
+PROCEDURE klingon_attack;
+VAR hit, i : INTEGER;
+    ship_type : STRING;
+BEGIN
+  WITH galaxy[cur_quad.x, cur_quad.y] DO
+    IF (kling_base_num <> 0) OR (kling_num <> 0) THEN
+      BEGIN
+        IF condition = c_docked THEN
+          WRITELN ('Starbase shields protect the Enterprise')
+        ELSE
+          FOR i := 0 TO max_klingons DO
+            WITH klingons[i] DO
+              IF energy_left > 0 THEN
+                BEGIN
+                  hit := TRUNC (energy_left /
+                                distance (position.x, position.y, cur_sect) * 
+                                (10 + random (0, 10)) / 10);
+                  cur_energy := cur_energy - hit;
+                  IF energy_left = ent_energy THEN
+                    ship_type := 'Starbase '
+                  ELSE
+                    ship_type := '';
+                  WRITELN (hit, ' unit hit on Enterprise from Klingon ',
+                           ship_type, 'at sector ', position.x, '-', 
+                           position.y, ' (', cur_energy, ' left)');
+                END {of IF energy_left};
+      END {of IF (};
+END {of klingon_attack};
+
+PROCEDURE print_digit (number : INTEGER; VAR must_print : BOOLEAN);
+BEGIN
+  must_print := must_print OR (number <> 0);
+  IF must_print THEN
+    WRITE (number)
+  ELSE
+    WRITE (' ');
+END {of print_digit};
+  
+PROCEDURE setup_quad (quad : quad_x_y; VAR ent_sect : sect_x_y);
+VAR i, j, nova_count, kling_index : INTEGER;
+
+  PROCEDURE setup_stuff (object : objects; count : INTEGER);
+  VAR x, y : INTEGER;
+  BEGIN
+    WHILE count <> 0 DO
+      BEGIN
+        REPEAT
+          x := random (0, quad_size);
+          y := random (0, quad_size);
+        UNTIL quadrant[x, y] = s_nothing;
+        quadrant[x, y] := object;
+        count := count - 1;
+      END {of WHILE};
+  END {of setup_stuff};
+  
+BEGIN
+  FOR i := 0 TO quad_size DO
+    FOR j := 0 TO quad_size DO
+      quadrant[i, j] := s_nothing;
+  ent_sect.x := random (0, quad_size);
+  ent_sect.y := random (0, quad_size);
+  quadrant[ent_sect.x, ent_sect.y] := s_enterprise;
+  WITH galaxy[quad.x, quad.y] DO
+    BEGIN
+      nova_count := random (0, star_num DIV 2);
+      setup_stuff (s_star, star_num - nova_count);
+      setup_stuff (s_nova, nova_count);
+      setup_stuff (s_klingon, kling_num);
+      setup_stuff (s_fed_base, fed_base_num);
+      setup_stuff (s_kling_base, kling_base_num);
+    END {of WITH};
+  kling_index := 0;
+  FOR i := 0 TO quad_size DO
+    FOR j := 0 TO quad_size DO
+      IF quadrant[i, j] IN [s_klingon, s_kling_base] THEN
+        WITH klingons[kling_index] DO
+          BEGIN
+            position.x := i;
+            position.y := j;
+            IF quadrant[i, j] = s_kling_base THEN
+              energy_left := ent_energy
+            ELSE
+              energy_left := kling_energy;
+            kling_index := kling_index + 1;
+          END {of WITH};
+  FOR kling_index := kling_index TO max_klingons DO
+    klingons[kling_index].energy_left := 0;
+END {of setup_quad};
+
+PROCEDURE print_quadrant;
+VAR i, j : quad_range;
+BEGIN
+  set_condition;
+  IF device['1'].down_time <> 0 THEN
+    WRITELN ('*** Short Range Sensors Inoperable ***')
+  ELSE 
+    BEGIN
+      WRITELN ('----------------------');
+      FOR i := 0 TO quad_size DO
+        BEGIN
+          FOR j := 0 TO quad_size DO 
+            WRITE (symbols[quadrant[i, j]], ' ');
+          WRITE ('   ');
+          CASE i OF
+            0 : WRITELN ('Stardate         ', cur_year);
+            1 : WRITELN ('Condition        ', cond_names[condition]);
+            2 : WRITELN ('Quadrant         ', cur_quad.x, '-', cur_quad.y);
+            3 : WRITELN ('Sector           ', cur_sect.x, '-', cur_sect.y);
+            4 : WRITELN ('Energy           ', cur_energy);
+            5 : WRITELN ('Photon torpedoes ', cur_torps);
+            6 : WRITELN ('Klingons left    ', total_klingons);
+            7 : WRITELN;
+          END {of CASE};
+        END {of FOR i};
+      WRITELN ('----------------------');
+    END {of ELSE};
+END {of print_quadrant};
+
+PROCEDURE print_galaxy (top_x, left_y : INTEGER; size : INTEGER; 
+                        mark_history : BOOLEAN);
+VAR i, j : INTEGER;
+    must_print : BOOLEAN;
+
+  PROCEDURE print_separator (entries : INTEGER);
+  VAR count : INTEGER;
+  BEGIN
+    FOR count := 0 TO entries DO
+      WRITE ('|-----');
+    WRITELN ('|');
+  END {of print_separator};
+
+BEGIN
+  IF mark_history THEN
+    WRITELN ('Long Range Sensor Scan For Quadrant ', cur_quad.x, '-', 
+             cur_quad.y)
+  ELSE
+    BEGIN
+      WRITELN ('History Computer Report; Stardate ', cur_year);
+      IF condition <> c_docked THEN
+        cur_energy := cur_energy - 100;
+    END {of ELSE};
+  print_separator (size);
+  FOR i := top_x TO top_x + size DO
+    BEGIN
+      FOR j := left_y TO left_y + size DO
+        IF (i IN [0..quad_size]) AND (j IN [0..quad_size]) THEN
+          WITH galaxy[i, j] DO
+            IF mark_history OR is_history THEN
+              BEGIN
+                is_history := is_history OR (device['6'].down_time = 0);
+                must_print := FALSE;
+                WRITE ('|');
+                print_digit (kling_base_num, must_print);
+                print_digit (kling_num, must_print);
+                print_digit (fed_base_num, must_print);
+                must_print := TRUE;
+                print_digit (star_num, must_print);
+                WRITE (' ');
+              END {of WITH}
+            ELSE
+              WRITE ('|+++++')
+        ELSE
+          WRITE ('|xxxxx');
+      WRITELN ('|');
+      print_separator (size);
+    END {of FOR i};
+END {of print_galaxy};
+
+PROCEDURE print_damage;
+VAR ch : CHAR;
+BEGIN
+  WRITELN ('Device name:      Repair Time:');
+  FOR ch := min_device TO max_device DO
+    WRITELN (device[ch].name:20, device[ch].down_time:5);
+END {of print_damage};
+
+                        {ending of STAR.PART1.TEXT}
+

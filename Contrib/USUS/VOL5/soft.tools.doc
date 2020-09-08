@@ -1,0 +1,130 @@
+
+                DOCUMENTATION ON THE SOFTWARE TOOLS ON THIS DISK
+
+     Software tools are routines that assist in improving programmer 
+productivity and reliability.  They are of two types:  utilities such as 
+editors, formatters, cross-reference listers, and program analyzers of various 
+types, and routines meant to be included within the body of a host program, 
+which carry out commonly needed functions and are designed to be easy to use 
+and as general as possible.  The UCSD Pascal Users' Library (and its
+successor, the UCSD System Users' Society Software Library) contains both;
+this disk emphasizes the latter, which are of prime importance in Pascal if we 
+are to rise out of the mire of line-by-line coding.  
+
+     The analogy that comes to mind is that programming now is where digital
+electronics was in 1960: a flip-flop cost $5, required considerable design
+effort, and everyone built their own.  The rise of integrated circuits
+transformed worrying about bias resistors into hooking together sophisticated,
+reliable, and incredibly cheap electronic modules in the form of integrated
+circuits, with the resultant revolution in digital reliability.
+
+     The routines on this disk are not yet full-fledged software tools, since
+they have not undergone truly rigorous testing.  Yet I feel that they are
+certainly adequate to offer as the start of a dialogue.  They have been
+designed to be as portable and as general as possible, as well as easy to
+use.  You will notice that my UNITS (SCREENCNTL, GETNUMBER, and CRTINPUT) use
+no global variables and transfer all information via parameters, although you
+may find that certain routines require too many parameters to be convenient. 
+Except for strings, they vary little from standard Pascal.  UNIT.GOOD, from 
+Frank Monaco, handles the UCSD-specific nuisances such as reading the system
+date and digging up the "universal" terminal-handling codes from
+SYSTEM.MISCINFO; it is further documented in MONACO.DOC.TEXT.
+
+     
+     I'm issuing the files GETNUMBER, CRTINPUT, and MAKEMASKS to the Users' 
+Library in spite of the fact that they are copyrighted, because I earnestly 
+desire your feedback concerning how useful they prove to be, and particularly 
+if you find any bugs.  These programs are still in development, and I plan to 
+release them as proprietary software tools once they have been thoroughly
+tested and debugged.  I have tried them out sufficiently that I believe they
+will work the majority of the time, and I hope you will find them useful.
+
+     
+     SCREENCNTL is my first attempt at a SEPARATE UNIT, and it works well on 
+my system.  Others, particularly Apple users, will discover weird system
+problems with the SEPARATE UNIT format, especially with GoAndClearLine, which
+calls another separate procedure in the same library.  (For further
+information on separate units/procedures, see the documentation file on Volume
+4.) Although largely outmoded by Monaco's UNIT.GOOD, it has several nice
+features I use a lot, such as procedure GoAndClearLine and function Yes.  The
+function GetLetter, within CRTINPUT, is so general and short that it belongs
+within SCREENCNTL as well, in addition to routines to initialize a random
+number seed and read keyboard status (written in assembly language).  I have
+urged the UCSD System Users' Society to come up with a minimal set of routines
+for a standard SCREENCNTL unit that we could all then write software for.  I
+hope we don't run into the precedent set by UCSD on this matter, where a
+similar unit has been proposed for years, but no one could agree on its
+contents.  Send any comments you may have on this issue to USUS's chairman of
+the SIG on Portability: Bob Peterson, Texas Instruments, 12860 Hillcrest,
+Dallas, TX 75230.
+
+     
+     GETNUMBER and CRTINPUT perform similar functions for different data:  
+getting integers, strings, textfiles, commands, boolean variables, etc., from 
+users in a <maximally> friendly and foolproof manner.  They function virtually 
+as editors for each type of data, allowing a great deal of freedom to alter 
+previous values if desired.  You should find adequate documentation adjacent
+to each routine.  
+
+     They are largely designed to be used in a menu-oriented environment,
+though you may usually defeat the GOTOXY provisions by passing a negative x or
+y if you wish.  They are large, particularly GETNUMBER, but most programmers
+writing software to be used by real people find that over half of their code
+is designed to help them interface with their users.  I included one provision
+in GETNUMBER that I wonder if anyone will use: the ability to input fixed
+decimal numbers (in particular dollars and cents), which are passed as
+separate integers for the whole and fractional parts.
+
+     
+     MAKEMASKS is designed to free you forever from the burden of having to
+include menu text or data entry/display formats within the body of a program,
+with the resultant difficulty of adding to or cleaning up your display. 
+Starting with a screen display you create on the system editor, it makes a
+structured file of mask data, consisting of arrays of characters for the
+backround display, plus a table of data entry/display points with x & y
+locations, maximum field length, and even the number of decimal places.
+
+     In use, you have the option of keeping a commonly used menu in system
+memory (it occupies about 2.5K) or just bringing it in from the disk and
+writing it to the screen on the fly.  It should be easy to use the data table
+within your program to get at display information, simply by specifying the
+table number (i.e., array index) corresponding to the variable in question.  
+For example, you might say, "WITH MASK.DATA[I] DO GOTOXY (X,Y)" to get to the 
+x,y location associated with the I'th variable of the display.
+
+     To set up your mask, within the SYSTEM.EDITOR just type the CRT screen
+display the way you want it to appear in final form, then save it as a named 
+textfile.  If you wish to include data entry/display points, indicate the
+beginning of each field with the uparrow or "^" (although MAKEMASKS will ask
+if you wish to change this character for a given menu).  Any digits within a
+field are taken to indicate the field number (even if spaced out), although if
+you do not assign a field number, the program will pick the next one that's
+available.  (**-CAUTION-**: relatively little error-checking is done on field
+number assignments.) A single period within the field is taken as a decimal
+point, and the number of decimal digits is counted and stored.  The rest of a
+field is filled out with asterisks.  Any character other than a "*", a single
+".", or a digit indicates the end of a data field.  The length of one field
+may vary from 1 (just a "^") to a whole line; it CANNOT spill over to the next
+line.  When MAKEMASKS encounters such a field, the characters that form it are
+replaced with blanks when the mask is stored.
+
+     Examples of valid data fields include "^12**.**" (field number 12, length 
+8, 2 decimal places), "^" (number assigned, length 1, 0 decimal places), and 
+"^1.4*" (number 14, length 5, 2 decimal places).  Multiple periods at the end
+of a field are counted as outside of it.  Note that this information is simply 
+provided to you in the data table; it is up to you to make use of it.
+
+     The value of MAKEMASKS comes particularly in the optional printout it 
+provides, with a graph-like display of the cleaned-up menu, plus a printed 
+table of each data field.
+
+     Good luck!  PLEASE let me know if you have any comments, suggestions, or 
+problems in using these routines.
+
+     Sincerely,
+
+                                Jim Gagne, M.D.
+                          President, DATAMED RESEARCH
+                              1433 Roscomare Road
+                         Los Angeles, California 90024
+                                  213/472-8825

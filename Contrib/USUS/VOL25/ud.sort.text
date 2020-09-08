@@ -1,0 +1,1427 @@
+{$L PRINTER:}
+
+PROGRAM UDE_SORT;
+
+{ Once a data base has been defined, this set of procedures allows the
+     operator to sort data base records. }
+  
+  uses {$U SH.SCREEN.UNIT} SCREEN40;
+  
+  type STRING25 = String[25];
+
+  var ACCESS_FLAG: Boolean;
+      ERROR,RECSREAD,RECSWRIT: Integer;
+      CH: Char;
+
+  Segment Procedure ACCESS_DATA_BASE(var SORT_FLAG: Boolean);
+  { Procedure initilizes everything to begin maintaining the data base. }
+
+  var GET_FIELDS,SORT_FIELDS,
+      MAINT_FIELDS    : SCREEN_ARR;  { Array to hold data fields }
+      GET_PROMPTS,SORT_PROMPTS,
+      MAINT_PROMPTS : PROMPT_ARR;  { Array to hold screen prompts }
+      GET_RESULTS,RESULTS,ERROR_ID: Integer;
+      EXIT_KEY,CH: Char;
+      DISPLAY_FLAG: Boolean;
+      VOLUME,                 { Data base volume }
+      SORT_VOL  : STRING[7];
+      NAME,                   { Data base Name }
+      SORT_NAME : STRING[10]; { Sort format name }
+      DB_NAME   : STRING[18]; { Volume + Data Base Name }
+      PROMPT1,PROMPT2,VERSION,
+      DATA_NAME,              { Data file name }
+      DEFI_NAME,              { Data Base Definition file name }
+      SORT_VOL_NAME : STRING[23]; { Sort format file name }
+      DATA_FILE : File;
+    
+  Procedure MESSAGE(M_ROW,M_COL: Integer; MSG: String; DING: Boolean);
+    forward;
+
+  Procedure INITIALIZE;
+   var I: Integer;
+   begin  {INITIALIZE}
+    for I:=1 to SCREEN_FIELDS do
+     with GET_FIELDS[I] do
+      begin
+       S_ID :='';   S_ROW:=END_SCREEN;
+       S_COL:=15;   S_LEN:=7;    S_MIN:=0;
+       S_TYP:='V';  S_JUS:='L';  S_NA :='S';
+       S_SKIP:=False;S_DEF:='';   S_FLD:='';
+      end; {with/for}
+    for I:=1 to PROMPT_FIELDS do
+     with GET_PROMPTS[I] do
+      begin
+       P_ROW:=END_SCREEN;  P_COL:=0;   P_FLD:='';
+      end; {with/for}
+    with GET_FIELDS[1] do
+      begin
+        S_ID :='VOL';  S_ROW:=5;
+      end;
+    with GET_FIELDS[2] do
+      begin
+        S_ID :='NAME';  S_ROW:=7;  S_LEN:=10;
+      end;
+    with GET_PROMPTS[1] do
+      begin
+        P_ROW:=5;  P_FLD:='Volume    :'
+      end;
+    with GET_PROMPTS[2] do
+      begin
+        P_ROW:=7;  P_FLD:='Name      :'
+      end;
+    CLEAR_HOME;
+    PROMPT1:='Get format,Save format';
+    PROMPT2:='Change,eXecute,Quit ?';
+    VERSION:='Version  IV.0';
+    for I:=1 to 22 do 
+     if not(PROMPT1[I] in['A'..'Z']) then PROMPT1[I]:=chr(ord(PROMPT1[I])+128);
+    for I:=1 to 21 do
+     if not(PROMPT2[I] in['A'..'Z']) then PROMPT2[I]:=chr(ord(PROMPT2[I])+128);
+   end;   {INITIALIZE}
+
+  Procedure GET_DATA_BASE;
+  { Procedure gets the Data Base Definition from the disk. }
+    begin  {GET_DATA_BASE}  
+     HOME;
+     writeln(' ':25,'SORT A DATA BASE');
+     writeln(' ':25,'=================');
+     writeln(' ':25,VERSION);
+     DISPLAY_PROMPTS(GET_PROMPTS,0,0,0,23);
+     gotoxy(0,9);
+     write('Type      :    SCRN and TEXT');
+     DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+     MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',False);
+     repeat
+      SCREEN(GET_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXIT_KEY);
+      if EXIT_KEY = ESC_KEY then exit(UDE_SORT);
+      VOLUME := GET_FIELDS[FIND('VOL',GET_FIELDS)].S_FLD;
+      EATSPR(VOLUME);
+      NAME   := GET_FIELDS[FIND('NAME',GET_FIELDS)].S_FLD;
+      EATSPR(NAME);
+      DB_NAME := concat(VOLUME,':',NAME);
+      DEFI_NAME := concat(DB_NAME,'.SCRN');
+      DATA_NAME := concat(DB_NAME,'.TEXT');
+      GET_FILE(DEFI_NAME,MAINT_FIELDS,MAINT_PROMPTS,RESULTS);
+      if RESULTS = 0
+       then
+        begin
+        {$I-}
+         reset(DATA_FILE,DATA_NAME);
+        {$I+}
+         if IORESULT <> 0
+           then MESSAGE(MAX_ROW,40,'ERROR: No data file found',True)
+           else 
+             begin
+               close(DATA_FILE,lock);
+               exit(GET_DATA_BASE);
+             end;
+         end
+       else MESSAGE(MAX_ROW,40,'ERROR: Unknown Data Base',True)
+     until False;
+   end;   {GET_DATA_BASE}
+
+  Procedure GET_SAVE_FORMAT(GS_COMMAND: Char);
+  { Procedure loads or saves printing format specification on disk. }
+   begin {GET SAVE FORMAT}
+     CLEAR_HOME;
+     if GS_COMMAND = 'G'
+      then
+       begin
+         HOME;
+         writeln(' ':25,'GET SORTING FORMAT');
+         writeln(' ':25,'==================');
+       end
+      else
+       begin
+         HOME;
+         writeln(' ':25,'SAVE SORTING FORMAT');
+         writeln(' ':25,'===================');
+       end;
+     DISPLAY_PROMPTS(GET_PROMPTS,0,0,0,23);
+     gotoxy(0,9);
+     write('Type      :    SORT');
+     MESSAGE(MAX_ROW,0,'<ENTER> to execute, <ESC> to abort',False);
+     DISPLAY_SCREEN(GET_FIELDS,0,0,0,23);
+     repeat  
+      SCREEN(GET_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXIT_KEY);
+      ERASE_EOL(40,MAX_ROW);
+      if EXIT_KEY = ENTER_KEY
+        then
+         begin
+          SORT_VOL := GET_FIELDS[FIND('VOL',GET_FIELDS)].S_FLD;
+          EATSPR(SORT_VOL);
+          SORT_NAME := GET_FIELDS[FIND('NAME',GET_FIELDS)].S_FLD;
+          EATSPR(SORT_NAME);
+          SORT_VOL_NAME := concat(SORT_VOL,':',SORT_NAME,'.SORT');
+          if GS_COMMAND = 'G'
+            then
+              begin
+               GET_FILE(SORT_VOL_NAME,SORT_FIELDS,SORT_PROMPTS,GET_RESULTS);
+               if GET_RESULTS <> 0
+                 then MESSAGE(MAX_ROW,40,'ERROR: Unknown sorting format',True)
+                 else exit(GET_SAVE_FORMAT);
+              end
+             else
+              begin
+               SAVE_FILE(SORT_VOL_NAME,SORT_FIELDS,SORT_PROMPTS,GET_RESULTS);
+               if GET_RESULTS <> 0
+                 then MESSAGE(MAX_ROW,40,
+                              'ERROR: Unable to save sorting format',True)
+                 else exit(GET_SAVE_FORMAT);
+              end;
+         end
+        else exit(GET_SAVE_FORMAT);
+     until False;
+   end; {GET SAVE FORMAT}
+    
+  Procedure MESSAGE;(* M_ROW,M_COL: Integer; MSG: String; DING: Boolean *)
+  { Procedure displays messages at the message row and column. }
+    begin
+      gotoxy(M_COL,M_ROW);  write(MSG);
+      if DING then write(ALARM_BELL);
+    end;
+  
+  Procedure SORTPARM(var PARM_RETURN: Integer);
+   const NUMBER_KEYS  = 10;  { Maximnu number of keys allowed on screen }
+   type PARM_RECORD = record
+           FIELD_NUMBER :  Integer;
+           AD_VALUE     : Char;
+         end;
+   var PARM_INDEX,IDFIELD_NUMBER,MAINT_INDEX,ARRAY_INDEX :  Integer;
+       IDVALUE,IDNAME : String[8];
+       PARM_ARRAY : Array[1..NUMBER_KEYS] of PARM_RECORD;
+       PARM_FILE : Text;
+       WORK_VOL,
+       OUTPUT_VOLUME : STRING[7];
+       OUTPUT_NAME   : STRING[10];
+    begin {SORTPARM}
+      PARM_RETURN := 0;
+      PARM_INDEX := 0;
+      gotoxy(0,10);
+      for ARRAY_INDEX := 1 to NUMBER_KEYS do
+       begin
+        str(ARRAY_INDEX,IDNAME);
+        IDNAME := concat('ID',IDNAME);
+        IDFIELD_NUMBER := FIND(IDNAME,SORT_FIELDS);
+        IDVALUE := SORT_FIELDS[IDFIELD_NUMBER].S_FLD;
+        EATSPL(IDVALUE);  EATSPR(IDVALUE);
+        if length(IDVALUE) > 0
+          then 
+           begin 
+            MAINT_INDEX := FIND(IDVALUE,MAINT_FIELDS);
+            if (MAINT_INDEX = 0)
+               then
+                 begin
+                  MESSAGE(MAX_ROW,40,'ERROR: Invalid field ID',True);
+                  PARM_RETURN := IDFIELD_NUMBER;
+                  exit(SORT_PARM);
+                 end
+               else
+                 begin
+                  str(ARRAY_INDEX,IDNAME);
+                  IDNAME := concat('AD',IDNAME);
+                  IDFIELD_NUMBER := FIND(IDNAME,SORT_FIELDS);
+                  IDVALUE := SORT_FIELDS[IDFIELD_NUMBER].S_FLD;
+                  EATSPL(IDVALUE);  EATSPR(IDVALUE);
+                  PARM_INDEX := PARM_INDEX + 1;
+                  with PARM_ARRAY[PARM_INDEX] do
+                    begin
+                      FIELD_NUMBER := MAINT_INDEX + 1;
+                      if (IDVALUE = 'D') or (IDVALUE = 'd')
+                        then AD_VALUE := 'D' else AD_VALUE := 'A';
+                    end; 
+                end;
+            end;
+       end;
+      if PARM_INDEX = 0
+         then 
+           begin
+            MESSAGE(MAX_ROW,40,'ERROR: No valid field ids found',True);
+            PARM_RETURN := 1;
+            exit(SORTPARM);
+           end;
+      (*$i-*)
+      rewrite(PARMFILE,'TEMPSORT.TEXT');
+      if IORESULT <> 0 then begin
+        MESSAGE(MAX_ROW,40,'ERROR: No room for param file on disk',True);
+        PARM_RETURN := 1;
+        exit(SORTPARM);
+      end;
+      (*$i+*)
+      writeln(PARMFILE,'S');
+      writeln(PARMFILE,DATA_NAME);
+      writeln(PARMFILE,'T');
+      OUTPUT_VOLUME := SORT_FIELDS[FIND('VOL',SORT_FIELDS)].S_FLD;
+      EATSPL(OUTPUT_VOLUME);  EATSPR(OUTPUT_VOLUME);
+      if (OUTPUT_VOLUME = 'PRINTER') or (OUTPUT_VOLUME = 'printer')
+        then writeln(PARMFILE,'PRINTER:')
+        else
+         begin
+          OUTPUT_NAME   := SORT_FIELDS[FIND('NAME',SORT_FIELDS)].S_FLD;
+          EATSPL(OUTPUT_NAME);  EATSPR(OUTPUT_NAME);
+          if length(OUTPUT_NAME) < 1
+            then writeln(PARMFILE,DATA_NAME)
+            else writeln(PARMFILE,concat(OUTPUT_VOLUME,':',OUTPUT_NAME,'.TEXT'));
+         end;
+      writeln(PARMFILE,'T');
+      WORK_VOL := SORT_FIELDS[FIND('WORKVOL',SORT_FIELDS)].S_FLD;
+      EATSPL(WORK_VOL);  EATSPR(WORK_VOL);
+      writeln(PARMFILE,concat(WORK_VOL,':'));
+      writeln(PARMFILE,'T');
+      writeln(PARMFILE,'Y');
+      writeln(PARMFILE,'F');
+      writeln(PARMFILE,'1');
+      ARRAY_INDEX := 1;
+      while ARRAY_INDEX <= SCREEN_FIELDS do begin
+        if MAINT_FIELDS[ARRAY_INDEX].S_ROW <> END_SCREEN then
+          writeln(PARMFILE,MAINT_FIELDS[ARRAY_INDEX].S_LEN)
+        else ARRAY_INDEX := SCREEN_FIELDS;
+        ARRAY_INDEX := ARRAY_INDEX + 1;
+      end;
+      writeln(PARMFILE,'1');
+      writeln(PARMFILE,'0');
+      writeln(PARMFILE,'1');
+      writeln(PARMFILE,'A');
+      for ARRAY_INDEX := 1 to PARM_INDEX do
+        begin
+          writeln(PARMFILE,PARM_ARRAY[ARRAY_INDEX].FIELD_NUMBER);
+          writeln(PARMFILE,PARM_ARRAY[ARRAY_INDEX].AD_VALUE);
+        end;
+      writeln(PARMFILE,'0');
+      writeln(PARMFILE,'N');
+      close(PARMFILE,lock);
+    end;
+    
+    begin  {ACCESS_DATA_BASE}
+      INITIALIZE;
+      GET_DATA_BASE;
+      GET_FILE('UD/SORT.SCRN',SORT_FIELDS,SORT_PROMPTS,RESULTS);
+      if RESULTS <> 0
+        then 
+          begin
+            MESSAGE(MAX_ROW,40,'ERROR: Unable to load "UD/SORT.SCRN"',True);
+            exit(UDE_SORT);
+          end;
+      GET_FIELDS[FIND('VOL',GET_FIELDS)].S_FLD := ' ';
+      GET_FIELDS[FIND('NAME',GET_FIELDS)].S_FLD := ' ';
+      DISPLAY_FLAG := True;
+      repeat
+       if DISPLAY_FLAG
+        then
+          begin
+           CLEAR_HOME;
+           DISPLAY_PROMPTS(SORT_PROMPTS,0,0,0,23);
+           DISPLAY_SCREEN(SORT_FIELDS,0,0,0,23);
+           gotoxy(0,MAX_ROW-1); 
+           writeln(PROMPT1);
+           write(PROMPT2);
+           DISPLAY_FLAG := False;
+         end;
+       gotoxy(24,MAX_ROW);
+       read(Keyboard,CH);
+        if CH = ESC_KEY then exit(UDE_SORT);
+        SORT_FLAG := False;
+        if CH in['a'..'z'] then CH:=chr(ord(CH)+ord('A')-ord('a'));
+        ERASE_EOL(25,MAX_ROW);
+        if not(CH in['C','G','X','S','Q'])
+          then MESSAGE(MAX_ROW,40,'ERROR: Invalid Selection',True)
+          else
+           case CH of
+             'G':  begin
+                    GET_SAVE_FORMAT('G');
+                    DISPLAY_FLAG := True;
+                   end;
+             'S':  begin
+                    GET_SAVE_FORMAT('S');
+                    DISPLAY_FLAG := True;
+                  end;
+             'X':  begin
+                    SORTPARM(ERROR_ID);
+                    if ERROR_ID <> 0
+                      then SCREEN(SORT_FIELDS,true,ERROR_ID,0,0,0,MAX_ROW,
+                        MAX_ROW,40,EXIT_KEY)
+                      else
+                       begin
+                         SORT_FLAG :=True;
+                         exit(ACCESS_DATA_BASE);
+                       end;
+                  end;
+             'C':  SCREEN(SORT_FIELDS,true,0,0,0,0,MAX_ROW,MAX_ROW,40,EXIT_KEY);
+             'Q':  exit(UDE_SORT);
+            end;
+      until False;
+    end;   {ACCESS_DATA_BASE}
+
+  segment procedure psort(paramname:strING25; var error,recsread,
+                        recswritten:integer);
+
+const
+  maxkeys = 11;      {number of keys}
+  maxkeylen = 40;    {number of chars. in a key}
+  maxfiles = 10;     {number of intermediate workfiles}
+  mrl = 255;         {record (line) length}
+  maxfields = 42;    {number of fields in fixed length record}
+                     { plus 2 to account for the *'s at front and back}
+  minmem = 9000;     { leave room for stack }
+
+type
+  stringrec = string[mrl];
+  key = string [maxkeylen];
+  nodeptr = ^node;
+  node = record
+          item : stringrec;
+          majkey : key;
+          lptr, rptr : nodeptr
+         end;
+  comparison = (lessthan, equal, greaterthan);
+  keydirn = (ascending, descending);
+  field =  record
+             keystart, keylen : 1..mrl
+           end;
+  keyvals = record
+              fieldnum : 1..maxfields;
+              keydirection : keydirn
+            end;
+  str = string[25];
+
+var
+  filename, ifilename, ofilename : str;
+  infile, outfile : text;
+  inffile, outffile : file of stringrec;
+  filesused : integer;
+  toomanyfiles : boolean;
+  fielddata : array[1..maxfields] of field;
+  keydata : array [1..maxkeys] of keyvals;
+  intread : integer;
+  numfields, numkeys : integer;
+  memorycontained : boolean;
+  intfilevol : string [10];
+  keytype : (fixed, variable);
+  keydelim : char;
+  i : integer;
+  temp_outfile : integer;
+  mergefile : integer;
+  inform : boolean;
+  mergeonly : boolean;
+  one_mo_time : boolean;
+  end_of_infile : boolean;
+  textin, textint, textout : boolean;
+  mergeinput : array[1..maxfiles] of str;
+  bell : char;
+  ioerr: boolean;
+  
+  {-----------DEFINED FOR BLOCK IO BY CLAY LAIRD   3 JUL 80------}
+  
+  BLOCKS_WROTE,BLOCK_NUMBER,ARRAY_INDEX,BLOCK_RESULTS: INTEGER;
+  OUTPUT_FILE : FILE;
+  BLOCK_ARRAY : PACKED ARRAY [0..1023] OF CHAR;
+  
+  PROCEDURE BL_OPEN(VAR BLOCK_FILE:STR;           (* File name         *)
+                     VAR BLOCK_RETURN:INTEGER);   (* Return code       *)
+    FORWARD;
+
+  PROCEDURE BL_WRITE(VAR BLOCK_RECORD:STRINGREC;  (* String to write   *)
+                     VAR BLOCK_RETURN:INTEGER);   (* Return code       *)
+    FORWARD;
+
+  PROCEDURE BL_CLOSE(VAR BLOCK_RETURN:INTEGER);   (* Return code       *)
+    FORWARD;
+  
+  {-----------------------------------------------------}
+  
+  function relation(item1, item2 : stringrec; stkey : integer)
+                                         : comparison;forward;
+  procedure getfield(fieldnum : integer; source : stringrec;
+                   var thefield : key); forward;
+  procedure checkio(str1, str2 : str; var ioerr : boolean);
+                                                forward;
+  procedure openoutputfile; forward;
+  
+  {----------------------------------------------------}
+  
+  segment procedure getparm(from : str);
+     { Gets the parameters from the parameter file. }
+  
+  var
+    parmfile : text;
+    inint : integer;
+    inchar : char;
+    instring : str;
+    start : integer;
+    inkey : key;
+    
+    procedure setupmergenames;
+           
+      begin
+        mergeinput[ 1] := concat(intfilevol, 'SRT1');
+        mergeinput[ 2] := concat(intfilevol, 'SRT2');
+        mergeinput[ 3] := concat(intfilevol, 'SRT3');
+        mergeinput[ 4] := concat(intfilevol, 'SRT4');
+        mergeinput[ 5] := concat(intfilevol, 'SRT5');
+        mergeinput[ 6] := concat(intfilevol, 'SRT6');
+        mergeinput[ 7] := concat(intfilevol, 'SRT7');
+        mergeinput[ 8] := concat(intfilevol, 'SRT8');
+        mergeinput[ 9] := concat(intfilevol, 'SRT9');
+        mergeinput[10] := concat(intfilevol, 'SRT10');
+    {   mergeinput[11] := concat(intfilevol, 'SRT11');
+        mergeinput[12] := concat(intfilevol, 'SRT12');
+        mergeinput[13] := concat(intfilevol, 'SRT13');
+        mergeinput[14] := concat(intfilevol, 'SRT14');
+        mergeinput[15] := concat(intfilevol, 'SRT15');
+        mergeinput[16] := concat(intfilevol, 'SRT16');
+        mergeinput[17] := concat(intfilevol, 'SRT17');
+        mergeinput[18] := concat(intfilevol, 'SRT18');
+        mergeinput[19] := concat(intfilevol, 'SRT19');
+        mergeinput[20] := concat(intfilevol, 'SRT20');     }
+      end;
+    
+    
+    begin
+        (*$I-*)
+        reset(parmfile,from);
+        checkio('abort',from,ioerr);
+        (*$I+*)
+        ERASE_EOL(40,22);
+        writeln('STATUS: Reading parameter file');
+        readln(parmfile,instring);
+        inchar := instring[1];
+        mergeonly := FALSE;
+        readln(parmfile, ifilename);
+        readln(parmfile,instring);
+        inchar := instring[1];
+        textin := (inchar='T') or (inchar='t');
+        readln(parmfile, ofilename);
+        readln(parmfile,instring);
+        inchar := instring[1];
+        textout := (inchar='T') or (inchar='t');
+        readln(parmfile, intfilevol);
+        readln(parmfile, instring);
+        inchar := instring[1];
+        textint := (inchar='T') or (inchar='t');
+        readln(parmfile, instring);inchar := instring[1];
+        inform := (inchar = 'Y') or (inchar = 'y');
+        readln(parmfile, instring);inchar:=instring[1];
+        keytype := fixed;
+        numfields := 1;
+        start := 1;
+        repeat
+          readln(parmfile, inint);
+          if inint > 0 then
+            begin
+              with fielddata[numfields] do
+                begin
+                  keylen := inint;
+                  keystart := start
+                end;   {with}
+              start := start + inint;
+              numfields := numfields + 1
+            end;
+        until inint <= 0;
+        numfields := numfields - 1;
+        numkeys := 1;
+        repeat
+          readln(parmfile, inint);
+          if inint > 0 then
+            begin
+              with keydata[numkeys] do
+                begin
+                  fieldnum := inint;
+                  readln(parmfile, instring);
+                  inchar := instring[1];
+                  if inchar in ['A','a'] then
+                    keydirection := ascending
+                  else
+                    keydirection := descending;
+                end;   {with}
+              numkeys := numkeys + 1
+            end
+        until inint <= 0;
+        numkeys := numkeys - 1;
+        readln(parmfile, instring);
+        inchar := instring[1];
+        close(parmfile,purge);  (* to dispose of temp file, Oct 29 *)
+        SETUPMERGENAMES;
+    end;  { getparmp }
+  {------------------------------------------------------}
+
+  segment procedure distribute;
+
+  var
+    f1 : text;
+    inrec : stringrec;
+    inrecmajkey : key;
+    someontree : boolean;
+    root : nodeptr;
+    heap : ^integer;
+  
+  procedure writelnx(item : stringrec);
+  
+  begin
+      writeln(f1, item)
+  end;  { writelnx }
+  
+   procedure rewritex(n : integer);
+   
+  begin
+  (*$i-*)
+      rewrite(f1, mergeinput[n])
+  (*$i+*)
+  end; { rewritex }
+  
+  procedure closex;
+  
+  begin
+      close(f1, lock)
+  end;  { closex }
+  
+  procedure putontree(var ptr : nodeptr);
+    
+    var
+      p1 : nodeptr;
+      
+    function compare : comparison;
+    begin
+      if inrecmajkey < p1^.majkey then
+        begin
+          if keydata[1].keydirection = ascending then
+            compare := lessthan
+          else
+            compare := greaterthan
+        end
+      else
+        begin
+          if keydata[1].keydirection = ascending then
+            compare := greaterthan
+          else
+            compare := lessthan
+        end
+    end;   { compare }
+      
+    begin
+      p1 := ptr;
+      if p1 = nil then
+        begin
+          new(p1);
+          with p1^ do
+            begin
+              lptr := nil; rptr := nil;
+              item := inrec;
+              majkey := inrecmajkey
+            end;
+          ptr := p1; someontree := true
+        end
+      else
+        begin
+          if inrecmajkey = p1^.majkey then
+            begin
+              if relation(inrec, p1^.item,2) = lessthan then
+                putontree(p1^.lptr)
+              else
+                putontree(p1^.rptr)
+            end
+          else
+            begin   { use major key }
+              if compare = lessthan then
+                putontree(p1^.lptr)
+              else
+                putontree(p1^.rptr)
+            end
+        end
+    end;        { putontree }
+    
+    procedure outputree(ptr : nodeptr);
+    
+    begin
+      if ptr <> nil then
+        with ptr^ do
+          begin
+            outputree(lptr);
+            if memorycontained 
+              then
+                begin
+                  ITEM := CONCAT('  ',ITEM,' ');
+                  ITEM[1] := CHR(16);
+                  ITEM[2] := CHR(32);
+                  ITEM[LENGTH(ITEM)] := CHR(13);
+                  BL_WRITE(ITEM,BLOCK_RESULTS);
+                  recswritten := recswritten + 1;
+                end
+              else writelnx(item);
+            outputree(rptr)
+          end
+      end;    { outputree }
+      
+  function eofinfile : boolean;
+  
+  begin
+      eofinfile := eof(infile)
+  end;   { eofinfile }
+  
+  begin { distribute }
+    ERASE_EOL(40,22);
+    write('STATUS: Distributing ...');
+    ERASE_EOL(40,23);
+    toomanyfiles := false; someontree := false;
+    filesused := 0;
+    while (not eofinfile) and (filesused < maxfiles-2) do
+      begin
+        root := nil;
+        mark(heap);
+        while (varavail('ude_sort,psort,distribute') > minmem) and 
+                                                    (not eofinfile) do
+          begin
+            readln(infile, inrec);
+            if inrec <> '' then { use only non-null strs}
+              begin
+                recsread := recsread + 1;
+                getfield(keydata[1].fieldnum,inrec,inrecmajkey);
+                putontree(root)
+              end
+          end;
+        
+        if someontree then
+          begin
+            if (not eofinfile) or (filesused > 0) or (one_mo_time) then
+              begin
+                filesused := filesused + 1;
+                ERASE_EOL(40,23);
+                write('  Writing workfile # ',filesused, '...');
+                rewritex(filesused);
+                if IORESULT <> 0 then CHECKIO('abort','',IOERR);
+                outputree(root);     { write to int file}
+                closex;   { close and lock that workfile }
+                release(heap)
+              end
+             else
+               begin    { memory contained }
+                 memorycontained := true;
+                 openoutputfile;
+                 ERASE_EOL(40,22);
+                 GOTOXY(40,23);
+                 write('STATUS: Writing output file...    ');
+                 outputree(root);
+                 release(heap)
+               end
+           end
+         else
+           begin
+             release(heap);
+             memorycontained := true; {prevent the merge}
+             openoutputfile  {for the later close (of empty 
+                                         file)}
+           end
+       end;
+     end_of_infile := eofinfile;
+   end; { distribute }
+  {---------------------------------------------------- }
+  
+  segment procedure merge;
+  
+  type
+    tabrec = record
+              hasdata : boolean;
+              inrec : stringrec
+            end;
+            
+  var
+    {--------- SHIFT COMMENT DELIMITER TO CHANGE --------}
+    {--------- NUMBER OF WORK/MERGE-INPUT FILES. --------}
+    
+    {............... Text Files .........................}
+    
+  f1,f2,f3,f4,f5,f6,f7,f8,f9,f10
+  { ,f11,f12,f13,f14,f15,f16,f17,f18,f19,f20 } :text;
+    
+    {----------------------------------------------------}
+    
+    table : array [1..maxfiles] of tabrec;
+    current : 0..maxfiles;      { points to current smallest
+                                     record }
+    i : 1..maxfiles;
+    badio : boolean;
+    
+      {----------------------------------------------------}
+  
+  { The following functions/procedures are because
+   the declaration
+     
+     f : array[1..maxfiles] of text;
+     
+    is not permitted in UCSD Pascal (and some others).
+  }
+  
+  procedure readlnx(n : integer; var item : stringrec);
+    begin
+      case n of
+        1: readln( f1, item);
+        2: readln( f2, item);
+        3: readln( f3, item);
+        4: readln( f4, item);
+        5: readln( f5, item);
+        6: readln( f6, item);
+        7: readln( f7, item);
+        8: readln( f8, item);
+        9: readln( f9, item);
+       10: readln(f10, item);
+  {    11: readln(f11, item);
+       12: readln(f12, item);
+       13: readln(f13, item);
+       14: readln(f14, item);
+       15: readln(f15, item);
+       16: readln(f16, item);
+       17: readln(f17, item);
+       18: readln(f18, item);
+       19: readln(f19, item);
+       20: readln(f20, item);     }
+     end;
+    end;   { readlnx }
+     
+  function eofx(n : integer) : boolean;
+
+  begin
+    {$I-}
+    case n of
+      1 : eofx := eof( f1);
+      2 : eofx := eof( f2);
+      3 : eofx := eof( f3);
+      4 : eofx := eof( f4);
+      5 : eofx := eof( f5);
+      6 : eofx := eof( f6);
+      7 : eofx := eof( f7);
+      8 : eofx := eof( f8);
+      9 : eofx := eof( f9);
+      10: eofx := eof(f10);
+   {  11: eofx := eof(f11);
+      12: eofx := eof(f12);
+      13: eofx := eof(f13);
+      14: eofx := eof(f14);
+      15: eofx := eof(f15);
+      16: eofx := eof(f16);
+      17: eofx := eof(f17);
+      18: eofx := eof(f18);
+      19: eofx := eof(f19);
+      20: eofx := eof(f20);  }
+    end;
+   {$I+}
+  end;  { eofx }
+
+  procedure resetx(n : integer);
+    begin
+      (*$I-*)
+        case n of
+          1: reset( f1, mergeinput[1]);
+          2: reset( f2, mergeinput[2]);
+          3: reset( f3, mergeinput[3]);
+          4: reset( f4, mergeinput[4]);
+          5: reset( f5, mergeinput[5]);
+          6: reset( f6, mergeinput[6]);
+          7: reset( f7, mergeinput[7]);
+          8: reset( f8, mergeinput[8]);
+          9: reset( f9, mergeinput[9]);
+         10: reset(f10, mergeinput[10]);
+      {  11: reset(f11, mergeinput[11]);
+         12: reset(f12, mergeinput[12]);
+         13: reset(f13, mergeinput[13]);
+         14: reset(f14, mergeinput[14]);
+         15: reset(f15, mergeinput[15]);
+         16: reset(f16, mergeinput[16]);
+         17: reset(f17, mergeinput[17]);
+         18: reset(f18, mergeinput[18]);
+         19: reset(f19, mergeinput[19]);
+         20: reset(f20, mergeinput[20]);    }
+       end;
+      (*$I+*)
+    end;   { resetx }
+
+  procedure closex(n : integer; l_or_p : char);
+
+  begin
+    if l_or_p = 'l'
+      then
+        case n of
+           1 : close( f1,lock);
+           2 : close( f2,lock);
+           3 : close( f3,lock);
+           4 : close( f4,lock);
+           5 : close( f5,lock);
+           6 : close( f6,lock);
+           7 : close( f7,lock);
+           8 : close( f8,lock);
+           9 : close( f9,lock);
+          10 : close(f10,lock);
+      {   11 : close(f11,lock);
+          12 : close(f12,lock);
+          13 : close(f13,lock);
+          14 : close(f14,lock);
+          15 : close(f15,lock);
+          16 : close(f16,lock);
+          17 : close(f17,lock);
+          18 : close(f18,lock);
+          19 : close(f19,lock);
+          20 : close(f20,lock)      }
+        end
+      else
+        case n of
+         1 : close( f1,purge);
+         2 : close( f2,purge);
+         3 : close( f3,purge);
+         4 : close( f4,purge);
+         5 : close( f5,purge);
+         6 : close( f6,purge);
+         7 : close( f7,purge);
+         8 : close( f8,purge);
+         9 : close( f9,purge);
+        10 : close(f10,purge);
+    {   11 : close(f11,purge);
+        12 : close(f12,purge);
+        13 : close(f13,purge);
+        14 : close(f14,purge);
+        15 : close(f15,purge);
+        16 : close(f16,purge);
+        17 : close(f17,purge);
+        18 : close(f18,purge);
+        19 : close(f19,purge);
+        20 : close(f20,purge)    }
+      end;  { closepx }
+  end;
+
+  procedure writelnx(n : integer; var item : stringrec);
+    begin
+      case n of
+        1: writeln( f1, item);
+        2: writeln( f2, item);
+        3: writeln( f3, item);
+        4: writeln( f4, item);
+        5: writeln( f5, item);
+        6: writeln( f6, item);
+        7: writeln( f7, item);
+        8: writeln( f8, item);
+        9: writeln( f9, item);
+       10: writeln(f10, item);
+  {    11: writeln(f11, item);
+       12: writeln(f12, item);
+       13: writeln(f13, item);
+       14: writeln(f14, item);
+       15: writeln(f15, item);
+       16: writeln(f16, item);
+       17: writeln(f17, item);
+       18: writeln(f18, item);
+       19: writeln(f19, item);
+       20: writeln(f20, item);     }
+     end;
+    end;   { writelnx }
+  
+  procedure rewritex(n : integer);
+    begin
+    (*$i-*)
+      case n of
+        1: rewrite( f1, mergeinput[1]);
+        2: rewrite( f2, mergeinput[2]);
+        3: rewrite( f3, mergeinput[3]);
+        4: rewrite( f4, mergeinput[4]);
+        5: rewrite( f5, mergeinput[5]);
+        6: rewrite( f6, mergeinput[6]);
+        7: rewrite( f7, mergeinput[7]);
+        8: rewrite( f8, mergeinput[8]);
+        9: rewrite( f9, mergeinput[9]);
+       10: rewrite(f10, mergeinput[10]);
+    {  11: rewrite(f11, mergeinput[11]);
+       12: rewrite(f12, mergeinput[12]);
+       13: rewrite(f13, mergeinput[13]);
+       14: rewrite(f14, mergeinput[14]);
+       15: rewrite(f15, mergeinput[15]);
+       16: rewrite(f16, mergeinput[16]);
+       17: rewrite(f17, mergeinput[17]);
+       18: rewrite(f18, mergeinput[18]);
+       19: rewrite(f19, mergeinput[19]);
+       20: rewrite(f20, mergeinput[20]);    }
+     end;
+    (*$i+*)
+    end;   { rewritex }
+
+  {-----------------------------------------------------}
+  
+  function filesexhausted : boolean;
+  
+  var
+    i : 1..maxfiles;
+    result : boolean;
+    accept : boolean;
+    
+  begin
+    
+    result := true;
+    for i := 1 to filesused do
+      result := result and eofx(i);
+    if one_mo_time then result := result and eofx(mergefile);
+    filesexhausted := result
+  
+  end;  { filesexhausted }
+  
+  {------------------------------------------------------}
+  
+  function least : integer;
+  
+     { returns value which points to least entry in table }
+          
+  var
+    i, j : 1..maxfiles;
+    min : stringrec;
+    
+  begin
+    j := 1;
+    while (not table[j].hasdata) and (j < filesused) do
+                 { skip nonexistent values }
+      j := j + 1;
+    
+    if table[j].hasdata then
+      begin
+        least := j;
+          
+        min := table[j].inrec;   { get started }
+        
+        for i := j + 1 to filesused do
+          with table[i] do
+            if hasdata then
+              begin
+                if relation(inrec,min,1) = lessthan then
+                  begin
+                    least := i;
+                    min := inrec
+                  end
+              end;
+        if table[mergefile].hasdata
+          then
+            with table[mergefile] do
+              if relation(inrec,min,1) = lessthan
+                then least := mergefile;
+      end
+      else
+        if table[mergefile].hasdata
+          then least := mergefile
+          else least := 0;  { empty }
+    end;        { least }
+    
+    begin       { merge }
+      recswritten := 0;
+      badio := false;
+      if end_of_infile
+        then openoutputfile
+        else begin
+          rewritex(temp_outfile);
+          if IORESULT <> 0 then CHECKIO('abort','',IOERR);
+        end;
+      ERASE_EOL(40,22);
+      if end_of_infile
+        then write('STATUS: Merging to output file...')
+        else write('STATUS: Merging to workfile ',temp_outfile,'...');
+      ERASE_EOL(40,23);
+      for i := 1 to maxfiles do
+        begin
+          table[i].hasdata := false;
+          if (i <= filesused) or ((i = mergefile) and (one_mo_time))
+            then
+              begin
+                resetx(i);
+                checkio('noabort', mergeinput[i], ioerr);
+                badio := badio or ioerr;
+                with table[i] do
+                  if not ioerr then
+                    begin
+                      repeat   { ignore null records }
+                        readlnx(i, inrec)
+                      until (inrec <> '') or eofx(i);
+                      if inrec <> '' then
+                        begin
+                          intread := intread + 1;
+                          hasdata := true
+                        end;
+                    end;
+              end;
+        end;
+      if badio then
+        begin
+          error := 2;
+          exit(psort)  { ****************** }
+        end;
+
+      while not filesexhausted do
+        begin
+          current := least; { point to appropriate
+                                        table entry }
+          WITH TABLE[CURRENT] DO
+            BEGIN
+              if end_of_infile
+                then
+                  begin
+                    INREC := CONCAT('  ',INREC,' ');
+                    INREC[1] := CHR(16);
+                    INREC[2] := CHR(32);
+                    INREC[LENGTH(INREC)] := CHR(13);
+                    BL_WRITE(INREC,BLOCK_RESULTS);
+                  END
+                else writelnx(temp_outfile,inrec);
+            end;
+          recswritten := recswritten + 1;
+
+          with table[current] do
+            if not eofx(current) then  { replenish record }
+              begin
+                repeat
+                  readlnx(current, inrec)
+                until (inrec <> '') or eofx(current);
+                if inrec = '' 
+                  then hasdata := false
+                  else intread := intread + 1;
+              end
+            else hasdata := false;
+                       { remove from further consideration }
+        end;  { while }
+
+    { Empty the table after filesexhausted }
+
+      repeat
+        current := least;
+        if current > 0 then  { some left }
+          with table[current] do
+            begin
+              if end_of_infile
+                then
+                  begin
+                    INREC := CONCAT('  ',INREC,' ');
+                    INREC[1] := CHR(16);
+                    INREC[2] := CHR(32);
+                    INREC[LENGTH(INREC)] := CHR(13);
+                    BL_WRITE(INREC,BLOCK_RESULTS);
+                  end
+                else writelnx(temp_outfile,inrec);
+              recswritten := recswritten + 1;
+              hasdata := false
+            end  { with }
+      until current = 0;  { none left }
+      
+      if filesused > 0 then
+        begin
+          ERASE_EOL(40,23);
+          write('STATUS: Purging intermediate files...');
+          for i := 1 to filesused do closex(i,'p');
+          if one_mo_time then closex(mergefile,'p');
+        end;
+      if not end_of_infile then closex(temp_outfile,'l');
+    end;   { merge }
+    
+  PROCEDURE BL_OPEN; (*VAR BLOCK_FILE  :STR;           File name
+                     VAR BLOCK_RETURN:INTEGER);      Return Code  *)
+                  
+  BEGIN
+  {$I-}
+    BLOCK_RETURN := -1;
+    REWRITE(OUTPUT_FILE,BLOCK_FILE);
+    IF IORESULT = 0
+      THEN
+        BEGIN
+          ARRAY_INDEX := 0;
+          BLOCK_NUMBER := 0;
+          FILLCHAR(BLOCK_ARRAY[0],SIZEOF(BLOCK_ARRAY),CHR(0));
+          BLOCKS_WROTE := BLOCK_WRITE(OUTPUT_FILE,BLOCK_ARRAY,2,
+            BLOCK_NUMBER);
+          IF BLOCKS_WROTE = 2
+            THEN 
+              BEGIN
+                BLOCK_RETURN := 0;
+                BLOCK_NUMBER := BLOCK_NUMBER + 2;
+              END;
+        END;
+   {$I+}
+  END;
+  
+PROCEDURE BL_WRITE; (* VAR BLOCK_RECORD:STRINGREC;     String to write
+                       VAR BLOCK_RETURN:INTEGER);      Return Code     *)
+                  
+  BEGIN
+    
+    BLOCK_RETURN := 1;
+    
+    IF (ARRAY_INDEX + LENGTH(BLOCK_RECORD)) > 1023
+      THEN
+        BEGIN
+          BLOCKS_WROTE := BLOCK_WRITE(OUTPUT_FILE,BLOCK_ARRAY,2,
+            BLOCK_NUMBER);
+          IF BLOCKS_WROTE = 2
+            THEN
+              BEGIN
+                BLOCK_RETURN := 0;
+                BLOCK_NUMBER := BLOCK_NUMBER + 2;
+              END;
+
+          ARRAY_INDEX := 0;
+          FILLCHAR(BLOCK_ARRAY[0],SIZEOF(BLOCK_ARRAY),CHR(0));
+          MOVELEFT(BLOCK_RECORD[1],BLOCK_ARRAY[ARRAY_INDEX],
+            LENGTH(BLOCK_RECORD));
+          ARRAY_INDEX := LENGTH(BLOCK_RECORD);
+        END
+      ELSE
+        BEGIN
+          MOVELEFT(BLOCK_RECORD[1],BLOCK_ARRAY[ARRAY_INDEX],
+            LENGTH(BLOCK_RECORD));
+          ARRAY_INDEX := ARRAY_INDEX + LENGTH(BLOCK_RECORD);
+          BLOCK_RETURN := 0;
+        END;
+  END;
+
+PROCEDURE BL_CLOSE; (* VAR BLOCK_RETURN:INTEGER);      Return Code     *)
+                  
+  BEGIN
+        
+    BLOCK_RETURN := -1;
+    
+    BLOCKS_WROTE := BLOCK_WRITE(OUTPUT_FILE,BLOCK_ARRAY,2,
+      BLOCK_NUMBER);
+    IF BLOCKS_WROTE = 2
+      THEN
+        BEGIN
+          BLOCK_RETURN := 0;
+          CLOSE(OUTPUT_FILE,LOCK);
+        END;
+
+  (*$I+*)
+  END;
+
+  {----------------------------------------------------}
+  
+  procedure checkio{(str1, str2 : str; var ioerr : boolean)};
+  
+  var
+    iores : integer;
+    
+  begin
+    iores := ioresult;
+    if iores > 0 then
+      begin
+        if (iores = 9) or (iores = 10) then
+          BEGIN
+            ERASE_EOL(40,23);
+            write(bell,'ERROR: Can''t find file: ',str2);
+          END
+        else if iores = 8 then
+          BEGIN
+            ERASE_EOL(40,23);
+            write(bell,'ERROR: No room on disk');
+          END
+        else
+          BEGIN
+            ERASE_EOL(30,23);
+            write(bell,'ERROR: I/O error (',iores, ') for file: ',str2);
+          END;
+        if str1 = 'abort' then 
+          begin
+            error := 2;
+            exit(psort) { ********** }
+          end
+        else ioerr := true
+      end
+    else
+      ioerr := false
+  end;   { checkio }
+  
+  {------------------------------------------------------}
+  
+  procedure openoutputfile;
+  
+  var
+    i, iores : integer;
+    ch : char;
+    volname : string[15];
+    
+  begin
+    repeat
+      BL_OPEN(OFILENAME,BLOCK_RESULTS);
+      iores := ioresult;
+      if iores = 9 then   { vol. not on line }
+        begin
+          i := pos(':', ofilename);
+          if i > 0 then
+            volname := copy(ofilename, 1,i)
+          else
+            volname := 'default prefix';
+          ERASE_EOL(30,23);
+          write(bell,'ACTION: Put in disk ', volname,
+                     ', type <space>');
+          read(ch);
+          ERASE_EOL(30,23);
+          if ch = chr(27) {ESC} then
+            begin
+              error := 2;
+              exit(psort)   { *************************** }
+            end;
+        end;
+    until IORES <> 9;
+    if IORES <> 0 then
+      begin
+        ERASE_EOL(30,23);
+        write(bell,'ERROR: Open error (',iores,') for: ',
+        ofilename);
+        error := 2;
+        exit(psort)  {***************************}
+      end
+  end;   { openoutputfile }
+  
+  {----------------------------------------------------}
+  
+  procedure getfield{(fieldnum:integer; source:stringrec;
+                  var thefield:key)};
+
+  var
+    numch,
+    numdelim,
+    slength,
+    finposn,
+    startposn,
+    varkeylen : integer;
+    ch : char;
+  
+  begin
+      if keytype = fixed then
+        thefield := copy(source,
+         fielddata[fieldnumber].keystart,
+         fielddata[fieldnumber].keylen)
+      else
+        begin
+          slength :=length(source);
+          numdelim := 0;
+          finposn := 0;
+          numch := 0;
+          
+          repeat
+            numch := numch + 1;
+            ch := source [numch];
+            if ch = keydelim then
+              begin
+                startposn :=finposn;
+                finposn := numch;
+                numdelim := numdelim + 1;
+              end;
+          until (numdelim = fieldnum) or (numch = slength);
+          
+          if (numch = slength) and (numdelim <> fieldnum) then
+            if numdelim < fieldnum - 1 then
+              begin
+                ERASE_EOL(30,23);
+                write(bell,
+                      'ERROR: Insufficient key delimiters in: ');
+                write(source);
+                error := 3;
+                exit(psort);  { ************************ }
+              end
+            else
+              begin
+                startposn := finposn;
+                finposn := numch + 1;
+              end;
+            varkeylen := finposn - startposn - 1;
+            if varkeylen > maxkeylen then
+              varkeylen := maxkeylen;
+            thefield := copy(source, startposn + 1, varkeylen)
+        end
+  end;  { getfield }
+  
+  {-----------------------------------------------------}
+  
+  function relation{(item1, item2 : stringrec;
+                     stkey : integer) : comparison};
+  
+  var
+    i : integer;
+    key1, key2 : key;
+    getresult : boolean;
+    
+  
+  begin
+    i := stkey;   { start at appropriate key }
+    getresult := false;
+      while (i <= numkeys) and (not getresult) do
+        begin
+          getfield(keydata[i].fieldnum, item1, key1);
+          getfield(keydata[i].fieldnum, item2, key2);
+          if key1 > key2 then
+            begin
+              if keydata[i].keydirection = ascending
+                then
+                  relation := greaterthan
+              else
+                relation := lessthan;
+              getresult := true
+            end
+          else
+            begin
+              if key1 < key2 then
+                begin
+                  if keydata[i].keydirection = ascending then
+                    relation := lessthan
+                  else
+                    relation := greaterthan;
+                  getresult := true
+                end
+              else  { equal }
+                i := i + 1  { next key }
+            end
+        end;
+        
+    if not getresult then relation := equal
+    
+  end;  { relation }
+  
+  {-----------------------------------------------------}
+  
+  begin   { psort }
+    error := 0;
+    bell := chr(7);
+    memorycontained := false;
+    toomanyfiles := false;
+    filesused := 0;
+    one_mo_time := false;
+    temp_outfile := maxfiles;
+    end_of_infile := false;
+    recsread := 0;  recswritten := 0; 
+    intread := 0;
+    paramname := concat(paramname, '.TEXT');
+    getparm(paramname);
+    (*$I-*) { turn I/O checking off }
+    reset(infile, ifilename);
+    checkio('abort', ifilename, ioerr);
+    (*$I+*)
+    while not end_of_infile do
+      begin
+        mergefile := temp_outfile;
+        if temp_outfile = maxfiles-1
+          then temp_outfile := maxfiles
+          else temp_outfile := maxfiles-1;
+        distribute;
+        if end_of_infile
+          then
+            begin
+              ERASE_EOL(40,22);
+              write('STATUS: Records read: ', recsread);
+            end;
+        if (filesused <> 0) or (one_mo_time) then merge;
+        if not end_of_infile then one_mo_time := true
+        else BL_CLOSE(BLOCK_RESULTS);
+      end;
+  end;   { psort }
+
+
+begin  { main program }
+    ERROR := 0;  ACCESS_FLAG := false;
+    ACCESS_DATA_BASE(ACCESS_FLAG);
+    if ACCESS_FLAG then PSORT('TEMPSORT',ERROR,RECSREAD,RECSWRIT);
+    if ERROR <> 0
+      then
+        begin
+          ERASE_EOL(0,MAX_ROW-1);
+          gotoxy(0,MAX_ROW);
+          write(ALARM_BELL,'Press SPACE to continue: ');
+          read(KEYBOARD,CH);
+          exit(UDE_SORT);
+        end;
+end.   { main program }
+

@@ -1,0 +1,89 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.INIT.TEXT            revised 27 November 1981         *
+*                                                                       *
+************************************************************************}
+
+procedure INIT;
+{************************************************************************
+*                                                                       *
+*  This procedure checks the disk in the "prefix" drive and reads the   *
+*  data files if they exist.  If they don't it initializes and creates  *
+*  new data files.                                                      *
+*                                                                       *
+************************************************************************}
+var   GOOD_FILE:boolean;
+begin
+  CLEARSCREEN;                  {clear screen}
+  gotoxy(0,11);                 {position cursor}
+  write('Initializing data files');
+  {$I-} { prohibit I/O runtime error if file is not on disk }
+  reset(CONTROLFILE,CONTROL);   {open old control data file}
+  if ioresult=0 then GOOD_FILE:=true            {file exists}
+  else GOOD_FILE:=false;                        {no file on disk}
+  write('.');                   {let user know somthing is happening}
+  close(CONTROLFILE);
+  write('.');                   {let user know somthing is happening}
+  {$I+} { enable I/O runtime errors }
+  if not GOOD_FILE then begin
+    N:=0;                         {initialize}
+    repeat
+      N:=N+1
+    until exp(N*ln(MAX_NODE_SIZE))>MAX_PERS_NODES;
+    rewrite(CONTROLFILE,CONTROL); {open new control data file}
+    write('.');                   {let user know somthing is happening}
+    with CONTROLFILE^ do begin    {initialize control data file}
+      PERSON_AVAIL:=0;   {no person nodes in newly created files}
+      PERSON_ROOT:=-1;   {indicates no record in PERSONS}
+      PERSON_UNUSED:=MAX_PERS_NODES;    {how many nodes are unused}
+      PERSON_MIN:=N               {minimum empty nodes for insertion}
+    end; {with CONTROLFILE^}
+    put(CONTROLFILE);             {write initialized control data file to disk}
+    write('.');                   {let user know somthing is happening}
+    close(CONTROLFILE,lock);      {write control data file name in directory}
+    write('.');                   {let user know somthing is happening}
+  end; {if not GOOD_FILE begin}
+  {$I-} { prohibit I/O runtime error if file is not on disk }
+  reset(PERSONS,PERSON_FILE);   {open old person data file}
+  if ioresult=0 then GOOD_FILE:=true            {file exists}
+  else GOOD_FILE:=false;                        {no file on disk}
+  write('.');                   {let user know somthing is happening}
+  close(PERSONS);
+  write('.');                   {let user know somthing is happening}
+  {$I+} { enable I/O runtime errors }
+  if not GOOD_FILE then begin
+    rewrite(PERSONS,PERSON_FILE); {open new person data file}
+    write('.');                   {let user know somthing is happening}
+    with PERSONS^ do begin        {initialize first PERSON_NODE}
+      NODESIZE:=0;                {no person entered yet}
+      P0:=-1;     {indicates there is no "lessor" successor node}
+      for I:=1 to MAXNODESIZE do begin    {initialize each node slot}
+        with DATA[I] do begin             {initialize each node slot}
+          SUCCNODE:=-1;   {indicates there is no "lessor" successor node}
+          DUPE:=-1;       {indicates there is no duplicate key}
+          KEY:='';        {not really required...done for "double protection"}
+          FIRST:='';      {not really required...done for "double protection"}
+          LAST:='';       {not really required...done for "double protection"}
+          STREET:='';   {not really required...done for "double protection"}
+          CITY:='';       {not really required...done for "double protection"}
+          ZIPCODE:='';    {not really required...done for "double protection"}
+          STATE:='';      {not really required...done for "double protection"}
+          PHONE:='';      {not really required...done for "double protection"}
+        end; {with DATA[I]}
+      end; {for I}
+      for J:=1 to MAX_PERS_NODES-1 do begin
+        P0:=J;            {points to next available empty node}
+        put(PERSONS);
+        write('.');               {let user know somthing is happening}
+      end; {for J}
+      P0:=-1;                     {flag to indicate no more nodes available}
+    end; {with PERSONS^}
+    put(PERSONS);                {write final initialized PERSON_NODE to disk}
+    write('.')                   {let user know somthing is happening}
+  end; {if not GOOD_FILE begin}
+  close(PERSONS,lock);          {write PERSFILE name in directory}
+  CLEARSCREEN                   {clear screen}
+end; {INIT}
+{l-}
+
+

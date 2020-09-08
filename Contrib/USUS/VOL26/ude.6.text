@@ -1,0 +1,97 @@
+
+
+                               SCREEN DEFINITION
+                               - - - - - - - - -
+         
+        Field ID Name            : ZIP_____    Auto Skip (T/F)          : F
+        Field Type (C/D/I/V)     : V           Justify (L/R/D)          : R
+        Row / Column Number      : _7/ 39      Alpha-Numeric (A/N/D)    : N
+        Field Length             : _7          Minimum Input            : _0
+        Default/Calculation : ______________________________
+         
+        Upper Field  Add    Back  Examine Test 
+        Lower Prompt Delete Next  Change  Quit: F 
+         
+         
+(17)    Pressing the <T> key will erase the Data Field Definition
+        input mask from the console and allow input into the current screen 
+        definition file until the <ENTER> or <ESC> key is pressed. 
+ 
+(18)    Pressing the <Q> key returns the user back to the Main menu level. 
+ 
+1.8.5  Print screen definition file
+
+1.8.5.1 Printing the current screen definition
+     When the <P> key is pressed at the Main menu, the program will ask: 
+ 
+          Printer width (80/132):132 
+ 
+The user should then enter the number of characters the line printer is
+capable of printing on one line.  One hundred-thirty two (132) characters is
+assumed.  The current screen definition will then be sent to the line printer.
+When the printout is complete, the user is returned to the Main menu level. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.8.6 Quit
+ 
+     When the <Q> key is pressed from the Main menu level the user is
+returned to the System command line.  The current temporary file will be lost
+unless the save option is used prior to the exit.  To prevent the user from
+accidentially leaving the program before saving the current file, the program
+will ask: 
+ 
+          Do you want to save the current definition file? 
+ 
+The user may then press the <Y> key to save the file or the <N> key to
+leave the program. 
+ 
+1.8.7  Save current screen definition file
+ 
+     When the <S> key is pressed at the Main menu level the following screen
+will be displayed: 
+ 
+                            SAVE SCREEN DEFINITION 
+                           ======================== 
+ 
+ 
+               Volume    :  _______
+               File      :  ___________
+               Type      :  SCRN
+ 
+ 
+ 
+     <ENTER> to execute,<ESC> to abort 
+ 
+The user may now change the file information shown on the screen.  Pressing the
+<ENTER> key causes the program to copy the current temporary file onto the
+volume and file specified.  If a file by the name specified already exists its
+contents will be replaced by the current temporary file.  If the copy is
+successful, the program will return to the Main menu level after displaying the
+message : 
+ 
+          STATUS: File saved. Total length : ##. 
+ 
+Otherwise an error message will be displayed explaining the problem in copying
+the file.  If the <ESC> key is pressed the program returns to the Main menu
+level. 
+ 
+ 
+
+
+
+

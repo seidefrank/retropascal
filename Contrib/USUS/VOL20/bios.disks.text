@@ -1,0 +1,601 @@
+
+FMT_DISK:
+; This service, available through an addition to the Pascal jump
+; table, formats the disk in Drive 1 and copies the bootstrap on
+; the disk on drive 0 to drive 1.
+
+; On Exit:
+;         (A) = IO_RESULT.
+
+; Interaction with the operator is through a Pascal program which uses
+; this service.
+
+; This SBIOS assumes that the interleave and skew are adjusted during
+; formatting, so that the Pascal interleave is 1 and skew is 0.
+
+; Recalibrate drive 1.
+          LD    C, 1
+          CALL  DSKDKN
+
+          CALL  FDC_RECAL
+          RET   NZ
+
+; Set track 0 format to optimize bootstrap loading.
+          LD    HL, FMT_0_LST
+          CALL  SEND_F_LST
+
+; Format track 0.
+          CALL  SEND_FMT
+          AND   A
+          RET   NZ
+
+; Other tracks are set to interleave 2, skew 2.  Set up base
+; format list for track 1.
+          LD    HL, FMT_I_LST
+          LD    DE, FMT_N_LST
+          LD    BC, 36
+          LDIR
+
+          LD    B, 69
+          LD    C, 1
+
+$1:
+          PUSH  BC
+
+; Set track number into FMT_N_LST.
+          LD    B, 9
+          LD    HL, FMT_N_LST
+
+$2:
+          LD    (HL), C
+          INC   HL
+          INC   HL
+          INC   HL
+          INC   HL
+          DJNZ  $2
+          
+          CALL  DSKDKT
+          CALL  FDC_SEK
+
+          LD    HL, FMT_N_LST
+          CALL  SEND_F_LST
+
+          CALL  SEND_FMT
+
+; Rotate the sector list to produce desired skew.
+          LD    DE, FMT_D_LST
+          LD    HL, FMT_N_LST
+          LD    BC, 36
+          LDIR
+
+          LD    HL, FMT_D_LST
+          LD    BC, FMT_SKEW * 4
+          LDIR
+
+; Analyze the result of the format command and report errors.
+          POP   BC
+          AND   A
+          RET   NZ
+          INC   C
+          DJNZ  $1
+
+; Read sectors of drive 0, track 0, and copy to drive 1, track 0.
+          LD    C, 0
+          CALL  DSKDKT
+          
+          LD    BC, FMT_X_BLK
+          CALL  DSKDKB
+          
+          LD    B, 9
+          LD    C, 1
+
+$3:
+; Set the sector.  Note that transfer is not done in optimal
+; sequence for track 0.
+          PUSH  BC
+          CALL  DSKDKS
+          
+; Read sector from Disk 0.
+          LD    C, 0
+          CALL  DSKDKN
+
+          CALL  DSKDKR
+          AND   A
+          JR    NZ, $4
+
+; No read errors.  Write sector onto disk 1.
+          LD    C, 1
+          CALL  DSKDKN
+          
+          CALL  DSKDKW
+          AND   A
+
+$4:
+          POP   BC
+          RET   NZ
+          
+          INC   C
+          DJNZ  $3
+
+; Return to call.
+          RET
+
+
+SEND_F_LST:
+; This service prepares the DMA controller to send a format parameter
+; list to the FDC as needed during track formatting.
+
+; On Entry:
+;         (HL) => Format Control list.
+
+          LD    C, DMA_ADR
+          OUT   (C), L
+          OUT   (C), H
+          INC   C                   ; DMA_TMCNT
+          LD    HL, 8023H
+          OUT   (C), L
+          OUT   (C), H
+          LD    A, 41H
+          OUT   (DMA_CTL), A
+          RET
+
+
+SEND_FMT:
+; This service sends the format command list to the FDC and interprets
+; its response.
+          LD    HL, FDC_FMT_TBL
+          LD    B, 6
+          CALL  SEND_CMD
+          CALL  POLL_INT
+          CALL  INT_R_W_ST
+          RET
+
+
+SEND_CMD:
+; Write a command to the disk.
+
+; On Entry:
+;         (B) = Command Table Length.
+;         (HL) => Command Table.
+
+; On Exit:
+;         (B), (C), (HL) spoiled.
+
+          LD    C, FDC_DATA
+
+$1:
+; Wait for FDC to be ready.
+          IN    A, (FDC_STAT)
+          AND   0C0H
+          CP    080H
+          JR    NZ, $1
+
+; Send next character.
+          OUTI
+          RET   Z
+          JR    $1
+          
+
+DED_DSK:
+; Report disastrous disk error (unrecoverable protocol conflict).
+          LD    HL, RPTDER
+$1:
+          LD    A, (HL)
+          CP    0FFH
+          JR    Z, $
+          LD    C, A
+          CALL  DR_CRO
+          INC   HL
+          JR    $1
+
+RPTDER:
+; Clear screen, home cursor and report error.
+          .BYTE 1AH, 1EH
+          .ASCII "Unrecoverable disk protocol error."
+          .BYTE 0DH, 0AH, 0FFH
+
+
+VRFY_DRIV:
+; This service tests the drive number against the floppy disk unit
+; numbers and returns an off-line status if the unit is too large.
+          
+          LD    A, (FDC_DRVNO)
+          CP    2
+          LD    A, 9
+          RET
+
+FDC_RECAL:
+; This service restores the active drive to track 0.
+
+; On Exit:
+;         (A) = 0  |  if recalibration successful.
+;         (ZF) set |
+
+;         (A) = IO_RESULT if recalibration unsuccessful, or
+;               drive off line.
+          
+          LD    HL, FDC_CMD_TBL
+          LD    (HL), 07H           ; Recalibrate command.
+          LD    B, 2
+          CALL  SEND_CMD
+          
+; Wait for recalibration to complete.
+          CALL  POLL_INT
+          
+; Sense status and interpret.
+          CALL  SNS_INT_ST
+          AND   A
+          PUSH  AF
+          LD    HL, FDC_TRACK
+          JR    Z, $1
+          LD    A, 0FFH
+
+$1:
+          LD    (HL), A
+          POP   AF
+          RET
+
+
+CLR_DISK:
+; This service clears all of the disk drives, restoring them to track
+; 0, and thereby synchronizing them with the initialized control tables.
+
+; Drive 0.
+          LD    C, 0
+          CALL  DSKDKN
+          CALL  DSKDKI
+
+; Drive 1.
+          LD    C, 1
+          CALL  DSKDKN
+          CALL  DSKDKI
+          RET
+
+DSKDKI:
+; This service initializes a Pascal disk drive.
+
+; Filter for Semi-Disks.
+          CALL  VRFY_DRIV
+          RET   NC
+
+;  Recalibrate the drive.  Recalibration will diagnose off-line
+;  condition, if present.
+          CALL  FDC_RECAL
+          RET
+
+
+DSKDKN:
+; This service sets the number of the active disk.
+
+; On Entry:
+;         (C) = Disk number.
+          
+          LD    A, C
+          LD    (FDC_DRVNO), A
+          
+; Set the current track number to impossible value to cause seek on
+; next read or write.
+          LD    HL, FDC_TRACK
+          LD    (HL), 0FFH
+          RET
+
+
+DSKDKT:
+; This service sets the number of the track to be selected on the next 
+; read or write.
+
+; On Entry:
+;         (C) = Track number.
+
+          LD    A, C
+          LD    (FDC_TGT_TK), A
+          RET
+
+
+DSKDKS:
+; This service records the number of the sector selected for use with 
+; the next read or write.
+
+; On entry:
+;         (C) = Sector Number.
+
+          LD    A, C
+          LD    (FDC_SECTR), A
+          RET
+
+
+DSKDKB:
+; This service sets the active buffer location.
+
+; On Entry:
+;         (BC) = Buffer address.
+
+          LD    (FDC_DMADR), BC
+          RET
+
+
+FDC_SEK:
+; This service positions the disk drives.
+
+; On Exit:
+;      (A) = 0  |  if seek successful.
+;      (ZF) set |
+
+; Check for too large track number.
+          LD    A, (FDC_TGT_TK)
+          CP    70
+          JR    C, $2
+
+; Track number too high.  Discard immediate return and exit read or
+; write procedure with final status.
+          POP   HL
+          LD    A, 3
+          AND   A
+          RET
+
+$2:
+; Check for change since last seek.
+          LD    B, A
+          LD    HL, FDC_TRACK
+          SUB   (HL)
+          RET   Z
+          LD    A, B
+          LD    (HL), A
+
+; Check for track zero.
+          AND   A
+          JP    Z, FDC_RECAL
+
+; Construct seek command.
+          LD    HL, FDC_CMD_TBL
+          LD    (HL), 0FH           ; Seek command.
+          LD    B, 3
+          CALL  SEND_CMD
+
+; Wait for seek completion.
+          CALL  POLL_INT
+          
+; Interpret result.
+          CALL  SNS_INT_ST
+          AND   A
+          RET   Z
+          LD    HL, FDC_TRACK
+          LD    (HL), 0FFH
+          RET
+
+POLL_INT:
+; Detect FDC interrupt signal.  This signals the begining of the
+; result phase for many FDC functions.
+
+          IN    A, (FDC_INT)
+          RLA
+          RET   C
+          
+; Poll the other IO units for input if the disk is not yet done.
+; The address of the following call is set up during system
+; initialization.
+          CALL  0
+          
+PASPOL    .EQU  $ - 2
+          
+          JR    POLL_INT
+
+
+SNS_INT_ST:
+; Checks the status of the FDC after completion os a seek or
+; recalibrate.
+
+; On Exit:
+;   (A) = 0 if no error.
+;         1 if seek abnormally completed.
+;         9 if drive off-line.
+
+; Send prompt command.
+          LD    HL, SIS_CMD_TB      ; Sense Interrupt command table.
+          LD    B, 1
+          CALL  SEND_CMD
+
+; Accept the two result bytes.  Only the first is important.
+          CALL  GET_RSLT_BT
+          LD    B, A
+          CALL  GET_RSLT_BT
+
+; Decode error flags.
+          BIT   3, B
+          LD    A,9
+          RET   NZ
+          
+          LD    A, 0D0H
+          AND   B
+          RET   Z
+          LD    A, 1
+          RET
+
+
+INT_R_W_ST:
+; Interpret the seven byte status returned by the FDC after a
+; read or write command.  Only the first three bytes are im-
+; portant, but all bytes must be read.  Give immediate pre-
+; ference to non-CRC errors.
+
+; On Exit:
+;   (A) = 0 if no error.
+;         1 if CRC error.
+;         2 if seek error.
+;         3 if illegal IO request.
+;         9 if drive off-line.
+;         16 if write protected error.
+
+; Accept first three bytes and interpret error flags.
+          CALL  GET_RSLT_BT         ;  ST0 byte.
+          LD    E, 6
+          
+          BIT   3, A                ;  Not ready bit.
+          LD    B, A
+          LD    A, 9
+          JR    NZ, $1
+          
+          LD    A, 0D0H             ;  Interrupt code, Equip Chk.
+          AND   B
+          LD    D,A
+          
+          CALL  GET_RSLT_BT         ; ST1 byte.
+          DEC   E
+          
+          LD    B,A
+          LD    A, (R_W_MSK)         ;  Write protected.
+          AND   B
+          LD    A, 16
+          JR    NZ, $1
+
+          LD    A, 84H              ;  End cyl, No data.
+          AND   B
+          LD    A, 3
+          JR    NZ, $1
+
+          LD    A, 61H              ;  Data Error, Overrun, MAM.
+          AND   B
+          OR    D
+          LD    D,A
+          
+          CALL  GET_RSLT_BT         ;  ST2 byte.
+          DEC   E
+          
+          LD    B, A
+          LD    A, 12H              ;  Bad cylinder error.
+          AND   B
+          LD    A, 2
+          JR    NZ, $1
+          
+          LD    A, B
+          OR    D
+          LD    A, 0
+          JR    Z, $1
+          INC   A
+
+$1:
+; Read and discard remaining result bytes.
+          LD    B, E
+          LD    E, A
+$2:
+          CALL  GET_RSLT_BT
+          DJNZ  $2
+          LD    A, E
+          RET
+
+
+GET_RSLT_BT:
+; Wait until FDC is ready to send, and then accept input byte
+; in (A).
+
+          IN    A, (FDC_STAT)
+          AND   0C0H
+          CP    0C0H
+          JR    NZ, GET_RSLT_BT
+
+; Accept character.
+          IN    A, (FDC_DATA)
+          RET
+
+
+DSKDKR:
+;  Read the designated sector from the disk.
+
+;  Actual read is done below.  Set up read command and read
+;  error mask and DMA length.
+
+;  Do not report Write Protected errors in read operation.
+          LD    A, 00H
+          LD    (R_W_MSK), A
+          
+          LD    HL, 41FFH
+          LD    (FDC_DMA_LEN), HL
+
+;  Store command for reference in common segment.
+          LD    HL, FDC_XFR_CMD
+          LD    (HL), 46H           ; Read command.
+          JR    FDC_DSK_R_W
+
+
+DSKDKW:
+; Write the disignated sector from the disk.
+
+; Set up write command, DMA length and error mask.
+
+; Report all write errors.
+          LD    A, 02H
+          LD    (R_W_MSK), A
+          
+          LD    HL, 81FFH
+          LD    (FDC_DMA_LEN), HL
+
+; Store write command for reference in common segment.
+          LD    HL, FDC_XFR_CMD
+          LD    (HL), 45H           ; Write command.
+
+
+FDC_DSK_R_W:
+; Common part of DSKDKW and DSKDKR.
+
+; Filter out Semi-Disk units.
+          CALL  VRFY_DRIV
+          RET   NC
+
+; Initialize retry count.
+          LD    E, DSK_RETRY
+
+$1:
+; Seek the designated track.
+          CALL  FDC_SEK
+          JR    Z, $4
+          CP    9
+          RET   Z
+
+$2:
+; Designated track could not be found.  If retry count is not
+; exhausted, recalibrate and retry.
+          LD    A, E
+          SUB   3
+          LD    E, A
+          LD    A, 1
+          RET   C
+          CALL  FDC_RECAL
+          JR    $1
+
+$4:
+; Seek has been completed successfully.  Code and enable DMA.
+          LD    C, DMA_ADR
+          LD    HL, (FDC_DMADR)
+          OUT   (C), L
+          OUT   (C), H
+          INC   C                   ; DMA_TMCNT
+          LD    HL, (FDC_DMA_LEN)
+          OUT   (C), L
+          OUT   (C), H
+          LD    A, 41H
+          OUT   (DMA_CTL), A
+
+; Send command.  Get code from temporary storage.
+          LD    A, (FDC_XFR_CMD)
+          LD    HL, FDC_CMD_TBL
+          LD    (HL), A
+          LD    B, 9
+          CALL  SEND_CMD
+
+; Set status.  Exit if successful completion.
+          CALL  POLL_INT
+          PUSH  DE
+          CALL  INT_R_W_ST
+          POP   DE
+          AND   A
+          RET   Z
+
+; Error.  Count down retries.
+          CP    2
+          JR    Z, $2
+          DEC   E
+          JR    NZ, $2
+
+; Retries exhausted.  Report last error.
+          RET
+          

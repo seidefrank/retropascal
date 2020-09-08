@@ -1,0 +1,481 @@
+PROCEDURE SHOWBYTES;
+  VAR J,N : INTEGER;
+  BEGIN
+    IF SHOWHEX THEN HBTOPLINE ELSE OBTOPLINE;
+    FOR N := START TO STOP DO
+      BEGIN
+        WITH WINDOW[N] DO
+          BEGIN
+            IF (NOT SHOWHEX) THEN WRITEADDRESS(8,ADDRESS)
+            ELSE WRITEADDRESS(16,ADDRESS);
+            WRITE(':  ');
+            FOR J := 0 TO 7 DO
+              BEGIN
+                WITH CODE[J] DO
+                  BEGIN
+                    WRITE(' ');
+                    IF ((CH[0] IN VISIBLE) AND (SHOWCHARS)) THEN WRITE(CH[0],'  ')
+                      ELSE IF SHOWHEX THEN
+                        BEGIN
+                          WRITEHEXBYTE(CH[0]);
+                          WRITE(' ')
+                        END
+                      ELSE IF SHOWDEC THEN WRITEDECBYTE(CH[0])
+                      ELSE WRITEBYTE(CH[0]);
+                    WRITE(' ');
+                    IF ((CH[1] IN VISIBLE) AND (SHOWCHARS)) THEN WRITE(CH[1],'  ')
+                      ELSE IF SHOWHEX THEN
+                        BEGIN
+                          WRITEHEXBYTE(CH[1]);
+                          WRITE(' ')
+                        END
+                      ELSE IF SHOWDEC THEN WRITEDECBYTE(CH[1])
+                      ELSE WRITEBYTE(CH[1])
+                  END
+              END;
+            WRITELN
+          END
+      END
+  END;
+  
+PROCEDURE DISPLAY;
+  BEGIN
+    CLEARSCREEN;
+    IF (HALFPAGE) THEN
+      BEGIN
+        START := 0;
+        STOP := 15;
+      END
+    ELSE
+      BEGIN
+        START := 16;
+        STOP := 31
+      END;
+    GOTOXY(0,2);
+    BLOCKLINE;
+    IF BYTEBLOCK THEN SHOWBYTES ELSE SHOWWORDS;
+  END;
+
+PROCEDURE PATCH; FORWARD;
+  
+PROCEDURE ADVANCE;
+  BEGIN
+    IF LOWBYTE THEN COLNO := COLNO + 1;
+    IF (COLNO > 7) THEN
+      BEGIN
+        IF (LINENO = 31) THEN
+          BEGIN
+            CLEARSPACE(0,1,80);
+            CLEARSPACE(0,0,80);
+            WRITE('End of block. Type <SP> to continue.');
+            REPEAT READ(KEYBOARD,REPLY) UNTIL (REPLY = ' ');
+            EXIT(PATCH)
+          END
+        ELSE IF (LINENO = 15) THEN
+          BEGIN
+            HALFPAGE := NOT HALFPAGE;
+            DISPLAY;
+            LINENO := 16;
+            COLNO := 0
+          END
+        ELSE
+          BEGIN
+            COLNO := 0;
+            LINENO := LINENO + 1
+          END
+      END
+  END;
+
+PROCEDURE PATCHWORD;
+  BEGIN
+    IF NOT SHOWHEX THEN X := COLNO*7 + 6 ELSE X := COLNO*7 + 7;
+    IF HALFPAGE THEN Y:= LINENO + 6
+      ELSE Y := LINENO - 10;
+    CLEARSPACE(0,0,80);
+    IF (NOT SHOWHEX) THEN
+WRITE('Enter new word in XXXXXX (octal) format. <SP> continues, <ESC> terminates.')
+    ELSE IF SHOWHEX THEN
+WRITE('Enter new word in XXXX (hex) format. <SP> continues, <ESC> terminates.');;
+    CLEARSPACE(X,Y,6);
+    GETWORD(DATA.INT,X,Y);
+    WINDOW[LINENO].CODE[COLNO].INT := DATA.INT;
+    IF HALFPAGE THEN CLEARSPACE(63 + COLNO*2,LINENO + 6,2)
+      ELSE CLEARSPACE(63 + COLNO*2,LINENO - 10,2);
+    WITH WINDOW[LINENO] DO
+      BEGIN
+        IF (CODE[COLNO].CH[0] IN VISIBLE) THEN
+          WRITE(CODE[COLNO].CH[0]) ELSE WRITE('.');
+        IF (CODE[COLNO].CH[1] IN VISIBLE) THEN
+          WRITE(CODE[COLNO].CH[1]) ELSE WRITE('.')
+      END;
+    LOWBYTE := TRUE;
+    IF DONE THEN EXIT(PATCH) ELSE ADVANCE;
+    PATCHWORD
+  END;
+  
+PROCEDURE GETBYTESTR(*VAR CHARSTR : STRING; X,Y : INTEGER*);
+  CONST BS = 8;
+        ESC = 27;
+        CR = 13;
+  VAR   CH : CHAR;
+        I : INTEGER;
+        ONESTR : STRING[1];
+  BEGIN
+    I := 0;
+    ONESTR := ' ';
+    CHARSTR := '';
+    REPEAT
+      READ(INPUT,CH);
+      IF (CH = CHR(CR)) THEN CH := ' ';
+      IF (CH = CHR(BS)) THEN
+        BEGIN
+          WRITE(' ');
+          IF (I > 0) THEN
+            BEGIN
+              WRITE(CHR(BS));
+              DELETE(CHARSTR, LENGTH(CHARSTR),1);
+              I := I-1
+            END
+        END
+      ELSE IF NOT(CH IN [' ',CHR(ESC)]) THEN
+        BEGIN
+          I := I + 1;
+          ONESTR[1] := CH;
+          CHARSTR := CONCAT(CHARSTR,ONESTR)
+        END;
+      IF ((I = 0) AND (CH = ' ')) THEN
+        BEGIN
+          CHARSTR := ' ';
+          CH := 'X';  (*anything but ' '*)
+          I := 1
+        END;
+      IF (I > 3) THEN
+        BEGIN
+          CLEARSPACE(0,0,80);
+          WRITE(CHR(7),'Byte string too long.  Retype. ');
+          CLEARSPACE(X,Y,LENGTH(CHARSTR));
+          GETBYTESTR(CHARSTR,X,Y);
+          CLEARSPACE(0,0,80);
+          EXIT(GETBYTESTR)
+        END
+    UNTIL (CH IN [' ',CHR(ESC)]);
+    IF (CH = ' ') THEN DONE := FALSE ELSE DONE := TRUE;
+  END;
+  
+PROCEDURE PATCHBYTE;
+  LABEL 999;
+  VAR   CHARSTR: SNUM;
+        LEN : INTEGER;
+        NUM : 0..255;
+  BEGIN
+    CLEARSPACE(0,0,80);
+    IF SHOWCHARS THEN
+      WRITELN('Enter new char in X(Ascii) or XXX(ord) format. Current radix = ',RADIX)
+    ELSE IF SHOWHEX THEN
+      WRITELN('Enter new byte in XX(hex) format. ')
+    ELSE WRITELN('Enter new byte in XXX format. Current radix = ',RADIX);
+    WRITE('     <SP> continues; <ESC> terminates');
+    IF LOWBYTE THEN X := COLNO*8+7 ELSE X := COLNO*8+11;
+    IF HALFPAGE THEN Y:= LINENO + 6 ELSE Y := LINENO - 10;
+    CLEARSPACE(X,Y,3);
+    GETBYTESTR(CHARSTR,X,Y);
+    LEN := LENGTH(CHARSTR);
+    IF (SHOWCHARS AND NOT (LEN IN [1,3])) OR (NOT SHOWCHARS AND NOT SHOWHEX
+      AND NOT (LEN = 3)) THEN
+      BEGIN
+        CLEARSPACE(X,Y,7);
+        WITH WINDOW[LINENO] DO
+          BEGIN
+            IF SHOWCHARS AND (CODE[COLNO].CH[0] IN VISIBLE) THEN WRITE(CODE[COLNO].CH[0],'  ')
+              ELSE IF SHOWDEC THEN WRITEDECBYTE(CODE[COLNO].CH[0])
+                ELSE WRITEBYTE(CODE[COLNO].CH[0]);
+            WRITE(' ');
+            IF SHOWCHARS AND (CODE[COLNO].CH[1] IN VISIBLE) THEN WRITE(CODE[COLNO].CH[1],'  ')
+              ELSE IF SHOWDEC THEN WRITEDECBYTE(CODE[COLNO].CH[1])
+                ELSE WRITEBYTE(CODE[COLNO].CH[1]);
+            WRITE(' ');
+            GOTO 999
+          END
+      END;
+    IF SHOWCHARS OR (NOT SHOWCHARS AND NOT SHOWHEX) THEN
+      IF (LEN = 3) THEN
+        BEGIN
+          STRINTCONV(CHARSTR,NUM,RADIX,X,Y,3,255,FALSE);
+          IF LOWBYTE THEN WINDOW[LINENO].CODE[COLNO].CH[0] := CHR(NUM)
+            ELSE WINDOW[LINENO].CODE[COLNO].CH[1] := CHR(NUM)
+        END
+      ELSE  (*IF LEN = 1*)
+        BEGIN
+          IF LOWBYTE THEN WINDOW[LINENO].CODE[COLNO].CH[0] := CHARSTR[1]
+            ELSE WINDOW[LINENO].CODE[COLNO].CH[1] := CHARSTR[1]
+        END;
+    IF SHOWHEX AND NOT (LEN = 2) THEN
+      BEGIN
+        CLEARSPACE(X,Y,7);
+        WITH WINDOW[LINENO] DO
+          BEGIN
+            WRITE(' ');
+            WRITEHEXBYTE(CODE[COLNO].CH[0]);
+            WRITE(' ');
+            WRITEHEXBYTE(CODE[COLNO].CH[1]);
+            GOTO 999
+          END
+      END;
+    IF SHOWHEX AND (LEN = 2) THEN
+      BEGIN
+        STRINTCONV(CHARSTR,NUM,16,X,Y,3,255,FALSE);
+        IF LOWBYTE THEN WINDOW[LINENO].CODE[COLNO].CH[0] := CHR(NUM)
+          ELSE WINDOW[LINENO].CODE[COLNO].CH[1] := CHR(NUM)
+      END;
+    LOWBYTE := NOT LOWBYTE;
+    IF DONE THEN EXIT(PATCH) ELSE ADVANCE;
+999:  PATCHBYTE
+  END;
+  
+PROCEDURE PATCH;
+  VAR   STRG : SNUM;
+        RDX : INTEGER;
+  BEGIN
+    CLEARSPACE(0,0,80);
+    IF SHOWHEX THEN RDX := 16 ELSE RDX := 8;
+    WRITE('Enter line no. of code to be changed: ');
+    READLN(STRG);
+    STRINTCONV(STRG,LINENO,RDX,38,0,8,496,TRUE);
+    LINENO := LINENO DIV 16;
+    IF HALFPAGE AND (LINENO > 15) THEN
+      BEGIN
+        HALFPAGE := FALSE;
+        DISPLAY
+      END;
+    IF NOT HALFPAGE AND (LINENO < 16) THEN
+      BEGIN
+        HALFPAGE := TRUE;
+        DISPLAY
+      END;
+    CLEARSPACE(0,0,80);
+    WRITE('Enter column no. of code to be changed: ');
+    READLN(STRG);
+    STRINTCONV(STRG,COLNO,RDX,40,0,8,17,TRUE);
+    IF (ODD(COLNO)) THEN LOWBYTE := FALSE ELSE LOWBYTE := TRUE;
+    COLNO := COLNO DIV 2;
+    CLEARSPACE(0,0,80);
+    IF (BYTEBLOCK) THEN PATCHBYTE ELSE PATCHWORD;
+  END;
+  
+PROCEDURE QUERY;
+  VAR   I : INTEGER;
+        S : STRING;
+  BEGIN
+    CLEARSCREEN;
+    WRITELN('Select disposition of present block:');
+    WRITELN('    W(rite patched block to disk (memory))');
+    WRITELN('    E(xit leaving disk (memory) block unchanged)');
+    IF (COMMAND(['E','W']) = 'W') THEN
+      BEGIN
+        CLEARSCREEN;
+        RELOAD;
+        IF DISKBLOCK THEN
+          BEGIN
+            UNITWRITE(UNITNO,TEMP,512,BLKNO);
+            UNITREAD(UNITNO,TEMP,512,BLKNO)
+          END
+        ELSE IF MEMORYBLOCK THEN
+          BEGIN
+            LOADMEMORY;
+            GETMEMORYBLOCK
+          END
+        ELSE
+          BEGIN
+            IF EOF(FIN) THEN RESET(FIN);
+            I := BLOCKWRITE(FIN,TEMP,1,BLKNO);
+            GETBLOCK
+          END;
+        INITWINDOW;
+        HALFPAGE := TRUE;
+        DISPLAY;
+        GOTOXY(0,22);
+WRITE('This is your patched block (no. ',BLKNO,') as read from  the disk (memory)');
+S := ('..........................Type <SP> to continue..........................');
+        PAUSE(0,23,S);
+        HALFPAGE := FALSE;
+        DISPLAY;
+        S := 'Type <SP> to continue';
+        PAUSE(0,23,S);
+      END;
+    CLEARSCREEN;
+    HALFPAGE := TRUE
+  END;
+
+PROCEDURE DUMP;
+  VAR   N,RSLT : INTEGER;
+BEGIN
+(*$I-*)
+  REPEAT
+    CLOSE(OUTPUT);
+    RESET(OUTPUT,'PRINTER:');
+    RSLT := IORESULT;
+    IF (RSLT <> 0) THEN
+      BEGIN
+        RESET(OUTPUT,'CONSOLE:');
+        GOTOXY(0,23);
+        WRITE(CHR(7),'I/O error',RSLT:3,'. Correct and type <SP> to continue',
+          'or Q(uit).');
+        IF NOT CONTINUE THEN
+          BEGIN
+            CLEARSCREEN;
+            EXIT(PROGRAM)
+          END;
+        CLEARSPACE(0,23,80);
+      END
+    UNTIL RSLT = 0;
+(*$I+*)
+    IF FILEBLOCK THEN WRITE('File ',SFIN,'     ');
+    BLOCKLINE;
+    START := 0;
+    STOP := 31;
+    IF BYTEBLOCK THEN SHOWBYTES ELSE SHOWWORDS;
+    CLOSE(OUTPUT);
+    RESET(OUTPUT,'CONSOLE:')
+  END;
+  
+PROCEDURE BLKERROR;
+  VAR  S : STRING;
+  BEGIN
+    CLEARSPACE(0,0,80);
+    S := 'Improper block number requested. Type <SP> to continue.';
+    PAUSE(0,0,S);
+    GETBLKNO
+  END;
+  
+PROCEDURE INITIALIZE;
+  BEGIN
+    VISIBLE := [' '..'~'];
+    FILEBLOCK := TRUE;
+    DISKBLOCK := FALSE;
+    MEMORYBLOCK := FALSE;
+    WAIT := FALSE;
+    RADIX := 8;
+    BLKRADIX := 10;
+    CLEARSCREEN;
+    WRITELN('This program displays half a block of words, bytes, or characters');
+    WRITELN('from a disk or disk file or memory, accepts patches, and rewrites');
+    WRITELN('the patched block to the disk or disk file or memory.');
+    WRITELN;
+    WRITELN('F(ile or D(isk or M(emory?');
+    REPLY := COMMAND(['F','D','M']);
+    CLEARSCREEN;
+    IF (REPLY = 'F') THEN 
+      BEGIN
+        WRITE('Enter input file (or <CR> to quit): ');
+        GETFIN;
+        GETBLKNO;
+        GETBLOCK;
+      END
+    ELSE IF (REPLY = 'D') THEN
+      BEGIN
+        WRITE('Enter unit number <4 or 5>:');
+        IF (COMMAND(['4','5']) = '4') THEN UNITNO := 4 ELSE UNITNO := 5;
+        GETBLKNO;
+        UNITREAD(UNITNO,TEMP,512,BLKNO);
+        DISKBLOCK := TRUE;
+        FILEBLOCK := FALSE
+      END
+    ELSE
+      BEGIN
+WRITE('Current block no. radix = ',BLKRADIX,'. Enter memory block number: ');
+        READLN(STRG);
+        STRINTCONV(STRG,BLKNO,BLKRADIX,57,0,2,16,TRUE);
+        GETMEMORYBLOCK;
+        MEMORYBLOCK := TRUE;
+        FILEBLOCK := FALSE
+       END;
+    CLEARSPACE(0,0,80);
+    HALFPAGE := TRUE;
+    INITWINDOW;
+    BYTEBLOCK := FALSE;
+    SHOWCHARS := FALSE;
+    SHOWHEX := FALSE;
+    SHOWDEC := FALSE;
+  END;
+  
+PROCEDURE COMMANDLINE;
+  BEGIN
+    CLEARSPACE(0,0,80);
+    IF NOT ALTLINE THEN
+      WRITE('S(wap, F(orward, reV(erse, N(ewblock, P(atch, D(ump, ?')
+    ELSE WRITE('W(ord, C(har, B(yte, R(adix, Q(uit, ?');
+    ALTLINE := FALSE
+  END;
+  
+BEGIN(*PROGRAM*);
+  INITIALIZE;
+  REPEAT
+    IF NOT WAIT THEN DISPLAY;
+    WAIT := FALSE;
+    COMMANDLINE;
+    CASE COMMAND(['B','C','D','F','N','P','Q','R','S','V','W','?']) OF 
+      'S' : HALFPAGE := NOT HALFPAGE;
+      'P' : PATCH;
+      'D' : DUMP;
+      'F' : BEGIN
+              QUERY;
+              BLKNO := SUCC(BLKNO);
+              IF FILEBLOCK THEN IF EOF(FIN) THEN
+                BEGIN
+                  PAUSE(0,0,'End of file.  Type <SP> to continue.');
+                  RESET(FIN);
+                  GETBLKNO;
+                END;
+              IF ((DISKBLOCK AND (BLKNO > MAXDISK)) OR
+                (MEMORYBLOCK AND (BLKNO > MAXMEMORY))) THEN BLKERROR;
+              IF DISKBLOCK THEN UNITREAD(UNITNO,TEMP,512,BLKNO)
+                ELSE IF MEMORYBLOCK THEN GETMEMORYBLOCK
+                ELSE GETBLOCK;
+              INITWINDOW
+            END;
+      'V' : BEGIN
+              QUERY;
+              BLKNO := PRED(BLKNO);
+              IF (BLKNO < 0) THEN BLKERROR;
+              IF FILEBLOCK THEN IF EOF(FIN) THEN RESET(FIN);
+              IF DISKBLOCK THEN UNITREAD(UNITNO,TEMP,512,BLKNO)
+                ELSE IF MEMORYBLOCK THEN GETMEMORYBLOCK
+                ELSE GETBLOCK;
+              INITWINDOW
+            END;
+      'N' : BEGIN
+              QUERY;
+              GETBLKNO;
+              IF FILEBLOCK THEN IF EOF(FIN) THEN RESET(FIN);
+              IF DISKBLOCK THEN UNITREAD(UNITNO,TEMP,512,BLKNO)
+                ELSE IF MEMORYBLOCK THEN GETMEMORYBLOCK
+                ELSE GETBLOCK;
+                INITWINDOW
+            END;
+      'Q' : BEGIN
+              QUERY;
+              EXIT(PROGRAM)
+            END;
+      'C' : BEGIN
+              BYTEBLOCK := TRUE;
+              SHOWCHARS := TRUE;
+              GETRADIX(TRUE)
+            END;
+      'W' : BEGIN
+              BYTEBLOCK := FALSE;
+              SHOWCHARS := FALSE;
+              GETRADIX(TRUE)
+            END;
+      'B' : BEGIN
+              BYTEBLOCK := TRUE;
+              SHOWCHARS := FALSE;
+              GETRADIX(TRUE)
+            END;
+      'R' : GETRADIX(FALSE);
+      '?' : BEGIN
+              ALTLINE := NOT ALTLINE;
+              WAIT := TRUE
+            END;
+    END
+  UNTIL EVERMORE
+END.

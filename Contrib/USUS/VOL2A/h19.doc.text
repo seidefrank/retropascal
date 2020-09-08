@@ -1,0 +1,21 @@
+
+                                      Oct 29, 1979
+               From Walter Hess to users of the Heath H19 
+               terminal:
+               
+               
+                    First, you should initially set the switches 
+               in the H19 as follows:
+               
+                    S401    0 0 1 1 0 0 0 1
+               
+                    S402    0 0 0 0 0 0 1 0
+               
+                      I could not get the BACKSPACE key to do 
+               its thing and after much work and frustration, I 
+               put a "Patch" into SYSSEGS.TEXT (which is part of 
+               the source program for SYSTEM.PASCAL) consisting 
+               of an assignment of "CHR(8)" to the variable 
+               CRTINFO.CHARDEL.  This solved the problem in all 
+               parts of the system and also in my own programs.
+                    

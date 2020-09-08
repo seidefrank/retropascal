@@ -1,0 +1,209 @@
+
+PROGRAM TYPESET;
+
+CONST MAXCHAR = 80;             {MAXIMUM NUMBER OF CHARACTERS PER LINE}
+          ESC = 27;             {ESCAPE CHARACTER}
+
+TYPE  LINEPOS = 1..MAXCHAR;
+
+VAR     I,J : INTEGER;
+   COLWIDTH : INTEGER;
+       W,JW : TEXT;
+        C,D : CHAR;
+       LINE : ARRAY[1..MAXCHAR] OF CHAR;        {UNJUSTIFIED}
+      DLINE : ARRAY[1..MAXCHAR] OF CHAR;        {JUSTIFIED FOR DISPLAY}
+       FILL : INTEGER;                          {MAX % FILL ALLOWED}
+     INFILE : STRING[15];
+    OUTFILE : STRING[15];
+        NSP : INTEGER;          {NUMBER OF SPACES IN CURRENT LINE}
+          P : BOOLEAN;          {PARAGRAPH FLAG}
+      PITCH : 5..6;
+    SPACING : INTEGER;
+  JUST,STOP : BOOLEAN;
+      SPCNT : INTEGER;
+      NEEDSP: INTEGER;
+      ADDSP : INTEGER;
+      EXTSP : INTEGER;
+
+PROCEDURE CLEARSCREEN;
+BEGIN
+  WRITE(CHR(26),CHR(0),CHR(0),CHR(0),CHR(0),CHR(0),CHR(0))
+END;
+
+PROCEDURE OPTIONS;
+VAR C:CHAR;
+BEGIN
+  CLEARSCREEN;
+  WRITELN('DARLENE''S SUPER TYPESETTING PROGRAM':52);
+  GOTOXY(10,6);
+  WRITE('INPUT FILE NAME   ');
+  READLN(INFILE);
+  IF LENGTH(INFILE)=0 THEN INFILE:='SYSTEM.WRK';
+  INFILE:=CONCAT(INFILE,'.TEXT');
+  GOTOXY(10,7);
+  WRITE('OUTPUT FILE NAME  ');
+  READLN(OUTFILE);
+  GOTOXY(10,9);
+  WRITE('ENTER COLUMN WIDTH ');
+  READ(COLWIDTH);
+  SPACING:=1;
+  PITCH:=6;
+  GOTOXY(10,12);
+  WRITELN('THE CURRENT PROGRAM OPTIONS ARE:');
+  WRITELN('TYPE PITCH     - 5 (ELITE)':40);
+  WRITELN('MAXIMUM PERCENT FILL - 80%':40);
+  WRITELN('SINGLE SPACE TEXT':30);
+  WRITELN;WRITELN;WRITE('WOULD YOU LIKE TO CHANGE THEM (Y/N) ':46);
+  RESET(INPUT);
+  FILL:=80;
+  PITCH:=6;
+  READ(C);
+  IF C='Y' THEN
+    BEGIN
+      CLEARSCREEN;
+      WRITELN;WRITELN;
+      WRITE('PICA OR ELITE  (P/E) ':35);
+      {EAD(C);
+      IF C='P' THEN PITCH:=6 ELSE PITCH:=5;
+      WRITELN;
+      WRITE('MAXIMUM FILL PERCENT ':35);
+      READLN(FILL)
+    END
+END;
+
+
+PROCEDURE BLANKSCAN(LINELENGTH:LINEPOS);
+VAR I,J : INTEGER;
+      B : BOOLEAN;
+BEGIN
+  B:=FALSE;
+  NSP:=0;
+  FOR I:=1 TO LINELENGTH DO
+    BEGIN
+      IF ((LINE[I]=' ') AND B) THEN NSP:=NSP+1;
+      IF LINE[I]<>' ' THEN B:=TRUE
+    END;
+  IF NSP>0 THEN
+    BEGIN
+      JUST:=TRUE;
+      NEEDSP:=(COLWIDTH-LINELENGTH)*PITCH;
+      ADDSP:=NEEDSP DIV NSP;
+      EXTSP:=NEEDSP-ADDSP*NSP;
+    END ELSE JUST:=FALSE
+END;
+
+PROCEDURE VARLINE(LINELENGTH:LINEPOS);
+VAR K,L : INTEGER;
+      B : BOOLEAN;
+      C : CHAR;
+    ESP : INTEGER;
+BEGIN
+  SPCNT:=0;
+  ESP:=NSP DIV 2;
+  B:=FALSE;
+  K:=1;L:=1;
+  REPEAT
+    C:=LINE[L];
+    IF ((C=' ') AND B AND JUST) THEN
+      BEGIN
+        WRITE(JW,CHR(ESC));
+        K:=K+1;
+        SPCNT:=SPCNT+1;
+        IF SPCNT=ESP THEN WRITE(JW,CHR(32+PITCH+ADDSP+EXTSP))
+          ELSE WRITE(JW,CHR(32+PITCH+ADDSP));
+      END ELSE WRITE(JW,C);
+    IF C<>' ' THEN B:=TRUE;
+    K:=K+1;
+    L:=L+1
+  UNTIL L>LINELENGTH;
+  WRITELN(JW)
+END;
+  
+  
+PROCEDURE FILLINE(LINELENGTH:LINEPOS);
+VAR K,L,SP,NSPL:INTEGER;
+             B:BOOLEAN;
+BEGIN
+  IF (LINELENGTH*100 DIV COLWIDTH) < FILL THEN JUST:=FALSE
+    ELSE JUST:=TRUE;
+      SP:=COLWIDTH-LINELENGTH;
+      NSPL:=SP-NSP;
+      B:=FALSE;
+      K:=1;L:=1;
+      REPEAT
+        DLINE[K]:=LINE[L];
+        IF ((DLINE[K]=' ') AND (SP<>0) AND B AND JUST) THEN
+          BEGIN
+            K:=K+1;
+            SP:=SP-1;
+            DLINE[K]:=' ';
+            IF NSPL>0 THEN
+              BEGIN
+                K:=K+1;
+                SP:=SP-1;
+                NSPL:=NSPL-1;
+                DLINE[K]:=' '
+              END
+          END;
+        IF DLINE[K]<>' ' THEN B:=TRUE;
+        K:=K+1;
+        L:=L+1
+      UNTIL L>LINELENGTH;
+      IF K<=COLWIDTH THEN FOR K:=K TO COLWIDTH DO DLINE[K]:=' '
+END;
+  
+  
+  
+BEGIN           {-MAIN PROGRAM-}
+  OPTIONS;
+  FOR I:=1 TO MAXCHAR DO
+    BEGIN
+      LINE[I]:=' ';
+      DLINE[I]:=' '
+    END;
+  STOP:=FALSE;
+  I:=1;
+  CLEARSCREEN;
+  RESET(W,INFILE);
+  REWRITE(JW,OUTFILE);
+  WRITELN;
+  WHILE NOT EOF(W) DO
+    BEGIN
+      READ(W,C);
+      IF EOLN(W) THEN
+        BEGIN
+          LINE[I]:=C;
+          BLANKSCAN(I);
+          FILLINE(I);
+          VARLINE(I);
+          GET(W);
+          D:=W^;
+          IF NOT STOP THEN FOR J:=1 TO COLWIDTH DO WRITE(DLINE[J]) ELSE
+            BEGIN
+              J:=1;
+              WHILE DLINE[J]<>' ' DO
+                BEGIN
+                  WRITE(DLINE[J]);
+                  J:=J+1
+                END;
+              WRITELN('    <<<= HYPHENATE PLEASE.');
+              EXIT(PROGRAM)
+            END;
+          IF ((NOT JUST) AND (D<>' ')) THEN STOP:=TRUE;
+          IF EOLN(W) THEN
+            BEGIN
+              GET(W);
+              WRITELN;
+              WRITELN(JW)
+            END;
+          I:=1;
+          WRITELN
+        END ELSE
+          BEGIN
+            LINE[I]:=C;
+            I:=I+1
+          END
+  END;
+  CLOSE(JW,LOCK)
+END.
+  

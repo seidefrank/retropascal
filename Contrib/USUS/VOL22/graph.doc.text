@@ -1,0 +1,282 @@
+                            Terak Graphics Programs
+                             
+Reviewed by: Henry E. Baumgarten
+             Department of Chemistry
+             University of Nebraska-Lincoln
+             Lincoln, Nebraska 68588-0304
+                            
+     The programs on this diskette were written by Edward J. Grundler, Dennis E.
+Grundler, and Ken Gaal, apparently sometime in the period, 1978-1980. The
+programs are intended for use with the Terak LSI-11-based computer and are
+highly machine-dependent. Unfortunately, documentation for most of these
+programs is not available, and several of the original units required are
+missing from the package.  The brief description given here was written by the
+reviewer, whose experience with the Terak has been limited to the three sessions
+during which he and Clifford E. Bettis (Department of Physics, University of
+Nebraska-Lincoln) attempted to run the programs on one of the Terak computers in
+our undergraduate physics laboratory.  These Teraks run on version 2.0 of the
+UCSD system; therefore, everything said here refers to that version.  Users of
+more recent versions should make appropriate changes.
+
+     We encountered a number of problems (besides those mentioned above) in
+attempting to test these programs.  First, the Terak uses terminal emulators,
+which are capable of emulating more than one conventional terminal.  The Teraks
+in our physics department are set up with the "Terak terminal emulator" (which
+appears to be similar in many respects to a VT-52 (or H19) terminal).  The
+original programs were written for a different emulator.  Although changing to a
+different emulator is not difficult (if the code files are available), it does
+require maintaining a separate system disk just for these programs. Also, the
+command PAGE(OUTPUT) was used in the original programs to clear the text (but
+not the graphics) screen.  Apparently, this is no longer done, and certainly it
+did nothing useful in our tests. Therefore, this reviewer decided to remove all
+terminal-dependent code and place it in a unit called SCREEN_STUFF. Before
+attempting to compile these programs and units, edit the file SCRN_STUFF to fit
+your terminal emulator (or terminal), compile it, and place the code file in a
+library called GRAPH.LIBRARY.
+
+     A second problem encountered was in the array bounds for the various
+definitions of a type generally called SCREENTYPE, which is used in calls to the
+intrinsic DRAWLINE. In the orginal programs this type was defined as a PACKED
+ARRAY[0..319,0..239] OF BOOLEAN, which is just backwards from the type
+definition described in our manuals (from version 1.4 on), although even these
+sources are ambiguous.  Since DRAWLINE is one of those intrinsics (written in
+LSI-11/PDP-11 assembly language) that will write whereever it is directed), the
+to us unexpected order of subscripts caused the program FUNC to die as soon as
+DRAWLINE was called. Reversal of the array order (essentially to [Y,X])
+corrected this problem. Oddly enough, two of the programs had the "correct"
+order, causing us to wonder how the submitters managed to get all of the
+programs to run. All of the programs on this diskette have been edited to the
+order which worked for us. [In retrospect this reviewer should have placed
+SCREENTYPE as a global type in SCREEN_STUFF so that it could be changed by users
+in one convenient location.  To do so will require removing the type definition
+from all of the programs and making certain that all DRAWLINE's use the same
+TYPE.]
+
+     Although there was no way of knowing what was in the missing units, the
+reviewer attempted to assemble, edit, or (as a last resort) write these units
+using more or less the same algorithms and style employed by the submitters.
+These units have not been thoroughly tested, and some involve matters with which
+the reviewer has had little experience.  They worked in the limited tests
+carried out, but almost certainly could be improved upon.  The specific units
+prepared in this way are: REAL_INPUT (based on the FUNCTION INPUT_VALUE, widely
+used in these programs), PLOTTER (based on the Pascal implementation of DRAWLINE
+given in the 1.5 manual---on which the Grundlers appear to base their line-
+drawing routines), FACT_STUFF (based on algorithms in Knuth).
+
+     In order to use the programs, the following procedure should work.  Edit
+the file, SCRN_STUFF, and put it in the library, GRAPH.LIBRARY.  Then edit (if
+necessary) the units, REAL_INPUT, POST_ENTRY, PLOTTER (must be edited to work
+with your serial or parallel board or to use REMOUT with the plotter), GRAPHICS,
+and FACT_STUFF, compile them, and place them in the same library on your system
+disk. The comment blocks placed in the interface sections of some units have
+been moved to the beginning of the unit (before the unit declaration) as
+compilation with them in their original places would waste a lot of library
+space (anything in the INTERFACE section will be put in the library).  Next the
+individual programs can be edited (if necessary), compiled, and run in the usual
+fashion.
+
+     Because of limited access to the Teraks and the problems encountered in
+testing the programs, it was not possible to test all of the programs. However,
+all were compiled successfully, and some that could not be tested on the Terak
+were tested on the reviewer's mongrel LSI-11/2 system, using a DMP2 Hiplot
+plotter for output (something NOT recommended for the weak in heart).  If any
+(brave? foolhardy?) user wants to try these programs but doesn't have a Terak,
+here is how it can be done in a quick and dirty fashion.  First, set up the
+plotter so it can be turned off quickly!  For any program using the units
+PLOTTER or GRAPHICS and in which the hard copy option is clearly allowed, the
+changes are simple.  For the former (1) Convert the DRAWLINE call from external
+to a dummy procedure.  Find the line PROCEDURE DRAWLINE(...parameters...);
+EXTERNAL; and change it to 
+           PROCEDURE DRAWLINE(...parameters...);
+             BEGIN
+             END;
+If the procedure THROTTLE appears as an external procedure comment it out.
+(A Pascal version of THROTTLE is in one of the units but isn't needed here.)
+(2) Remove (or comment out) all UNITWRITE's to unit 3 (the Terak screen). 
+(3) If your computer isn't an LSI-11 or PDP-11, you will have to rewrite
+PLOTTER to use REMOUT to output one char rather than the Pascal version of
+assembly language provided in PLOTTER.  The program POLAR gives very good
+results with the reviewer's LSI-11/2 and the DMP2 Hiplot.  If the programs uses
+GRAPHICS, you will have to edit graphics following the instructions in the
+graphics program, recompile, and place the unit in the library. That should be
+the only required change for most programs.
+
+     For those programs which do not use either GRAPHICS or PLOTTER, the
+procedure is more complicated and the results may or may not be satisfactory.
+However, if you wish, you may do the following. (1) Edit and compile the unit
+REVIEW which contains DRAWLINE, HOME (the pen), and THROTTLE procedures which
+are intended for use only with the Grundler-Gaal programs (because the (0,0)
+point on the plotter corresponds to the (0,239) point on the screen and the
+DRAWLINE procedure maps the screen coordinates onto the plotter coordinates) and
+place the unit in GRAPH.LIBRARY. (2) Remove or comment out the definitions of
+DRAWLINE and THROTTLE as external procedures in the program. (3) Remove or
+comment out the type definition of SCREENTYPE (it is already in the unit
+REVIEW). (4) At the beginning of the program add the line INITPLOT and at the
+end HOME. (5) Either edit the program to compensate for the differences in the
+resolution between the Terak and the plotter (the resolution of the Terak is 320
+in the x-direction, the Hiplot 2000), or edit REVIEW to cause the plot to move 4
+or 5 steps rather than 1 for each move in the x, y, or xy directions (this will
+increase the size of the plot but it will be rather crude). PXMAX and PYMAX
+should be defined to be either 2000 and 1400 or 319 and 239, depending on your
+decision. (6) Remove or comment out all UNITWRITE's to unit 3.  With caution
+considerable other code can be eliminated when only the plotter is being used.
+Note that the output will be rather marginal with some programs and in some will
+be almost weird. Only the graphics material will appear on the screen; the text
+(axis labels, for example) will appear on the terminal, and the plots may appear
+crude by plotter standards. All sorts of lines that you wouldn't use with a
+plotter but might with a terminal will appear (if you haven't deleted the code),
+and things will seem incrediby slow.  However, the program IVP gave fairly good
+results after a thorough editing. Space does not permit including the edited
+version on this diskette.
+
+    Comments on individual programs follow.
+    
+     POST_ENTRY.  This is such a potentially useful unit that it is documented
+separately as well as within the unit. Depending on the decision of the editor
+of the library, it may appear on a different diskette from the rest of the
+programs and units.  The unit is used for the entry of functions in algebraic
+(infix) form as strings from the terminal and for the evaluation of the entered
+function (in postfix form).  An excellent unit.
+
+    REAL_INPUT.  The purpose of this unit is to facilitate the entering of
+real numbers as strings from the terminal.  It appears to work quite well and
+should be useful in any application in which a string (terminated with a
+carriage return) is acceptable. It does accept scientific format and handles
+most (but not all) improper entries without killing the system.
+
+    SCRN_STUFF.  Screen control units for most of the programs on this diskette.
+This unit should be edited for your terminal or terminal emulator, compiled and
+put in GRAPH.LIBRARY before compiling most of the other units.
+
+     PLOTTER.  A simple line drawing unit of the type used in the Grundler
+programs, all of which appear to be based on the Pascal implementation of
+DRAWLINE described in the version 1.5 manual. It is intended for the dumb
+Hiplots but could (with care) be rewritten for the smart Hiplots or other
+plotters.
+
+     GRAPHICS. Apparently the final unit in a chain of development in which the
+original PLOTTER unit was one link. This unit provides line drawing procedures
+of several sorts for both the Terak graphics terminal and the DMP2 Hiplot
+plotter. The unit is fairly well documented within the unit.  If you are trying
+to adapt these program to some other graphics device and are not familiar with
+the Terak, reading this unit will help. If you want to use the Hiplot but not
+the Terak graphics parts, instructions are given in the unit for removing the
+Terak stuff. In the opinion of the reviewer this unit contained one serious
+error at the very end of the unit and some strange code in the middle. Using the
+unit as received, the program DISTRIB could not plot properly with PSCALE set any
+value other than 6.0. When the last line of code in GRAPHICS was changed from
+    
+  PICTURE(ROUND(PLOT_XLOC/PSCALE),239-ROUND(PLOT_YLOC/PSCALE), XEND-
+    ROUND(PLOT_XLOC/PSCALE),YEND-239-ROUND(PLOT_YLOC/PSCALE)),PEN);
+    
+to that in this package, the program worked properly. This was discovered very
+late in the review.  Hopefully the change will not foul up something else. 
+
+    The strange code is found in procedure PLOT (in GRAPHICS) and is labeled
+CORRECTION FOR STEPPER MOTOR SCALING.  One would assume that this was used to
+correct for mechanical differences in stepper motors in the x- and y-directions.
+However, when the reviewer removed this code entirely, he could discern no
+difference in the plots, and he was concerned about the failure to initialize
+the variables PLOT_XSTRT and PLOT_YSTRT, which appear no where else in the unit.
+The code was left in---perhaps some more knowledgeable user can figure out why
+it is there.
+
+    FACT_STUFF. This unit contains several procedures or functions for
+calculating n! and x! and their natural logarithms as well as related functions
+required by the program DISTRIB. Documentation appears within the unit.  This
+or some similar unit should be of general interest to persons needing factorials
+for various purposes, e.g., calculating the gamma function or doing statistical
+calculations.
+
+    FUNC.  This program calculates and plots functions y = F(x) entered from
+the terminal.  The program is interactive and fairly simple to run. It gave
+good results on the Terak during our tests.  The Hiplot output was fairly
+crude and better results could be achieved using POST_ENTRY with other
+plotting routines. A potentially useful program for teaching purposes.
+
+     POLAR.  This program calculates and plots functions r = F(theta) entered
+from the console as r = F(x).  The program is interactive; however, the
+functions of some of the entries are not defined on the screen.  Thus, you will
+have to experiment with SCALE and UNIT_SCALE to determine their effect on your
+plots.  Choosing SCALE too large will cause the plot to move outside the
+boundaries on the screen and can jamb the plotter pen against the rail,
+something to be avoided.  Therefore, do not use the default scale value: begin
+with a scale of 0.1 or 0.2.  Some good functions to begin with are: (1) a
+limacon of Pascal, r = 4*cos(x)+3 for x = 0 to 6.28, scale = 0.2; (2) r = x for
+x = 0 to 25.12, scale = 0.05; (3) r = 8*(cos(3*x)), scale = 0.2; (4) r =
+3*sqrt(1/x) for x = 0.1 to 18.8496, scale = 0.2; (5) r = r*sin(x)/x for x = -
+3.1416 to 3.1416, scale = 0.2.  Worked well with both the Terak and the DMP2
+Hiplot.
+
+     DISTRIB.  This program plots normal, binomial, and Poisson distributions or
+all of these for various entered values of sigma (standard deviation), p
+(probability), n (number of trials), and mu (mean).  The program is interactive
+but not particularly informative.  You have to understand what you are doing to
+use this program.  Furthermore, the program sat indefinitely waiting for the
+user to be clever enough to type an "A" to get things started.  Therefore, the
+program was slightly revised to eliminate that requirement. Tested only on the
+Hiplot, where the reviewer found the plots to be rather crude.  One unit
+required for this procedure was missing; thus, a substitute was prepared (the
+INPUT_VALUE function).  Whether this substitute is adequate is not known;
+however, the program appears to function with the substitute.  
+
+    SINES.  Plots two sine waves on the screen, sin(x) plus a*sin(b*x+c)+d.
+Easy to use.  Worked very well on the Terak.  The reviewer made the mistake
+of trying this one on the Hiplot using REVIEW.  This is definitely not
+recommended.  The two plots are made simultaneously, one with solid and the
+other with dashed lines. On the screen this is fine, but with the plotter it is
+very, very slow, and the plotter jumps back and forth between the two curve
+protesting loudly.
+
+     HISTOGRAM.  Tested only with the Hiplot.  This program plots histograms of
+data entered from the console of from a file.  The data file used by the
+reviewer is on the diskette under the name HISTOGRAM.DATA.  This program is
+fairly interactive, but you will have to hang in there insisting on getting the
+data plotted the way you want it, because the program tries to change things the
+way it wants. The number of histogram bars that can be plotted is limited to 22,
+although presumably this could be changed by editing.  This program is probably
+all right on the Terak where changes can be made fairly rapidly, and perhaps on
+experimenting with the input parameters the program would be found to be more
+flexible than it appears to the reviewer.
+
+    CURVE_FIT.  A program to fit data to a polynomial and plot the resulting
+function.  Was compiled but not tested. Apparently this was the first part of
+a planned general program for fitting data to several types of functions.
+
+    CONTOUR.  Apparently this program plots the intersection of a plane parallel
+to the xy plane with a surface defined by z = F(x,y).  The user-program
+interface is not quite as good as in some of the other programs; therefore, you
+will have to experiment with the various input parameters.  Tested only on the
+Hiplot using REVIEW, using as the surface a sphere impaled on the z-axis.
+The program appears to be quite clever as an appropriate intersection is sought
+and the contour line is plotted.  It coped very well with the lower half of the
+sphere but couldn't handle the upper surface.
+
+     TRIANGLE.  This program accept as input a partial definition of a triangle
+(e.g., the length of one side and the two angles at the ends of that side), then
+computes the remaining sides and angles and plots the resultant triangle.
+Compiled but not tested.
+
+    TRAVERSE.  According a colleague in the Department of Civil Engineering,
+this is a program for surveyors.  It accepts the usual input for calculating
+traverses, computes areas, angles, makes corrections, etc. Compiled but not
+tested.
+
+     IVP.  This program accepts a differential equation of the type y' = F(x,y)
+and appropriate boundary conditions, y(X0) = y0. It then "solves" the
+differential equation using either the Euler method or a fourth-order Runge-
+Kutta technique. If this doesn't mean anything to you, either this program is
+not for you or you will have do some reading elsewhere (Conte and de Boor,
+"Elementary Numerical Analysis, Chapter 8, give FORTRAN versions which should be
+easy to translate into Pascal if you would like alternative procedures, and the
+Runge-Kutta method was described briefly in Micro, No. 46, p. 13ff (1982) along
+with a BASIC program). The numerical solution by either or both methods may be
+plotted (along with the analytical solution if that is known to you so that it
+can be entered) on the screen.  The program worked very well on the Terak and
+when adapted to the Hiplot. The tic marks on the axes are arbitrarily placed at
+intervals of 1/10th of the axis length.  Therefore, the plots will look best if
+you choose x and y limits accordingly. The review edited his copy to turn of the
+TABLE_OPTION toggle (set it FALSE in INITIALIZE) because it really slows down
+the plot unless you need to see the actual calculated values. To try the program
+you can use the default example, the examples in Conte and de Boor, make up your
+own, or use some simple differential equation such as y' = cos(X) for y(0) = 2.

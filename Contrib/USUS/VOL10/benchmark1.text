@@ -1,0 +1,269 @@
+procedure TEST29;
+begin 
+  new(ROOT);
+  new(ROOT^.NEXT);
+  ROOT^.NEXT^.NEXT:=ROOT; 
+  PTR:=ROOT; 
+  write('29--> hit SPACEBAR to start ',NUM_LOOPS,
+       ' pointer transfers timing...'); 
+  SPACEBAR;
+  write(chr(7)); for I:=1 to NUM_LOOPS do begin PTR:=PTR^.NEXT end;
+  writeln;
+  write(chr(7),'      end pointer transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST29} 
+
+procedure TEST30;
+begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('30--> hit SPACEBAR to start ',NUM_LOOPS,' STRING transfers timing...'); 
+  SPACEBAR; 
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin STR2:=STR1 end;
+  writeln;
+  write(chr(7),'      end STRING transfers timing...'); 
+  writeln;
+  writeln
+end; {TEST30} 
+
+procedure TEST31;
+begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  STR2:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing.. ';
+  write('31--> hit SPACEBAR to start ',NUM_LOOPS,' STRING comparison timing...'); 
+  SPACEBAR; 
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do if (STR2=STR1) then begin end; 
+  writeln;
+  write(chr(7),'      end STRING comparison timing...');
+  writeln;
+  writeln
+end; {TEST31} 
+
+procedure TEST32;
+begin 
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('32--> hit SPACEBAR to start ',NUM_LOOPS,' LENGTH operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=length(STR1) end; 
+  writeln;
+  write(chr(7),'      end LENGTH operations timing...'); 
+  writeln;
+  writeln
+end; {TEST32} 
+
+procedure TEST33;
+ begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('33--> hit SPACEBAR to start ',NUM_LOOPS,' COPY operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin STR2:=copy(STR1,1,65) end; 
+  writeln;
+  write(chr(7),'      end COPY operations timing...'); 
+  writeln;
+  writeln
+end; {TEST33} 
+
+procedure TEST34; 
+begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('34--> hit SPACEBAR to start ',NUM_LOOPS,' POS operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=pos('...',STR1) end;
+  writeln;
+  write(chr(7),'      end POS operations timing...'); 
+  writeln;
+  writeln
+end; {TEST34} 
+
+procedure TEST35; 
+begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  STR2:='This is it!!  '; 
+  write('35--> hit SPACEBAR to start ',NUM_LOOPS,' CONCAT operations timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin STR3:=concat(STR1,STR2) end; 
+  writeln;
+  write(chr(7),'      end CONCAT operations timing...'); 
+  writeln;
+  writeln
+end; {TEST35} 
+
+procedure TEST36;
+begin 
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('36--> hit SPACEBAR to start ',NUM_LOOPS,' DELETE operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin delete(STR1,6,11) end; 
+  writeln;
+  write(chr(7),'      end DELETE operations timing...'); 
+  writeln;
+  writeln
+end; {TEST36} 
+
+procedure TEST37;
+begin
+  STR1:='27--> hit SPACEBAR to start NUM_LOOPS STRING operations timing...';
+  write('37--> ht SPACEBAR to start ',NUM_LOOPS,' INSERT operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin insert('STR1 = ',STR1,1) end;
+  writeln;
+  write(chr(7),'      end INSERT operations timing...'); 
+  writeln;
+  writeln
+end; {TEST37} 
+
+procedure TEST38; 
+begin
+  write('38--> hit SPACEBAR to start ',NUM_LOOPS,' SIN evaluations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=sin(I) end; 
+  writeln;
+  write(chr(7),'      end SIN evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST38} 
+
+procedure TEST39;
+begin
+  write('39--> hit SPACEBAR to start ',NUM_LOOPS,' COS evaluations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=cos(I) end; 
+  writeln;
+  write(chr(7),'      end COS evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST39} 
+
+procedure TEST40;
+begin
+  write('40--> hit SPACEBAR to start ',NUM_LOOPS,' EXP evaluations timing...'); 
+  R:=-1.34583E-1;
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin S:=exp(R) end; 
+  writeln;
+  write(chr(7),'      end EXP evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST40} 
+
+procedure TEST41;
+begin
+  write('41--> hit SPACEBAR to start ',NUM_LOOPS,' ATAN evaluations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=atan(I) end;
+  writeln;
+  write(chr(7),'      end ATAN evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST41} 
+
+procedure TEST42;
+begin
+  write('42--> hit SPACEBAR to start ',NUM_LOOPS,' LN evaluations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=ln(I) end;
+  writeln;
+  write(chr(7),'      end LN evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST42} 
+
+procedure TEST43;
+begin
+  write('43--> hit SPACEBAR to start ',NUM_LOOPS,' LOG evaluations timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=log(I) end; 
+  writeln;
+  write(chr(7),'      end LOG evaluations timing...'); 
+  writeln;
+  writeln
+end; {TEST43} 
+
+procedure TEST44; 
+begin
+  J:=32;
+  write('44--> hit SPACEBAR to start ',NUM_LOOPS,' PWROFTEN operations timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin R:=PWROFTEN(J) end;
+  writeln;
+  write(chr(7),'      end PWROFTEN operations timing...'); 
+  writeln;
+  writeln
+end; {TEST44} 
+
+procedure TEST45;
+begin
+  R:=2.79234E4;
+  write('45--> hit SPACEBAR to start ',NUM_LOOPS,' TRUNC operations timing...'); 
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=trunc(R) end; 
+  writeln;
+  write(chr(7),'      end TRUNC operations timing...'); 
+  writeln;
+  writeln
+end; {TEST45} 
+
+procedure TEST46;
+begin
+  R:=2.79234E4;
+  write('46--> hit SPACEBAR to start ',NUM_LOOPS,' ROUND operations timing...');
+  SPACEBAR;
+  write(chr(7)); 
+  for I:=1 to NUM_LOOPS do begin J:=ROUND(R) end; 
+  writeln;
+  write(chr(7),'      end ROUND operations timing...'); 
+  writeln;
+  writeln
+end; {TEST46} 
+
+begin  {MAIN PROGRAM}
+  write(chr(26),chr(30));
+  J:=100; K:=200; L:=300; R:=400; S:=500; T:=600;
+  write('Enter number of loops per test:  ');
+  readln(NUM_LOOPS);
+  repeat
+    PROMPT;
+    writeln;
+    write('Enter test (enter "0" for all, negative number to quit):  ');
+    readln(TEST); 
+    write(chr(26),chr(30));
+    if (TEST>=0) then 
+      case TEST of
+         0:begin
+             TEST1; TEST2; TEST3; TEST4; TEST5; TEST6; TEST7; TEST8; 
+             TEST9; TEST10; TEST11; TEST12; TEST13; TEST14; TEST15;
+             TEST16; TEST17; TEST18; TEST19; TEST20; TEST21; TEST22;
+             TEST23; TEST24; TEST25; TEST26; TEST27; TEST28; TEST29; 
+             TEST30; TEST31; TEST32; TEST33; TEST34; TEST35; TEST36;
+             TEST37; TEST38; TEST39; TEST40; TEST41; TEST42; TEST43;
+             TEST44; TEST45; TEST46;
+           end; 
+         1:TEST1; 2:TEST2; 3:TEST3; 4:TEST4; 5:TEST5; 6:TEST6; 7:TEST7; 
+         8:TEST8; 9:TEST9; 10:TEST10; 11:TEST11; 12:TEST12; 13:TEST13; 
+        14:TEST14; 15:TEST15; 16:TEST16; 17:TEST17; 18:TEST18; 19:TEST19;
+        20:TEST20; 21:TEST21; 22:TEST22; 23:TEST23; 24:TEST24; 25:TEST25;
+        26:TEST26; 27:TEST27; 28:TEST28; 29:TEST29; 30:TEST30; 31:TEST31;
+        32:TEST32; 33:TEST33; 34:TEST34; 35:TEST35; 36:TEST36; 37:TEST37;
+        38:TEST38; 39:TEST39; 40:TEST40; 41:TEST41; 42:TEST42; 43:TEST43;
+        44:TEST44; 45:TEST45; 46:TEST46;
+      end;
+  until (TEST<0);
+end.
+
+

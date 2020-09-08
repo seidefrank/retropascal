@@ -1,0 +1,549 @@
+
+(* --- OUT       --- *)
+{.fs# SEGMENT} FUNCTION OUT: BOOLEAN;
+LABEL 1,2;
+VAR
+  SAVE: PTRTYPE;
+  I: INTEGER;
+  BUF: PACKED ARRAY [0..1023] OF CHAR;
+  FN: STRING;
+{.fs} OK: BOOLEAN;
+BEGIN
+  OUT:=FALSE;
+  REPEAT
+    CLEARSCREEN;     (* Dumb terminal patch *)
+    SAVETOP:='>Quit:';
+    WRITELN(SAVETOP);
+{.fs} WRITELN;      { some space from command bar }
+    WRITELN('     U(pdate the workfile and leave');
+    WRITELN('     E(xit without updating');
+    WRITELN('     R(eturn to the editor without updating');
+{.fs# WRITELN('     W(rite to a file name and return'); }
+{.fs} WRITELN('     W(rite to a file name');   { (removed incorrect 'and return') }
+{.fs} IF CURRENTFILENAME<>'' THEN   { S(ave command, similar to Apple Pascal }
+{.fs}   WRITELN('     S(ave to ',CURRENTFILENAME);
+    CH:=UCLC(GETCH);
+    IF (CH='S') AND (CURRENTFILENAME='') THEN CH:=' '
+{.fs# UNTIL CH IN ['U','E','R','W']; }
+{.fs} UNTIL CH IN ['U','E','R','W','S'];
+  IF CH='R' THEN GOTO 2;
+  IF CH='E' THEN BEGIN OUT:=TRUE; CLEARSCREEN; GOTO 2 END;
+  CLOSE(THEFILE);
+  IF CH='W' THEN
+    BEGIN
+      SAVE:=CURSOR;
+{.fs} REPEAT
+      BLANKCRT(1);
+{.fs} WRITELN;      { some space from command bar }
+{.fs# WRITE('Name of output file (<cr> to return)  -->'); }
+{.fs} WRITE('Name of output file (<enter> to return)  -->');
+{.fs} FN:='..TEXT'; FN[1]:=CHR(3); { completion for TEXT files }
+      READLN(FN);
+      IF LENGTH(FN)=0 THEN GOTO 2;
+{.fs# FOR I:=1 TO LENGTH(FN) DO FN[I]:=UCLC(FN[I]);                 }
+{.fs# IF ((POS('.TEXT',FN)<>LENGTH(FN)-4) OR (LENGTH(FN)<=4)) AND   }
+{.fs#	 (FN[LENGTH(FN)]<>'.') THEN                                 }
+{.fs#	FN:=CONCAT(FN,'.TEXT');                                     }
+{.fs# IF FN[LENGTH(FN)]='.' THEN DELETE(FN,LENGTH(FN),1);           }
+{.fs} APPENDEXTENSION(FN,'.TEXT');  { do this consistently }
+{.fs} { safeguard against overwriting existing file }
+{.fs} OPENOLD(THEFILE,FN); OK:=IORESULT<>0; CLOSE(THEFILE); { OK: file not there }
+{.fs} IF ENDSWITH(FN,':') THEN OK:=TRUE; { writing to device }
+{.fs} IF NOT OK THEN BEGIN
+{.fs}   WRITE('File exists. Overwrite? (y/n) ');
+{.fs}	REPEAT CH:=UCLC(GETCH) UNTIL CH IN ['Y','N'];
+{.fs}	OK:= CH='Y'
+{.fs} END;
+{.fs} CH:='W'   { recover CH which we temporarily misused }
+{.fs} UNTIL OK
+    END
+{.fs} ELSE IF CH='S' THEN
+{.fs}   BEGIN FN:=CURRENTFILENAME; SAVE:=CURSOR END
+  ELSE
+    FN:='*SYSTEM.WRK.TEXT';
+  BLANKCRT(1);
+{.fs# WRITE('Writing'); }
+{.fs} WRITELN;              { extra space to command bar, looks better }
+{.fs} WRITE('Writing ',FN); { show the filename }
+{.fs} IF CH='U' THEN WRITE(' (workfile)');
+  OPENNEW(THEFILE,FN);
+{.fs} IF NOT ENDSWITH(FN,':') THEN BEGIN { skip header block when writing to CLIP: or a device }
+  PAGEZERO.LASTUSED:=THEDATE;
+{.fs} PAGEZERO.LASTCURSOR:=CURSOR; { will take us back to same position when reopening }
+  IF BLOCKWRITE(THEFILE,PAGEZERO,2) <> 2 THEN GOTO 1;
+{.fs} END;
+  WRITE('.');
+  CURSOR:=1;
+  WHILE CURSOR < BUFCOUNT-1023 DO
+    BEGIN
+      I:=SCAN(-1022,=CHR(EOL),EBUF^[CURSOR+1022]);
+      MOVELEFT(EBUF^[CURSOR],BUF,1023+I);
+      FILLCHAR(BUF[1023+I],ABS(I)+1,CHR(0));
+      IF BLOCKWRITE(THEFILE,BUF,2) <> 2 THEN GOTO 1;
+      CURSOR:=CURSOR+1023+I;
+      WRITE('.');
+    END;
+  IF CURSOR<BUFCOUNT THEN
+    BEGIN
+      FILLCHAR(BUF,SIZEOF(BUF),CHR(0));
+      MOVELEFT(EBUF^[CURSOR],BUF,BUFCOUNT-CURSOR);
+      IF BLOCKWRITE(THEFILE,BUF,2) <> 2 THEN GOTO 1; WRITE('.')
+    END;
+  CLOSE(THEFILE,LOCK);
+  WRITELN;
+  WRITELN('Your file is ',BUFCOUNT,' bytes long.');
+{.fs} IF (CH='W') AND NOT ENDSWITH(FN,':') THEN CURRENTFILENAME:=FN; { enable S(ave }
+  IF CH='U' THEN
+    WITH USERINFO DO
+      BEGIN
+	SYMVID:=SYVID; SYMTID:='SYSTEM.WRK.TEXT'; GOTSYM:=TRUE;
+	OPENOLD(THEFILE,'*SYSTEM.WRK.CODE'); CLOSE(THEFILE,PURGE);
+	GOTCODE:=FALSE; CODETID:=''; OUT:=TRUE;
+      END
+    ELSE
+      BEGIN
+        WRITE('Do you want to E(xit from or R(eturn to the editor? ');
+	REPEAT CH:=UCLC(GETCH) UNTIL CH IN ['E','R'];
+	OUT:= CH='E';
+	CURSOR:=SAVE; (* QW returns to the editor *)
+      END;
+  GOTO 2; (* SORRY ABOUT THAT EDSGER *)
+1: ERROR('Writing out the file',NONFATAL);
+2:END;
+
+(* --- COPYFILE  --- *)
+{.fs# SEGMENT PROCEDURE COPYFILE; }
+PROCEDURE COPYFILE(FROMFILE{or CLIP:}: BOOLEAN);
+VAR
+  STARTPAGE,STOPPAGE,STARTOFFSET,STOPOFFSET,
+  LEFTPART,PAGE,NOTNULLS,THEREST,LMOVE: INTEGER;
+  DONE,OVFLW: BOOLEAN;
+  BUFR: PACKED ARRAY [0..1023] OF CHAR;
+  STARTMARK,STOPMARK: PACKED ARRAY [0..7] OF CHAR;
+  FN: STRING;
+  F: FILE;
+
+PROCEDURE ERRMARKER;
+BEGIN
+  ERROR('Improper marker specification.',NONFATAL);
+  EXIT(COPYFILE)
+END;
+
+PROCEDURE UNSPLITBUF;
+(* Stich the buffer back together again. *)
+BEGIN
+  MOVELEFT(EBUF^[THEREST],EBUF^[CURSOR],LMOVE);
+  READJUST(LEFTPART+1,CURSOR-(LEFTPART+1));
+  BUFCOUNT:=BUFCOUNT+CURSOR-(LEFTPART+1);
+  CURSOR:=LEFTPART+1; (* Cursor points to the beginning of the file *)
+END;
+
+PROCEDURE READERR;
+BEGIN
+  ERROR('Marker exceeds file bounds.',NONFATAL);
+  UNSPLITBUFF;
+  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  EXIT(COPYFILE)
+END;
+
+PROCEDURE SPLITBUF;
+(* Split the buffer at the Cursor.  Therest points to the right part, Lmove
+   is the length of the right part, Leftpart points to the end of the 'left
+   part', and Cursor remains unchanged. *)
+BEGIN
+  THEREST:=BUFSIZE-(BUFCOUNT-CURSOR);
+  LMOVE:=BUFCOUNT-CURSOR+1;
+  LEFTPART:=CURSOR-1;
+  MOVERIGHT(EBUF^[CURSOR],EBUF^[THEREST],LMOVE)
+END;
+
+PROCEDURE PARSEFN;
+VAR I,LPTR,RPTR,COMMA: INTEGER;
+    MARK: STRING;
+BEGIN
+  LPTR:=POS('[',FN);
+  IF LPTR=0 THEN
+    BEGIN (* whole file *)
+      STARTMARK:='        ';
+      STOPMARK:= '        '
+    END
+  ELSE
+    BEGIN
+      RPTR:=POS(']',FN);
+      IF (RPTR=0) OR (RPTR<LPTR) OR (RPTR<>LENGTH(FN)) THEN ERRMARKER;
+      MARK:=COPY(FN,LPTR+1,RPTR-LPTR-1); (* stuff between the brackets *)
+      FN:=COPY(FN,1,LPTR-1);
+      COMMA:=POS(',',MARK);
+      IF COMMA=0 THEN ERRMARKER;
+      I:=LENGTH(MARK)-COMMA; (* second marker ptr *)
+      MOVELEFT(MARK[1],STARTMARK,MIN(8,COMMA-1));
+      FILLCHAR(STARTMARK[COMMA-1],MAX(0,8-(COMMA-1)),' ');
+      MOVELEFT(MARK[COMMA+1],STOPMARK,MIN(I,8));
+      FILLCHAR(STOPMARK[I],MAX(0,8-I),' ')
+    END;
+  FOR I:=0 TO 7 DO STARTMARK[I]:=UCLC(STARTMARK[I]);
+  FOR I:=0 TO 7 DO STOPMARK [I]:=UCLC(STOPMARK[I]);
+{.fs# FOR I:=1 TO LENGTH(FN) DO FN[I]:=UCLC(FN[I]);         }
+{.fs# IF ((POS('.TEXT',FN)<>LENGTH(FN)-4) OR                }
+{.fs#    (LENGTH(FN)<=4)) AND (FN[LENGTH(FN)]<>'.') THEN    }
+{.fs#   FN:=CONCAT(FN,'.TEXT');                             }
+{.fs# IF FN[LENGTH(FN)]='.' THEN DELETE(FN,LENGTH(FN),1);   }
+{.fs} APPENDEXTENSION(FN,'.TEXT');  { do this consistently }
+END;
+
+PROCEDURE STUFFIT(START,STOP:INTEGER);
+(* Put the contents of BUFR into EBUF.  OVFLW is set to true when there is
+   no more room in the buffer. *)
+VAR AMOUNT: INTEGER;
+BEGIN
+  IF START<=STOP THEN
+    BEGIN
+      AMOUNT:=STOP-START+1;
+      IF CURSOR+AMOUNT+250(*slop*)>=THEREST THEN
+        BEGIN
+	  ERROR('Buffer overflow.',NONFATAL);
+	  UNSPLITBUFF;
+	  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+	  EXIT(COPYFILE)
+	END
+      ELSE
+	BEGIN
+	  MOVELEFT(BUFR[START],EBUF^[CURSOR],AMOUNT);
+	  CURSOR:=CURSOR+AMOUNT
+	END
+    END
+END;
+
+PROCEDURE GETNEXT;
+BEGIN
+{.fs# DONE:=BLOCKREAD(F,BUFR,2,PAGE+PAGE)<>2; } { char dev may return 1 or 2 }
+  DONE:=BLOCKREAD(F,BUFR,2,PAGE+PAGE)=0;
+  WRITE('.');
+  IF NOT DONE THEN NOTNULLS:=SCAN(-1024,<>CHR(0),BUFR[1023])+1024
+  ELSE NOTNULLS:=0;
+  PAGE:=PAGE+1;
+END;
+
+PROCEDURE CHKOVFLW;
+BEGIN
+  IF (STOPOFFSET>=NOTNULLS) AND (STOPPAGE<PAGE) THEN
+    BEGIN
+      STOPPAGE:=STOPPAGE+1;
+      STOPOFFSET:=STOPOFFSET-NOTNULLS;
+    END;
+END;
+
+PROCEDURE FINDMARKERS;
+(* Given STARTMARK and STOPMARK find out their page numbers and offsets *)
+{.fs} { BUGBUG: page numbers are actually not implemented, it seems }
+VAR
+  PZ: HEADER;
+
+  PROCEDURE SEARCH(MNAME:NAME;VAR OFF,PNUM: INTEGER);
+  VAR
+    I: INTEGER;
+  BEGIN
+    I:=0;
+    WHILE (I<PZ.COUNT) AND (MNAME<>PZ.NAME[I]) DO I:=I+1;
+    IF MNAME<>PZ.NAME[I] THEN
+      BEGIN
+	ERROR('Marker not there.',NONFATAL);
+	UNSPLITBUFF;
+	EXIT(COPYFILE)
+      END;
+    OFF:=PZ.POFFSET[I];
+{.fs} { BUGBUG: PAGEN is never set; seems like an incompleted feature }
+    PNUM:=PZ.PAGEN[I];
+    IF PNUM=0 THEN
+      BEGIN OFF:=OFF-1; PNUM:=1 END; (* Kludge to maintain compatibility *)
+  END;
+
+BEGIN(* findmarkers *)
+  STARTPAGE:=1;    STARTOFFSET:=0;   (* default values *)
+  STOPPAGE:=32767; STOPOFFSET:=32767;
+  IF (STARTMARK<>'        ') OR (STOPMARK<>'        ') THEN
+    BEGIN
+      IF BLOCKREAD(F,PZ,2,0)<>2 THEN READERR;
+      IF STARTMARK<>'        ' THEN SEARCH(STARTMARK,STARTOFFSET,STARTPAGE);
+      IF STOPMARK<>'        ' THEN SEARCH(STOPMARK,STOPOFFSET,STOPPAGE)
+    END
+END;
+
+BEGIN (* COPYFILE *)
+  PROMPTLINE:=' Copy: From what file[marker,marker]? ';
+{.fs} IF NOT FROMFILE THEN BEGIN            { copy from clipboard, i.e. CLIP: }
+{.fs}   FN:='CLIP:';
+{.fs}   PARSEFN;
+{.fs}   RESET(F,FN);
+{.fs}   IF IORESULT<>0 THEN EXIT(COPYFILE)  { should not happen }
+{.fs} END ELSE
+  REPEAT
+    PROMPT;
+{.fs} FN:='..TEXT'; FN[1]:=CHR(3); { completion for TEXT files }
+    READLN(FN);
+    IF LENGTH(FN)=0 THEN EXIT(COPYFILE);
+    PARSEFN;
+    RESET(F,FN);
+    PROMPTLINE:=' Copy: File not present. Filename? ';
+  UNTIL IORESULT=0;
+  PROMPTLINE:=' Copy'; PROMPT;
+  SPLITBUF;
+  FINDMARKERS;
+  PAGE:=STARTPAGE;
+{.fs} { PAGEN is never set (defaulting to 1); does this code work in that case? }
+  GETNEXT;
+  WHILE (STARTOFFSET>=NOTNULLS) AND NOT DONE DO
+    BEGIN
+      CHKOVFLW;
+      STARTOFFSET:=STARTOFFSET-NOTNULLS;
+      GETNEXT;
+    END;
+  IF (STOPPAGE<PAGE) AND (STOPOFFSET<NOTNULLS) THEN
+    STUFFIT(STARTOFFSET,MIN(NOTNULLS-1,STOPOFFSET-1))
+  ELSE
+    STUFFIT(STARTOFFSET,NOTNULLS-1);
+  WHILE ((STOPPAGE>=PAGE) OR (STOPOFFSET>=NOTNULLS)) AND NOT DONE DO
+    BEGIN
+      CHKOVFLW;
+      GETNEXT;
+      IF (STOPPAGE<PAGE) AND (STOPOFFSET<NOTNULLS) THEN
+	STUFFIT(0,MIN(NOTNULLS-1,STOPOFFSET-1))
+      ELSE
+	STUFFIT(0,NOTNULLS-1)
+    END;
+  IF IORESULT<>0 THEN ERROR('Disk Error.',NONFATAL);
+  UNSPLITBUF;
+  CENTERCURSOR(TRASH,MIDDLE,TRUE);
+  CLOSE(F);
+END;
+
+(* --- ENVIRON   --- *)
+{.fs# SEGMENT} PROCEDURE ENVIRONMENT;
+VAR
+  I: INTEGER;
+
+  PROCEDURE ERASE10;
+  VAR I: INTEGER;
+  BEGIN
+    WRITE(' ':10);
+    FOR I:=1 TO 10 DO WRITE(CHR(BS));
+  END;
+
+  PROCEDURE BOOL(B:BOOLEAN);
+  BEGIN
+    IF B THEN WRITE('True') ELSE WRITE('False');
+    WRITELN
+  END;
+
+  FUNCTION GETBOOL: BOOLEAN;
+  VAR CH: CHAR;
+  BEGIN
+    ERASE10; CH:=UCLC(GETCH);
+    WHILE NOT (CH IN ['T','F']) DO
+      BEGIN
+	WRITE('T or F');
+	FOR TRASH:=0 TO 5 DO WRITE(CHR(BS));
+	CH:=UCLC(GETCH)
+      END;
+    IF CH='T' THEN
+      BEGIN
+	WRITE('True  ');
+	GETBOOL:=TRUE
+      END
+    ELSE
+      BEGIN
+	WRITE('False ');
+	GETBOOL:=FALSE
+      END;
+  END;
+
+  FUNCTION GETINT: INTEGER;
+  VAR
+    CH:CHAR;
+    N: INTEGER;
+  BEGIN
+    ERASE10;
+    N:=0;
+    REPEAT
+      REPEAT
+	CH:=GETCH;
+	IF NOT (CH IN ['0'..'9',CHR(SP),CHR(CR)]) 
+	  THEN WRITE('#',CHR(BELL),CHR(BS));
+      UNTIL CH IN ['0'..'9',CHR(SP),CHR(CR)];
+      IF CH IN ['0'..'9'] THEN
+	BEGIN
+	  WRITE(CH);
+	  IF N<1000 THEN N:=N*10+ORD(CH)-ORD('0')
+	END;
+    UNTIL CH IN [CHR(SP),CHR(CR)];
+    GETINT:=N; WRITE('  ')
+  END;
+
+BEGIN
+  WITH PAGEZERO DO
+    BEGIN
+      CLEARSCREEN;
+{.fs# PROMPTLINE:= ' Environment: {options} <etx> or <sp> to leave';  }
+{.fs} PROMPTLINE:= ' Environment: {options} <ctrl-enter> or <space> to leave'; 
+      PROMPT; NEEDPROMPT:=TRUE;
+      WRITELN;
+{.fs} WRITELN;  { extra space to make it look better under inverted command bar }
+      WRITE(       '    A(uto indent  '); BOOL(AUTOINDENT);
+      WRITE(       '    F(illing      '); BOOL(FILLING);
+      WRITE(       '    L(eft margin  '); WRITELN(LMARGIN);
+      WRITE(       '    R(ight margin '); WRITELN(RMARGIN);
+      WRITE(       '    P(ara margin  '); WRITELN(PARAMARGIN);
+      WRITE(       '    C(ommand ch   '); WRITELN(RUNOFFCH);
+      WRITE(       '    T(oken def    '); BOOL(TOKDEF);
+      WRITELN;
+      WRITELN('    ',BUFCOUNT,' bytes used, ',BUFSIZE-BUFCOUNT+1,' available.');
+      WRITELN; 
+      IF SDEFINED OR TDEFINED THEN
+	BEGIN
+	  WRITELN('    Patterns:');
+	  IF TDEFINED THEN WRITE('      <target>= ''',TARGET:TLENGTH,'''');
+	  IF SDEFINED THEN WRITE(', <subst>=  ''',SUBSTRING:SLENGTH,'''');
+	  WRITELN; WRITELN;
+        END;
+      IF COUNT>0 THEN WRITELN('    Markers:');
+      WRITE('  ');
+      FOR I:=0 TO COUNT-1 DO
+        BEGIN WRITE(' ':6,NAME[I]);
+	  IF (I+4) MOD 3=0 THEN BEGIN WRITELN; WRITE('  ') END
+	END;
+      WRITELN;
+      WRITELN;
+      WRITELN('    Date Created: ',CREATED.MONTH,'-',CREATED.DAY,'-',
+				  CREATED.YEAR,'   Last Used: ',
+				  LASTUSED.MONTH,'-',LASTUSED.DAY,'-',
+				  LASTUSED.YEAR);
+{.fs} WRITELN;
+{.fs} WRITELN('    Editor Build Version II.801');
+      GOTOXY(LENGTH(PROMPTLINE),0);
+      REPEAT
+	CH:=UCLC(GETCH);
+	IF NOT (CH IN ['A','C','F','L','P','R','T',' ',CHR(ETX),CHR(CR)]) THEN
+	  BEGIN ERROR('Not option',NONFATAL); PROMPT; END
+	ELSE
+	  CASE CH OF
+{.fs}	   'A': BEGIN GOTOXY(18,2); AUTOINDENT:=GETBOOL END;    { moved down by 1 row }
+{.fs}	   'F': BEGIN GOTOXY(18,3); FILLING:=GETBOOL END;
+{.fs}	   'L': BEGIN GOTOXY(18,4); LMARGIN:=GETINT END;
+{.fs}	   'R': BEGIN GOTOXY(18,5); RMARGIN:=GETINT END;
+{.fs}	   'P': BEGIN GOTOXY(18,6); PARAMARGIN:=GETINT END;
+{.fs}	   'C': BEGIN GOTOXY(18,7); READ(RUNOFFCH) END;
+{.fs}	   'T': BEGIN GOTOXY(18,8); TOKDEF:=GETBOOL END
+{.fs#	   'A': BEGIN GOTOXY(18,1); AUTOINDENT:=GETBOOL END;    }
+{.fs#	   'F': BEGIN GOTOXY(18,2); FILLING:=GETBOOL END;       }
+{.fs#	   'L': BEGIN GOTOXY(18,3); LMARGIN:=GETINT END;        }
+{.fs#	   'R': BEGIN GOTOXY(18,4); RMARGIN:=GETINT END;        }
+{.fs#	   'P': BEGIN GOTOXY(18,5); PARAMARGIN:=GETINT END;     }
+{.fs#	   'C': BEGIN GOTOXY(18,6); READ(RUNOFFCH) END;         }
+{.fs#	   'T': BEGIN GOTOXY(18,7); TOKDEF:=GETBOOL END         }
+	  END;
+	GOTOXY(LENGTH(PROMPTLINE),0);
+      UNTIL CH IN [' ',CHR(ETX),CHR(CR)];
+      REDISPLAY;
+    END;
+END;
+
+(* --- PUTSYNTAX --- *)
+{.fs# SEGMENT} PROCEDURE PUTSYNTAX;
+VAR
+  D0,D1,D2,BLK,PTR,COLON: INTEGER;
+  T,C:PACKED ARRAY [0..2] OF CHAR;
+  BUF:PACKED ARRAY [0..1023] OF CHAR;
+  F: FILE;
+
+PROCEDURE PUTNUM;
+BEGIN
+  MSG:='Syntax Error #'; PUTMSG;
+{.fs# WRITE(USERINFO.ERRNUM,'. Type <sp>'); }
+{.fs} WRITE(USERINFO.ERRNUM,'. Type <space>');
+END;
+
+BEGIN (* putsyntax *)
+  WITH USERINFO DO
+    BEGIN
+      OPENOLD(F,'*SYSTEM.SYNTAX');
+      IF IORESULT<>0 THEN PUTNUM
+      ELSE
+	BEGIN
+	  IF ERRNUM<=108 THEN BLK:=2            {.fs numbers adjusted to SYSTEM.SYNTAX file}
+	  ELSE
+	    IF ERRNUM<=135 THEN BLK:=4          {.fs numbers adjusted to SYSTEM.SYNTAX file}
+	    ELSE
+	      IF ERRNUM<=169 THEN BLK:=6        {.fs numbers adjusted to SYSTEM.SYNTAX file}
+	      ELSE
+		IF ERRNUM<=403 THEN BLK:=8      {.fs numbers adjusted to SYSTEM.SYNTAX file}
+		ELSE
+{.fs#		 IF ERRNUM<=302 THEN } BLK:=10  {.fs numbers adjusted to SYSTEM.SYNTAX file}
+{.fs#		 ELSE BLK:=12 }  ;
+	  IF BLOCKREAD(F,BUF,2,BLK)<>2 THEN PUTNUM
+	  ELSE
+	    BEGIN
+{.fs#	      IF BUF[0]=CHR(DLE) THEN PTR:=2 ELSE PTR:=0; } { DLE not supported }
+{.fs}	      PTR:=0;
+	      D0:=ERRNUM DIV 100; (* convert error number to characters *)
+	      D1:=(ERRNUM-D0*100) DIV 10;
+	      D2:=ERRNUM MOD 10;
+	      T[0]:=CHR(D0+ORD('0')); T[1]:=CHR(D1+ORD('0'));
+	      T[2]:=CHR(D2+ORD('0'));
+	      REPEAT
+		FILLCHAR(C,3,'0');
+		COLON:=SCAN(MAXCHAR,=':',BUF[PTR]);
+		MOVELEFT(BUF[PTR],C[3-COLON],COLON);
+{.fs#		COLON:=COLON+PTR; }
+		COLON:=PTR; { mis-use COLON to remember line start }
+{.fs#		PTR:=SCAN(MAXCHAR,=CHR(EOL),BUF[PTR])+PTR+3 }
+{.fs}		PTR:=SCAN(MAXCHAR,=CHR(EOL),BUF[PTR])+PTR+1 { line start }
+	      UNTIL (T=C) OR (BUF[PTR]=CHR(0));
+	      IF (T<>C) AND (BUF[PTR]=CHR(0)) THEN PUTNUM
+	      ELSE
+		BEGIN
+{.fs#		  MOVELEFT(BUF[COLON+1],MSG[1],(PTR-COLON)-4);          }
+{.fs#		  MSG[0]:=CHR(MIN(68,(PTR-COLON)-4)); (* R- required *) }
+		  MOVELEFT(BUF[COLON]{start},MSG[1],PTR-1{end}-COLON);
+		  MSG[0]:=CHR(MIN(68,PTR-1{end}-COLON)); { implant length }
+{.fs#		  HOME; CLEARLINE(0); WRITE(MSG,'.  Type <sp>'); }
+{.fs}		  HOME; CLEARLINE(0); WRITE(MSG,'.  Type <space>');
+		END
+	    END
+	  END(* if ioresult<>0 *);
+	SHOWCURSOR;
+	REPEAT UNTIL GETCH=' ';
+	ERRBLK:=0; ERRSYM:=0; ERRNUM:=0; (*  Only yell once!!! *)
+      END(* with userinfo *)
+END(* putsyntax *);
+
+{.fs} (* --- SHOWHELP --- *)
+{.fs} PROCEDURE SHOWHELP;
+{.fs} BEGIN
+{.fs}   CLEARSCREEN;
+{.fs}   PROMPTLINE:= ' Help: Please press <space> when done reading.';
+{.fs}   PROMPT; NEEDPROMPT:=TRUE;
+{.fs}   WRITELN; WRITELN;
+{.fs}              {01234567890123456789012345678901234567890123456789012345678901234567890123456789}
+{.fs}   WRITELN('=== Editor Brief Command Summary ===                        [Build Version II.801]');
+{.fs}   WRITELN;
+{.fs}   WRITELN('--- Cursor movement ---');
+{.fs}   WRITELN(' Arrow keys: move cursor');
+{.fs}   WRITELN(' < or >: set cursor direction to forward or backwards, respectively.');
+{.fs}   WRITELN(' <space>, <enter>, or P(age: move cursor in cursor direction. Use on a touch kbd.');
+{.fs}   WRITELN('--- Basic editing ---');
+{.fs}   WRITELN(' I(nsert: insert text. When done, hit <ctrl-enter> (or <esc> to undo).');
+{.fs}   WRITELN(' D(elete: delete text. Move over it with <space>, <enter>, arrows. <ctrl-enter> or <esc>.'); { BUGBUG line too long }
+{.fs}   WRITELN(' C(opy B(uffer: insert last deleted text; re-inserted last inserted text.');
+{.fs}   WRITELN(' C(opy V(rom clipboard: insert text from Windows clipboard.');
+{.fs}   WRITELN(' D(elete also copies text to Windows clipboard (end with <esc> to keep the text).');
+{.fs}   WRITELN('--- Other ---');
+{.fs}   WRITELN(' Q(uit:    exit editor, with option to save the file.');
+{.fs}   WRITELN(' X(change: type over existing text. Exit with <ctrl-enter> or <esc>.');
+{.fs}   WRITELN(' A(djust:  adjust indentation. Exit with <ctrl-enter>.');
+{.fs}   WRITELN(' F(ind /word/ or F(ind L/chars/ finds a string.');
+{.fs}   WRITELN(' R(eplace /what//withwhat/. To multi-replace with prompt type /RVL/what//withwhat/');
+{.fs}   WRITE  (' digits or /: set repeat factor for movement, find, replace. / means "until end"');
+{.fs}   GOTOXY(LENGTH(PROMPTLINE),0);
+{.fs}   REPEAT UNTIL GETCH = ' ';
+{.fs}   REDISPLAY;
+{.fs} END;

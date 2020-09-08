@@ -1,0 +1,66 @@
+     
+         SOME REQUESTS FOR PASCAL SOFTWARE FOR THE USERS' GROUP LIBRARY
+
+     As a programmer, what I like most is a challange that requires careful
+thought to carry off, yet is of manageable size and will make a definite
+contribution to the efforts of others.  So I thought I'd offer you some
+programming challenges:
+
+     A.  A directory program that would be called up from the Command level 
+(not in the filer), and display the contents of a disk in two or three 
+alphabetized columns in one screenful.  The size of each file would be 
+included, and perhaps the date.  Following the named files, one would list
+the unutilized areas of a disk individually, by block range and size. 
+For example, an unused area might be indicated in the following manner: 
+"<400-450 empty>   51", where the "51" would line up with the blocks per file
+column. A summary line at the bottom would list the total number of files and
+the vacant space on the disk.  To save time, you would invoke the directory of
+a given disk simply by typing the unit number desired.  For example, typing
+"X(ecute) 4 <carriage return>" would produce the directory of the main disk
+drive.
+
+     B. We need a library of procedures to BLOCKREAD and BLOCKWRITE untyped
+files, then CREAD (or whatever name you want) a character, LNREAD a line, and
+CWRITE and LNWRITE respectively.  Not only would this markedly expedite
+textfile handling in the present P-code Pascals that support untyped files,
+but these procedures are the ONLY way to access files with the present native-
+code compilers that run on micros.
+
+     C. We need a good double-precision integer package written in Standard 
+Pascal to augment the present inadequate limitations of MAXINT.
+
+     D. We need a package of input/output procedures for money (usually 
+represented as integer cents), so the user can type a decimal point and not
+confuse the computer.  A nice touch is to have the cursor stay put at the
+dollar units position of the number to be entered, and have the number of
+dollars grow to the left as it is typed in. Then, when the decimal point is
+typed, the cursor steps to the right one character at a time as the user fills
+in the cents value.
+
+     E. Someone interested in mathematics should tackle a complex-number
+package.
+
+     F. A simple "data base system" consisting of: 1) a means to define the
+names of a number of fields, 2) a way of entering/correcting data within each
+field, 3) successive or random access to records, 4) a disk sort by a single
+field (if you wanted multiple fields in order you'd do multiple sorts), and 5)
+a key extraction program, where one would make a subfile consisting of all
+the records in the main file that had one field equal to a certain value or
+falling within a certain range.  As an alternative to sorting the records
+themselves, one could use an ISAM approach.
+
+     Because Pascal saves textfiles as lines with dynamic length terminated by 
+an end-of-line character, the easiest and most space-saving way to represent
+the data would be as ASCII strings.  The program could be very general if the
+zeroth record in a data file defined the data:
+
+first  line:    Number of elements per record (in ASCII) (call it "n"). 
+second line:    Name of first element, and perhaps an ASCII code of data type.
+. . .           . . . 
+nth    line:    Name and type code of n-1th element.
+n+1th  line:    Name and type code of nth element.
+
+     Then, each successive record might begin with an ASCII record number and 
+the actual data of each record element, all of dynamic length.  So you'd never
+have to specify field width; you would simply be limited by the maximum
+length of the character array or string when the data was in memory.

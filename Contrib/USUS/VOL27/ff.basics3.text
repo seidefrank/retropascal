@@ -1,0 +1,358 @@
+PROCEDURE ERASE { LINE: INTEGER };
+BEGIN
+  {GOTOXY(0,LINE);
+  WRITE(OUTPUT, ERASELINE);}
+  sc_erase_to_eol ( 0, line );
+END;
+
+PROCEDURE PROMPT{ MSG: STRING;  Y: INTEGER };
+BEGIN
+  sc_erase_to_eol ( 0, y );
+  GOTOXY(0,Y);
+  WRITE(OUTPUT,{ERASELINE,}MSG);
+END   (* of Prompt *);
+
+PROCEDURE ONEMOMENT{ REASON: STRING };
+BEGIN
+  (*$B 40COL- *)
+  PROMPT(CONCAT(REASON,'...one moment, please'),MSG_LINE);
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  PROMPT(CONCAT(REASON,'...please wait'),MSG_LINE);
+  (*$E 40COL  *)
+END;
+
+PROCEDURE GETRESPONSE{ ANY: BOOLEAN;  LMSG, DEFAULT, RMSG: STRING;
+                         LEN: INTEGER;  VAR RESPONSE: STRING };
+(*  This procedure solicits for a response on line MSG_LINE with the
+    question LMSG.  It puts up LMSG, the DEFAULT, and then RMSG, puts the
+    cursor after LMSG, and then calls ACCEPTSTR  *)
+BEGIN
+  PROMPT(CONCAT(LMSG,COPY(DASHES,1,LEN),' ',RMSG),MSG_LINE);
+  ACCEPTSTR(ANY,LEN,LENGTH(LMSG),MSG_LINE,DEFAULT,RESPONSE);
+END;  (* of getresponse *)
+
+FUNCTION YESNO{ MSG, DEFAULT: STRING ): BOOLEAN;   SDA 6/23/80 };
+(* This function will keep asking whatever MSG is at the coordinates 
+   0, MSG_LINE until getting a yes or no answer.  It returns true if the answer
+   was yes.  It also sets the global variable IS.  *)
+BEGIN
+  REPEAT
+    PROMPT(CONCAT(MSG,' ? (Y/N) '),MSG_LINE);
+    ACCEPTSTR(TRUE,1,9+LENGTH(MSG),MSG_LINE,DEFAULT,IS);
+    LCTOUC(IS);
+  UNTIL (IS='N') OR (IS='Y');
+  YESNO := (IS='Y');
+END;
+
+PROCEDURE LCTOUC{ VAR INSTRING: STRING };
+VAR I: INTEGER;
+BEGIN
+  FOR I := 1 TO LENGTH(INSTRING) DO
+    IF INSTRING[I] IN ['a'..'z'] THEN
+      INSTRING[I] := CHR(ORD(INSTRING[I])-32);
+END;
+      
+PROCEDURE PRESSRETURN{ MSG: STRING;  Y: INTEGER };
+BEGIN
+  PROMPT(CONCAT(MSG,' press RETURN'),Y);
+  READLN(KEYBOARD);
+  IF EOF(KEYBOARD) THEN RESET(KEYBOARD);
+END;
+
+PROCEDURE OPEN_DIR;     (* Opens Freeform directory *)
+BEGIN
+   IF FILEOPEN THEN CLOSE(DIRECTORY);
+   RESET(DIRECTORY,CONCAT(DISKDRIVE,':',DIRNAME));
+   FILEOPEN := IORESULT = 0;
+END;     (* of open_dir *)
+
+PROCEDURE FREEMEM{ VAR DAT_DESC: FILEDESC };
+  
+  PROCEDURE DODISPOSE( HEAD: INTEGER );
+  VAR I: INTEGER;
+  BEGIN
+    WITH DAT_DESC DO BEGIN
+      I := HEAD;
+      WHILE I <> 0 DO
+        WITH LIST[I] DO BEGIN
+          DISPOSE(WINDOW);
+          I := AFTER
+        END
+    END
+  END;
+
+BEGIN  (* FREEMEM *)
+  DODISPOSE( DAT_DESC.LISTHEAD );
+  DODISPOSE( DAT_DESC.FREEHEAD )
+END;   (* of freemem *)
+
+FUNCTION OPEN_DAT{(REQUESTED_FORM: STRING; VAR DAT_FILE: AFILE;
+                       VAR DAT_DESC: FILEDESC;  ISEGS: STRING;
+                           MAX: BOOLEAN ): BOOLEAN};
+(* Will return true and set DAT_OPEN to true if it can open the DATA file
+   associated with REQUESTED_FORM otherwise it will return false.  Also
+   sets BLKSPERPAGE for the file and all the other variables associated with
+   DAT_DESC.  If MAX is true all available heap will be used for
+   the LIST table other wise just half  *)
+VAR
+     SIZE, I: INTEGER;
+BEGIN
+  RESET(DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+  DAT_DESC.USEDHEAP := FALSE;
+  IF IORESULT = 0 THEN
+    BEGIN
+      OPEN_DAT := TRUE;
+      DAT_OPEN := TRUE;
+      WITH DAT_DESC, DIRECTORY^ DO BEGIN
+        LISTHEAD := 0;
+        LISTTAIL := 0;
+        FREEHEAD := 1;
+        FOR I := 0 TO MAXLISTSIZE-1 DO LIST[I].AFTER := I + 1;
+        
+      { GOTOXY(0,4);
+        WRITELN('OPEN_DAT called with ISEGS = |',ISEGS,'|');
+        WRITE('Input Segment Names : ');
+        READLN(ISEGS);
+      }
+        
+        IS :=
+  'FREEFORM,GOTOXY,FILEOPS,STRINGOP,EXTRAIO,PASCALIO,REALOPS,ACCEPTNU,ACCEPTST';
+        I := VARAVAIL(IS);
+        
+        IF DEBUGMODE THEN
+          BEGIN
+            GOTOXY(0,4);
+            WRITELN('VARAVAIL list below:');
+            WRITELN(IS,' and ');
+            WRITELN(ISEGS);
+            WRITE('Enter any additions - ');
+            READLN(IS);
+            IF IS <> '' THEN ISEGS := CONCAT(ISEGS,',',IS)
+          END;
+        
+        (* 2048 words of Slop *)
+        SIZE := ( VARAVAIL( ISEGS ) + ( I - VARAVAIL( '' ) ) - 2048 ) DIV 256;
+        
+        IF NOT MAX THEN SIZE := SIZE DIV 2;
+        IF SIZE > MAXLISTSIZE THEN SIZE := MAXLISTSIZE;
+
+        IF DEBUGMODE THEN
+          BEGIN  GOTOXY(37,0);  WRITE('SIZE OF LIST = ',SIZE:2)  END;
+        
+        LIST[SIZE].AFTER := 0;
+        USEDHEAP := TRUE;                           (* SDA  Mar 31, 1981   *)
+        
+        IF SIZE = 0 THEN
+          (*$B 40COL- *)
+          PRESSRETURN('*** Not enough Memory for Form.  Abort after you',
+                      MSG_LINE);
+          (*$E 40COL  *)
+          (*$B 40COL+ *)
+          BEGIN
+            PRESSRETURN('*** Not enough Memory,',MSG_LINE);
+            PRESSRETURN('*** Abort after you',MSG_LINE);
+          END;
+          (*$E 40COL  *)
+          
+        FOR I := 1 TO SIZE DO NEW(LIST[I].WINDOW);  (* BUG fix I = 1 not 0 *)
+        BLKSPERPAGE := ((THEMAXROW*THEMAXCOL)+WINDOWSIZE) DIV (WINDOWSIZE+1)
+      END
+    END
+  ELSE OPEN_DAT := FALSE;
+END;   (* of open_dat *)
+
+PROCEDURE CLOSE_DAT {( VAR DAT_FILE: AFILE;  VAR DAT_DESC: FILEDESC;
+                           VAR ERR: BOOLEAN )};
+VAR  I,J: INTEGER;
+BEGIN
+  WITH DAT_DESC DO BEGIN
+    ERR := FALSE;
+    IF USEDHEAP THEN
+      BEGIN
+        I := LISTHEAD;
+        WHILE I <> 0 DO
+          WITH LIST[I] DO BEGIN
+            IF CHANGED THEN
+              IF BLOCKWRITE(DAT_FILE,WINDOW^,1,DBLOCK) <> 1 THEN ERR := TRUE;
+            I := AFTER
+          END;
+        FREEMEM( DAT_DESC )
+      END;
+    CLOSE(DAT_FILE,LOCK);
+    DAT_OPEN := FALSE
+  END
+END;   (* of close_dat *)
+
+FUNCTION OPEN_CON{( REQUESTED_FORM: STRING ): BOOLEAN};
+(* Will return true and set CON_OPEN to true if it can open the CONSTANT file
+   associated with REQUESTED_FORM otherwise it will return false *)
+BEGIN
+  RESET(FORM_CON_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.CON'));
+  IF IORESULT = 0 THEN
+    BEGIN OPEN_CON := TRUE;  CON_OPEN := TRUE  END
+  ELSE OPEN_CON := FALSE;
+END;   (* of open_con *)
+
+FUNCTION OPEN_CTL{(REQUESTED_FORM: STRING): BOOLEAN};
+(* Will return true and set CTL_OPEN to true if it can open the CONTROL file
+   associated with REQUESTED_FORM otherwise it will return true *)
+BEGIN
+  RESET(FORM_CTL_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.CTL'));
+  IF IORESULT = 0 THEN
+    BEGIN OPEN_CTL := TRUE;  CTL_OPEN := TRUE  END
+  ELSE OPEN_CTL := FALSE;
+END;   (* of open_ctl *)
+
+FUNCTION OPEN_TIT{(REQUESTED_FORM: STRING): BOOLEAN};
+(* Will return true and set TIT_OPEN to true if it can open the TITLE file
+   associated with REQUESTED_FORM otherwise it will return true *)
+BEGIN
+  RESET(FORM_TIT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.TIT'));
+  IF IORESULT = 0 THEN
+    BEGIN OPEN_TIT := TRUE;  TIT_OPEN := TRUE  END
+  ELSE OPEN_TIT := FALSE;
+END;   (* of open_tit *)
+
+PROCEDURE SEEKDIR{ REC: INTEGER;  WHAT: ACTIONTYPE };
+BEGIN
+  SEEK(DIRECTORY, REC);
+  IF WHAT = ANDGET THEN GET(DIRECTORY) ELSE
+  IF WHAT = ANDPUT THEN PUT(DIRECTORY);
+END;   (* of seekdir *)
+
+PROCEDURE SEEKCON{ REC: INTEGER;  WHAT: ACTIONTYPE };
+BEGIN
+  SEEK(FORM_CON_FILE, REC);
+  IF WHAT = ANDGET THEN GET(FORM_CON_FILE) ELSE
+  IF WHAT = ANDPUT THEN PUT(FORM_CON_FILE);
+END;   (* of seekcon *)
+
+PROCEDURE SEEKCTL{ VAR CTL_FILE: CFILE;  COL: BOOLEAN;  REC: INTEGER;
+                        WHAT: ACTIONTYPE };
+BEGIN
+  IF COL THEN REC := REC + DIRECTORY^.THEMAXROW;
+  SEEK(CTL_FILE, REC);
+  IF WHAT = ANDGET THEN GET(CTL_FILE) ELSE
+  IF WHAT = ANDPUT THEN PUT(CTL_FILE);
+END;   (* of seekctl *)
+
+PROCEDURE SEEKTIT{ VAR TIT_FILE: TFILE;  REC: INTEGER;  WHAT: ACTIONTYPE };
+BEGIN
+  SEEK(TIT_FILE, REC);
+  IF WHAT = ANDGET THEN GET(TIT_FILE) ELSE
+  IF WHAT = ANDPUT THEN PUT(TIT_FILE);
+END;   (* of seektit *)
+
+PROCEDURE FINISH_UP;     (* Completes bookkeeping *)
+VAR  ERR: BOOLEAN;
+BEGIN
+  IF FILEOPEN THEN CLOSE(DIRECTORY);
+  FILEOPEN := FALSE;
+  IF PRINTER_ON THEN CLOSE(PRINTER);
+  PRINTER_ON := FALSE;
+  IF CON_OPEN THEN CLOSE(FORM_CON_FILE);
+  CON_OPEN := FALSE;
+  IF CTL_OPEN THEN CLOSE(FORM_CTL_FILE);
+  CTL_OPEN := FALSE;
+  IF DAT_OPEN THEN CLOSE_DAT(FORM_DAT_FILE,FORM_DAT_DESC,ERR);
+  DAT_OPEN := FALSE;
+  IF TIT_OPEN THEN CLOSE(FORM_TIT_FILE);
+  TIT_OPEN := FALSE
+END;      (* of finish_up *)
+
+PROCEDURE ERROR{INDEX:INTEGER};
+VAR MSG: STRING;
+BEGIN
+  MSG := 'ERROR';
+  CASE INDEX OF
+   (*$B 40COL- *)
+    1: MSG := 'FREEFORM directory is full';
+    2: MSG := 'FREEFORM diskette is full';
+    3: MSG := 'Printer is not on line';
+    4: MSG := 'No Control file found';
+    5: MSG := 'No Data file found';
+    6: MSG := 'No directory on disk';
+    8: MSG := 'No Title file found';
+    9: MSG := 'ERROR on Read';
+   10: MSG := 'ERROR on Write';
+   11: MSG := 'Unable to open Temp file';
+   12: MSG := 'No Constant file found';
+   (*$E 40COL  *)
+   (*$B 40COL+ *)
+    1: MSG := 'FREEFORM dir full';
+    2: MSG := 'FREEFORM disk full';
+    3: MSG := 'Printer offline';
+    4: MSG := 'No Control file';
+    5: MSG := 'No Data file';
+    6: MSG := 'No directory';
+    8: MSG := 'No Title file';
+    9: MSG := 'ERROR on Read';
+   10: MSG := 'ERROR on Write';
+   11: MSG := 'Can''t open Temp file';
+   12: MSG := 'No Constant file';
+   (*$E 40COL  *)
+  END;
+  PRESSRETURN(CONCAT('*** ',MSG,'... '),MSG_LINE);
+  QUIT := TRUE;
+END;   (* of error *)
+
+FUNCTION SEARCH{VAR LOC: INTEGER;  NAME: STRING): BOOLEAN};
+(* This function will return true if it finds NAME in the freeform directory
+   and the location NAME was found at in LOC.  It returns false otherwise.
+*)
+BEGIN
+  OPENDIR;
+  LOC := 0;
+  WITH DIRECTORY^ DO
+    BEGIN
+      WHILE (FORM_NAME <> NAME) AND (FORM_NAME <> '') AND (LOC < DIRSIZE-1) DO
+        BEGIN  GET(DIRECTORY);  LOC := LOC + 1  END;
+      SEARCH := FORM_NAME = NAME
+    END
+END;   (* of search *)
+
+PROCEDURE GETNUM{MIN,THEMAX,DEFAULT: INTEGER; WHAT: STRING; VAR ANS: INTEGER};
+VAR  MAXSTR,DEFSTR: STRING[7];
+     DUMY: CHAR;
+     xdummy : sc_key_command;
+BEGIN
+  (* If MIN = THEMAX just set ANS to one of them and exit  SDA  3/2/81 *)
+  IF MIN = THEMAX THEN
+    BEGIN  ERASE(MSG_LINE);  ANS := MIN;  EXIT(GETNUM)  END;
+  ENCODE(THEMAX,MAXSTR);
+  IF DEFAULT IN [MIN..THEMAX] THEN ENCODE(DEFAULT,DEFSTR)
+  ELSE DEFSTR := COPY(DASHES,1,LENGTH(MAXSTR));
+  REPEAT
+    PROMPT(CONCAT(WHAT,' ',DEFSTR,'    (max. is ',MAXSTR,')'),MSG_LINE);
+    GOTOXY(LENGTH(WHAT)+1,MSG_LINE);
+    ACCEPTNUM(FALSE,LENGTH(MAXSTR),IS,DUMY,xdummy);
+    IF (IS = '') OR (IS = 'INVALID') THEN ANS := DEFAULT
+    ELSE VALUE(TRUE,IS,FAKE,ANS);
+  UNTIL ANS IN [MIN..THEMAX]
+END;   (* of getnum *)
+
+PROCEDURE ENCODE{ NUM: INTEGER;  VAR ANS: STRING };
+VAR
+     CH: STRING[1];
+     ORDZERO, I: INTEGER;
+
+BEGIN
+  ANS := '';   CH := ' ';  ORDZERO := ORD('0');
+  REPEAT
+    I := NUM MOD 10;
+    CH[1] := CHR( I + ORDZERO );
+    INSERT(CH, ANS, 1);
+    NUM := NUM DIV 10
+  UNTIL NUM = 0
+END;   (* of encode *)
+
+PROCEDURE MEMORY;
+BEGIN
+  IF DEBUGMODE THEN
+    BEGIN
+      GOTOXY(0,0);
+      WRITE('MEMAVAIL = ',MEMAVAIL,'   VARAVAIL = ',VARAVAIL('FREEFORM'),'   ')
+    END
+END;
+

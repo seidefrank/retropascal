@@ -1,0 +1,493 @@
+          {Program SMARTREMOTE allows you to communicate with another
+     computer or terminal via a modem and your telephone.  The program is
+     capable of operation in either half or full duplex.  The program
+     will also optionally record in a disk file or print all incoming
+     information from the modem (although not from the console unless the
+     remote computer echos the information) or transmit the contents of a
+     disk file to the modem. The program works well and is freindly to use
+     but ***BEWARE*** of machine dependency.  gws}
+ 
+(* Program Author:   Walter Hess
+                     1460 Seven Pines Rd.
+                     Schaumberg, IL 60193*)
+
+{Modified by George W. Schreyer 1-Feb-81.
+
+                   - - - >   ** NOTE!!! **   < - - -
+                   
+                   This program is machine specific!
+                   
+          It will only run on a PDP-11 or LSI-11 or H-11.  It is also
+     heavily terminal dependant on a Heath H-19 or DEC VT- 52.  The code
+     makes extensive use of pointers to point at I/O status registers and
+     buffers in the I/O page. The address have been adjusted to the same
+     as used by the UCSD operating system for 'PRINTER:' and 'REMIN:' and
+     'REMOUT:'.  There are also printer dependant commands for a TI-820.
+     The funny negative numbers scattered about are two's complement
+     repesentations of addresses (in the case of INITPOINTER) or bit
+     patterns (as in the main program and elsewhere).  All this garbage
+     could be replaced with blockreads and blockwrites (of regular reads
+     and writes for that matter if you don't mind slow programs) for
+     reading and writing files and unitreads to get data from the modem
+     and keyboard. This would make the program portable, but it works on
+     my computer the kludgey way it is and I don't feel like modifying it
+     again.  This would be a good project for one of you super-sharp
+     Pascal programmers out there in computerland.  gws}
+                   
+                                                        
+(* SMTTERM
+               
+                    BEWARE!!!   This program has only been 
+               finished (I think) during the last week.  It 
+               requires a serial card at addresses 177570 thru
+changed address,
+  see below    177576 (octal). the VECTOR address is 270 but is 
+               not used as PASCAL has no provision for servicing
+               an interrupt from this card.  The resultant RS232 
+               port is connected to a coupler for dial-up to the 
+               remote computer.
+               
+                    The biggest problem I had was in writing to 
+               a disc file from the remote computer due to the 
+               fact that PASCAL stores data for a file in 
+               temporary storage someplace and periodically 
+               actually writes it to disc.  The period while it 
+               is writing to disc is relatively long and since 
+               the remote computer keeps sending data, some
+               information would be lost.  I solved the problem
+               by writing to an array, and when the array is
+               nearly full, I send the remote computer an ESC
+ changed to    "H" which is the command sequence which halts the
+ cntl S        particular remote computer I use (see PROCEDURE
+               WARRY).  After a short wait while the remote
+               computer stops during which time arriving
+               characters are accepted, I write the array to the
+               disc file and then tell the remote computer to
+ changed to    resume by sending an ESC which restarts the 
+ cntl Q        remote computer (see PROCEDURE WFILE). The
+               particular commands will, of course, be different
+               for different computers.
+               
+                    Another tricky area was the use of "BREAK". 
+               If you want to send a "BREAK" to the remote 
+               computer, do not use the "BREAK" key as this will 
+               locally interrupt PASCAL.  Instead, I simulate a 
+               "BREAK" with the top row f5 which does the job 
+               nicely.
+               
+                    The program uses certain of the ESC 
+               functions created by the top row of keys as 
+               program commands and passes all other ESC 
+               sequences to the remote computer.  If the remote 
+               computer needs one of the top row sequences, the 
+               command structure will have to be modified.  It 
+               seems that Heath uses sequences for the top row 
+               which are not commonly used elsewhere.*)
+               
+PROGRAM SMTTERM;
+{ VERSION "O"  10/20/79  W.I.H. }
+{version '5' 27-AUG-81  George W. Schreyer}
+
+USES (*$U iounit.code*) IOUNIT;
+
+CONST
+  ARLEN = 100;
+
+
+VAR
+  TCHAR : PACKED ARRAY[0..1] OF CHAR;
+  i,ARINDEX,CFULL,PRINDEX,COLM,LNCT,LNPAGE,L : INTEGER;
+  NFULL,HALT,LESC,FDUP,CMD,PRINTON,RCRDON,PLBKON,TERMINATE : BOOLEAN;
+  FILENAME : STRING[30];
+  PRARRY : PACKED ARRAY[1..ARLEN] OF STRING[132];
+  SSTRING : STRING[1];
+  PRFILE : TEXT;
+  R : REAL;
+  RCH,CH,ESCH : CHAR;
+
+
+PROCEDURE WASTE;  {wait until printer ready}
+VAR
+  K : INTEGER;
+
+BEGIN
+  REPEAT
+     BIT := PRINT_XCSR^;
+  UNTIL BIT[7];
+END; {Waste}
+
+PROCEDURE COMM(CH : CHAR);  {check for modem ready then stuff ch in xbuf}
+
+BEGIN
+  REPEAT
+     BIT := MODEM_XCSR^;
+  UNTIL BIT[7];
+  MODEM_XBUF^ := CH
+END; {Comm}
+ 
+PROCEDURE QUIT;
+   BEGIN
+      WRITE(ESCH,'k');
+      WRITE(ESCH,'y1');
+      WRITE(ESCH,'y5');
+      bit := modem_rcsr^;
+      bit[6] := true;  {re-enable interupts at modem rcsr}
+      modem_rcsr^:= bit;
+      CLOSE(PRFILE,LOCK);
+   END;  {quit}
+
+PROCEDURE CARRAY;  {empty buffer file}
+
+VAR
+  J : INTEGER;
+
+BEGIN
+  FOR J := 2 TO ARLEN DO
+    PRARRY[J] := '';
+END; {Carray}
+
+PROCEDURE WARRY;  {see if necessary to stop host}
+  
+BEGIN
+  IF ORD(CH) > 127
+    THEN CH := CHR(ORD(CH) - 128);
+  IF (CH = CHR(13))
+    THEN
+      BEGIN
+        PRINDEX := 1;
+        ARINDEX := ARINDEX + 1;
+        IF ARINDEX = ARLEN - 3
+          THEN
+            BEGIN
+              NFULL := TRUE;
+              COMM(CHR(19));   {send cntl-s}
+            END;
+      END
+    ELSE
+      BEGIN
+        IF CH <> CHR(127)
+          THEN
+            BEGIN
+              SSTRING[1] := CH;
+              INSERT(SSTRING,PRARRY[ARINDEX],PRINDEX);
+              PRINDEX := PRINDEX + 1;
+            END;
+      END;
+END; {Warry}
+
+PROCEDURE DISPLAY;
+  
+  BEGIN
+    WRITE(ESCH,'Y8 ',ESCH,'l',ESCH,'F^',ESCH,'G');
+    IF CMD
+      THEN WRITE(ESCH,'p');
+    WRITE('BLUE Cmd',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF PLBKON
+      THEN WRITE(ESCH,'p');
+    WRITE('RED Playback',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF RCRDON
+      THEN WRITE(ESCH,'p');
+    WRITE('GREY Record',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF NOT FDUP
+      THEN WRITE(ESCH,'p');
+    WRITE('f1 Half Duplex',ESCH,'q',ESCH,'F^',ESCH,'G');
+    IF PRINTON
+      THEN WRITE(ESCH,'p');
+    WRITE('f2 Print',ESCH,'q',ESCH,'F^',ESCH,'G','f3 Quit',
+          ESCH,'F^',ESCH,'Gf5 Break',ESCH,'F^',ESCH,'G');
+  END; {Display}
+
+
+PROCEDURE RCORD;
+  
+  VAR
+    TRYAGAIN : BOOLEAN;
+
+  BEGIN
+    {$I-}
+    REPEAT
+      unitclear(1);
+      WRITE('Enter File Name (.TEXT Assumed)');
+      WRITE(' Or CR to Terminate  ');
+      READLN(FILENAME);
+      IF LENGTH(FILENAME) = 0
+        THEN
+          BEGIN
+            RCRDON := FALSE;
+            EXIT(RCORD);
+          END;
+      FILENAME := CONCAT(FILENAME,'.TEXT');
+      RESET(PRFILE,FILENAME);
+      IF IORESULT = 0
+        THEN
+          BEGIN
+            CLOSE(PRFILE);
+            WRITE(ESCH,'Y8 ',ESCH,'l','File exists, do you want to ');
+            WRITE('replace it (Y or N)   ');
+            REPEAT
+              READ(CH);
+            UNTIL (CH = 'Y') OR (CH = 'N') OR (CH = 'y') OR (CH = 'n');
+            IF (CH = 'N') OR (CH = 'n')
+              THEN TRYAGAIN := TRUE
+              ELSE TRYAGAIN := FALSE;
+          END
+        ELSE TRYAGAIN := FALSE;
+      IF NOT TRYAGAIN
+        THEN REWRITE(PRFILE,FILENAME);
+    UNTIL (IORESULT = 0) AND (NOT TRYAGAIN);
+    {$I+}
+    END; {Rcord}
+    
+
+PROCEDURE WFILE;  {write buffer array to disk}
+
+
+VAR
+  K,J : INTEGER;
+
+BEGIN
+  K := 1;
+  IF LENGTH(PRARRY[1]) = 0
+    THEN K := 2;
+  FOR J := K TO ARINDEX - 1 DO
+    begin
+      (*$I-*)
+      WRITELN(PRFILE,PRARRY[J]);
+      (*$I+*)
+      if ioresult <> 0 then 
+         begin
+            close(prfile,lock);
+            write(chr(27),'Y8 ',chr(27),'l');
+            write('file full  ');
+            RCORD;
+            WRITE(CHR(27),'Y8 ',CHR(27),'K','please wait ...');
+            writeln(prfile,prarry[j]);
+         end;
+    end;
+  IF PRINDEX > 1
+    THEN
+      PRARRY[1] := PRARRY[ARINDEX]
+    ELSE
+      PRARRY[1] := '';
+  ARINDEX := 1;
+  CARRAY;
+  NFULL := FALSE;
+END; {Wfile}
+
+procedure dummy;
+begin
+  write(chr(27),'j');
+  WRITE(CHR(27),'Y8 ',CHR(27),'K','please wait ...');
+  wfile;
+  display;
+  write(chr(27),'k');
+  COMM(CHR(17));   {send cntl-q}
+end;
+
+PROCEDURE PRINT (PRTCHR : CHAR);
+
+BEGIN
+  WASTE;PRINT_XBUF^ := PRTCHR;
+END; {Print}
+
+
+PROCEDURE COMMAND;
+
+VAR
+  GCHAR : BOOLEAN;
+    
+    PROCEDURE PLAYBACK;
+  
+    VAR
+      J : INTEGER;
+  
+    BEGIN
+      {$I-}
+      REPEAT
+        WRITE(ESCH,'Y8 ',ESCH,'l','Enter File Name (.TEXT Assumed)');
+        WRITE(' Or CR to Terminate  ');
+        READLN(FILENAME);
+        IF LENGTH(FILENAME) = 0
+          THEN
+            BEGIN
+              PLBKON := FALSE;
+              EXIT(PLAYBACK);
+            END;
+        FILENAME := CONCAT(FILENAME,'.TEXT');
+        RESET(PRFILE,FILENAME);
+      UNTIL IORESULT = 0;
+      {$I+}
+      WRITE(ESCH,'k');
+      WHILE NOT EOF(PRFILE) DO
+        BEGIN
+          READ(PRFILE,RCH);
+          COMM(RCH);
+          WRITE(RCH);
+          IF EOLN(PRFILE)
+            THEN
+              BEGIN
+                COMM(CHR(13));
+                COMM(CHR(10));
+                WRITE(CHR(13));
+                READ(PRFILE,RCH);
+              END;
+        END; {While}
+        PLBKON := FALSE;
+        WRITE(ESCH,'j');
+        CLOSE(PRFILE);
+      END; {Playback}
+    
+
+BEGIN {Command}
+  WRITE(ESCH,'x5',ESCH,'j');
+  DISPLAY;
+  IF CMD THEN
+     BEGIN
+        REPEAT
+          GCHAR := FALSE;
+          REPEAT
+            READ(CH);
+            IF CH = ESCH
+              THEN
+                BEGIN
+                  GCHAR := TRUE;
+                  READ(CH);
+                END
+              ELSE WRITE(CHR(7));
+          UNTIL GCHAR AND (CH IN ['P'..'U']);
+          CASE CH OF
+            'P' : CMD := FALSE;
+            'Q' : IF PLBKON
+                  THEN PLBKON := FALSE
+                  ELSE
+                    BEGIN
+                      PLBKON := TRUE;
+                      DISPLAY;
+                      PLAYBACK;
+                    END;
+            'R' : IF RCRDON
+                    THEN
+                      BEGIN
+                        RCRDON := FALSE;
+                        write(chr(27),'l');
+                        WRITE(CHR(27),'Y8 ',chr(27),'K','please wait ...');
+                        WFILE;
+                        CLOSE(PRFILE,LOCK);
+                      END
+                    ELSE
+                     BEGIN
+                       RCRDON := TRUE;
+                       PRINDEX := 1;
+                       ARINDEX := 1;
+                       CARRAY;
+                       NFULL := FALSE;
+                       PRARRY[1] := '';
+                       write(chr(27),'Y8 ',chr(27),'l');
+                       RCORD;
+                       write(chr(27),'k');
+                     END;
+            'S' : IF FDUP = TRUE
+                    THEN FDUP := FALSE
+                    ELSE FDUP := TRUE;
+            'T' : PRINTON := NOT PRINTON;
+            'U' : TERMINATE := TRUE;
+          END; {Case}
+          DISPLAY;
+        UNTIL (NOT CMD) OR TERMINATE;
+     END;
+  WRITE(ESCH,'y5',ESCH,'k');
+END; {Command}
+
+BEGIN { Smtterm }
+  WRITE(CHR(27),CHR(69));
+  WRITELN('smart remote version 5      3-Sep-81');
+  set_up_pointers;
+  BIT := MODEM_RCSR^;
+  BIT[6] := FALSE;  {disable interupts}
+  MODEM_RCSR^ := BIT;
+  BIT := MODEM_XCSR^;
+  BIT[6] := FALSE;
+  MODEM_XCSR^ := BIT;
+  ESCH := CHR(27);
+  WRITE(ESCH,'x1');
+  SSTRING := ' ';
+  CFULL := 0;
+  NFULL := FALSE;TERMINATE := FALSE; HALT := FALSE;
+  FDUP := TRUE;CMD := FALSE;PRINTON := FALSE;RCRDON := FALSE;
+  PLBKON := FALSE;
+  COMMAND;
+  WHILE NOT TERMINATE DO
+     BEGIN
+       UNITREAD(2,TCHAR[0],1,,1);
+       WHILE UNITBUSY(2) DO
+         BEGIN
+           bit := modem_rcsr^;
+           IF NFULL THEN CFULL := CFULL + 1;
+           IF bit[7] THEN
+               BEGIN
+                 CFULL := 0;
+                 CH := MODEM_RBUF^;
+                 if ord(ch) > 127 then ch := chr(ord(ch)-128);
+                 IF CH <> CHR(10)  THEN 
+                    BEGIN
+                      WRITE(CH);
+                      IF PRINTON
+                        THEN PRINT(CH);
+                      IF RCRDON
+                        THEN WARRY;
+                    END;
+               END;
+           IF CFULL = 100  {wait until 100 loops without receipt of a char}
+             THEN 
+               BEGIN
+                 DUMMY;
+                 CFULL := 0;
+               END;
+         END; {While}
+       IF LESC
+         THEN
+           BEGIN
+             LESC := FALSE;
+             IF TCHAR[0] = 'P'
+               THEN 
+                  BEGIN
+                     CMD := TRUE;
+                     COMMAND
+                  END
+               ELSE
+                 BEGIN
+                   IF TCHAR[0] = 'W'
+                     THEN
+                     BEGIN
+                         for i := 0 to 15 do bit[i] := false;
+                         bit[0] := true;
+                         MODEM_XCSR^ := bit;  
+                         {set break bit, bit 0, in modem xcsr}
+                         FOR L := 1 TO 500 DO
+                           R := 6.2*164.83*9.5/17.84;
+                         bit[0] := false;
+                         MODEM_XCSR^ := bit;  {reset break bit}
+                       END
+                     ELSE
+                       BEGIN
+                         COMM(ESCH);COMM(TCHAR[0]);
+                         IF TCHAR[0] = 'H'
+                           THEN HALT := TRUE;
+                       END;
+                 END;
+           END
+         ELSE
+           IF (TCHAR[0] = ESCH) AND (NOT HALT)
+             THEN LESC := TRUE
+             ELSE
+               BEGIN
+                 COMM(TCHAR[0]);
+                 IF TCHAR[0] = ESCH
+                   THEN HALT := FALSE
+                   ELSE IF NOT FDUP
+                     THEN WRITE(TCHAR[0]);
+               END;
+     END;
+  IF TERMINATE THEN QUIT;
+END. {Smtterm}
+

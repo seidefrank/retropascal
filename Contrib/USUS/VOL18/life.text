@@ -1,0 +1,477 @@
+{12:09 6 Jun 81}                       
+program life;
+const
+  maxx=79; maxy=23; middlex=39; middley=11;
+  screen_char='*';
+  prompt='n(ext r(un i(nterval c(hange s(ave g(et (ESC quits):';
+  border=
+'---------------------------------------------------------------------------';
+  ESC=27; FF=12; BS=8; SP=32; CR=13; ETX=3;
+  LT=1; RT=19; UP=23; DN=26;
+  WRITE_LT=97; WRITE_RT=115; WRITE_UP=119; WRITE_DN=122;
+  ERASE_LT=65; ERASE_RT=83; ERASE_UP=87; ERASE_DN=90;
+type
+  row=0..maxy;
+  col=0..maxx;
+var
+  alive,prev_alive:array[col,row] of boolean;
+  cur_neighbors,next_neighbors:array[col,row] of 0..8;
+  i,population,generation:integer;
+  interval:1..99;
+  x:col;
+  y:row;
+  ch:char;
+  zeros: array[col,row] of integer;
+  life_file:file of char;
+   
+
+procedure clear_line;
+begin 
+  write(chr(ESC),'K')  {H-19 specific}
+  end {clear_line};
+  
+procedure clear_screen;
+begin
+  gotoxy ( 0, 0 );
+  write ( chr (  ESC ) , chr ( 69 ) ); {H-19 specific}
+  end {clear_screen};
+  
+(*$I life.inc.text*)
+
+procedure set_cell(x:col; y:row; live:boolean);   
+var
+  amnt:integer;
+begin  
+  if live   
+    then begin
+      write(screen_char);
+      amnt := 1  
+      end
+    else begin
+      write(' ');
+      amnt := -1
+      end;     
+  if live<>alive[x,y]   
+    then begin  {change cell at x,y}
+      alive[x,y] := live; 
+      population := population+amnt;  
+      cur_neighbors[x-1,y-1]:=cur_neighbors[x-1,y-1]+amnt;     
+      cur_neighbors[x-1,y]:=cur_neighbors[x-1,y]+amnt;
+      cur_neighbors[x-1,y+1]:=cur_neighbors[x-1,y+1]+amnt;  
+      cur_neighbors[x,y-1]:=cur_neighbors[x,y-1]+amnt;
+      cur_neighbors[x,y+1]:=cur_neighbors[x,y+1]+amnt;        
+      cur_neighbors[x+1,y-1]:=cur_neighbors[x+1,y-1]+amnt;
+      cur_neighbors[x+1,y]:=cur_neighbors[x+1,y]+amnt;
+      cur_neighbors[x+1,y+1]:=cur_neighbors[x+1,y+1]+amnt
+      end  {change cell at x,y} 
+end {set_cell}; 
+
+procedure change_pattern;  
+const 
+  change_prompt=  
+'arrows (plain writes, caps erases, CNTL moves) CR (ESC aborts, ETX accepts)';
+var       
+  x:col; y:row;      
+begin {change_pattern} 
+  write_prompt(change_prompt);      
+  x := middlex; y := middley; gotoxy(x,y);   
+  repeat
+    read(keyboard,ch);
+    if EOF(keyboard)
+      then ch := chr(ETX)      
+      else if EOLN(keyboard) then ch := chr(CR);     
+    if ord(ch) in [ESC,ETX,RT,LT,UP,DN,WRITE_RT,WRITE_LT,WRITE_UP,WRITE_DN,
+                   ERASE_RT,ERASE_LT,ERASE_UP,ERASE_DN,CR]   
+      then begin
+        if ch>='a' 
+          then begin {write}
+            set_cell(x,y,TRUE);  
+            gotoxy(36,23); write(population:4);
+            ch := chr(ord(ch)-ord('a')+1)  
+            end {write}
+          else if ch>='A' 
+            then begin {erase}
+              set_cell(x,y,FALSE);  
+              gotoxy(36,23); write(population:4);       
+              ch := chr(ord(ch)-ord('A')+1)
+              end {erase};
+        case ord(ch) of 
+          ESC: exit(change_pattern);        
+          ETX: ;
+          RT: x := x+1;
+          LT: x := x-1; 
+          UP: y := y-1;
+          DN: y := y+1;
+          CR: begin y := y+1; x := 1 end;
+          end {case};
+    
+        {perform wraparound} 
+        if x=0 then begin x := 78; y := y-1 end      
+                else if x=79 then begin x := 1; y := y+1 end;
+        if y=0 then y := 22
+                else if y=23 then y :=1;
+        
+        {move cursor}    
+        gotoxy(x,y)
+    
+        end
+    
+    until ord(ch)=ETX; 
+     
+  {set up regular prompt}
+  write_prompt(prompt);
+  
+  {set ch to indicate we just did a "change_pattern"} 
+  ch := 'c'     
+end {change_pattern}; 
+              
+function key_pressed:boolean;          
+var status_rec : array [ 1..30 ] of integer;
+begin
+   unitstatus ( 2, status_rec, 1 );
+   key_pressed := status_rec [ 1 ] > 0;
+end {key_pressed};
+
+function read_title(var title:string):boolean; 
+var
+  ch:char;
+  chstr:string[1];
+begin
+  chstr := ' ';
+  title := '';
+  repeat 
+    read(keyboard,ch);
+    if ord(ch)=BS
+      then begin
+        if length(title)>0
+          then begin {erase last character}
+            write(chr(BS),chr(SP),chr(BS));
+            delete(title,length(title),1)
+            end {erase last character} 
+        end
+      else if not (ord(ch) in [ESC,SP])
+        then begin {add character to title}
+          write(ch);
+          if (ch>='a') and (ch<='z')   
+            then ch := chr(ord(ch)+ord('A')-ord('a'));  
+          chstr[1] := ch;
+          title := concat(title,chstr)    
+          end {add character to title}   
+    until (ord(ch) in [ESC,SP]);
+  read_title := ord(ch)=SP;
+  if ord(ch)=SP  
+    then if length(title)<5  
+      then title := concat(title,'.LIFE')
+      else if copy(title,length(title)-4,5)<>'.LIFE'   
+        then title := concat(title,'.LIFE')
+end {read_title};    
+
+function move_cursor(var x:col; var y:row):boolean;    
+var
+  ch:char;
+begin
+  repeat
+    gotoxy(x,y);
+    read(keyboard,ch);
+    if EOF(keyboard)
+      then ch := chr(ETX)
+      else if EOLN(keyboard) then ch := chr(CR);
+    case ord(ch) of
+      RT: x := x+1;
+      LT: x := x-1;
+      UP: y := y-1;
+      DN: y := y+1;
+      CR: begin x:=1; y:=y+1 end
+      end {case};
+    {perform wraparound} 
+    if x=0 then begin x := 78; y := y-1 end          
+           else if x=79 then begin x := 1; y := y+1 end;    
+    if y=0 then y := 22  
+           else if y=23 then y :=1;
+    until (ord(ch) in [ESC,ETX]);
+  move_cursor := ord(ch)=ETX 
+end {move_cursor};
+  
+procedure ioerror(n:integer);      
+var
+  ch:char;
+begin
+  write_prompt('I/O ERROR ');
+  write(n,'.  Type anything to continue:'); 
+  read(ch)
+end {ioerror};
+
+procedure save_pattern;        
+const
+  prompt1=
+'Move cursor=>upper left corner of area to be saved(ESC aborts,ETX accepts)'; 
+  prompt2= 
+'Move cursor=>lower right corner of area to be saved(ESC aborts,ETX accepts)';
+var
+  title:string;
+  startx,endx:col;
+  starty,endy:row;
+  ch:char;
+  ok:boolean;
+begin
+  ok := FALSE;
+  write_prompt('Save as what file? (ESC escapes):');  
+  if read_title(title)  
+    then begin {got title}
+      {$I-} rewrite(life_file,title); {$I+}
+      if IORESULT=0
+        then begin {file opened OK}
+          write_prompt(prompt1);
+          startx:=middlex; starty:=middley;
+          if move_cursor(startx,starty)
+            then begin {first move cursor ok}          
+              write_prompt(prompt2);    
+              endx:=startx; endy:=starty;
+              repeat
+                gotoxy(endx,endy);
+                read(keyboard,ch);
+                case ord(ch) of
+                  RT: endx:=endx+1;
+                  LT: endx := endx-1;  
+                  UP: endy := endy-1;    
+                  DN: endy := endy+1;
+                  CR: begin endx:=1; endy:=endy+1 end
+                  end {case};
+                if endx<startx then endx:=startx;
+                if endx=maxx then endx:=maxx-1;
+                if endy<starty then endy:=starty;
+                if endy=maxy then endy:=maxy-1 
+                until (ord(ch)=ETX) or (ord(ch)=ESC);   
+              if ord(ch)=ETX  
+                then begin {second move cursor ok}
+                  write_prompt('Writing');
+                  write(life_file,chr(endy-starty+1),chr(endx-startx+1));
+                  for y:=starty to endy do
+                    begin  {write a row}
+                      for x:=startx to endx do 
+                        if alive[x,y]
+                          then write(life_file,'1')
+                          else write(life_file,'0');  
+                      write('.')
+                      end  {write a row}; 
+                  ok := TRUE
+                  end {second move cursor ok} 
+              end {first move cursor ok};
+          if ok   
+            then close(life_file,lock)
+            else close(life_file,normal)
+          end {file opened ok}  
+        else {file didn't open ok}
+          ioerror(IORESULT)
+      end {got title};  
+  write_prompt(prompt) {restore prompt}
+end {save_pattern};
+           
+procedure get_pattern;
+const
+  move_prompt=
+'Move cursor=>upper left corner of area for pattern(ESC aborts,ETX accepts):';
+  room_prompt=  
+'Not enough room for pattern - try again (ESC aborts, ETX accepts):';   
+var   
+  title:string;
+  startx,cols:col;      
+  starty,rows:row;               
+  ch:char;
+  ok:boolean;
+begin 
+  write_prompt('Get what file? (ESC escapes):');
+  if read_title(title)    
+    then begin {got title}
+      {$I-} reset(life_file,title); {$I+}
+      if IORESULT=0
+        then begin {file opened ok}
+          read(life_file,ch); rows := ord(ch);  
+          read(life_file,ch); cols := ord(ch);  
+          write_prompt(move_prompt);
+          startx:=middlex; starty:=middley;  
+          repeat
+            if move_cursor(startx,starty)
+              then if (maxy-starty>=rows) and (maxx-startx>=cols)
+                then begin {enough room - read in pattern}
+                  ok := TRUE;
+                  write_prompt('Reading');
+                  for y:=starty to starty+rows-1 do 
+                    begin  {do a row} 
+                      gotoxy(startx,y);
+                      for x:=startx to startx+cols-1 do
+                        begin  {set cell at x,y}  
+                          read(life_file,ch);
+                          if ch='1'
+                            then set_cell(x,y,TRUE)
+                            else set_cell(x,y,FALSE)
+                          end  {set cell at x,y}           
+                      end  {do a row};
+                  gotoxy(36,23); write(population:4)
+                  end {enough room}
+                else begin {not enough room allowed for pattern}  
+                  ok := FALSE;
+                  write_prompt(room_prompt)     
+                  end {not enough room}  
+              else ok := TRUE  {didn't move cursor -ESCape}
+            until ok;  
+          close(life_file,normal)
+          end {file opened ok}  
+        else  {file didn't open ok}
+          ioerror(IORESULT)
+      end {got title}; 
+  write_prompt(prompt)  {restore prompt} 
+end {get_pattern};
+            
+procedure read_key;        
+var
+  title:string;
+begin   
+  if ch<>'r'
+    then begin  {not 'run'ning - read from keyboard}               
+      repeat        
+        gotoxy(length(prompt)+2,0);              
+        read(keyboard,ch);         
+        {map to lower case}  
+        if ('A'<=ch) and (ch<='Z')
+          then ch := chr(ord(ch)+ord('a')-ord('A'));
+        case ch of 
+          'i': begin  {handle i(nterval}                    
+                 gotoxy(50,23);
+                 write('  ',chr(BS),chr(BS));
+                 interval := read_int(1,99,2)  
+                 end;   
+          'c': change_pattern;
+          's': save_pattern;
+          'g': get_pattern;
+          end {case}
+        until not (ch in ['i','c','s','g']);       
+      if ch='r'
+        then begin  {got a 'run' request}
+          gotoxy(2,0);
+          clear_line;
+          write(chr(ESC),'RD','Running: hit any key to stop.',       
+                chr(ESC),'R@',copy(border,1,46),'+')    
+          end  {'run' request}     
+      end  {not 'run'ning}
+    else  {'run'ning - see if a key has been pressed}
+      if key_pressed
+        then begin  {a key was pressed - cancel 'run' request}       
+          read(keyboard,ch);       {read the character}    
+          ch := 'x';               {and throw it away }
+          gotoxy(1,0);
+          write(chr(ESC),'S',chr(ESC),'S');  {restore prompt}      
+          write_prompt(prompt);
+          read_key                 {see what user wants to do now} 
+          end  {a key was pressed}         
+end {read_key};   
+
+procedure initialize;                                 
+var
+  line:integer;  
+begin     
+  generation :=0; population :=0; interval :=1;
+  for x:=0 to maxx do for y:=0 to maxy do alive[x,y]:=FALSE;
+  cur_neighbors:=zeros;      
+  next_neighbors:=zeros;
+  
+  {set up screen} 
+  clear_screen;    
+  write(chr(ESC),'W');  {disable scrolling}
+  gotoxy(79,22);  {last position of next to last line}  
+  write('|+---------generation ',generation:3,' population=',       
+        population:4,' interval=',interval:2,copy(border,1,27),'+');  
+  write(chr(ESC),'X');  {reenable scrolling}
+  write('+-');           
+  gotoxy(0,1); write('|');
+  for line:=1 to 21 do  
+    begin
+      gotoxy(79,line); 
+      write('||')
+      end;
+   
+  {get initial pattern} 
+  change_pattern;
+  
+  {allow for initial option setting}
+  if ch<>chr(ESC)
+    then begin
+      ch := 'x';                  
+      read_key
+      end
+end {initialize};  
+       
+procedure get_next_gen;      
+begin
+  population := 0;
+  next_neighbors := zeros;        
+  for x:=1 to maxx-1 do for y:=1 to maxy-1 do   
+    begin  {calculate new alive[x,y] & next_neighbors[x,y]} 
+      if (cur_neighbors[x,y]=3) or 
+         (alive[x,y] and (cur_neighbors[x,y]=2))  
+        then begin      
+          alive[x,y] := TRUE;    
+          population := population+1;  
+          next_neighbors[x-1,y-1]:=next_neighbors[x-1,y-1]+1; 
+          next_neighbors[x-1,y]:=next_neighbors[x-1,y]+1;      
+          next_neighbors[x-1,y+1]:=next_neighbors[x-1,y+1]+1;  
+          next_neighbors[x,y-1]:=next_neighbors[x,y-1]+1;       
+          next_neighbors[x,y+1]:=next_neighbors[x,y+1]+1;        
+          next_neighbors[x+1,y-1]:=next_neighbors[x+1,y-1]+1;  
+          next_neighbors[x+1,y]:=next_neighbors[x+1,y]+1;  
+          next_neighbors[x+1,y+1]:=next_neighbors[x+1,y+1]+1      
+          end 
+        else alive[x,y] := FALSE
+      end  {calculate}; 
+  cur_neighbors := next_neighbors; 
+  generation := generation+1 
+end {get_next_gen};
+                  
+procedure print_gen;    
+begin
+  for y:=1 to 22 do
+    for x:=1 to 78 do      
+      if alive[x,y]<>prev_alive[x,y]  
+        then begin 
+          gotoxy(x,y);
+          if alive[x,y]
+            then write(screen_char)      
+            else write(' ')
+          end;
+  gotoxy(21,23); write(generation:3);     
+  gotoxy(36,23); write(population:4)
+end {print_gen};
+
+begin {life}
+  fillchar(zeros,sizeof(zeros),chr(0)); 
+  print_intro;      
+  repeat 
+    initialize;  
+      while ch<>chr(ESC) do
+        begin 
+          gotoxy(0,0);  {give some indication that something is happening}   
+          prev_alive := alive;      
+          for i:=1 to interval do get_next_gen;         
+          print_gen;    
+          if population=0
+            then begin
+              gotoxy(30,12);
+              write('In generation ',generation,' population=0');
+              ch := chr(ESC)
+              end
+            else begin
+              if prev_alive=alive
+                then begin
+                  gotoxy(55,23); write('PATTERN IS REPEATING') 
+                  end;
+              read_key
+              end
+          end;
+    gotoxy(0,0);  
+    clear_line;
+    write('Type ''r'' to repeat, anything else to quit:');     
+    read(keyboard,ch)
+    until not(ch='r')
+
+end. {life}
+

@@ -1,0 +1,60 @@
+                             Benchmark Report Form
+
+           ---> PLEASE READ THE INSTRUCTIONS IN REPORT.DOC.TEXT <---
+           
+Your Name ( optional ) __________________________________________________
+
+Processor type ________________________________________  Clock ___________
+
+RAM Available _________________   Speed if known ______________
+
+P-System version ________________  Floating Point Hardware _______________
+
+Floppy Disk    Model _______________ Capacity _______________ DMA ? ____
+
+Hard disk      Model _______________ Capacity _______________ DMA ? ____
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+                           Timing results ( seconds )
+
+PWROF2.TEXT  _____   8QUEENS.TEXT  _______  NUMBERIO.TEXT   _______/________ 
+
+QUICKSORT.TEXT  _____  ANCEST.S.TEXT  ______  SIEVE.TEXT _____ QUR.TEXT _______
+
+COMPKILLER  number of lines compiled _________  elapsed time  __________
+
+STARS ______(ms/loop)  SEGMASHER  large seg _____ small seg ____ (ms/swap)
+
+LONG_INT.TEXT ( please normalize results to milli-seconds per loop with
+                the overhead of test 1 subtracted from result )
+
+Test 1  null for loop          ______   Test 2  integer [ 4 ] adds       _______
+
+Test 3  integer [12] adds      ______   Test 4  integer [ 36 ] adds      _______
+
+Test 5  integer [12] multiplies______   Test 6  integer [ 12 ] divides   _______
+
+Test 7  integer [36] multiplies______   Test 8  integer [ 36 ] divides   _______
+
+INTRINSICS.TEXT ( please normalize results to milli-seconds per loop with
+                  the overhead of test 1 subtracted from result )
+ 
+Test 1  null for loop          ______   Test 2  sin                      _______
+
+Test 3  cos                    ______   Test 4  exp                      _______
+
+Test 5  atan                   ______   Test 6  ln                       _______
+
+Test 7  log                    ______   Test 8  pwroften                 _______
+
+Test 9  trunc                  ______   Test 10 round                    _______
+
+Test 11 fillchar a small array ______   Test 12 fillchar a large array   _______
+
+Test 13 moveleft a small array ______   Test 14 moveleft a large array   _______
+
+Test 15 scan a small array     ______   Test 16 scan a large array       _______
+
+Test 17 sizeof                 ______
+

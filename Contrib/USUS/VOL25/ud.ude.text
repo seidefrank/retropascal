@@ -1,0 +1,67 @@
+ PROGRAM UDE;
+{$l#5:ud.udelst.text}
+USES {$U COMMANDIO.CODE} COMMANDIO;
+
+CONST
+  CLEAR_SCREEN = 12;
+  ESC_KEY = 27;
+  
+VAR
+  CH   : CHAR;
+  LINE : STRING;
+  I    : INTEGER;
+
+BEGIN
+  WRITE(CHR(CLEAR_SCREEN));
+  GOTOXY(26,0);
+  WRITE('UNIVERSAL DATA ENTRY');
+  GOTOXY(26,1);
+  WRITE('====================');
+  GOTOXY(26,2);
+  WRITE('Version IV.0');
+  LINE := 'Define a UDE data file';
+  FOR I := 2 TO LENGTH(LINE) DO
+    LINE[I] := CHR(ORD(LINE[I])+128);
+  GOTOXY(20,8);
+  WRITE(LINE);
+  LINE := 'Maintain a UDE data file';
+  FOR I := 2 TO LENGTH(LINE) DO
+    LINE[I] := CHR(ORD(LINE[I])+128);
+  GOTOXY(20,10);
+  WRITE(LINE);
+  LINE := 'Sort a UDE data file';
+  FOR I := 2 TO LENGTH(LINE) DO
+    LINE[I] := CHR(ORD(LINE[I])+128);
+  GOTOXY(20,12);
+  WRITE(LINE);
+  LINE := 'List a UDE data file';
+  FOR I := 2 TO LENGTH(LINE) DO
+    LINE[I] := CHR(ORD(LINE[I])+128);
+  GOTOXY(20,14);
+  WRITE(LINE);
+  LINE := 'Copy a UDE or GENLIST data file';
+  FOR I := 2 TO LENGTH(LINE) DO
+    LINE[I] := CHR(ORD(LINE[I])+128);
+  GOTOXY(20,16);
+  WRITE(LINE);
+  GOTOXY(0,23);
+  WRITE('Enter selection or <ESC> :');
+  REPEAT
+    GOTOXY(27,23);
+    READ(CH);
+    IF CH = CHR(ESC_KEY) THEN EXIT(PROGRAM);
+    CASE CH OF
+      'D','d' : CHAIN('#4:SD/DEFINE');
+      'M','m' : CHAIN('#4:UD/MAINT');
+      'S','s' : CHAIN('#4:UD/SORT');
+      'C','c' : CHAIN('#4:UD/COPY');
+      'L','l' : CHAIN('#4:UD/LIST');
+    END;
+  UNTIL CH IN ['D','d','M','m','S','s','C','c','L','l'];
+  GOTOXY(40,23);
+  WRITE('One Moment Please');
+  CHAIN('#4:UD/UDE');
+END.
+
+
+

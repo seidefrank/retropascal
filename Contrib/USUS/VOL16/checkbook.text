@@ -1,0 +1,448 @@
+{$S+}
+PROGRAM Checkbook;
+USES (*$U crtinput.code*) CRTInput, 
+     (*$U getnumber.code*) GetNumber;
+
+CONST
+       DFileName = 'CHECK.MASK.DATA';
+       BFileName = 'PREV.BAL.TEXT';
+       MaxX = 79;
+       MaxY = 23;
+       MaxData = 50;
+       MaxArray = 20;
+       PromptLine = 1;
+       MaxChecks = 30;
+       MaxDeposits = 10;
+
+TYPE
+       YLimits = 0..MaxY;
+       XLimits = 0..MaxX;
+       DataLimits = 1..MaxData;
+       CheckLimits = 1..MaxChecks;
+       DepositLimits = 1..MaxDeposits;
+       CRTLineArray = PACKED ARRAY [XLimits] OF char;
+       DataRec = PACKED RECORD
+                   X: XLimits;
+                   Y: YLimits;
+                   Lngth, Decimal: XLimits;
+                 END;
+       MaskRec = RECORD
+                   Line: ARRAY [YLimits] OF CRTLineArray;
+                   Data: ARRAY [DataLimits] OF DataRec;
+                 END;
+       Money = RECORD  Dollars, Cents: integer;  END;
+       Entry = RECORD
+                 Amount: money;
+                 Description: string[12];
+               END;
+               
+VAR  BS: char;
+     LastCheckNo, LastDepositNo: integer;
+     TotlChecks, TotlDeposits, PrevBal, Balance: Money;
+     PrevDate, Date: String[20];
+     Check: ARRAY [CheckLimits] OF Entry;
+     Deposit: ARRAY [DepositLimits] OF Entry;
+     Mask: MaskRec;
+     DataFile: FILE OF MaskRec;
+     BalFile: interactive;
+ 
+
+PROCEDURE WritePrompt (prompt: string);
+BEGIN
+  GoAndClearLine (PromptLine);
+  Write (prompt)
+END;
+
+
+FUNCTION WaitForSp (p: string): boolean;
+VAR ch: char;
+BEGIN
+  Write(CHR (7), p);
+  Write ('.  Type a space to continue, <ESCAPE> to abort...');
+  REPEAT Read (keyboard, ch) UNTIL (ch = ' ') OR (ch = CHR (27));
+  Writeln;  WaitForSp := ch = ' '
+END;
+
+
+PROCEDURE WriteError (prompt: string);
+VAR ch: char;
+BEGIN
+  Gotoxy (0, ErrorLine);
+  Write (CHR(7), prompt, '.  Type <space> to go on..');
+  REPEAT Read (keyboard, ch) UNTIL ch = ' ';
+  GoAndClearLine (ErrorLine);
+END;
+
+
+PROCEDURE GotoDataField (n: integer);
+BEGIN
+  WITH Mask.Data[n] DO Gotoxy (x,y)
+END;
+
+
+PROCEDURE ClearField (n: integer);
+BEGIN
+  WITH Mask.Data[n] DO
+    BEGIN
+      Gotoxy (X,Y);
+      Write (' ':Lngth)
+    END
+END;
+
+
+PROCEDURE ReadMaskData;
+VAR i: integer;
+     
+BEGIN
+  REPEAT
+{$I-}
+    Reset (DataFile, DFileName);
+    IF IORESULT > 0 THEN Reset (Datafile, CONCAT ('#4:', DFileName));
+    IF IORESULT > 0 THEN Reset (Datafile, CONCAT ('#5:', DFileName));
+{$I+}
+    i := IORESULT;
+    IF i > 0
+      THEN BEGIN
+        Writeln('I can''t find "', DFileName, 
+          '", needed to use this program.');
+        IF NOT Yes ('Do you wish me to try to find it again')
+          THEN EXIT (Program)
+      END;
+  UNTIL i = 0;
+  Mask := Datafile^;  ClearScreen;
+  FOR i := 0 TO MaxY-1 DO Writeln (Mask.Line[i]);
+END;
+
+
+PROCEDURE GetMoney (DN: datalimits; Prompt: string; VAR Amount: Money);
+BEGIN
+  WritePrompt (Prompt);
+  GetDecimal (Mask.Data[DN].x, Mask.Data[DN].Y, 0, 9999, 2, Amount.Dollars, 
+    Amount.Cents);
+  GoAndClearLine (PromptLine);
+END (*GetMoney*);
+
+
+PROCEDURE WriteMoney (DN: datalimits; amount: money);
+VAR m: integer;
+BEGIN
+  WITH Mask.Data[DN] DO
+    BEGIN
+      Gotoxy (X, Y);
+      m := Lngth - 4;
+      IF (Amount.Dollars < 0) OR (Amount.Cents < 0)
+        THEN BEGIN
+          m := m -1;
+          Write ('-');
+        END
+        ELSE Write (' ', BS);
+      Write (ABS(Amount.dollars):m, '.');
+      m := ABS (Amount.Cents);
+      IF m DIV 10 = 0 THEN Write ('0');
+      Write (m MOD 100);
+    END;
+END;
+
+
+PROCEDURE AddMoney (Add1, Add2: Money; VAR Sum: Money);
+BEGIN
+  Sum.Dollars := Add1.Dollars + Add2.Dollars;
+  Sum.Cents := Add1.Cents + Add2.Cents;
+  IF Sum.Cents > 99
+    THEN BEGIN
+      Sum.Cents := Sum.Cents -100;
+      Sum.Dollars := Sum.Dollars + 1;
+    END;
+END;
+
+
+PROCEDURE SubMoney (minuend, subtrahend: money; VAR result: money);
+BEGIN
+  Result.Dollars := Minuend.Dollars - Subtrahend.Dollars;
+  Result.Cents := Minuend.Cents - Subtrahend.Cents;
+  WITH Result DO IF (Dollars > 0) AND (Cents < 0) 
+    THEN BEGIN
+      Cents := Cents + 100;
+      Dollars := Dollars - 1
+    END
+    ELSE IF (Dollars < 0) AND (Cents > 0)
+      THEN BEGIN
+        Cents := Cents - 100;
+        Dollars := Dollars + 1
+      END;
+END;
+
+
+PROCEDURE GetOrdinate (n: integer; VAR Ordinate: String);
+VAR prefix: string[2];
+BEGIN
+  CASE (n MOD 100) DIV 10 OF
+    0:  prefix := '';
+    1:  prefix := '1';
+    2:  prefix := '2';
+    3:  prefix := '3';
+    4:  prefix := '4';
+    5:  prefix := '5';
+    6:  prefix := '6';
+    7:  prefix := '7';
+    8:  prefix := '8';
+    9:  prefix := '9'
+  END;
+  CASE n MOD 10 OF
+    0:  prefix := CONCAT (prefix, '0');
+    1:  prefix := CONCAT (prefix, '1');
+    2:  prefix := CONCAT (prefix, '2');
+    3:  prefix := CONCAT (prefix, '3');
+    4:  prefix := CONCAT (prefix, '4');
+    5:  prefix := CONCAT (prefix, '5');
+    6:  prefix := CONCAT (prefix, '6');
+    7:  prefix := CONCAT (prefix, '7');
+    8:  prefix := CONCAT (prefix, '8');
+    9:  prefix := CONCAT (prefix, '9')
+  END;
+  IF (n MOD 10 > 3) OR (n MOD 10 = 0) OR (n IN [11..13])
+    THEN Ordinate := CONCAT (prefix, 'th')
+    ELSE CASE n MOD 10 OF
+      1: Ordinate := CONCAT (prefix, 'st');
+      2: Ordinate := CONCAT (prefix, 'nd');
+      3: Ordinate := CONCAT (prefix, 'rd')
+    END;
+END;
+
+
+PROCEDURE GetAmount(i: integer; n:Datalimits; VAR amount: money;
+   VAR description: string);
+
+VAR 
+     prompt: string; 
+     ordinate: string[5]; 
+     j: integer;
+BEGIN
+  GetOrdinate (i, Ordinate);
+  Prompt := CONCAT ('Please list the number, date,  or description of the ',
+    Ordinate, ' item.');
+  WritePrompt (prompt);  GotoDataField (n);  FOR i := 1 TO 13 DO Write (BS);
+  GetString (12, Descriptn);
+  GetMoney (n, 'Now the amount.', amount);
+END;
+
+
+PROCEDURE GetCheck (Checkno: integer);
+VAR i: integer;
+BEGIN
+  GotoDataField(CheckNo);  FOR i := 1 TO 17 DO Write(BS);
+  Write(CheckNo:2, ':');  
+  WITH Check[CheckNo] DO GetAmount (CheckNo, CheckNo, Amount, Description);
+END;
+
+
+PROCEDURE GetDeposit (DepositNo: integer);
+VAR i, Thisfield: integer;
+BEGIN
+  ThisField := (DepositNo + 30);
+  GotoDataField (ThisField);  FOR i := 1 TO 17 DO Write (BS);
+  Write(DepositNo:2, ':');
+  WITH Deposit[DepositNo] DO GetAmount (DepositNo, ThisField, Amount,
+     Description);
+END;
+
+
+PROCEDURE AddEntry(ch: char);
+BEGIN
+  CASE ch OF
+    'C':  IF LastCheckNo < MaxCheck
+            THEN BEGIN
+              LastCheckNo := LastCheckNo +1;
+              GetCheck(LastCheckNo)
+            END
+            ELSE WriteError (
+            'Sorry, I don''t have room for that number of checks');
+    'D':  IF LastDepositNo < MaxDeposit
+            THEN BEGIN
+              LastDepositNo := LastDepositNo+1;
+              GetDeposit (LastDepositNo)
+            END
+            ELSE WriteError (
+            'Sorry, I don''t have room for that many deposits');
+  END
+END;
+
+
+PROCEDURE FixEntry;
+VAR i: integer;  s: string;
+BEGIN
+  IF (LastCheckNo = 0) AND (LastDepositNo = 0)
+    THEN WriteError ('First A)dd checks or deposits before correcting')
+    ELSE CASE GetLetter (PromptLine, 
+'Fix previously entered C)heck or D)eposit', ['C', 'D']) OF
+    'C':  IF LastCheckNo > 0
+            THEN BEGIN
+              Gotoxy (0, PromptLine);
+              IF LastCheckNo > 1
+                THEN BEGIN
+                  Write('Which check do you wish to fix (1 to ',
+                    MaxCheck, ')?  ');
+                  GetInteger (-1, -1, 1, LastCheckNo, false, i);
+                END
+                ELSE i := 1;
+              GetCheck (i)
+            END
+            ELSE WriteError ('First ADD a check before correcting it');
+    'D':  IF LastDepositNo > 0
+            THEN BEGIN
+              Gotoxy (0, PromptLine);
+              IF LastDepositNo > 1
+                THEN BEGIN
+                  Write('Which deposit do you wish to correct (1 to ',
+                    MaxDeposit, ')?  ');
+                  GetInteger (-1, -1, 1, LastDepositNo, false, i);
+                END
+                ELSE i := 1;
+              GetDeposit (i)
+            END
+            ELSE WriteError ('First ADD a deposit before correcting it')
+  END
+END;
+
+
+PROCEDURE FigureBalance;
+VAR i: integer;
+BEGIN
+  TotlChecks.Dollars := 0;  TotlChecks.Cents := 0;
+  TotlDeposits.Dollars := 0;  TotlDeposits.Cents := 0;
+  FOR i := 1 TO LastCheckNo DO
+    AddMoney (Check[i].Amount, TotlChecks, TotlChecks);
+  WriteMoney (45, TotlChecks);
+  FOR i := 1 TO LastDepositNo DO
+    AddMoney (Deposit[i].Amount, TotlDeposits, TotlDeposits);
+  WriteMoney (46, TotlDeposits);
+  AddMoney (TotlDeposits, PrevBal, Balance);
+  SubMoney (Balance, TotlChecks, Balance);
+  WriteMoney (47, Balance)
+END;
+  
+  
+PROCEDURE GetData;
+VAR quit: boolean;
+
+BEGIN
+  quit := false;
+  IF PrevDate <> ''
+    THEN BEGIN
+      WriteMoney (42, PrevBal);  GotoDataField (41);  Write (PrevDate) 
+    END;
+  REPEAT
+    CASE GetLetter (PromptLine,
+'add new C)heck or D)eposit, F)ix previous entry, set P)revious balance, Q)uit',
+        ['C', 'D', 'F', 'P', 'Q']) OF
+      'C':  AddEntry('C');
+      'D':  AddEntry('D');
+      'F':  FixEntry;
+      'P':  BEGIN
+              GetMoney (42, 'Please enter correct previous balance.', PrevBal);
+              WritePrompt ('Please enter date previous balance was valid.');
+              GoToDataField (41);  GetString (20, PrevDate);
+            END;
+      'Q':  quit := true
+    END;
+    FigureBalance
+  UNTIL quit
+END;
+
+
+PROCEDURE Initialize;
+VAR i: integer;
+BEGIN
+  BS := CHR (backspace);  Date := '';  PrevDate := '';
+{$I-}
+  Reset (BalFile, BFileName);
+  i := IORESULT;
+  IF i > 0 THEN BEGIN
+      Reset (BalFile, CONCAT ('#4:', BFileName));  i := IORESULT 
+    END;
+  IF i > 0 THEN BEGIN
+      Reset (BalFile, CONCAT ('#5:', BFileName));  i := IORESULT;
+    END;
+{$I+}
+  IF i = 0 
+    THEN BEGIN
+      Writeln ('Reading previously stored account balance...');
+      Readln (BalFile, PrevBal.Dollars, PrevBal.Cents);
+      Readln (BalFile, PrevDate);  Close (BalFile, Lock)
+    END
+    ELSE BEGIN PrevBal.Dollars := 0;  PrevBal.Cents := 0 END;
+  LastCheckNo := 0;  LastDepositNo := 0;
+  FOR i := 1 TO MaxCheck DO WITH Check[i] DO
+    BEGIN Amount.Dollars := 0;  Amount.Cents := 0;  Description := '' END;
+  FOR i := 1 TO MaxDeposit DO WITH Deposit[i] DO
+    BEGIN Amount.Dollars := 0;  Amount.Cents := 0;  Description := '' END;
+END;
+
+
+PROCEDURE PrintChecks;
+VAR List: text;  i: integer;
+
+
+  PROCEDURE PrintMoney (Amount: Money);
+  VAR m: integer;
+  BEGIN
+    Write (List, '  $');
+    IF (Amount.Dollars < 0) OR (Amount.Cents < 0)
+      THEN BEGIN
+        Write (List, '-');
+        m := 4
+      END ELSE m := 5;
+    Write (List, ABS(Amount.dollars):m, '.');
+    m := ABS (Amount.Cents);
+    IF m DIV 10 = 0 THEN Write (List, '0');
+    Writeln (List, m MOD 100);
+  END;
+
+
+BEGIN
+  ClearScreen;  Rewrite (List, 'PRINTER:');
+  IF NOT WaitForSp ('Ready to print') THEN EXIT (PrintChecks);
+  Writeln (List, 'CHECKING ACCOUNT STATUS UPDATE');
+  Writeln (List, '      As of:  ', Date);
+  Writeln (List);  Writeln (List);
+  Writeln (List, 'I.  Summary of Checks.');
+  FOR i := 1 TO LastCheckNo DO WITH Check[i] DO
+    BEGIN Write(List, Description:12, ':');  PrintMoney (Amount) END;
+  Writeln (List);
+  Write (List, 'Total amount of checks =');  PrintMoney (TotlChecks);
+  Writeln (List);  Writeln (List);
+  Writeln (List, 'II.  Summary of Deposits.');
+  FOR i := 1 TO LastDepositNo DO WITH Deposit[i] DO
+    BEGIN Write(List, Description:12, ':');  PrintMoney (Amount) END;
+  Writeln (List);
+  Write (List, 'Total amount of deposits =');  PrintMoney (TotlDeposits);
+  Writeln (List);
+  Write (List, 'III.  CURRENT BALANCE AS OF ', Date, ' =');
+  PrintMoney (Balance);
+  Writeln (List);
+END;
+
+
+PROCEDURE SaveBalance;
+BEGIN
+  ClearScreen;
+  Writeln ('Saving your account balance in "', BFilename, '"....');
+  Rewrite (BalFile, BFileName);
+  Writeln (BalFile, Balance.Dollars, ' ', Balance.Cents);
+  Writeln (BalFile, Date);
+  CLOSE (BalFile, LOCK)
+END;
+
+
+BEGIN
+  Initialize;
+  REPEAT Write ('Today''s date?  ');  GetString (20, Date);  Writeln
+  UNTIL Yes ('OK');  
+  ReadMaskData;  GetData;
+  Gotoxy (0, PromptLine);
+  IF Yes ('Do you want a printed copy of this series of checks/deposits')
+    THEN PrintChecks;
+  IF Yes ('Do you want to save your current balance on the disk')
+    THEN SaveBalance
+END.
+

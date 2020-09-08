@@ -1,0 +1,39 @@
+Segment Procedure SAVE_PHILE( SAVE_NAME    : String;
+                          var SAVE_SCREEN  : SCREEN_ARR;
+                          var SAVE_PROMPTS : PROMPT_ARR;
+                          var SAVE_RESULT  : Integer ) ;
+ var INDEX: Integer;
+
+ begin {SAVE_PHILE}
+  {$I-}
+  rewrite(FILE_TO_GET,SAVE_NAME);
+  SAVE_RESULT:=IO_RESULT;
+  {$I+}
+  if SAVE_RESULT=0 then
+    begin {save}
+     seek(FILE_TO_GET,0); get(FILE_TO_GET);
+     INDEX:=1;
+     while INDEX<=SCREEN_FIELDS do  {Sep 23 to correct for 40 fields}
+       IF SAVE_PROMPTS[INDEX].P_ROW=END_SCREEN THEN INDEX:=SCREEN_FIELDS+1
+       ELSE BEGIN
+         FILE_TO_GET^.TAG:=True;
+         FILE_TO_GET^.P[1]:=SAVE_PROMPTS[INDEX];
+         INDEX:=INDEX+1;
+         FILE_TO_GET^.P[2]:=SAVE_PROMPTS[INDEX];
+         INDEX:=INDEX+1;
+         put(FILE_TO_GET);
+       end;
+     INDEX:=1;
+     while INDEX<=SCREEN_FIELDS do  {Sep 23 to correct for 40 fields}
+      IF SAVE_SCREEN[INDEX].S_ROW=END_SCREEN THEN INDEX:=SCREEN_FIELDS+1
+      ELSE begin
+       FILE_TO_GET^.TAG:=False;
+       FILE_TO_GET^.S:=SAVE_SCREEN[INDEX];
+       INDEX:=INDEX+1;
+       put(FILE_TO_GET);
+      end; {while}
+     close(FILE_TO_GET,lock);
+    end; {save}
+ end; {SAVE_PHILE}
+{xL-}
+

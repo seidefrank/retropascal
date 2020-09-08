@@ -1,0 +1,59 @@
+program printheap;
+(* Noddy program to print a summary of free heap space.
+   Could be turned into a routine for use in tuning/debugging
+   programs which make intensive use of the heap
+   
+   Version IV.0 specific*)
+   
+
+uses {$U KERNEL.CODE} kernel;
+
+type dummy = array [0..100] of integer;
+
+var
+  cur_ptr : mem_ptr;
+  avail_ptr : mem_ptr;
+  empty : integer;
+  junkk1,
+  junkk2,
+  junkk3,
+  junkk4,
+  junkk5: ^dummy;
+
+begin
+  (*new(junkk1);
+  new(junkk2);
+  new(junkk3);
+  new(junkk4);
+  new(junkk5);
+  dispose(junkk2);
+  dispose(junkk4);
+  dispose(junkk3);
+  dispose(junkk1);
+  dispose(junkk5);*)
+  moveleft(emptyheap,empty,2);
+  cur_ptr:=heap_info.top_mark;
+  writeln;
+  writeln('Heap Top = ',heap_info.heap_top.t,' Empty Heap = ',empty);
+  while cur_ptr.m <> NIL do begin
+    writeln('Heap Mark At - ',cur_ptr.t,' Size - ',cur_ptr.m^.n_words);
+    writeln('Last Avail = ',cur_ptr.m^.last_avail.t);
+    avail_ptr:=cur_ptr.m^.avail_list;
+    while avail_ptr.m <> NIL do begin
+      writeln('   Block At - ',avail_ptr.t,' Size - ',avail_ptr.m^.n_words);
+      avail_ptr:=avail_ptr.m^.avail_list;
+    end;
+    cur_ptr:=cur_ptr.m^.prev_mark;
+  end;
+  writeln;
+  writeln('Permanent Heap');
+  if permlist.m = NIL then writeln('Null')
+  else
+    begin
+      cur_ptr:=permlist;
+      while cur_ptr.m <> NIL do begin
+        writeln('Block At - ',cur_ptr.t,' Size - ',cur_ptr.m^.n_words);
+        cur_ptr:=cur_ptr.m^.avail_list;
+      end;
+    end;
+end.

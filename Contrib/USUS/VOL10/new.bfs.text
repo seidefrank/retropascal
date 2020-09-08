@@ -1,0 +1,327 @@
+{************************************************************************
+*                                                                       *
+*  This program is filed as NEW.BFS.TEXT                                *
+*                                                                       * 
+************************************************************************}
+
+
+
+{
+
+        program title:          New Breadth First Search
+        written by:             R. M. Wilson
+                                HI-COUNTRY DATA SYSTEMS
+        
+        date written:           April 2, 1981
+        latest revision:        April 7, 1981
+        
+        written for:            CS440 -- Algorithm Analysis and Design
+                                University of Colorado at Colorado Springs
+                                Spring semester 1981
+        
+        
+        program function:      
+        ----------------
+        
+            This program is designed to test an improved breadth first
+            search algorithm.
+                
+                
+        
+        remarks:             
+        -------
+        
+            This is based on a program by Dr. Richard S. Wiener from an
+            algorithm by Horowitz & Sahni in their book "Fundementals 
+            of Computer Algorithms."
+        
+            This program is furnished to the USUS group for unrestricted 
+            personal or non-profit use.  Use of this program for commercial
+            purposes is authorized with the following restrictions:
+    
+              1--> Prior notification to and acknowledgement by the author
+    
+              2--> A message similar to the one below appears on the screen
+                   upon execution and remains there until a key is hit.
+
+
+*************************************************************************
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                     Program derived from BREADTHFS6                   *
+*                              written by                               * 
+*                             R.M. Wilson                               *
+*                        Hi-Country Data Systems                        *
+*                            P.O. Box 4258                              *
+*                        Woodland Park, CO 80863                        *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       *
+*                                                                       * 
+*************************************************************************
+
+} 
+
+
+
+
+
+{$g+}
+program NEW_BREADTH_FIRST_SEARCH;
+
+label 1; 
+
+const MAX=512; 
+
+type RARRAY=array[1..MAX] of integer; 
+     SETOFINTEGER=set of 1..MAX; 
+     SETOFCHAR=set of char;  {for function READKEY} 
+     ACTIVITY=string[26];
+
+var  G:packed array[1..MAX,1..MAX] of boolean;
+     VISITED:packed array[1..MAX] of boolean; 
+          {VISITED keeps track of the nodes visited}
+     QUEUE:RARRAY; 
+          {QUEUE keeps track of the queue of "unexpolored nodes"}
+     FIRST,NEXT,N:integer;
+     ALLNODES,CONNECTED:SETOFINTEGER; 
+     
+
+procedure CLEARSCREEN;  {for TeleVideo 920C}
+begin 
+  write(chr(26),chr(30));
+end;
+
+function READKEY(OKSET:SETOFCHAR):CHAR; 
+{************************************************************************ 
+*                                                                       * 
+*  This procedure look at each keypress and determines if the key       * 
+*  pressed is valid, i.e. the "set" of char which are valid may be      *
+*  varied with each call of this procedure.  If the key pressed is      * 
+*  not in the valid or 'OKSET', then the bell sounds.  If the key       *
+*  pressed is valid the computer accepts the input and the program      * 
+*  continues to run.                                                    * 
+*                                                                       *
+************************************************************************}
+var CH:CHAR; 
+    GOOD:boolean;
+begin
+  repeat
+    read(KEYBOARD,CH); 
+    if eoln(KEYBOARD) then CH:=chr(13);
+    GOOD:=CH in OKSET;
+    if not GOOD then write(chr(7))
+  until GOOD;
+  READKEY:=CH;
+end;{READKEY}
+
+procedure PRINTAT(X,Y:integer;S:string); 
+{************************************************************************ 
+*                                                                       *
+*  This procedure writes a string at a designated location on the CRT   *
+*                                                                       *
+************************************************************************}
+begin
+  gotoxy(X,Y);
+  write(S);
+end;{PRINTAT}
+
+function YES:boolean;
+begin
+  YES:=READKEY(['Y','y','N','n']) in ['Y','y'];
+end;{YES}
+
+procedure SPACEBAR;  { a technique to hold data/display on CRT }
+var CH:CHAR;
+begin
+  gotoxy(22,23); 
+  write('Hit "SPACE-BAR" to continue   <---');
+  CH:=READKEY([' ']);
+end;{SPACEBAR}
+
+procedure QUIT;  {exit program} 
+begin
+  CLEARSCREEN;
+  exit(program);
+end;{QUIT}
+
+procedure INITIALIZE;
+var  I:integer;
+begin
+  FIRST:=0;{points to the first element in the queue}
+  NEXT:=1;{points to the next element in the queue}
+  for I:= 1 to MAX do begin
+    VISITED[I]:=false;
+    QUEUE[I]:=0;
+  end;
+end;{INITIALIZE}
+
+(*procedure GRAPHINPUT;
+{************************************************************************ 
+*                                                                       * 
+*  Test the worst case                                                  *
+*                                                                       * 
+************************************************************************}
+var  ROW,COL:integer;
+     AN:char;
+begin
+  CLEAR;
+  PRINTAT(0,12,'How many nodes in the graph?  '); 
+  readln(N);
+  writeln;
+  CLEAR;
+  for ROW:=1 to N do 
+    for COL:=1 to N do
+      G[ROW,COL]:=false; 
+  {the three lines that follow make up the worst case} 
+  for COL:=1 to N-1 do G[1,COL]:=true; 
+  for ROW:=2 to N-1 do G[ROW,N]:=true;
+  G[N,1]:=true;
+end;{INPUTGRAPH}*)
+
+procedure GRAPHINPUT;
+var  ROW,COL:integer;
+     AN:char;
+begin
+  PRINTAT(0,12,'How many nodes in the graph?  ');
+  readln(N);
+  writeln;
+  CLEARSCREEN;
+  for ROW:=1 to N do 
+    for COL:=1 to N do
+      if ROW<>COL then begin
+        gotoxy(0,12);
+        write('Is there a path from node ',ROW,' to ',COL,'? (Y,N)'); 
+        if YES then begin
+          writeln;
+          G[ROW,COL]:=true; 
+        end {if YES}
+        else G[ROW,COL]:=false; 
+        writeln;
+        CLEARSCREEN;
+      end;{if ROW<>COL}
+  for ROW:=1 to N do G[ROW,ROW]:=false;
+end;{INPUTGRAPH}
+
+procedure ADD_TO_QUEUE(I:integer;var QUEUE:RARRAY);
+begin
+  if FIRST=0 then first:=1;
+  QUEUE[NEXT]:=I;
+  NEXT:=NEXT+1;
+end;{ADDTOQUEUE}
+
+procedure DELETE_FROM_QUEUE(var I:integer;var QUEUE:RARRAY);
+begin
+  if FIRST=0 then begin
+    FIRST:=1;
+    exit(DELETE_FROM_QUEUE);
+  end;{if FIRST}
+  I:=QUEUE[FIRST];
+  FIRST:=FIRST+1;
+end;{DELETE_FROM_QUEUE}
+
+procedure TEST(J:integer;var BAD:boolean);
+var  I:integer; 
+begin 
+  I:=0; 
+  repeat
+    I:=I+1;
+    if VISITED[I]=false then BAD:=true; 
+  until (BAD) or (I=N);
+  if BAD then begin
+    CLEARSCREEN;
+    gotoxy(0,12); 
+    write('Graph is NOT connected from node ',J);
+    SPACEBAR;
+    QUIT
+  end {if BAD} 
+  else CONNECTED:=CONNECTED+[J]
+end;{TEST} 
+
+procedure BFS;
+label 1,2;
+var  I,J,T:integer;
+     BAD:boolean;
+     ROUTE:SETOFINTEGER;
+begin 
+  BAD:=false;{graph is connected}
+  for J:=1 to N do begin
+    if ALLNODES=CONNECTED then goto 2
+    else if not (J in CONNECTED) then begin 
+      INITIALIZE; 
+      ROUTE:=[];
+      T:=J; 
+      VISITED[T]:=TRUE; 
+      repeat 
+        ROUTE:=ROUTE+[T];
+        for I:=1 to N do begin
+          if (I<>T) and (G[T,I]<>false) and (VISITED[I]=false) then begin
+            ADD_TO_QUEUE(I,QUEUE); 
+            VISITED[I]:=TRUE; 
+            if I in CONNECTED then begin
+              CONNECTED:=CONNECTED+ROUTE;
+              ROUTE:=[];
+              goto 1; 
+            end;{if I in}
+          end;{if} 
+        end;{for I}
+        if NEXT-FIRST=0 then TEST(J,BAD);
+        DELETE_FROM_QUEUE(T,QUEUE); 
+      until BAD or (NEXT-FIRST=-1);
+    end;{if not (J in CONNECTED)}
+1:end;{for J}
+2:writeln; 
+  writeln(chr(7),'End BFS...'); 
+  writeln;
+  if not BAD then write('Graph is connected');
+end;{BFS} 
+
+procedure TITLE; 
+var   S:string;
+      I,J:integer;
+begin 
+  S:='BREADTH FIRST SEARCH'; 
+  PRINTAT(37-length(S) div 2,2,S); 
+  S:='written by';
+  PRINTAT(37-length(S) div 2,3,S); 
+  S:='R. M. Wilson';
+  PRINTAT(37-length(S) div 2,4,S); 
+  S:='Copyright by';
+  PRINTAT(37-length(S) div 2,13,S);
+  S:='HI-COUNTRY DATA SYSTEMS';
+  PRINTAT(37-length(S) div 2,15,S); 
+  S:='P.O. Box 4258';
+  PRINTAT(37-length(S) div 2,16,S); 
+  S:='Woodland Park, CO 80863-4258';
+  PRINTAT(37-length(S) div 2,17,S); 
+  S:='April 7, 1981';
+  PRINTAT(37-length(S) div 2,18,S); 
+end; {TITLE} 
+
+begin  {MAIN PROGRAM} 
+  CLEARSCREEN;
+  TITLE;
+  SPACEBAR;
+1:CLEARSCREEN;
+  CONNECTED:=[];
+  GRAPHINPUT;
+  CLEARSCREEN; 
+  SPACEBAR;
+  gotoxy(0,10);
+  write('Beginning BFS...',chr(7)); 
+  BFS;
+  SPACEBAR;
+  CLEARSCREEN;
+  PRINTAT(0,12,'Test another graph?  ');
+  if YES then goto 1;
+  QUIT;
+end.
+

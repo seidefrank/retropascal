@@ -1,0 +1,90 @@
+
+                             A GUIDE TO THIS VOLUME
+
+     First, a list of the documentation files on the disk and to which 
+programs they refer:
+
+     CPM.DOC.TEXT.  Miscellaneous comments on the operation of the 8080/Z-80
+interpreter.  Also contains the documentation for DISKREAD, GETCPM and
+GETCPM2, RWCPM, READCPM, and INOUTREADY.  (Note that a UCSD-to-CP/M file
+copier will be included on a subsequent disk; these all go the other way.)
+
+     PRETTY.DOC.  This discusses PRETTY (including INITVAR) and FORMAT
+(including FORMAT1 and FORMAT2).
+
+     FORMAT.DOC.  More extensive user instructions for FORMAT thru FORMAT2.
+
+     GOTCHA.DOC.  Stand-alone comments on the hidden hardware requirements for 
+Z-80 and 8080 users.
+
+     UNITS.DOC.  More stand-alone comments, this time distinguishing UNITS,
+EXTERNAL procedures/functions, and SEGMENT procedures/functions.
+
+     INTRODUCTN.  This file is a copy of the paper in the Proceedings of the 
+Fourth West Coast Computer Faire, and represents the initial goals of this 
+library of software and other comments.  I have since been in touch with 
+SofTec; the present status of the Users' Group Library should be documented 
+separately. 
+
+
+     
+     Next, let's look at the other files:
+
+     COMBINE.  This is a very early attempt by me.  Problems include less than 
+perfect file-getting (see CRT.I.O for a superior version) and the slowest 
+procedure in UCSD Pascal:  reading and writing lines of text.
+
+     
+     CRT.I.O.  I like this set of routines a great deal, and I hope you find
+them useful.  They are designed to assist you in obtaining data from a naive
+user in an interactive environment in a way that is "chimpanzee proof": no
+matter what you type (within limits), you can't crash the program or mar the
+display.  All but GETFILE are designed to enter data directly into a menu on
+the CRT, and require the X-Y locations of the data requested.  Except GETFILE,
+all routines can be exited by typing <escape>, leaving the original data
+undisturbed.  Further, the integer routine does automatic range checking and
+won't let the user out until the data is correct or the user types <escape>.
+GETFILE allows the user to quit the program by typing an empty line in
+response to a filename request, though this action is first verified.
+
+     
+     
+     L.  This stands for L(ist, and is a very handy file lister.  At present 
+it is configured for my Malibu dot-matrix printer, and expands headings if the 
+filename is to be included.  It is designed to list both programs (ask it to 
+include the filename) and manuscripts (heading optional; not printed on first 
+page nor expanded).  The options are as follows:
+
+     1)  Line spacing, single to 4 lines.
+
+     2)  Whether or not to print a page heading.
+
+     3)  If you choose a heading, you can include the filename and limited 
+other data (printed expanded) or skip the filename and write another heading 
+of your choice (none is required).
+
+     4)  You can print all or part of a file by specifying beginning and 
+ending page numbers.
+
+     
+     
+     MODEM (includes the 8080 routine CRC16) and MODEM1.  These two D. C.
+Hayes drivers should be fairly self-documenting.  I don't have a modem and
+haven't tested them.  The main problem with these sorts of programs is that as 
+yet, there is no data transmission standard, so the guy on the other end of
+the line must agree with your protocol.
+
+     
+     
+     SIMP stands for Simplified Integral Modular Prose generator.  I think 
+it's much more fun if you see what it does for yourself; it will dump its 
+output on the console or the printer (your choice).
+
+     
+     
+     TYPESET is Sam Singer's gift to his wife, and simply right justifies any 
+text presented to it.  It is designed for his Qume and personalized Qume 
+driver, but should be easy to modify for other printers with micro spacing.  
+The text output is a single, long column, of the same basic column width as 
+the original (set in the Editor).  Sam tried for hyphenation but couldn't get 
+it to work.

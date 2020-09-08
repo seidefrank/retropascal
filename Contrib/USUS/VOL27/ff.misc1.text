@@ -1,0 +1,533 @@
+SEGMENT PROCEDURE INITIALIZE;
+VAR
+     TRIX:  RECORD CASE BOOLEAN OF
+              TRUE: (A: CHAR);
+              FALSE:(B: 0..255)
+            END;
+     I: INTEGER;
+     backspace : char;
+     THISID, SSN, PID: STRING;
+     t_info : sc_info_type;
+
+PROCEDURE ALARM;
+CONST
+     WAITTIME = 75;
+     FILLCH = 25;
+VAR
+     DELAY: INTEGER;
+     LINE: PACKED ARRAY[0..255] OF CHAR;
+     STATUS_REC: ARRAY[0..29] OF INTEGER;
+
+BEGIN
+  {
+  WRITE(OUTPUT,CLEAR,CHR(150));             (* erase screen then turn it off *)
+  IF S_WIDTH > 255 THEN S_WIDTH := 255;
+  FILLCHAR(LINE,S_WIDTH,CHR(FILLCH));
+  FOR I := 1 TO S_HEIGHT DO                 (* fill screen with Fillch       *)
+    BEGIN
+      GOTOXY(0,I-1);
+      UNITWRITE(2,LINE,S_WIDTH)
+    END;
+  }
+  sc_clr_screen;
+  GOTOXY((S_WIDTH - LENGTH(IS)) DIV 2,(S_HEIGHT DIV 2) - 1);
+  WRITE(OUTPUT,IS);                         (* write msg in center of screen *)
+  {
+  I := 0;                                   (* when I = 0 the screen is off  *)
+  REPEAT
+    WRITE(OUTPUT,THEBELL,CHR(150));
+    I := 1 - I;
+    FOR DELAY := 1 TO WAITTIME DO;
+    UNITSTATUS( 2,STATUS_REC,1 )
+  UNTIL STATUS_REC[0] > 0;
+  UNITREAD( 2, LINE, STATUS_REC[0], , 1 );
+  IF I = 0 THEN WRITE(OUTPUT,CHR(150));
+  }
+  EXIT( PROGRAM )
+END;   (* of alarm *)
+
+BEGIN  (* INITIALIZE *)
+  
+    {WITH SYSCOM^ DO BEGIN
+      WITH EXPANINFO DO            (* Addition  SDA  9/22/81 *)
+        BEGIN
+          INSKEY       := INSCHAR;
+          DELKEY       := DELCHAR;
+        END;
+        
+      WITH CRTINFO DO
+        BEGIN
+          CURSOR_UP    := UP;
+          CURSOR_DOWN  := DOWN;
+          CURSOR_LEFT  := LEFT;
+          CURSOR_RIGHT := RIGHT;
+          ABACKSPACE   := BACKSPACE;
+          ESCAPE       := ALTMODE;
+          ENTER        := ETX;
+          ERASEINPUT   := LINEDEL;
+          S_HEIGHT     := HEIGHT;
+          S_WIDTH      := WIDTH
+        END;
+
+      WITH CRTCTRL DO
+        BEGIN
+          CRT_CURSOR_LEFT := BACKSPACE;
+          CLEAR           := CLEARSCREEN;
+          ERASELINE       := ERASEEOL
+        END  
+    END;
+
+  HOME       := CHR(130);
+  SPACE      := CHR(32);
+  TAB        := CHR(9);
+  THEBELL    := CHR(7);
+  ERASEFIELD := CHR(128);
+  }
+  backspace := chr ( 8 );
+  space := chr ( 32 );
+  tab := chr ( 9 );
+  thebell := chr ( 7 );
+  crt_cursor_left := backspace;
+  abackspace := backspace;
+  sc_use_info ( sc_get, t_info );
+  s_height := t_info.misc_info.height;
+  s_width  := t_info.misc_info.width;
+  
+  (*$R-   *)
+  DASHES[0] := CHR(60);
+  FILLCHAR(DASHES[1],60,CHR(95{+128}));  (* a low intensity underline *)
+                                        (** not on my terminal!!! gws *)
+  (*$R^   *)
+  
+  MSG_LINE := S_HEIGHT - 3;
+  
+  DISKDRIVE := '';        (* use prefixed drive until told otherwise *)
+
+  TEMP_FILE_NAME := 'FFTEMP';   (* Set the temp file name to FFTEMP then    *)
+  FOR I := 1 TO 6 DO            (* turn it into low intensity so there's no *)
+    BEGIN                       (* chance of writing over an existing file  *)
+      TRIX.A := TEMP_FILE_NAME[I];
+      TRIX.B := TRIX.B + 128;  {this puts the temp file in the directory
+                                with the high order bit set.  If you bomb
+                                the program with this file created, you 
+                                will have to use the Filer wildcard options
+                                to delete it. - gws }
+      TEMP_FILE_NAME[I] := TRIX.A
+    END;
+    
+
+  REQUESTED_FORM := '';
+  RECNUMBER := 0;
+  
+  DIGITS := ['0'..'9'];
+  
+  FILEOPEN := FALSE;      (* Directory file status flag      *)
+  CTL_OPEN := FALSE;      (* Control file status flag        *)
+  DAT_OPEN := FALSE;      (* Data file status flag           *)
+  TIT_OPEN := FALSE;      (* Title file status flag          *)
+  PRINTER_ON := FALSE;    (* Printer status flag             *)
+
+  ZERO := 0.0;
+  
+  MAX := PWROFTEN( MAXWHOLE );
+  OVERFLOW := MAX + 1;    (* Special code to represent an overflow     *)
+  EMPTY    := MAX + 2;    (* Special code to represent an empty number *)
+  
+  CHARS_PER_LINE := 132;
+  PAPER_LENGTH   := 66;
+  
+  FIRSTTIMESEEN := TRUE;  (* If FIRSTTIMESEEN is true show copyright   *)
+  DEBUGMODE := FALSE;
+END;   (* of initialize *)
+
+SEGMENT PROCEDURE HELP;
+
+  PROCEDURE OUT(MSG, WHERE: STRING);
+  BEGIN
+    WRITELN(OUTPUT,'  ',MSG,' - Sec. ',WHERE);
+  END;
+
+BEGIN
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  WRITELN(OUTPUT,'F R E E F O R M   H E L P');
+  WRITELN(OUTPUT);
+  WRITELN(OUTPUT);
+  WRITELN(OUTPUT,'For Help with:');
+  WRITELN(OUTPUT);
+  (*$B 40COL- *)
+  OUT('What Freeform is and what it can do','8.1');
+  OUT('Defining a Form','8.2');
+  OUT('Using a Form - Data entry procedures','8.3');
+  OUT('Listing Form controls and the Freeform Directory','8.4');
+  OUT('Modifying Forms','8.5');
+  OUT('Delete, Roll and Copy Utilities','8.6');
+  OUT('Consolidation Utility','8.7');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  OUT('What Freeform is','8.1');
+  OUT('Defining a Form','8.2');
+  OUT('Using a Form - Data entry','8.3');
+  OUT('Listing Form controls','8.4');
+  OUT('Listing Freeform Directory','8.4');
+  OUT('Modifying Forms','8.5');
+  OUT('Delete Utility','8.6');
+  OUT('Roll Utility','8.6');
+  OUT('Copy Utility','8.6');
+  OUT('Consolidation Utility','8.7');
+  (*$E 40COL  *)
+  WRITELN(OUTPUT);
+  (*$B 40COL- *)
+  WRITELN(OUTPUT,'Note:  Above references are to the PCIF Users Manual');
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  WRITELN(OUTPUT,'Note: Above refs. are to the PCIF Manual');
+  (*$E 40COL  *)
+  MEMORY;
+  PRESSRETURN('To continue,',MSG_LINE);
+END;   (* of help *)
+
+SEGMENT PROCEDURE DEL;  (* Deletes the RECNUMBER entry in Freeform directory *)
+VAR  SWAPREC: INTEGER;
+BEGIN
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  WRITELN(OUTPUT,'F R E E F O R M   D E L E T E');
+  WRITELN(OUTPUT,'Delete an existing Form');
+  MEMORY;
+  IF NOT DISKDIR THEN EXIT(DEL);
+  IF NOT NAME_FORM(REQUESTED_FORM,RECNUMBER) THEN EXIT(DEL);
+  (*$B 40COL- *)
+  IF YESNO(CONCAT('Are you sure you want to Delete ',REQUESTED_FORM),'N') THEN
+  (*$E 40COL  *)
+  (*$B 40COL+ *)
+  IF YESNO(CONCAT('Delete ',REQUESTED_FORM),'N') THEN
+  (*$E 40COL  *)
+    BEGIN
+      (* delete the title, dat and ctl files *)
+      ONEMOMENT('Removing Control, Title and Data files');
+      RESET(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+      CLOSE(FORM_DAT_FILE,PURGE); DAT_OPEN := FALSE;
+      IF OPEN_CON(REQUESTED_FORM) THEN;
+      CLOSE(FORM_CON_FILE,PURGE); CON_OPEN := FALSE;
+      IF OPEN_CTL(REQUESTED_FORM) THEN;
+      CLOSE(FORM_CTL_FILE,PURGE); CTL_OPEN := FALSE;
+      IF OPEN_TIT(REQUESTED_FORM) THEN;
+      CLOSE(FORM_TIT_FILE,PURGE); TIT_OPEN := FALSE;
+      (* zap directory entry and shift the rest of the entries *)
+      IF SEARCH(SWAPREC,'') THEN;  (* Set swaprec one past last entry *)
+      SWAPREC := SWAPREC - 1;      (* now it points at the last entry *)
+      (* take the last entry *)
+      SEEKDIR(SWAPREC,ANDGET);
+      (* and put it in the spot that contains the entry to delete *)
+      SEEKDIR(RECNUMBER,ANDPUT);
+      (* blank out the spot that the moved entry was in *)
+      FILLCHAR(DIRECTORY^,SIZEOF(DIRRECORD),0); (* Use Fillchar now  SDA 3/19 *)
+      SEEKDIR(SWAPREC,ANDPUT);
+      REQUESTED_FORM := ''                      (* Addition       SDA 5/19/81 *)
+    END;
+  FINISHUP
+END;    (* of del *)
+
+SEGMENT PROCEDURE MISC;
+VAR
+     TEMP_DAT_FILE: AFILE;
+     TEMP_DAT_DESC: FILEDESC;
+     
+SEGMENT FUNCTION OPEN_DAT_TEMP( VAR NAME: STRING ): BOOLEAN;  FORWARD;
+SEGMENT PROCEDURE ROLL;            FORWARD;
+SEGMENT PROCEDURE CONSOLIDATE;     FORWARD;
+
+SEGMENT FUNCTION OPEN_DAT_TEMP{( VAR NAME: STRING ): BOOLEAN };
+VAR
+     AWINDOW: WINDOWTYPE;
+     I: INTEGER;
+     
+BEGIN
+  OPEN_DAT_TEMP := FALSE;
+  NAME := CONCAT(DISKDRIVE,':',TEMP_FILE_NAME,'.DAT');
+  REWRITE(TEMP_DAT_FILE,NAME);
+  IF IORESULT <> 0 THEN ERROR(11)
+  ELSE
+    BEGIN
+      FOR I := 0 TO WINDOWSIZE DO AWINDOW[I] := EMPTY;
+      WITH DIRECTORY^, TEMP_DAT_DESC DO BEGIN
+        BLKSPERPAGE := ( (THEMAXROW*THEMAXCOL) + WINDOWSIZE ) DIV
+                                  ( WINDOWSIZE + 1 );
+        USEDHEAP := FALSE;
+        FOR I := 1 TO BLKSPERPAGE DO
+          IF BLOCKWRITE(TEMP_DAT_FILE,AWINDOW,1) <> 1 THEN
+            BEGIN
+              CLOSE(TEMP_DAT_FILE,PURGE);
+              ERROR(11);
+              EXIT(OPEN_DAT_TEMP)
+            END
+      END;
+      OPEN_DAT_TEMP := TRUE;    (* file created successfully *)
+      CLOSE(TEMP_DAT_FILE,LOCK)
+    END
+END;   (* of open_temp_file *)
+
+SEGMENT PROCEDURE ROLL;
+VAR
+     WHAT: STRING[6];
+     DIR: STRING[5];
+     CNT, MAX: INTEGER;
+     LEFT, DOROWS: BOOLEAN;
+     TEMP_CTL_FILE: CFILE;
+     DAT_TEMP, CTL_TEMP: STRING[17];
+
+SEGMENT FUNCTION OPEN_CTL_TEMP( VAR NAME: STRING ): BOOLEAN;
+(* This Function returns true if it was able to open a temporary Control file
+   and initialize it with the contents of FORM_CTL_FILE  *)
+VAR  I: INTEGER;
+BEGIN
+  OPEN_CTL_TEMP := FALSE;
+  NAME := CONCAT(DISKDRIVE,':',TEMP_FILE_NAME,'.CTL');
+  REWRITE(TEMP_CTL_FILE,NAME);
+  IF IORESULT <> 0 THEN ERROR(11)
+  ELSE
+    BEGIN
+      WITH DIRECTORY^ DO BEGIN
+        FOR I := 0 TO THEMAXROW+THEMAXCOL DO
+          BEGIN
+            PUT(TEMP_CTL_FILE);
+            IF IORESULT <> 0 THEN
+              BEGIN
+                CLOSE(TEMP_CTL_FILE,PURGE);
+                ERROR(11);
+                EXIT(OPEN_CTL_TEMP)
+              END;
+            GET(FORM_CTL_FILE);
+            TEMP_CTL_FILE^ := FORM_CTL_FILE^
+          END
+      END;
+      OPEN_CTL_TEMP := TRUE;    (* file created successfully *)
+      CLOSE(TEMP_CTL_FILE,LOCK)
+    END
+END;
+
+PROCEDURE GATHERCONTROLS;
+
+PROCEDURE LEAVE;                (* Added  SDA 6/26/81 *)
+BEGIN
+  CNT := 0;
+  EXIT(GATHERCONTROLS)
+END;
+
+BEGIN
+  REPEAT
+    GETRESPONSE(TRUE,'Roll Row or Columns ? (R/C) ','C','',1,IS);
+    LCTOUC(IS);
+  UNTIL (IS = 'R') OR (IS = 'C') OR (IS = 'ESCAPE');
+  IF IS = 'ESCAPE' THEN LEAVE;  (* Change  SDA 6/26/81 *)
+  DOROWS := IS = 'R';
+  IF DOROWS THEN
+    BEGIN  MAX := DIRECTORY^.NO_ROWS-1;  WHAT := 'Row'     END
+  ELSE
+    BEGIN  MAX := DIRECTORY^.NO_COLS-1;  WHAT := 'Column'  END;
+  IF MAX = 0 THEN               (* Change  SDA 6/26/81 *)
+    BEGIN
+      PRESSRETURN(CONCAT('Only one ',WHAT,' to Roll'),MSG_LINE);
+      LEAVE
+    END;
+  IF DOROWS THEN
+    REPEAT
+      GETRESPONSE(TRUE,'Roll Rows Down or Up ? (D/U) ','D','',1,IS);
+      LCTOUC(IS);
+    UNTIL (IS = 'D') OR (IS = 'ESCAPE') OR (IS = 'U')
+  ELSE
+    REPEAT
+      GETRESPONSE(TRUE,'Roll Columns Left or Right ? (L/R) ','L','',1,IS);
+      LCTOUC(IS);
+    UNTIL (IS = 'L') OR (IS = 'ESCAPE') OR (IS = 'R');
+  IF IS = 'ESCAPE' THEN LEAVE;  (* Change  SDA 6/26/81 *)
+  LEFT := (IS = 'L') OR (IS = 'U');
+  IF LEFT THEN
+    IF DOROWS THEN DIR := 'Up' ELSE DIR := 'Left'
+  ELSE
+    IF DOROWS THEN DIR := 'Down' ELSE DIR := 'Right';
+  REPEAT
+    (*$B 40COL- *)
+    GETNUM(0,MAX,-1,CONCAT('Enter # of ',WHAT,'s to roll ',DIR),CNT);
+    (*$E 40COL  *)
+    (*$B 40COL+ *)
+    GETNUM(0,MAX,-1,CONCAT('# ',WHAT,'s to roll ',DIR),CNT);
+    (*$E 40COL  *)
+  UNTIL YESNO(CONCAT('Is ',IS,' correct'),'Y');
+END;   (* of gathercontrols *)
+
+PROCEDURE ROLLIT;
+VAR
+     I, J, PTR, PAGES: INTEGER;
+     ERR, NOCALCS: BOOLEAN;
+     NUM: NUMBERTYPE;
+
+PROCEDURE ADJUST(VAR C_STRING: STRING;  MODNUM: INTEGER);
+VAR
+     I, ANS: INTEGER;
+     TEMP: STRING[L_CALC];
+     
+FUNCTION ENDOFNUM(START: INTEGER): INTEGER;
+BEGIN
+  WHILE (START < LENGTH(TEMP)) AND (TEMP[START] IN DIGITS) DO
+    START := START + 1;
+  ENDOFNUM := START - 1;
+END;
+
+BEGIN
+  LCTOUC(C_STRING);               (* Convert C_STRING to caps *)
+  TEMP := CONCAT(C_STRING,'#');
+  C_STRING := '';
+  REPEAT
+    IF TEMP[1] = 'C' THEN I := ENDOFNUM(2)
+    ELSE
+      IF TEMP[1] IN DIGITS THEN
+        BEGIN
+          I := ENDOFNUM(1);
+          VALUE(TRUE,COPY(TEMP,1,I),FAKE,ANS);
+          ANS := ( ( ANS + MODNUM - CNT - 1 ) MOD MODNUM ) + 1;
+        END
+      ELSE
+        BEGIN
+          I := 1;
+          WHILE (I < LENGTH(TEMP)) AND NOT (TEMP[I] IN DIGITS) AND
+                (TEMP[I] <> 'C') DO I := I + 1;
+          I := I - 1
+        END;
+    IF TEMP[1] IN DIGITS THEN
+      ENCODE(ANS,IS)
+    ELSE
+      IS := COPY(TEMP,1,I);
+    C_STRING := CONCAT(C_STRING,IS);
+    DELETE(TEMP,1,I)
+  UNTIL LENGTH(TEMP) = 1;
+END;   (* of adjust *)
+
+PROCEDURE MOVEROWNUMS;
+BEGIN
+  WITH DIRECTORY^ DO
+    FOR I := 1 TO NO_ROWS DO    (* move rows   *)
+      BEGIN
+        PTR := ( (I + CNT - 1) MOD NO_ROWS ) + 1;
+        FOR J := 1 TO NO_COLS DO
+          BEGIN
+            NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,    PTR,J,NUM,ANDGET,ERR);
+            NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGES,I,  J,NUM,ANDPUT,ERR)
+          END
+      END
+END;   (* of moverownums *)
+
+PROCEDURE MOVECOLNUMS;
+BEGIN
+  WITH DIRECTORY^ DO
+    FOR I := 1 TO NO_COLS DO    (* move columns *)
+      BEGIN
+        PTR := ( (I + CNT - 1) MOD NO_COLS ) + 1;
+        FOR J := 1 TO NO_ROWS DO
+          BEGIN
+            NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,    J,PTR,NUM,ANDGET,ERR);
+            NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGES,J,I,  NUM,ANDPUT,ERR)
+          END
+      END
+END;   (* of movecolnums *)
+
+PROCEDURE MOVEROWCTLS;
+BEGIN
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO
+    FOR I := 1 TO NO_ROWS DO
+      BEGIN
+        SEEKCTL(TEMP_CTL_FILE,FALSE,( ( I+CNT-1 ) MOD NO_ROWS ) + 1,ANDGET);
+        FORM_CTL_FILE^ := TEMP_CTL_FILE^;
+        IF LENGTH(CTL_CALC) > 0 THEN ADJUST(CTL_CALC,NO_ROWS);
+        SEEKCTL(FORM_CTL_FILE,FALSE,I,ANDPUT)
+      END
+END;   (* of moverowctls *)
+
+PROCEDURE MOVECOLCTLS;
+BEGIN
+  WITH FORM_CTL_FILE^, DIRECTORY^ DO
+    FOR I := 1 TO NO_COLS DO
+      BEGIN
+        SEEKCTL(TEMP_CTL_FILE,TRUE,( ( I+CNT-1 ) MOD NO_COLS ) + 1,ANDGET);
+        FORM_CTL_FILE^ := TEMP_CTL_FILE^;
+        IF LENGTH(CTL_CALC) > 0 THEN ADJUST(CTL_CALC,NO_COLS);
+        SEEKCTL(FORM_CTL_FILE,TRUE,I,ANDPUT)
+      END
+END;   (* of movecolctls *)
+
+BEGIN  (* ROLLIT *)
+  MEMORY;
+  WITH DIRECTORY^ DO BEGIN
+    IF NOT LEFT THEN  (* moving right, change CNT *)
+      IF DOROWS THEN CNT := NO_ROWS - CNT ELSE CNT := NO_COLS - CNT;
+    (* Move Data now *)
+    IF OPEN_DAT(REQUESTED_FORM,FORM_DAT_FILE,FORM_DAT_DESC,'ROLL',FALSE) THEN;
+    IF OPEN_DAT(TEMP_FILE_NAME,TEMP_DAT_FILE,TEMP_DAT_DESC,'ROLL',TRUE) THEN;
+    FOR PAGES := 1 TO NO_PAGES DO
+      BEGIN
+        ENCODE(PAGES,IS);    (* Change Pages into a string *)
+        ONEMOMENT(CONCAT('Rolling Page # ',IS,' now'));
+        (* Set Temp file equal to file to be rolled *)
+        FOR I := 1 TO NO_ROWS DO
+          FOR J := 1 TO NO_COLS DO
+            BEGIN
+              NUMBER(FORM_DAT_FILE,FORM_DAT_DESC,PAGES,I,J,NUM,ANDGET,ERR);
+              NUMBER(TEMP_DAT_FILE,TEMP_DAT_DESC,1,    I,J,NUM,ANDPUT,ERR)
+            END;
+        IF DOROWS THEN MOVEROWNUMS ELSE MOVECOLNUMS
+      END;
+    ONEMOMENT('Closing Data File');
+    FREEMEM(TEMP_DAT_DESC);
+    CLOSE(TEMP_DAT_FILE);
+    CLOSE_DAT(FORM_DAT_FILE,FORM_DAT_DESC,ERR);
+    (* Move Controls now *)
+    ONEMOMENT(CONCAT('Rolling ',WHAT,' descriptions now'));
+    IF OPEN_CTL(REQUESTED_FORM) THEN;                 (* re-open CTL files *)
+    RESET(TEMP_CTL_FILE,CTL_TEMP);
+
+    MEMORY;
+
+    IF DOROWS THEN MOVEROWCTLS ELSE MOVECOLCTLS;
+    CLOSE(TEMP_CTL_FILE)
+  END
+END;   (* of rollit *)
+
+BEGIN  (* ROLL *)
+  {WRITELN(OUTPUT,CLEAR);}
+  sc_clr_screen;
+  WRITELN(OUTPUT,'F R E E F O R M   R O L L');
+  WRITELN(OUTPUT,'Roll an existing Form');
+  MEMORY;
+  IF DISKDIR THEN
+    IF NAME_FORM(REQUESTED_FORM,RECNUMBER) THEN
+      BEGIN
+        ONEMOMENT('Searching for Control and Data files');
+        IF NOT OPEN_CTL(REQUESTED_FORM) THEN ERROR(4)
+        ELSE
+          BEGIN
+            RESET(FORM_DAT_FILE,CONCAT(DISKDRIVE,':',REQUESTED_FORM,'.DAT'));
+            IF IORESULT <> 0 THEN ERROR(5)
+            ELSE
+              BEGIN
+                CLOSE(FORM_DAT_FILE);   (* Leave CTL file open though *)
+                ONEMOMENT('Opening Temp Files');
+                IF OPEN_DAT_TEMP( DAT_TEMP ) THEN
+                  BEGIN
+                    IF OPEN_CTL_TEMP( CTL_TEMP ) THEN
+                      BEGIN
+                        CLOSE(FORM_CTL_FILE);  CTL_OPEN := FALSE;
+                        GATHERCONTROLS;
+                        IF CNT > 0 THEN ROLLIT;
+                        RESET(TEMP_CTL_FILE, CTL_TEMP);
+                        CLOSE(TEMP_CTL_FILE, PURGE);
+                      END;
+                    RESET(TEMP_DAT_FILE, DAT_TEMP);
+                    CLOSE(TEMP_DAT_FILE, PURGE)
+                  END
+              END
+          END
+      END;
+  FINISHUP
+END;   (* of roll *)
+

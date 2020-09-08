@@ -1,0 +1,275 @@
+PROCEDURE GetNewInitValues;
+{The following CONST and TYPE are DERIVED from MAKEMASKS; DO NOT CHANGE!}
+CONST  MaxX = 79 {max line length};
+       MaxY = 23 {max lines/screen - 1};
+       MaxData = 50 {max entries in data field table};
+TYPE  XLimits = 0..MaxX;
+      YLimits = 0..MaxY;
+      FieldNo = 1..MaxData;
+      DataRec = PACKED RECORD
+                  X: XLimits;
+                  Y: YLimits;
+                  Lngth, Dec: XLimits
+                END;
+      DataArry = ARRAY [FieldNo] OF DataRec;
+      MaskRec = RECORD
+                  Line: ARRAY [YLimits] OF PACKED ARRAY [XLimits] OF char;
+                  Data: DataArry
+                END;
+      Characset = SET OF char;
+VAR  i, j: integer;
+     c: char;
+     Done, NegIncrement: boolean;
+     Field: DataArry;
+     
+     
+PROCEDURE OpenDataFile {Implementation Dependent!!!};
+CONST  DFileName = 'FMT.MASK.DATA';
+VAR i, j: integer;
+    Mask: MaskRec;
+    DataFile: FILE OF MaskRec;
+BEGIN
+  {$I-}
+  Reset (DataFile, DFileName);
+  IF IORESULT > 0 THEN Reset (DataFile, CONCAT ('#4:', DFileName));
+  IF IORESULT > 0 THEN Reset (DataFile, CONCAT ('#5:', DFileName));
+  {$I+}
+  IF IORESULT > 0
+    THEN BEGIN
+      Write (
+      'Cannot open the CRT mask file; we''ll skip this portion of FORMAT.');
+      EXIT (GetNewInitValues)
+    END;
+  Gotoxy (0, 0);
+  Mask := DataFile^;
+  FOR i := 0 TO MaxY DO
+    BEGIN UnitWrite(1,Mask.Line[i],MaxX); IF i < MaxY DO Writeln END;
+  FOR i := 1 TO MaxData DO Field[i] := Mask.Data[i];
+END;
+
+
+PROCEDURE GoToFieldNo (f: FieldNo);
+BEGIN
+  WITH Field[f] DO Gotoxy (X, Y)
+END;
+
+
+PROCEDURE GoAndEraseField (f: FieldNo);
+BEGIN
+  WITH Field[f] DO Gotoxy (X, Y);
+  Write (' ': Field[f].Lngth);
+  WITH Field[f] DO Gotoxy (X, Y);
+END;
+
+
+PROCEDURE WritePrompt (prompt: string);
+BEGIN
+  GoAndEraseField (30);
+  Write (prompt)
+END;
+
+
+FUNCTION GetChar (f: integer; prompt: string; charset: characset): char;
+VAR ch: char;
+BEGIN
+  WritePrompt (prompt);
+  IF f > 0 THEN GoToFieldNo (f);
+  REPEAT 
+    Read (keyboard, ch);
+    IF (ch IN ['a'..'z']) THEN ch := CHR (ORD(ch) + ORD('A') - ORD('a') );
+  UNTIL ch IN charset;
+  GetChar := ch;
+END;
+
+
+FUNCTION GetBoolean (f: integer; prompt: string): boolean;
+VAR NewPrompt: string;
+BEGIN
+  NewPrompt := CONCAT ('Do you wish ', prompt, ' (Y/N)?  ');
+  IF GetChar (f, NewPrompt, ['Y', 'N']) = 'Y'
+    THEN BEGIN
+      Write ('Yes');
+      GetBoolean := true
+    END
+    ELSE BEGIN
+      Write (' No');
+      GetBoolean := false
+    END;
+END;
+
+
+PROCEDURE GetInteger (f: FieldNo; VAR Wanted: integer);
+CONST UpperLimit = 1000;
+VAR i, ilngth: integer;
+    ch, backsp, esc: char;
+BEGIN
+  backsp := CHR (8);
+  esc := CHR (27);
+  ilngth := Field[f].Lngth;
+  i := 0;
+  WritePrompt (
+'Type desired number, then <return>, or use <esc> to restore original value.');
+  REPEAT
+    GoToFieldNo (f);
+    IF i <> 0 THEN Write (i: ilngth) ELSE Write (' ': ilngth);
+    REPEAT Read (keyboard, ch) 
+    UNTIL (ch IN ['0'..'9', ' ', backsp, esc]);
+    IF ch = backsp
+      THEN IF i < 0
+        THEN i := -(ABS(i) DIV 10)
+        ELSE i := i DIV 10
+    ELSE IF ch IN ['0'..'9'] THEN i := i * 10 + ORD(ch) - ORD('0');
+  UNTIL (i * 10 > UpperLimit) OR (ch IN [' ', esc]);
+  IF ch <> esc THEN Wanted := i;
+  GoToFieldNo (f);
+  Write (Wanted: Field[f].Lngth);
+END;
+
+
+PROCEDURE WriteValues;
+VAR i: integer;
+
+
+PROCEDURE WriteInt (n: integer);
+BEGIN
+  WITH Field[i] DO
+    BEGIN
+      Gotoxy (X,Y);
+      Write (n:Lngth)
+    END
+END;
+
+
+PROCEDURE WriteBool (b: boolean);
+BEGIN
+  WITH Field[i] DO Gotoxy (X,Y);
+  IF b THEN Write ('Yes') ELSE Write (' No')
+END;
+
+  
+BEGIN
+  FOR i := 11 TO 28 DO
+    CASE i OF
+      11:  WriteInt (ReadLeftCol);
+      12:  WriteInt (ReadRightCol);
+      13:  WriteInt (WriteLeftCol);
+      14:  WriteInt (WriteRightCol);
+      15:  WriteInt (SymbolGap);
+      16:  WriteInt (StatmtSeparation);
+      17:  WriteInt (IndentIndex);
+      18:  WriteInt (LongLineIndent);
+      19:  WriteInt (DeclarAlignment);
+      20:  WriteInt (ProcSeparation);
+      21:  WriteBool (BunchWanted);
+      22:  WriteBool (NOT PackerIsOff);
+      23:  WriteBool (ProcNamesWanted);
+      24:  WriteBool (EndCommentsWanted);
+      25:  BEGIN
+             GoToFieldNo (25);
+             IF Increment = 0 THEN Write ('   No')
+             ELSE IF NegIncrement THEN Write ('Right') ELSE Write (' Left')
+           END;
+      26:  WriteInt (LineNumber);
+      27:  WriteInt (Increment);
+      28:  WriteBool (ReadIncludeFiles);
+    END;
+END;
+
+    
+PROCEDURE FortyColumnFormat;
+BEGIN
+  BunchWanted := false;  SymbolGap := 1;  StatmtSeparation := 1;
+  IndentIndex := 1;  LongLineIndent := 2;  WriteRightCol := 39;
+  WriteLeftCol := 1;  WriteValues;
+END;
+
+
+PROCEDURE SixtyFourColumnFormat;
+BEGIN
+  SymbolGap := 1;  StatmtSeparation := 2;  IndentIndex := 2;
+  LongLineIndent := 2;  WriteRightCol := 63;  WriteLeftCol := 1;
+  WriteValues
+END;
+
+
+PROCEDURE EightyColumnFormat;
+BEGIN
+  StatmtSeparation := 3;  IndentIndex := 3;  LongLineIndent := 4;
+  WriteRightCol := 79;  WriteLeftCol := 1;  WriteValues
+END;
+
+
+PROCEDURE ModemFormat;
+BEGIN
+  PackerIsOff := false;  EndCommentsWanted := true;
+  ProcNamesWanted := true;  WriteValues;
+END;
+
+
+BEGIN {GetNewInitValues}
+  Done := false;
+  OpenDataFile;
+  WriteValues;
+  REPEAT
+    CASE GetChar (-1, 
+'Please type letter of option you wish to change; "G" to go on; "Q" to quit.  ',
+['A'..'E', 'G', 'I', 'J', 'L'..'N', 'P'..'S', 'W', '4', '6', '8','#']) OF
+      'A':  GetInteger (19, DeclarAlignment);
+      'B':  BunchWanted := GetBoolean (21, 'to bunch statements');
+      'C':  PackerIsOff := NOT GetBoolean (22, 'to krunch your program');
+      'D':  ReadIncludeFiles := GetBoolean (28, 'to incorporate INCLUDE files');
+      'E':  EndCommentsWanted := GetBoolean (24, 'to comment END statements');
+      'G':  Done := GetBoolean (-1, 'to get on with formatting your program');
+      'I':  CASE GetChar (4,
+'Indent L)ogical nesting or O)verflow (continuation) lines?  ', ['L', 'O']) OF
+               'L':  GetInteger (17, IndentIndex);
+               'O':  GetInteger (18, LongLineIndent)
+             END;
+      'J':  GetInteger (27, Increment);
+      'L':  GetInteger (20, ProcSeparation);
+      'M':  ModemFormat;
+      'N':  BEGIN
+              CASE GetChar (25, 'Type an "N", "R", or "L":  ',
+                  ['N', 'R', 'L']) OF
+                'N':  Increment := 0;
+                'L':  BEGIN
+                        NegIncrement := false; 
+                        IF Increment = 0 THEN Increment := 1
+                      END;
+                'R':  BEGIN
+                        NegIncrement := true; 
+                        IF Increment = 0 THEN Increment := 1
+                      END;
+                END;
+              WriteValues;
+            END;
+      'P':  ProcNamesWanted := GetBoolean 
+              (23, 'procedure/function name comments');
+      'Q':  IF GetBoolean (-1, 'TO *EXIT* THIS PROGRAM') THEN EXIT (Program);
+      'R':  CASE GetChar
+              (1, 'L)eft or R)ight margins of input file?  ', ['L','R']) OF
+              'L':  GetInteger (11, ReadLeftCol);
+              'R':  GetInteger (12, ReadRightCol)
+            END;
+      'S':  CASE GetChar (3,
+  'Spacing between I)dentifiers & symbols or S)tatements on the same line?  ',
+              ['I', 'S']) OF
+              'I':  GetInteger (15, SymbolGap);
+              'S':  GetInteger (16, StatmtSeparation)
+            END;
+      'W':  CASE GetChar 
+              (2, 'L)eft or R)ight margins on output page?  ', ['L', 'R']) OF
+              'L':  GetInteger (13, WriteLeftCol);
+              'R':  GetInteger (14, WriteRightCol)
+            END;
+      '4':  FortyColumnFormat;
+      '6':  SixtyFourColumnFormat;
+      '8':  EightyColumnFormat;
+      '#':  GetInteger (26, LineNumber)
+    END;
+  UNTIL Done;
+  Writeln;
+  IF NegIncrement THEN Increment := -Increment
+END;
+
+

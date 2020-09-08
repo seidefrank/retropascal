@@ -1,0 +1,324 @@
+
+(* More-like File Viewer for Retro Pascal ][ -- by Frank Seide, 2013 *)
+
+{ This was completely written actually using Retro Pascal's EDITOR. }
+
+program fileviewer;
+
+  uses retrostuff; { for gettermsize }
+
+  var
+    title: string;
+
+  procedure viewfile(title: string);
+
+    const
+      maxblocklineno1s=1000;  { max. block we are efficient for; 1 MB enough }
+
+    type
+      maxstring = string[255];
+      lineloc = record blockindex: integer; { location of a line in the file }
+                       charindex: integer end;
+      block = packed array[0..1023] of char; { text files consist of 1k blks }
+      linenotype = integer[6];                        { note: can be > 32767 }
+
+    var
+      f: file of block;                            { the file we are reading }
+      blockbuffer: block;                                   { current buffer }
+      blockindex: integer;          { block index of current buffer; 0: none }
+      blocklineno1s: array[1..maxblocklineno1s] of linenotype; { for seeking }
+
+      lineno1, prevlineno1, newlineno1: linenotype;  { line at top (1-based) }
+
+      displaywidth, displayheight: integer;    { current terminal dimensions }
+      displayvalid: boolean;                      { false: need to redisplay }
+      showlineno: boolean;                        { show line numbers or not }
+      cmd: char;                                              { user command }
+    
+    {--- block buffer I/O ---}
+    
+    { get block 'index' into 'blockbuffer': load it if it is not yet loaded }
+    { sets blockindex to 0 in case of failure (end of file) }
+    procedure getblock(index: integer);
+    begin
+      if index = blockindex then exit(getblock);   { already the right block }
+      seek(f,index); get(f);
+      if eof(f) then begin
+        blockindex:=0;
+        exit(getblock);
+      end;
+      blockbuffer:=f^;
+      blockindex:=index; { remember we got it }
+    end;
+
+    { get a line at a lineloc; update 'loc' to represent the next lineloc }
+    { If at the end of a block, 'loc' will refer to the next block. }
+    procedure getline(var loc: lineloc{in/out};
+                      wantline: boolean; var line: maxstring);
+      var
+       i,j,k: integer;
+       ch: char;
+       s1: string[1];
+       isdle: boolean;
+    begin
+      getblock(loc.blockindex);  { blockbuffer is now the desired text block }
+      line:='';
+      if blockindex=0 then exit(getline);                           { at end }
+      i:=loc.charindex+scan(sizeof(blockbuffer)-loc.charindex, { index of CR }
+                            =CHR(13), blockbuffer[loc.charindex]);
+      { copy string }
+      if wantline then begin
+        s1:=' ';                             { temp for concatenating a char }
+        isdle:=false;
+        for j:=loc.charindex to i-1 do
+          if length(line)<sizeof(line)-1 then begin
+            ch:=blockbuffer[j];
+            if isdle then begin                                 { expand DLE }
+              for k:=33 to ord(ch) do
+                if length(line)<sizeof(line)-1 then
+                  line:=concat(line,' ');
+              isdle:=false
+            end
+            else if (ch=chr(16)) and (j=loc.charindex) then     { detect DLE }
+              isdle:=true
+            else if ch=chr(9) then begin                        { expand TAB }
+              line:=concat(line,' ');                         { at least one }
+              while length(line) mod 8<>0 do
+                if length(line)<sizeof(line)-1 then
+                  line:=concat(line,' ')
+            end
+            else if ch<' ' then begin                    { control character }
+              line:=concat(line,'^');
+              s1[1]:=chr(ord(ch)+32);
+              if length(line)<sizeof(line)-1 then begin
+                line:=concat(line,s1);
+              end
+            end
+            else begin                                   { regular character }
+              s1[1]:=ch;
+              line:=concat(line,s1);
+            end
+          end
+      end;
+      { compute next lineloc }
+      if i<sizeof(blockbuffer) then i:=i+1;                     { consume CR }
+      if i<sizeof(blockbuffer) then if blockbuffer[i]=chr(0) then
+        i:=sizeof(blockbuffer);                { skip zeroes at end of block }
+      loc.charindex:=i;
+      if loc.charindex=sizeof(blockbuffer) then begin { wrap into next block }
+        loc.blockindex:=loc.blockindex+1;
+        loc.charindex:=0;
+      end;
+    end;
+    
+    {--- location handling ---}
+    
+    { map line no (1-based) to lineloc }
+    { This function manages blocklineno1s[]. }
+    procedure getloc (var loc: lineloc; targetlineno: linenotype);
+      var
+        lineno: linenotype;
+        line: maxstring;
+      procedure recordloc (loc: lineloc; lineno: linenotype);  { cache a loc }
+      begin
+        if loc.charindex=0 then             { entered a new block: cache loc }
+          if loc.blockindex<=maxblocklineno1s then
+            blocklineno1s[loc.blockindex]:=lineno
+      end;
+      procedure skipblocks;   { separate proc to allow exit from inside loop }
+      begin
+        while loc.blockindex<maxblocklineno1s do
+          if (blocklineno1s[loc.blockindex+1]=0) { invalid }
+          or (blocklineno1s[loc.blockindex+1]>targetlineno) then     { found }
+            exit(skipblocks)
+          else begin
+            loc.blockindex:=loc.blockindex+1;
+            lineno:=blocklineno1s[loc.blockindex]
+          end
+      end;
+    begin
+      { We skip through the blocks we have already seen, and then linearly }
+      { read through the entire file; should be reasonably efficient. }
+      loc.blockindex:=1;
+      loc.charindex:=0;
+      lineno:=1;
+      { skip blocks }
+      skipblocks;
+      { now scan for detailed location }
+      while lineno<targetlineno do begin    { 'for' does not allow long ints }
+        recordloc(loc, lineno);
+        getline(loc, false, line);
+        if blockindex=0 then begin                      { beyond end of file }
+          loc.blockindex:=0;                                       { failure }
+          loc.charindex:=0;
+          exit(getloc);
+        end;
+        lineno:=lineno+1
+      end;
+      recordloc(loc, lineno) { found }
+    end;
+
+    { check whether a location is valid }
+    function checkloc(lineno: linenotype): boolean;
+      var loc: lineloc;
+    begin
+      getloc(loc, lineno);
+      checkloc:=loc.blockindex>0                         { 0 indicates error }
+    end;
+
+    {--- terminal helpers ---}
+    
+    { check whether the terminal dimensions have changed }
+    function termchanged: boolean;
+      var w, h: integer;
+    begin
+      gettermsize(w,h);
+      termchanged:=(w<>displaywidth) or (h<>displayheight)
+    end;
+
+    { get a command character (read char and convert to uppercase) }
+    function getcommand: char;
+      var ch: char;
+    begin
+      read(keyboard,ch);
+      if (ch>='a') and (ch<='z') then ch:=chr(ord(ch)-32);       { uppercase }
+      getcommand:=ch
+    end;
+
+    { clear until end of line from cursor position }
+    procedure clreol;
+    begin
+      write(chr(29))
+    end;
+    
+    { read an integer without the strange behavior of readln }
+    function readlineno(var val: linenotype): boolean;
+      var s: string;
+          i: integer;
+    begin
+      val:=0;
+      readlineno:=false;
+      readln(s);
+      if length(s)=0 then exit(readlineno);
+      for i:=1 to length(s) do begin
+        if (s[i]<'0') or (s[i]>'9') then exit(readlineno);
+        val:=val*10+(ord(s[i])-ord('0'));
+      end;
+      readlineno:=true
+    end;
+
+    {--- page rendering ---}
+    
+    { show one page, starting from line 'lineno1' }
+    procedure redisplay;
+      var
+        row, maxlen: integer;
+        loc: lineloc;
+        line: maxstring;
+    begin
+      gettermsize(displaywidth,displayheight);          { might have changed }
+      getloc(loc, lineno1);               { top line starts at this location }
+      maxlen:=displaywidth;            { max width, considering line numbers }
+      if showlineno then
+        maxlen:=maxlen-8;
+      for row:=1 to displayheight-1 do begin
+        getline(loc, true, line);                 { get the line as a string }
+        gotoxy(0,row);                                          { display it }
+        if blockindex<>0 then begin
+          if length(line)>maxlen-1 then begin                     { too long }
+            delete(line,maxlen,length(line)-maxlen+1);
+            if row<displayheight-1 then { cannot write to lower-right corner }
+              line:=concat(line,'!')
+          end;
+          if showlineno then
+            write(lineno1+row-1:6,': ');
+          write(line)
+        end;
+        clreol
+      end;
+      displayvalid:=true
+    end;
+
+    { --- prompting --- }
+
+    { display a prompt message at the top of the screen }
+    procedure showprompt(pl: string);
+    begin
+      gotoxy(0,0); write(pl); clreol
+    end;
+
+    { show an error message and let user confirm by pressing <space> }
+    procedure showerror(msg: string);
+    begin
+      showprompt(concat(msg,' Press <space> to continue.'));
+      repeat until getcommand=' '
+    end;
+
+    { prompt: show prompt line and get a command character }
+    function prompt(pl: string): char;
+    begin
+      showprompt(pl);
+      prompt:=getcommand;
+    end;
+
+  begin { viewfile }
+    {$I-}
+    reset(f, title);
+    {$I+}
+    if ioresult<>0 then begin                                 { bad filename }
+      writeln('No file ',title);
+      exit(viewfile)
+    end;
+    { main UI loop }
+    for blockindex:=1 to maxblocklineno1s do               { init seek cache }
+      blocklineno1s[blockindex]:=0;
+    blockindex:=0;           { initialize block caching; 0 means none loaded }
+    lineno1:=1;                           { line no of current line, 1-based }
+    showlineno:=false;
+    displayvalid:=false;
+    while true do begin
+      { (re-)display the text if needed }
+      if termchanged then        { redisplay in case of terminal size change }
+        displayvalid:=false;
+      if not displayvalid then                         { redisplay if needed }
+        redisplay;
+      { prompt }
+      cmd:=prompt(concat(
+        'View[',title,']: <space>, B(ack, D(own, U(p, G(oto, L(ines, Q(uit '));
+      prevlineno1:=lineno1;   { keep so we can test for change and redisplay }
+      if cmd=chr(15) then cmd:='U'           { support cursor keys (up/down) }
+      else if cmd=chr(12) then cmd :='D';
+      case cmd of
+        'N',' ': if checkloc(lineno1+1+displayheight-2) then    { N(ext page }
+               lineno1:=lineno1+displayheight-2;     { keep one line overlap }
+        'P','B': lineno1:=lineno1-(displayheight-2);        { B(ack one page }
+        'D': if checkloc(lineno1+1+1) then                  { D(own one line }
+               lineno1:=lineno1+1;
+        'U': lineno1:=lineno1-1;                              { U(p one line }
+        'G': begin                                       { G(oto line number }
+               showprompt('Go to what line? ');
+               if readlineno(newlineno1)
+                  and (newlineno1>0) and checkloc(newlineno1+1) then
+                 lineno1:=newlineno1
+               else
+                 showerror('Invalid line number.');
+             end;
+        'L': begin showlineno:=not showlineno; displayvalid:=false end;
+        'Q': exit(viewfile);                                         { Q(uit }
+      end;
+      if lineno1<1 then lineno1:=1;                     { moved before start }
+      if lineno1<>prevlineno1 then                { moved: need to redisplay }
+        displayvalid:=false
+    end
+  end;
+
+{ --- main program --- }
+
+begin
+  page(output);
+  write('View what file? ');
+  readlnpathname(title,'.TEXT','.TEXT');   { read with file-name completion }
+    {title:='sources:s.pascal.text';  { ...for debugging }
+  if length(title)>0 then
+    viewfile(title);
+end.

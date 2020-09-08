@@ -1,0 +1,48 @@
+{$R-,F-} { Ancestor matrix.  Set version.  }
+(* A SECOND VERSION OF THE ALGORITHM USES THE PASCAL SET STRUCTURE   *)  
+(* INSTEAD OF A BOOLEAN MATRIX.  tHE RELATION R[I,J] IS EXPRESSED AS *)
+(* "J IN R[I]".  SINCE THE PASCAL 6000-3.4 COMPILER RESTRICST SETS   *)
+(* TO HAVE AT MOST 59 ELEMENTS, THE FOLLOWING PERFORMANCE COMPARISON *)
+(* IS BASED ON THE CASE N = 50.                                      *)
+(* ON THE CDC6400 THIS PROGRAM REQUIRES ON 50 MSEC TO COMPUTE THE ANCESTOR *)
+(* MATRIX, COMPARED TO 341 MSEC FOR THE VERSION USING A PACKED ARRAY.      *)
+(* tHIS IS A GAIN BY A FACTOR OF 5.9                                       *)
+
+PROGRAM ANCESTOR(OUTPUT);
+(*ANCESTOR ALGORITHM USING SETS INSTEAD OF BOOLEAN MATRIX*)
+   CONST N = 50;
+   VAR I,J,HI,LOW, q, iterations: INTEGER;
+      R: ARRAY[1..N] OF SET OF 1..N;
+
+BEGIN (* J IN R[I] = "I IS A PARENT OF J"*)
+Writeln;
+Writeln ('Ancestor matrix  (sets, R-)');
+Writeln;
+Write ('Iterations ?  (<cr> starts benchmark) ');
+Readln (iterations);
+
+for q := 1 to iterations do begin
+   (* 
+   Page (output);
+   *)
+   FOR I := 1 TO N DO
+         IF I MOD 10 <> 0 THEN R[I] := [I+1] ELSE R[I] := [];
+      
+      FOR I := 1 TO N DO
+         FOR J := 1 TO N DO
+            IF I IN R[J] THEN R[J] := R[I]+R[J];
+      
+      (*
+      FOR I := 1 TO N DO
+      BEGIN WRITE(' ');
+         FOR J := 1 TO N DO
+            IF J IN R[I] THEN WRITE('1') ELSE WRITE('.');
+         WRITELN
+      END;
+      *)
+      
+   end {for q};
+WRITELN('DONE',CHR(7));
+
+END.
+   

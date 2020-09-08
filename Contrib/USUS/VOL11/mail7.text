@@ -1,0 +1,382 @@
+{Mail7 - Chkfiles, Uppercase, Gtstdflgs, Val, Rdata, Getint, WNew0Rec,
+         Wild1, Wild2, Wildok, Chkflgs, Outrec}
+{
+19-Feb-82 AT
+}
+{      
+** program    : MAIL - Text processing mailing label data manager.         **
+** authors    : Patrick R. Horton, Associated Computer Industries          **
+**              Austin Tate, Edinburgh Regional Computing Centre           **
+** Copyright  : (C) 1982, Austin Tate, ERCC                                **
+**              Permission to use this program for non-profit purposes     **
+**              is hereby granted, provided that this note is included.    **
+**              Enquiries concerning uses for other purposes should be     **
+**              directed to the copyright owner.                           **
+}
+ 
+(*$I-*)
+FUNCTION Chkfiles{(s : STRING) : BOOLEAN};   
+ BEGIN
+  RESET(infile,s); 
+  Chkfiles:=(IORESULT=0);
+  CLOSE(infile);
+ END;  
+(*$I+*)
+ 
+PROCEDURE Uppercase{(VAR s: STRING)};    
+ VAR t : INTEGER;
+ BEGIN
+  FOR t := 1 TO LENGTH(s) DO
+   IF s[t] IN ['a'..'z'] THEN s[t] := CHR(ORD(s[t])-32);  
+ END;
+
+PROCEDURE Gtstdflgs;   
+ BEGIN
+  FOR temp := 1 TO 5 DO stdflg[temp] := 0;
+  FOR temp := 1 TO 48 DO
+   BEGIN
+    tmpstr := format^.meanings[temp];
+    Uppercase(tmpstr);
+    IF tmpstr='PREFX' THEN stdflg[1] := temp; 
+    IF tmpstr='FNAME' THEN stdflg[2] := temp; 
+    IF tmpstr='MINIT' THEN stdflg[3] := temp; 
+    IF tmpstr='LNAME' THEN stdflg[4] := temp; 
+    IF tmpstr='SUFFX' THEN stdflg[5] := temp; 
+   END;
+END;
+
+FUNCTION Val{ (s : STRING) : INTEGER};                   
+ VAR i,j,k: INTEGER;
+     good,goodch: BOOLEAN;
+ BEGIN   
+  j := 0; k := 0; i := 1;
+  good:=false; {good when at least one digit found}
+  goodch:=true;{false when a non digit or non '-' found}
+  IF LENGTH(s)<>0 THEN
+   BEGIN
+    IF (LENGTH(s)>1) AND (s[1] = '-') THEN BEGIN k := k + 1;i := -1;END;
+    while (k<length(s)) and goodch do begin
+      k := k + 1; 
+      IF (s[k] IN ['0'..'9']) THEN    
+       BEGIN
+        good:=true; {number okay from now - bad ch terminates}
+        j := j * 10; 
+        j := j + ORD(s[k]) - 48;
+       END
+      ELSE goodch:=false; 
+    end;
+   END;
+  if good then Val := i*j else Val:=-9999;   
+ END (* Val *);      
+      
+PROCEDURE Rdata{(a,x,y,l : INTEGER; VAR s: STRING)};        
+ var i:integer;
+ BEGIN 
+  REPEAT
+   IF NOT ((x=0) AND (y=0)) THEN {altered from (x<>0) AND (y<>0) by BAT}
+    BEGIN
+     SC_Erase_to_EOL(x,y);
+     GOTOXY(x,y);
+     WRITE(' ':l,'<');    
+     GOTOXY(x,y);
+    END;    
+   READLN(tmpstr);   
+  UNTIL LENGTH(tmpstr)<=l;  
+  {remove control characters}
+  i:=1;
+  while i<=length(tmpstr) do begin {tmpstr length alters in loop}
+    if tmpstr[i]<' ' then delete(tmpstr,i,1)
+    else i:=i+1;
+  end;
+  IF NOT((POS('^',tmpstr)=1) AND (length(tmpstr)=1)) THEN s := tmpstr;
+  IF a<>0 THEN {write out field again}
+   BEGIN 
+     SC_Erase_to_EOL(x,y);
+     GOTOXY(x,y);
+     WRITE(s);  
+   END;
+ END;         
+   
+PROCEDURE Getint{(x,y : INTEGER; VAR t1 :INTEGER)};                    
+ {read an integer from position x,y on screen}
+ {if x=o and y=0 read from current position on screen}
+ {if character illegal, return previous value of t1}
+ VAR temp1,temp2,t3 : INTEGER;
+     tmpstr : STRING;
+ BEGIN   
+  t3 := t1;
+  tmpstr :='';   
+  temp2 := 6; {max legal integer length - ie 999999}
+  temp1 := 0; {no refresh after read}
+  IF (x<>0) OR  (y<>0) THEN
+    BEGIN
+      temp2 := 3; {max legal integer length - ie 999}
+      temp1 := 1; {and allow refresh of integer after read}
+    END; 
+  Rdata(temp1,x,y,temp2,tmpstr);     
+  IF LENGTH(tmpstr) =  0 THEN t1 := t3 
+  ELSE
+    begin
+      t1 := VAL(tmpstr); 
+      if t1=-9999 then t1:=t3;
+    end;
+   IF NOT ((x=0) AND (y=0)) THEN {altered from (x<>0) AND (y<>0) by BAT}
+   BEGIN  
+     SC_Erase_to_EOL(x,y);
+     GOTOXY(x,y);
+     WRITE(t1);  
+   END;
+ END;
+
+ 
+PROCEDURE Wnew0rec;        
+ BEGIN
+   disk^.code := 'Perm  ';
+   STR(numrecs,disk^.zip);                            
+   SEEK(disk,0);  
+   PUT(disk);
+ END (* wnew0rec *);               
+   
+PROCEDURE Wild1{(wch:char)};      
+ BEGIN 
+  CASE wch OF  
+   'P','p' : BEGIN
+              wfield := p;
+              WRITE('Enter prefix:');   
+              Rdata(0,13,0,5,wildcard);
+             END;
+   'F','f' : BEGIN
+              wfield := f;
+              WRITE('Enter forename:');
+              Rdata(0,15,0,10,wildcard);
+             END;
+   'N','n' : BEGIN
+              wfield := n;
+              WRITE('Enter middle initials:');
+              Rdata(0,22,0,2,wildcard);
+             END;
+   'L','l' : BEGIN
+              wfield := l;
+              WRITE('Enter last name:');
+              Rdata(0,16,0,15,wildcard);
+             END;
+   'U','u' : BEGIN
+              wfield := u;
+              WRITE('Enter suffix:');
+              Rdata(0,13,0,6,wildcard);
+             END;
+   'T','t' : BEGIN
+              wfield := t;
+              WRITE('Enter title:');
+              Rdata(0,12,0,15,wildcard);
+             END;
+   'C','c' : BEGIN
+              wfield := c;
+              WRITE('Enter company name:');
+              Rdata(0,19,0,30,wildcard);
+             END;
+   '#'     : BEGIN
+              wfield := p;
+              WRITE('Enter phone number:');
+              Rdata(0,19,0,15,wildcard);
+             END;
+   'A','a' : BEGIN
+              wfield := a;
+              WRITE('Enter address:');
+              Rdata(0,14,0,30,wildcard);
+             END;
+   'I','i' : BEGIN
+              wfield := i;
+              WRITE('Enter city:');
+              Rdata(0,11,0,30,wildcard);
+             END;
+   'S','s' : BEGIN
+              wfield := s;
+              WRITE('Enter state:');
+              Rdata(0,12,0,2,wildcard);
+             END;
+   'Y','y' : BEGIN
+              wfield := y;
+              WRITE('Enter country:');
+              Rdata(0,14,0,30,wildcard);
+             END;
+   'Z','z' : BEGIN
+              wfield := z;
+              WRITE('Enter zip/post code:');
+              Rdata(0,22,0,8,wildcard);
+             END;
+   'M','m' : BEGIN
+              wfield := m;
+              WRITE('Enter misc field:');
+              Rdata(0,17,0,90,wildcard);
+             END;
+    END;
+  END;
+
+PROCEDURE Wild2;
+ BEGIN
+  CASE wfield OF
+   p : field := disk^.prefx;    
+   f : field := disk^.fname;      
+   n : field := disk^.minit;
+   l : field := disk^.lname;
+   u : field := disk^.suffx;
+   t : field := disk^.title;
+   c : field := disk^.coname;               
+   h : field := disk^.phone;
+   a : field := disk^.address;
+   i : field := disk^.city;
+   s : field := disk^.state;
+   y : field := disk^.country;
+   z : field := disk^.zip;
+   m : field := disk^.misc;
+   END;
+ END;
+
+FUNCTION Wildok{ : BOOLEAN};     
+ { $ as last ch of wildcard means match anything remaining in field}
+ { added 29-June-81 by Austin Tate last changed 8 july 81}
+ VAR intb : BOOLEAN;
+     wlast:char;
+     temp1,wlen,flen:integer;
+ BEGIN  
+  wlen:=length(wildcard);
+  flen:=length(field);
+  intb:=TRUE;
+  {two null strings match - this ensures that null wildcard is not indexed}
+  if wlen=0 then intb:=(flen=0)
+  else
+    begin
+      wlast:=wildcard[wlen];
+      IF LENGTH(field)>=LENGTH(wildcard) THEN          
+       BEGIN
+         temp1:=1;
+         if flen>wlen then intb:=(wlast='$');
+         {must be $ on end as wildcard shorter than field}
+         while intb and (temp1<wlen) do begin {check all chs except last}
+           if wildcard[temp1]<>'?' then intb:=(field[temp1]=wildcard[temp1]);
+           temp1:=temp1+1;
+         end;
+         {assert temp1=wlen}
+         if intb then {check wildcard end matches or is ? or was $}
+                      {length checks for $ endings passed earlier }
+           begin
+             if (wlast<>'?') and (wlast<>'$') then intb:=(field[wlen]=wlast);
+           end;
+       END
+      ELSE   
+       BEGIN
+         {assert flen<wlen}
+         intb:=((flen=(wlen-1)) and (wlast='$'));
+         {wildcard must be only 1 longer than field and end in $}
+         temp1:=1;
+         while intb and (temp1<=flen) do begin
+           if wildcard[temp1]<>'?' then intb:=(field[temp1]=wildcard[temp1]);
+           temp1:=temp1+1;
+         end;
+       END; 
+    end;
+  Wildok := intb;  
+ END;   
+ 
+FUNCTION Chkflgs{ : BOOLEAN};    
+ VAR intb : BOOLEAN;      
+ BEGIN
+  intb := TRUE;
+  FOR temp := 1 TO 48 DO
+   IF format^.fflags[temp] THEN intb := FALSE; 
+  IF NOT intb THEN
+   BEGIN
+    IF format^.option THEN intb := FALSE 
+                      ELSE intb := TRUE;
+    FOR temp := 1 TO 48 DO    
+    BEGIN 
+     IF format^.option THEN  
+      BEGIN
+      {any positive match}      
+      IF format^.fflags[temp] AND disk^.flags[temp]               
+       THEN intb := TRUE;     
+     END   
+    ELSE
+     BEGIN  
+      {exact matches only}        
+      IF format^.fflags[temp] AND NOT disk^.flags[temp]
+       THEN intb := FALSE;        
+     END (* ELSE *);              
+   END (* FOR *);                       
+  END;
+  Chkflgs := intb;      
+ END;  
+
+PROCEDURE Outrec;
+
+procedure Outr1;
+begin
+  IF outmode <> ad THEN BEGIN SEEK(disk,recnumber);GET(disk);END;
+  SC_Clr_Screen;                      
+  gotoxy(0,2);
+  WITH format^,disk^ DO  
+   BEGIN  
+    WRITELN('prefix  :',prefx);
+    WRITELN('f name  :',fname);
+    WRITELN('m init  :',minit);
+    WRITELN('l name  :',lname);
+    WRITELN('suffix  :',suffx);
+    WRITELN('title   :',title);
+    WRITELN('company :',coname);
+    WRITELN('phone   :',phone);
+    WRITELN('address :',address);
+    WRITELN('city    :',city);
+    WRITELN('state   :',state);
+    WRITELN('country :',country);
+    WRITELN('zip/post:',zip);
+    WRITELN('misc    :',misc);
+   end {of with format^,disk^};
+end {of outr1};
+
+procedure outr2;
+begin
+  with format^,disk^ do
+   begin
+    IF outmode <> ad THEN
+     BEGIN
+      GOTOXY(0,18);
+      WRITE('code: ',code);    
+      WRITE('      recnumber: ',recnumber);
+      WRITE('      flags matching option: ');   
+      IF format^.option THEN WRITELN('A)ny positive match')
+                        ELSE WRITELN('E)xact matches only');
+      WRITE('currently at column ',columat);   
+      WRITELN(' will dump labels at ',mwide);  
+      WRITE('match flags set : ');
+      temp1 := 0;
+      FOR temp := 1 TO 48 DO 
+       IF fflags[temp] THEN
+        BEGIN  
+         temp1 := temp1 + 1;  
+         WRITE(temp:2,' ');
+         IF temp =12 THEN BEGIN temp1 := 0;WRITELN;END; 
+         IF temp1 = 18 THEN BEGIN temp1 := 0;WRITELN;END;
+        END;
+     END; 
+    GOTOXY(55,2);WRITE('record flags set:');  
+    GOTOXY(55,3);WRITE('-----------------');
+    temp1 := 0;
+    column := 0;
+    FOR temp := 1 TO 48  DO    
+     IF flags[temp] THEN  
+      BEGIN
+       temp1 := temp1 + 1; 
+       GOTOXY(57+column*3,temp1+3); 
+       WRITE(temp:2);  
+       IF temp1 = 10 THEN BEGIN column := column + 1;temp1 := 0;END;
+      END; 
+   END (* WITH format^,disk^ *);                             
+ end {of outr2};
+ 
+ BEGIN
+   Outr1; {split for code size}
+   Outr2;
+ END (* Outrec *);
+
+

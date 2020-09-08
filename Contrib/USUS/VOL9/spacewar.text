@@ -1,0 +1,352 @@
+PROGRAM Spacewar;                                                           
+ TYPE status = PACKED ARRAY[0..7] OF BOOLEAN; 
+ VAR  serialtrix : RECORD CASE BOOLEAN OF
+                           TRUE : (fdevaddr : INTEGER);
+                           FALSE: (serialstatus : ^status);
+                           END;
+      hitset                  : ARRAY[0..7] OF SET OF 0..15;
+      ch : CHAR; 
+      dx,dy                  : ARRAY[0..7] OF INTEGER;
+      shot,
+      wait,
+      otx,oty,
+      orp,ox,oy, 
+      myscore, yourscore, dt,      
+      tx,ty,txv,tyv,
+      mx,my,mxv,myv, 
+      rp,xv,yv,x,y : INTEGER;              
+      clship,ship             : ARRAY[0..7] OF STRING[8]; 
+      targ,cltarg,tstring     : STRING[8];
+        
+ PROCEDURE Initships;
+ 
+  PROCEDURE Inittstring; 
+   VAR temp : INTEGER;
+   BEGIN
+    tstring := '        '; 
+    FOR temp := 1 TO 8 DO tstring[temp] := CHR(0); 
+   END;
+   
+  PROCEDURE Makeclstring;
+   VAR temp : INTEGER;
+   BEGIN
+    FOR temp := 1 TO 8 DO IF ORD(tstring[temp])>12 THEN tstring[temp] := ' ';
+   END;
+   
+  BEGIN 
+   
+   hitset[0] := [1,2,5,6,9,10,13,14];
+   hitset[1] := [2,3,5,6,7,8,9,10,12,13];
+   hitset[2] := [4,5,6,7,8,9,10,11];                 
+   hitset[3] := [0,1,4,5,6,9,10,11,14,15];                          
+   hitset[4] := hitset[0];    
+   hitset[5] := hitset[1];
+   hitset[6] := hitset[2];        
+   hitset[7] := hitset[3];    
+   
+   targ := '[]   []'; 
+   targ[3] := CHR(8);
+   targ[4] := CHR(8);
+   targ[5] := CHR(11);
+   
+   cltarg := '       ';
+   cltarg[3] := CHR(8);
+   cltarg[4] := CHR(8);
+   cltarg[5] := CHR(11);
+   
+   Inittstring;    
+   tstring[1] := ' ';
+   tstring[2] := '|';  
+   tstring[3] := CHR(8);
+   tstring[4] := CHR(11);
+   tstring[5] := '|';
+   tstring[6] := CHR(8);
+   tstring[7] := CHR(11);
+   tstring[8] := '^';
+   ship[0] := tstring; 
+   Makeclstring;
+   clship[0] := tstring;
+  
+   Inittstring;  
+   tstring[1] := '/';
+   tstring[2] := CHR(11);
+   tstring[3] := '/';
+   tstring[4] := CHR(11);
+   tstring[5] := '+';
+   ship[1] := tstring;
+   Makeclstring;
+   clship[1] := tstring;
+   
+   Inittstring;
+   tstring[1] := CHR(11);
+   tstring[2] := '-';
+   tstring[3] := '-';
+   tstring[4] := '>';
+   ship[2] := tstring;
+   Makeclstring;   
+   clship[2] := tstring;      
+   
+   Inittstring;
+   tstring[1] := CHR(11);                      
+   tstring[2] := CHR(11);
+   tstring[3] := '\';    
+   tstring[4] := CHR(10);
+   tstring[5] := '\';
+   tstring[6] := CHR(10);
+   tstring[7] := '+';    
+   ship[3] := tstring;
+   Makeclstring;
+   clship[3] := tstring;
+   
+   tstring := ship[0];
+   tstring[2] := 'v';
+   tstring[8] := '|';
+   ship[4] := tstring;  
+   clship[4] := clship[0];
+   
+   tstring := ship[1];
+   tstring[1] := '+';
+   tstring[5] := '/';
+   ship[5] := tstring;
+   clship[5] := clship[1];
+   
+   tstring := ship[2];
+   tstring[2] := '<';
+   tstring[4] := '-';
+   ship[6] := tstring;
+   clship[6] := clship[2];
+   
+   tstring := ship[3];
+   tstring[3] := '+';
+   tstring[7] := '\';
+   ship[7] := tstring;
+   clship[7] := clship[3];
+   
+  END;
+ 
+ PROCEDURE Explosion(x,y : INTEGER);  
+  VAR temp1,temp2 : INTEGER;
+  BEGIN
+   WRITE(CHR(7));
+   FOR temp1 := 1 TO 9 DO  
+    BEGIN
+     FOR temp2 := 0 TO 2 DO  
+      BEGIN
+      GOTOXY(x, y + temp2);  
+      WRITE('***');
+      END;
+    END; 
+   FOR temp2 := 0 TO 2 DO
+    BEGIN
+     GOTOXY(x,y + temp2); WRITE('   ');
+    END;    
+  END;  
+  
+ PROCEDURE Chkscore;
+  BEGIN
+   dt := 0; tx := 70; ty := 20; txv := 1; tyv := 1;      
+   orp := 0;rp := 0; xv := 0; yv := 0; x := 40; y := 11;          
+   WRITE(CHR(27),'*'); 
+   GOTOXY(0,1);   
+   WRITELN('M');
+   WRITELN('E');
+   WRITELN;
+   WRITELN;  
+   WRITELN;
+   WRITELN;
+   WRITELN;
+   WRITELN;
+   WRITELN('Y'); 
+   WRITELN('O');
+   WRITELN('U');
+   GOTOXY(0,4);     
+   WRITE(myscore);
+   GOTOXY(0,13); 
+   WRITE(yourscore);   
+   WRITELN;
+   
+  FOR wait := 1 TO 5000 DO BEGIN END;
+  
+   IF myscore = 10 THEN WRITELN('I win'); 
+   IF yourscore=10 THEN WRITELN('You win');  
+   IF 10 IN [myscore,yourscore] THEN EXIT(Spacewar);
+  END;
+  
+ PROCEDURE Chkcollisions;
+  BEGIN  
+   
+   IF (dt<>0) AND (mx IN [tx,tx+1]) AND (my IN [ty,ty-1]) THEN   
+    BEGIN
+     Explosion(mx,my);
+     yourscore := yourscore + 1;
+     Chkscore;
+    END;
+    
+     
+   IF (ty - y > -3) AND (ty - y < 2) AND (tx - x > -2) AND (tx - x < 3)   
+    THEN IF (ty-y+2)*4+tx-x+1 IN hitset[rp] THEN      
+    BEGIN
+     Explosion(x,y);
+     myscore := myscore + 1;
+     Chkscore;
+    END;
+    
+   END;
+   
+ PROCEDURE Oposition;      
+  VAR temp : INTEGER;   
+  BEGIN   
+  
+  
+  IF (dt<>0) AND (dt < 32) THEN { move missle }            
+    BEGIN 
+     dt := dt + 1;  
+     GOTOXY(mx,my);             
+     WRITE(' ');  
+     IF (mx + mxv > 78) OR (mx + mxv < 1) THEN mxv := -mxv;         
+     IF (my + myv > 22) OR (my + myv < 1) THEN myv := -myv;            
+     mx := mx + mxv;   
+     my := my + myv;    
+     IF dt = 32 THEN {get rid of missle and randomize target}  
+      BEGIN    
+       shot := 0;
+       IF txv < 2 THEN txv := txv + 1 ELSE txv := txv - 1;         
+       IF tyv < 2 THEN tyv := tyv + 1 ELSE tyv := tyv - 1;  
+       GOTOXY(mx, my); WRITE(' '); dt := 0;   
+      END
+     ELSE 
+      BEGIN
+       GOTOXY(mx,my);  
+       WRITE('*');
+      END;   
+    END;    
+     
+           
+   {move target}
+   
+   IF (tx + txv > 77) OR (tx + txv < 1) THEN txv := -txv;                           
+   IF (ty + tyv > 22) OR (ty + tyv < 1) THEN tyv := -tyv;        
+   tx := tx + txv;                       
+   ty := ty + tyv;    
+  
+   IF (x + xv > 76) OR (x + xv < 1) THEN xv := -xv;             
+   IF (y + yv > 21) OR (y + yv < 2) THEN yv := -yv;  
+   x := x + xv;
+   y := y + yv;
+   
+   GOTOXY(ox,oy);   WRITE(clship[orp]); 
+   GOTOXY(x,y);     WRITE(ship[rp]);
+   GOTOXY(otx,oty); WRITE(cltarg);    
+   GOTOXY(tx,ty);   WRITE(targ);    
+    
+   ox := x; oy := y; orp := rp; otx := tx; oty := ty;
+   
+   Chkcollisions;    
+     
+ END;                     
+  
+ PROCEDURE Updvel; 
+  BEGIN
+   CASE ORD(ch) OF             
+    12 : rp := (rp + 1) MOD 8;             
+     8 : rp := (rp - 1) MOD 8;  
+    10 : CASE rp OF 
+          0 : IF yv > -4 THEN yv := yv - 1;  
+          1 : BEGIN  
+               IF xv < 4 THEN xv := xv + 1;  
+               IF yv >-4 THEN yv := yv - 1;
+              END;
+          2 : IF xv < 4  THEN xv := xv + 1; 
+          3 : BEGIN
+               IF xv < 4 THEN xv := xv + 1;
+               IF yv < 4 THEN yv := yv + 1;
+              END;
+          4 : IF yv < 4  THEN yv := yv + 1; 
+          5 : BEGIN  
+               IF yv < 4 THEN yv := yv + 1;    
+               IF xv >-4 THEN xv := xv - 1; 
+              END;
+          6 : IF xv > -4 THEN xv := xv - 1;
+          7 : BEGIN            
+               IF xv >-4 THEN xv := xv - 1; 
+               IF yv >-4 THEN yv := yv - 1;      
+              END;
+         END;
+     11 : BEGIN 
+            GOTOXY(mx,my); WRITE(' ');
+            dt := 1; 
+            shot := shot + 1;
+            mx := x + dx[rp] ; my := y + dy[rp];
+            mxv := xv; myv := yv;   
+            IF shot MOD 4 = 0 THEN 
+             BEGIN
+              IF txv < 2 THEN txv := txv + 1 ELSE txv := txv - 1;        
+              IF tyv < 2 THEN tyv := tyv + 1 ELSE tyv := tyv - 1;  
+             END;
+            CASE rp OF 
+             0 : IF myv > -4 THEN myv := myv - 2;       
+             1 : BEGIN
+                  IF mxv < 4 THEN mxv := mxv + 2;   
+                  IF myv >-4 THEN myv := myv - 2;             
+                 END;
+             2 : IF mxv < 4  THEN mxv := mxv + 2;     
+             3 : BEGIN 
+                  IF mxv < 4 THEN mxv := mxv + 2;     
+                  IF myv < 4 THEN myv := myv + 2;    
+                 END;
+             4 : IF myv < 4  THEN myv := myv + 2;      
+             5 : BEGIN   
+                  IF myv < 4 THEN myv := myv + 2;   
+                  IF mxv >-4 THEN mxv := mxv - 2;     
+                 END;
+             6 : IF mxv > -4 THEN mxv := mxv - 2;   
+             7 : BEGIN
+                  IF mxv >-4 THEN mxv := mxv - 2;      
+                  IF myv >-4 THEN myv := myv - 2;      
+                 END;
+            END;
+           END;
+     END;    
+    IF rp < 0 THEN rp := rp + 8;
+   END;   
+  
+  
+ BEGIN    
+  serialtrix.fdevaddr := -1007;   {FC11}   
+  dt := 0; rp := 0; xv := 0; yv := 0; x := 40; y := 11;     
+  ox := 0; oy := 0; otx := 0; oty := 0; 
+  orp := 0;
+  myscore := 0; yourscore := 0;    
+  
+  { eventually these will start as random numbers } 
+  tx := 70; ty := 20; txv := 1; tyv := 1; 
+   
+  dx[0] := 1;  dy[0] := -2;  
+  dx[1] := 2;  dy[1] := -2;
+  dx[2] := 2;  dy[2] := -1;
+  dx[3] := 2;  dy[3] :=  0;
+  dx[4] := 1;  dy[4] :=  0; 
+  dx[5] := 0;  dy[5] :=  0;
+  dx[6] := 0;  dy[6] := -1; 
+  dx[7] := 0;  dy[7] := -2; 
+  
+  Initships; 
+  
+  WRITE(CHR(27),'*');        
+  GOTOXY(x,y); WRITE(ship[rp]); 
+   
+  FOR wait := 1 TO 5000 DO BEGIN END;
+  shot := 0;
+  
+    
+  REPEAT     
+   WHILE NOT serialtrix.serialstatus^[1] DO    
+    BEGIN
+     Oposition;
+    END;  
+   READ(keyboard,ch);         
+   IF ORD(ch) IN [12,8,10,11] THEN Updvel;  
+   UNTIL ch IN ['Q','q'];
+  WRITELN('quit');   
+ END.
+

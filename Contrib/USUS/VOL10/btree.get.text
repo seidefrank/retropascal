@@ -1,0 +1,316 @@
+{************************************************************************
+*                                                                       *
+*  filed as BTREE.GET.TEXT                  revised 27 November 1981    *
+*                                                                       *
+************************************************************************}
+
+
+{L *GET.TEXT}
+
+procedure UPPERCASE(var KEY:FNAME);  {maps key to all uppercase}
+{************************************************************************
+*                                                                       *
+*  This procedure makes sure regardless of what the user types in the   *
+*  search for the key will be done for upper case "keys" only.          *
+*                                                                       *
+************************************************************************}
+begin
+  for I:=1 to length(KEY) do
+    if (ord(KEY[I])>=97) and (ord(KEY[I])<=122) then {chr(97)=a & chr(122)=z}
+      KEY[I]:=chr(ord(KEY[I])-32)
+end;  {UPPERCASE}
+
+procedure PRINT_PERSON(U:PERSON);
+{************************************************************************
+*                                                                       *
+*  This procedure displays the record being entered or retrieved and    *
+*  asks if the data is correct.  If it is then nothing out of the       *
+*  ordinary happens, however if a correction is made then the revised   *
+*  record is written to the disk.                                       *
+*                                                                       *
+************************************************************************}
+begin
+  CLEARSCREEN;
+  with U do begin
+    (*writeln('KEY  -->',KEY,'<--');     {KEY is the actual key}*)
+    writeln;
+    writeln('1--> First name:        ',FIRST);
+    writeln('2--> Last name:         ',LAST);
+{************************************************************************
+*                                                                       *
+*  In order to make this a usable program for names and addresses,      *
+*  must remove the (**) from around the lines below.                    *
+*                                                                       *
+************************************************************************}
+    (*writeln('3--> Street address:    ',STREET);
+    writeln('4--> City:              ',CITY);
+    writeln('5--> State:             ',STATE);
+    writeln('6--> ZIP code:          ',ZIPCODE);
+    writeln('7--> Telephone number:  ',PHONE); *)
+    writeln;
+  end  {with CUSTMERS^.DATA[K]}
+end; {PRINTRECORD}
+
+function GOOD_STRING(S:string):boolean;
+begin
+  if S<>'' then begin                           {S is not null string}
+    if (S[1]<'!') or (S[1]>'~') then begin      {S[1] not human readable}
+      writeln;
+      writeln('error in entry...please re-enter   ');
+      writeln;
+      GOOD_STRING:=false
+    end  {if S[1]=' '}
+    else GOOD_STRING:=true
+  end  {if S<>''}
+  else begin                                    {S is null string}
+    writeln;
+    writeln('error in entry...please re-enter   ');
+    writeln;
+    GOOD_STRING:=false
+  end  {else begin}
+end; {GOOD_STRING}
+
+procedure INVERT_KEY(var V:FNAME;K:integer);
+{************************************************************************
+*                                                                       *
+*  This procedure takes the user inputed key and converts it to the     *
+*  actual key.  This conversion is made to simplify displaying          *
+*  "sounds like" records if the desired record is not found.            *
+*                                                                       *
+************************************************************************}
+var   TEMP_KEY:FNAME;           {temporary key used while converting}
+begin
+  TEMP_KEY:='          ';
+  J:=length(V);
+  if J>10 then J:=10;
+  case K of
+    1:begin     {convert original user input}
+        TEMP_KEY[J]:=V[1];
+        for I:=1 to J-1 do TEMP_KEY[I]:=V[I+1];
+      end;
+    2:begin     {convert computed key to compare with user input}
+        J:=1;
+        while (J<=9) and (V[J]=' ') do begin
+          V[1]:=V[J+1];
+          J:=J+1;
+        end; {while}
+        for I:=2 to 11-J do V[I]:=V[I+J-1];
+        J:=1;
+        while (J<=9) and (V[J]<>' ') do J:=J+1;
+        if J=9 then
+          if V[10]<>' ' then J:=10;
+        for I:=2 to J do TEMP_KEY[I]:=V[I-1];
+        TEMP_KEY[1]:=V[J]
+      end
+  end; {case K}
+  V:=TEMP_KEY;
+end; {INVERT_KEY}
+
+procedure COMPUTE_KEY(var V:PERSON);
+{************************************************************************
+*                                                                       *
+*  This procedure computes the actual key from the FIRST and LAST       *
+*  names which the user inputs.   It also computes a "FAKE_KEY"         *
+*  which it displays to the user.                                       *
+*                                                                       *
+*  NOTE:                                                                *
+*  ----                                                                 *
+*                                                                       *
+*       The real key/fake key concept was developed because it is       *
+*       more natural for a user to type in the first initial and        *
+*       last name rather than the last name and first initial, but      *
+*       it is easier to write code to find "sounds like" or             *
+*       similar spellings if the key is last name and first initial.    *
+*                                                                       *
+*       first name = BOB                last name = WILSON              *
+*                                                                       *
+*       user/fake key = BWILSON         actual key = WILSONB            *
+*                                                                       *
+************************************************************************}
+var   FAKE_KEY:FNAME;           {for user edification only}
+begin
+  with V do begin
+    KEY:='          ';          {initialize}
+    FAKE_KEY:='          ';     {initialize}
+    J:=length(LAST);
+    if J>=10 then J:=9;
+      {Since KEY:string[10] and one letter of the key must be the first
+       initial, the maximum number of characters that can be mapped is 9.}
+    for I:=1 to J do begin
+      KEY[I]:=LAST[I];          {real key has last name before FIRST[1]}
+      FAKE_KEY[I+1]:=LAST[I]    {fake key has last name after FIRST[1]}
+    end; {for I}
+    FAKE_KEY[1]:=FIRST[1];
+    KEY[J+1]:=FIRST[1];
+    UPPERCASE(FAKE_KEY);        {make all keys upper case because abc<>ABC}
+    UPPERCASE(KEY);             {make all keys upper case because abc<>ABC}
+    (*writeln('REAL KEY  -->',KEY,'<--');         {display results}
+    writeln('USER KEY  -->',FAKE_KEY,'<--');    {display results} *)
+  end  {with V}
+end; {COMPUTE_KEY}
+
+procedure GET_FIRST(var FIRST:FNAME);
+var   INPUTKEY:string;
+      J:integer;
+begin
+  repeat
+    write('Enter first name:  ');
+    readln(INPUTKEY);
+  until GOOD_STRING(INPUTKEY);
+    {prevent meaningless keys}
+  J:=length(INPUTKEY);
+  if J>10 then J:=10;
+  FIRST:=copy(INPUTKEY,1,J);
+end; {GET_FIRST}
+
+procedure GET_LAST(var LAST:LNAME);
+var   INPUTKEY:string;
+      J:integer;
+begin
+  repeat
+     write('Enter last name:   ');
+     readln(INPUTKEY)
+  until GOOD_STRING(INPUTKEY);
+    {prevent meaningless keys}
+  J:=length(INPUTKEY);
+  if J>20 then J:=20;
+  LAST:=copy(INPUTKEY,1,J);
+end; {GET_LAST}
+
+procedure PERSON_CHANGE(var U:PERSON);
+{************************************************************************
+*                                                                       *
+*  This procedure allows user to change new data records before they    *
+*  are written to the disk, and change old data records as required.    *
+*                                                                       *
+************************************************************************}
+var   FIELD_NUM:integer;        {which field to change}
+begin
+  with U do begin
+    repeat              {until the data is correct}
+      repeat            {until (FIELD_NUM>0) and (FIELD_NUM<=7)}
+        writeln;
+        writeln;
+        write('Enter field number in error:  ');
+        readln(FIELD_NUM)
+{************************************************************************
+*                                                                       *
+*  A simple "read(FIELD_NUM)" causes strange and not so wonderful       *
+*  things to happen.  For some reason the system uses a "read" here     *
+*  correctly, but the next read statement executed by the program       *
+*  executes without any user input and uses the same data entered here  *
+*  where "read(keyboard,CH)" is used.                                   *
+*                                                                       *
+************************************************************************}
+      until (FIELD_NUM>0) and (FIELD_NUM<=7);
+        {this is "bomb proofing"...must be changed if the number of
+         fields are changed}
+      writeln;
+      case FIELD_NUM of
+        1:begin
+            GET_FIRST(FIRST);
+            COMPUTE_KEY(U)      {we might have changed the key}
+          end;
+        2:begin
+            GET_LAST(LAST);
+            COMPUTE_KEY(U)      {we might have changed the key}
+          end;
+{************************************************************************
+*                                                                       *
+*  In order to make this a usable program for names and addresses,      *
+*  must remove the (**) from around the lines below.                    *
+*                                                                       *
+************************************************************************}
+        (*3:begin
+            repeat
+              write('Enter street address:  ');
+              readln(STREET)
+            until GOOD_STRING(STREET);          {prevent meaningless data}
+          end;
+        4:begin
+            repeat
+              write('Enter city:  ');
+              readln(CITY)
+            until GOOD_STRING(CITY);            {prevent meaningless data}
+          end;
+        5:begin
+            repeat
+              write('Enter state:  ');
+              readln(STATE)
+            until GOOD_STRING(STATE);           {prevent meaningless data}
+          end;
+        6:begin
+            repeat
+              write('Enter zip:  ');
+              readln(ZIPCODE)
+            until GOOD_STRING(ZIPCODE);         {prevent meaningless data}
+          end;
+        7:begin
+            repeat
+              write('Enter telephone number:  ');
+              readln(PHONE)
+            until GOOD_STRING(PHONE);           {prevent meaningless data}
+          end;*)
+      end; {case FIELD_NUM}
+      PRINT_PERSON(U);          {print modified/corrected record}
+      writeln;
+      writeln;
+      write('Is the customer data correct?');
+    until YES
+  end  {with U}
+end; {PERSON_CHANGE}
+
+procedure GET_NEW_PERSON(var V:PERSON);
+{************************************************************************
+*                                                                       *
+*  This procedure initializes and gets a new record.  It then calls     *
+*  other procedures to display and verify the data.                     *
+*                                                                       *
+************************************************************************}
+var   INPUTKEY:string;
+begin
+  CLEARSCREEN;                  {clear CRT}
+  with V do begin
+    SUCCNODE:=-1;               {there are no successor nodes (yet!)}
+    DUPE:=-1;                   {there are no duplicate keys (yet!)}
+    KEY:='          ';          {initialize}
+    writeln;
+    GET_FIRST(FIRST);
+    GET_LAST(LAST);
+    COMPUTE_KEY(V);             {compute real key based on FIRST and LAST}
+{************************************************************************
+*                                                                       *
+*  In order to make this a usable program for names and addresses,      *
+*  must remove the (**) from around the lines below.                    *
+*                                                                       *
+************************************************************************}
+    (*repeat
+      write('Enter street address:  ');
+      readln(STREET);
+    until GOOD_STRING(STREET);          {prevent meaningless data}
+    repeat
+      write('Enter city:  ');
+      readln(CITY);
+    until GOOD_STRING(CITY);            {prevent meaningless data}
+    repeat
+      write('Enter state: ');
+      readln(STATE);
+    until GOOD_STRING(STATE);           {prevent meaningless data}
+    repeat
+      write('Enter ZIP code:  ');
+      readln(ZIPCODE);
+    until GOOD_STRING(ZIPCODE);         {prevent meaningless data}
+    repeat
+      write('Enter telephone number:  ');
+      readln(PHONE);
+    until GOOD_STRING(PHONE);           {prevent meaningless data} *)
+  end; {with V}
+  PRINT_PERSON(V);                      {display data entered}
+  writeln;
+  writeln;
+  write('Is the above correct?  ');     {verify data}
+  if not YES then PERSON_CHANGE(V)      {change it if not correct}
+end; {GET_NEW_PERSON}
+{L-}
+
+

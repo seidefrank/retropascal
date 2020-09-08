@@ -1,0 +1,378 @@
+1.3 Defining a UDE Data File 
+ 
+     The format of a data file must be defined by the user.  To define a data
+file format, press <D> from the UDE menu.  An explanation of the Define
+function is found in section 1.8.  The format may consist of up to 40 fields,
+as long as the total number of characters in the format is 250 or less. 
+Because the last two lines of the screen are used for messages, they should not
+be used in the format. 
+ 
+ 
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.4 MAINTAINING A UDE DATA FILE 
+ 
+     Maintaining a UDE data file includes adding, changing, or deleting records
+that have been defined. 
+ 
+1.4.1 Accessing the Data File 
+ 
+     When an <M> is pressed while in the main UDE display, the following
+screen appears: 
+ 
+ 
+***************************************************************** 
+ 
+ 
+                     MAINTAIN A DATA BASE 
+                     ==================== 
+ 
+ 
+Volume   : _________
+
+Name     : ____________
+
+Type     : SCRN and TEXT
+
+
+
+<ENTER> to execute, <ESC> to abort 
+ 
+ 
+***************************************************************** 
+ 
+     The UDE data is kept in two different files: a file ending in .TEXT
+for storing data, and a file ending in .SCRN for storing the UDE screen
+description. 
+ 
+     After entering the volume and name fields, press <enter>.  If the SCRN
+file is not found, an error message is displayed.  If the TEXT file is not
+found, the program asks if it should create a new data file.  If the answer is
+yes, the next prompt is: 
+ 
+          Maximum number of records ?_0_______
+ 
+The absolute maximum number of records in a data file is 32767.  Enter whatever
+number is most appropriate for that data file, keeping in mind that the only way
+to expand a data file with all its records filled is to copy it into a new,
+larger data file.  Entering an unacceptable number will result in an error
+message. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+     When the TEXT file is available for storing data, the UDE screen
+layout, created with the Define program, is displayed and the following
+prompt appears at the lower left of the screen: 
+ 
+Rec # <1__>, Add, Mash, 
+Store, Examine, Change, Delete, Quit ? 
+ 
+1.4.2 Performing Maintain Operations 
+ 
+     Select the operation to be performed by pressing the appropriate key,
+either <R>, <A>, <M>, <S>, <E>, <C> or <D>.  When all operations
+have been performed, <Q> will return the user to the main menu. 
+ 
+1.4.3 Setting the Record Number 
+ 
+     Select the Rec # command by pressing <R>.  This allows access to the
+data file by record number.  The current record number is displayed in this
+field as the data file is being maintained.  When a new record number is
+entered, press <return> to get to the main prompt line.  To view the record,
+press <E> to examine.  If an incorrect number is entered, an error message is
+displayed. 
+ 
+1.4.4 Adding New Records 
+ 
+     Select the Add command by pressing <A>.  This puts the operator in the
+Add mode of operation, finds the first blank record after the current record
+number and clears all the data fields to blanks or to the proper default
+values.  When all the data fields have been properly filled in, press <enter>
+to add the record to the data file and automatically find the next blank
+record.  This will also perform any calculations defined in the record and put
+the results in the proper fields.  Press <esc> to leave the Add operation. 
+ 
+    If the end of available space is reached, Add terminates with a
+message.  There may, however, be more empty records available for input.  To
+find them, return to record number one by using the <R> command and press
+<A> to add. 
+ 
+1.4.5 Examining Records 
+ 
+     Select the Examine command by pressing <E> to display the record whose
+number is in the Rec # field.  That number can be changed by using the
+Rec # command.  Continuing to press the <E> increments the record number by
+one, allowing examination of successive records. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1.4.6 Changing Records 
+ 
+     The user may change the contents of any record by displaying the record
+on the screen and pressing the <C> to Change.  This will move the cursor to
+the beginning of the first field and the user may go from field to field,
+changing whatever information is desired.  When complete, press the <enter>
+key to return to the UDE Maintain prompts.  The calculations defined for that
+record will be performed and the results displayed.  In order to save the
+changed information in the file, the Store command must be performed. 
+ 
+1.4.7 Storing Records 
+ 
+     Select the Store command by pressing <S> to store the data on
+the screen in the record number indicated.  This command is used to modify
+existing records or to add single records to the data file without going into
+add mode. 
+ 
+1.4.8 Deleting Records 
+ 
+     Select the Delete command by pressing <D> to delete the record pointed
+to by the record number.  The fields of the deleted record are filled with
+blanks on the screen and a blank record is written on the disk.  It is not
+possible to recover data that has been deleted with this command. 
+ 
+1.4.9 Mashing the File 
+ 
+     When the user wants to move all non-blank records to the beginning of the
+file, this can be done by pressing <M>.  This will consolidate all empty
+records at the end of the file.  It is very important that the user not
+disturb this operation until it is complete. 
+ 
+1.4.10 Performing Calculations 
+ 
+     If a field is defined as calculated, the calculation will be performed
+when the record is Added or Changed.  A few things must be kept in mind when a
+field is calculated.  The maximum size of a number that can be calculated is
+nine digits to the left of the decimal point and four digits to the right. 
+ This means that it is not possible to calculate numbers smaller than .0001 or
+greater than 999999999.  An overflow message will appear if too large a number
+is calculated and the result will be set to 0. 
+ 
+   The field size must be large enough to store the integer part of the
+calculated value or an error message will appear and the field value will be
+set to 0.  There will always be at least one digit to the left of the decimal
+point, ie. 1/3 is calculated as 0.3333.  If the field is not wide enough to
+hold the calculated number and there are any digits to the right of the
+decimal point, the program will attempt to store it anyway.  For instance, if
+the calculated value is 100.2365 and the field width is only six, the program
+will truncate digits to the right of the decimal point until the value fits in
+the field.  In this case, 100.23 will be the stored value.  No rounding of the
+number is attempted.  To avoid the problem, define fields with enough width to
+contain the calculated numbers. 
+ 
+  
+
+ 
+ 
+ 
+ 
+ 
+ 
+1.5  DEFINING A PRINTED LISTING FORMAT 
+ 
+     The format for listing UDE data records includes the fields to be
+listed, their order, and the titles and footings to be put on each page. 
+ 
+1.5.1  Accessing the Data File 
+ 
+     When an <L> is pressed while in the UDE main display, the following
+screen will appear: 
+ 
+ 
+******************************************************** 
+ 
+ 
+                   PRINT A DATA FILE 
+                   ================= 
+ 
+ 
+Volume    : ________
+
+Name      : ____________
+
+Type      : SCRN and TEXT
+
+
+ 
+ 
+ 
+<ENTER> to execute, <ESC> to abort 
+ 
+ 
+******************************************************** 
+ 
+ 
+ 
+     Two types of files are required to print a data list: a TEXT file for
+storing data, and a SCRN file for storing the UDE definition. 
+ 
+     Input the volume and name fields, then press <enter>.  If the SCRN file
+or TEXT file is not found, an error message is displayed. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+1.5.2 Creating a Printed Listing Format 
+ 
+     When the desired data list has been found, the following screen will
+appear: 
+ 
+ 
+************************************************************* 
+ 
+ 
+               PRINTED LISTING FORMAT 
+               ====================== 
+ 
+Printer Width    : 132 
+Heading Number 1 : _____________________________________________
+Heading Number 2 : _____________________________________________
+Heading Number 3 : _____________________________________________
+ 
+Col #    Field Id                   Column Title 
+ 
+ 1       ________     ________________________________________
+ 2       ________     ________________________________________
+ 3       ________     ________________________________________
+ 4       ________     ________________________________________
+ 5       ________     ________________________________________
+ 6       ________     ________________________________________
+ 7       ________     ________________________________________
+ 8       ________     ________________________________________
+ 
+Footing Number 1 : _____________________________________________
+Footing Number 2 : _____________________________________________
+Footing Number 3 : _____________________________________________
+ 
+Get,Save format,Output file, 
+Change,Export,List,Tests,Quit ?  
+ 
+************************************************************* 
+ 
+ 
+     Printer Width specifies the maximum number of characters that may be
+printed across the page.  If the field widths or column title widths add up to
+more than this value, an error message is given. 
+ 
+    Up to three page headings may be specified in the Heading data
+fields.  These headings will appear centered on the top of each report page. 
+ 
+    The Field ID's to be listed and the Column Title's to appear
+above each column of printed data are entered in their respective columns.  If
+a "#" is placed instead of a Field ID, the record number will be printed when
+the report is generated. 
+ 
+     Up to three page footings may be specified in the Footing data fields.
+If a "#" is entered in place of a normal footing, the pages of the report will
+be numbered at the bottom when the report is generated.  The footings and page
+number are centered at the bottom of each page. 
+ 
+    
+    
+    
+    
+    
+    
+    
+    
+    The commands available at the bottom of the screen allow the user to
+save the data on the screen, get data to fill in this screen from disk, change
+the data fields on the screen and return to the main system.  The Get, Save,
+Change and Quit commands are described in section 1.1.4 of this document. 
+ 
+1.5.2.1 Specifying an Output File 
+ 
+     The Output file command allows the user to name the file in which to
+place the listing.  It needs to be performed only if the user wants to send the
+listing to a file, rather than directly to the printer.  If no Output file
+command is performed, the List output will be sent to the printer.  If the user
+presses <O>, the following display appears: 
+ 
+***************************************************************** 
+ 
+ 
+                   OUTPUT FILE NAME 
+                   ================ 
+ 
+ 
+Volume    : ________
+
+Name      : ____________
+
+Type      : ____________
+
+
+
+
+
+<ENTER> to execute, <ESC> to abort
+
+ 
+***************************************************************** 
+ 
+ 
+Any file name or type is acceptable here.  However, it is possible to
+destroy files that already exist; it would be very easy at this point to copy
+over the UDE data file.  BE CAREFUL!  The user may perform the Output file
+command any number of times.  To make the output go directly to the printer
+after a file has been defined, perform the Output file command and clear all
+the fields of the file name. 
+ 

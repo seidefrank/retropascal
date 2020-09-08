@@ -1,0 +1,19 @@
+
+{ The Apple Pascal system has a linefeed flag at location BF0F hex.  If
+  this flag is set to 255 (FF hex), line feeds will be suppressed.  If
+  it is set to 0 (default), line feeds will be passed. }
+  
+PROGRAM LINEFEED;
+
+  TYPE PA=PACKED ARRAY[0..1] OF 0..255;
+       TWOFACE=RECORD CASE BOOLEAN OF
+                 TRUE:(INT:INTEGER);
+                 FALSE:(PTR:^PA);
+               END;
+               
+  VAR CHEAT:TWOFACE;
+  
+BEGIN
+  CHEAT.INT:=-16625; {BF0F hex}
+  CHEAT.PTR^[0]:=255 {Set flag}
+END.

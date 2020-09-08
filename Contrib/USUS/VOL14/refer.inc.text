@@ -1,0 +1,436 @@
+  (* included from REFERENCE *)
+  
+  procedure printtree(root: ptrtoentry);
+    var
+      thiscell: listofusages;
+      count: natural;
+      
+    procedure conditionalwrite(n: natural;
+                               substitute: sixchars);
+    begin { conditionalwrite }
+      if n = 0 then
+        write(outfile, substitute)
+      else
+        write(outfile, n:6);
+    end;  { conditionalwrite }
+  
+    procedure namewrite(p: ptrtoentry);
+      var len: integer; s: setrange;
+    begin { namewrite }
+      with p^ do
+        begin len := length(procname);
+          for s := 0 to len-1 do
+            if s in caseset then
+              write(outfile, chr(ord(procname[s+1])-uclcdisplacement))
+            else
+              write(outfile, procname[s+1]);
+          end;
+      if len < sigcharlimit then
+        write(outfile, ' ':sigcharlimit-len);
+    end;  { namewrite }
+    
+  begin { printtree }
+    if root <> nil then
+      with root^ do
+        begin printtree(before); writeln(outfile);
+          write(outfile, linenumber: 5); conditionalwrite(startofbody, '      ');
+          case status of
+            fwdhalf,notproc:
+              write(outfile, '   eh?');
+            formal:
+              write(outfile, '   fml');
+            outside:
+              write(outfile, '   ext');
+            shortform:
+              write(outfile, '      ');
+            allfwd:
+              write(outfile, forwardblock:6);
+          end;
+          write(outfile, '  '); namewrite(root); write(outfile, ' :'); 
+          thiscell := calls;
+          count := 0;
+          while thiscell <> nil do
+            begin
+              if ((count mod namesperline) = 0) and (count <> 0) then
+                begin writeln(outfile); 
+                  write(outfile, ' ':sigcharlimit+19, ' :'); 
+                end;
+              write(outfile, ' ');
+              namewrite(thiscell^.what);
+              thiscell := thiscell^.next;
+              count := count + 1;
+            end;
+          writeln(outfile);
+          
+          printtree(after);
+        end;
+  end;  { printtree }
+  
+  procedure nexttoken;
+  
+    procedure ignorecomment(tail: string);
+    
+      procedure getdirective;
+        var i: integer; found: boolean; inclfn: string[30];
+      begin { getdirective }
+        {$R- disable range checks }
+        nextch;
+        if ch = 'I' then { include }
+          begin nextch;
+            if ch = ' ' then
+              begin nextch; i := 0; 
+                while ch <> '}' do
+                  begin i := i + 1;
+                    inclfn[i] := ch;
+                    nextch;
+                  end;
+                inclfn[0] := chr(i);    { set string length }
+                {$I- disable IO checks }
+                including := including + 1;
+                with fcb[including] do
+                  begin close(infile); reset(infile, inclfn);
+                    found := ioresult = 0;
+                    if not found  then { found the file }
+                      begin inclfn := concat(inclfn, '.text');
+                        reset(infile, inclfn); found := ioresult = 0;
+                      end;
+                    {$I+}
+                    if found then
+                      begin writeln('---opening: ', inclfn);
+                        inlfn := inclfn; chno := 0; line := '';
+                        bpos := bufsiz; endfile := false; blknr := 2;
+                      end
+                    else
+                      begin writeln('---cannot find: ', inclfn);
+                        close(infile);
+                        including := including - 1;
+                        with fcb[including] do
+                          reset(infile, inlfn);
+                      end;
+                  end;
+                end;
+          end;
+        {$R+}
+      end;  { getdirective }
+      
+    begin { ignorecomment }
+      nextch;
+      if ch = '$' then
+        getdirective;
+      repeat
+        while (ch <> tail[1]) do
+          nextch;
+        if ch = '*' then
+          nextch;
+      until (ch = tail[length(tail)]);
+      nextch;
+    end;  { ignorecomment }
+    
+    procedure ignorenumbers;
+    begin { ignorenumbers }
+      while ch in digits do
+        nextch;
+      with fcb[including] do
+        if ch = '.' then
+          begin
+            if (line[chno+1] in digits) then
+              begin nextch;
+                while ch in digits do nextch;
+              end;
+          end;
+      if (ch = 'E') or (ch = 'e') then
+        begin nextch;
+          if (ch = '+') or (ch = '-') then nextch;
+          while ch in digits do nextch;
+        end;
+    end;  { ignorenumbers }
+    
+    procedure readident;
+      var j: integer;
+    begin { readident }
+      {$R- disable range check to store string length }
+      token := namesy; symbol := spaces; symbolcase := []; j := 0;
+      while (j < sigcharlimit) and (ch in alphanums) do
+        begin j := j + 1;
+          if ch in uppercase then
+            begin symbol[j] := chr(ord(ch)+uclcdisplacement);
+              symbolcase := symbolcase + [j-1];
+            end
+          else symbol[j] := ch;
+          nextch;
+        end;
+      symbol[0] := chr(j);
+      {$R+}
+      while ch in alphanums do
+        nextch;
+    end;  { readident }
+    
+  begin { nexttoken }
+    token := othersy;
+    repeat
+      if ch in usefulchars then
+        begin
+          case ch of
+            ')':
+              begin nextch; token := rparensy; end;
+            
+            '(':
+              begin nextch;
+                if ch = '*' then ignorecomment('*)')
+                else token := lparensy;
+              end;
+            
+            '{':
+              ignorecomment('}');
+            
+            '''':
+              begin nextch;
+                while ch <> '''' do nextch; nextch;
+              end;
+            
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+              ignorenumbers;
+            
+            ':':
+              begin nextch;
+                if ch = '=' then
+                  begin token := assignsy; nextch; end
+                else
+                  token := colonsy;
+              end;
+            
+            '.':
+              begin nextch;
+                if ch <> '.' then token := periodsy
+                else begin token := subrangesy; nextch; end;
+              end;
+            
+            ';':
+              begin nextch; token := semicolsy; end;
+            
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z':
+              readident;
+          end
+        end
+      else
+        nextch
+    until token <> othersy;
+  end;  { nexttoken }
+  
+  procedure processunit(programid: boolean);
+    var at: ptrtoentry;
+  
+    function nameisinscope: boolean;
+      var
+        llevel:         ptrtostackcell;
+        discovered:     boolean;
+        where:          ptrtoentry;
+    begin { nameisinscope }
+      llevel := stack;
+      discovered := false;
+      savesymbol := symbol;
+      while (llevel <> nil) and not discovered do
+        begin
+          findnode(discovered, where, llevel^.scopetree);
+          if not discovered then
+            llevel := llevel^.substack;
+        end;
+      if discovered then
+        nameisinscope := (where^.status <> notproc)
+      else
+        nameisinscope := false;
+    end;  { nameisinscope }
+  
+    procedure processblock;
+      var
+        address:        ptrtoentry;
+        
+      procedure crossreferencer;
+        var
+          newcell:      listofusages;
+          ptr:          listofusages;
+          home:         ptrtoentry;
+          slevel:       ptrtostackcell;
+          found:        boolean;
+        
+        procedure findcell;
+          var
+            nextptr:    listofusages;
+        begin { findcell }
+          found := false;
+          nextptr := stack^.current^.calls;
+          if nextptr <> nil then
+            repeat
+              ptr := nextptr;
+              found := (ptr^.what^.procname = savesymbol);
+              nextptr := ptr^.next;
+            until found or (nextptr = nil)
+          else
+            ptr := nil;
+        end;  { findcell }
+      
+      begin { crossreferencer }
+        slevel := stack; found := false;
+        while (slevel <> nil) and not found do
+          begin findnode(found, home, slevel^.scopetree);
+            if not found then
+              slevel := slevel^.substack
+          end;
+        if found then
+          begin
+            if home^.status <> notproc then
+              begin findcell;
+                if not found then
+                  begin new(newcell);
+                    if ptr <> nil then
+                      ptr^.next := newcell
+                    else
+                      stack^.current^.calls := newcell;
+                    newcell^.what := home;
+                    newcell^.next := nil;
+                  end;
+              end;
+          end;
+      end;  { crossreferencer }
+      
+      procedure scanforname;
+      begin { scanforname }
+        nexttoken;
+        while token <> namesy do
+          nexttoken;
+      end;  { scanforname }
+      
+  begin { processblock }
+    while (symbol <> sbegin) do
+      begin
+        while (symbol <> sbegin) and (symbol <> sprocedure) and
+              (symbol <> sfunction) and (symbol <> ssegment) do
+          begin 
+            scanforname;
+            if nameisinscope then
+              begin address := makeentry(false, false); end;
+          end;
+        if symbol <> sbegin then
+          begin 
+            if symbol = ssegment then
+              nexttoken;
+            processunit(false); scanforname; 
+          end;
+      end;
+    depth := 1;
+    stack^.current^.startofbody := lineno;
+    nexttoken;
+    while depth <> 0 do
+      begin
+        if token <> namesy then
+          nexttoken
+        else
+          if (symbol = sbegin) or (symbol = scase) then
+            begin depth := depth + 1; nexttoken end
+          else
+            if (symbol = send) then
+              begin depth := depth - 1; nexttoken; end
+            else
+              begin savesymbol := symbol; nexttoken;
+                if token <> assignsy then
+                  crossreferencer
+                else
+                  nexttoken
+              end;
+      end;
+  end;  { processblock }
+  
+  procedure scanparameters;
+    var
+      which: ptrtoentry;
+      
+    procedure scantillclose;
+    begin { scantillclose }
+      nexttoken;
+      while token <> rparensy do
+        begin
+          if token = lparensy then
+            scantillclose;
+          nexttoken;
+        end;
+   end;  { scantillclose }
+   
+ begin { scanparameters }
+   nexttoken;
+   while token <> rparensy do
+     begin
+       if (token = namesy) then
+         begin
+           if (symbol = sprocedure) or (symbol = sfunction) then
+             begin nexttoken;
+               if token = namesy then
+                 begin which := makeentry(false, true);
+                   which^.status := formal; pop; nexttoken;
+                   if token = lparensy then
+                     scantillclose;
+                 end
+               else
+                 begin error(2); nexttoken; end;
+             end
+           else
+             begin
+               if nameisinscope then
+                 which := makeentry(false, false);
+               nexttoken;
+             end;
+         end
+       else
+         nexttoken;
+     end;
+     nexttoken;
+   end;  { scanparameters }
+ 
+  begin { processunit }
+    printflag := true;
+    adjustment := first;
+    nexttoken;
+    if token <> namesy then
+      error(2)
+    else
+      begin at := makeentry(programid, true);
+        while not (token in [lparensy,semicolsy,colonsy]) do
+          nexttoken;
+        if token = lparensy then
+          scanparameters;
+        while token <> semicolsy do
+          nexttoken;
+        printline;
+        printflag := false;
+        writeln(outfile);
+        nexttoken;
+        if token <> namesy then
+          error(3)
+        else
+          begin
+            if (symbol <> slabel) and (symbol <> sconst) and (symbol <> stype)
+                and (symbol <> sprocedure) and (symbol <> sfunction)
+                and (symbol <> svar) and (symbol <> sbegin) 
+                and (symbol <> suses) and (symbol <> ssegment) then
+              begin
+                if symbol = sforward then
+                  at^.status := fwdhalf
+                else
+                  at^.status := outside;
+                pop
+              end
+            else
+              begin processblock; pop end
+          end
+      end;
+  end;  { processunit }
+  
+  procedure printheading;
+  begin { printheading }
+    writeln(outfile, 'procedural cross-refrencer - version s-02.01');
+    writeln(outfile, '============================================');
+    writeln(outfile);
+  end;  { printheading }
+

@@ -1,0 +1,2038 @@
+{ DF - Directory/File utility                       }
+PROGRAM DFILE  ;
+{
+
+  UPDATE LOG:
+  12 Mar 83 RES modified read_vid for byte swapped TIPC 
+  23 Mar 83 : RES - Restore cursor on return from A cmd.
+  12 Mar 83 RES - Corrected volume changed warning message
+  12 Jan 83 : RES - Established log entry and release date 
+  
+}
+USES {$U KERNEL.CODE} KERNEL,
+     {$P }{ COMMANDIO }
+     {$U COMMANDIO.CODE} COMMANDIO ,
+     {$P }{ SCREENOPS }
+     {$U SCREENOPS.CODE } SCREENOPS ;
+
+    
+  {$P }
+  CONST
+       vs         = 124;   { vertical separator between columns }
+       MAX_SVOL_DEPTH = 9;
+       
+  TYPE
+       word   = packed array[0..1] of 0..255 ;
+  
+       dentry = PACKED RECORD
+        case integer of 
+        0:(
+     
+                  DFIRSTBLK: INTEGER;   { FIRST PHYSICAL DISK ADDR }
+                  DLASTBLK: INTEGER;    { POINTS AT BLOCK FOLLOWING }
+                  CASE DFKIND: FILEKIND OF
+                    SECUREDIR,
+                    UNTYPEDFILE: { ONLY IN DIR[0]...VOLUME INFO }
+                       (filler_1 : 0..2048;     {13 bits}
+                        DVID: VID;              { NAME OF DISK VOLUME }
+                        DEOVBLK: INTEGER;       { LASTBLK OF VOLUME }
+                        DNUMFILES: DIRRANGE;    { NUM FILES IN DIR }
+                        DLOADTIME: INTEGER;     { TIME OF LAST ACCESS }
+                        DLASTBOOT: DATEREC);    { MOST RECENT DATE SETTING }
+                    XDSKFILE,CODEFILE,TEXTFILE,INFOFILE,
+                    DATAFILE,GRAFFILE,FOTOFILE,SUBSVOL:
+                       (filler_2 : 0..1024;     {12 bits}
+                        status : BOOLEAN;       {Filer kludge temporary}
+                        DTID: TID;              { TITLE OF FILE }
+                        DLASTBYTE: 1..FBLKSIZE; { NUM BYTES IN LAST BLOCK }
+                        DACCESS: DATEREC)       { LAST MODIFICATION DATE }
+            );
+         1:(
+         
+                    f1first : word ;
+                    f1last  : word ;
+                    f1kind  : word ;
+                      f1dvid: string[7];
+                      f1deov: word ;
+                      f1dnum: word ;
+                      f1load: word ;
+                      f1boot: word 
+            );
+         2:(
+         
+                    f2first : word ;
+                    f2last  : word ;
+                    f2kind  : word ;
+                      f2dtid: string[15];
+                      f2byte: word ;
+                      f2aces: word
+            );
+        end; { of case }
+       
+       psysdir    = array [dirrange] of dentry ;
+       
+       INXTYPE = ARRAY [ DIRRANGE ] OF DIRRANGE ;
+    
+       statustype = ARRAY[DIRRANGE] OF 
+                      PACKED RECORD 
+                        REMOVED : BOOLEAN ;
+                        CHANGED : BOOLEAN ;
+                        MOVED   : BOOLEAN ;
+                        SWAPED  : BOOLEAN ;
+                      END; { DIR_STATUS }
+       
+       
+       
+  {$P }
+  VAR
+    OK            : BOOLEAN ;
+    ALLDONE       : BOOLEAN ;
+    ESC_TRUE      : BOOLEAN ;
+    ENDOFLINE     : BOOLEAN ;
+    DO_MARKS      : BOOLEAN ;
+    CRT           : BOOLEAN ;
+    TARGET_KNOWN  : BOOLEAN ;
+    dest_is_text  : boolean ;
+    THE_SAME      : BOOLEAN ;
+    NEWPROMPT     : BOOLEAN ;
+    dirflip       : boolean ;
+    tarflip       : boolean ;
+    initentry     : boolean ;
+    none_printed  : boolean ;
+    going_up      : boolean ;
+
+
+    CH            : CHAR;
+    YESNO         : CHAR;
+    TAB           : CHAR;
+    home_tv       : char; { home char from the televideo 950 crt }
+    home_911      : char; { home char from the TI-911 crt }
+
+    INAME         : STRING ; { FILE NAME INPUT STRING }
+    FNAME         : STRING ; { FILE NAME ON WHICH TO WRITE THE DIRECTORY LIST }
+    TNAME         : STRING ; { FILE NAME FOR TARGET VOLUME }
+    buildstring   : string[1];
+    
+    
+    I,J,k,L    : INTEGER;
+    SORT       : integer;
+    SVOLS_ARY  : ARRAY[0..MAX_SVOL_DEPTH] OF INTEGER ; { SVOL CNTR AND OFFSET }
+    XY_ARRAY   : ARRAY[0..MAX_SVOL_DEPTH] OF INTEGER ; { LAST CURSOR POS.}
+    dir_unit   : integer; { displayed directory unit number }
+    dir_offs   : integer; { offset in blocks to displayed directory }
+    tar_unit   : integer; { target unit number }
+    tar_offs   : integer; { target offset in blocks to directory }
+    ICOUNT     : INTEGER;
+    TOTBLKS    : INTEGER; { TOTAL BLOCKS USED ON VOLUME }
+    MAXCONTIG  : INTEGER; { LARGEST CONTIGUOUS SERIES OF BLOCKS ON VOLUME }
+    NUMFILES   : INTEGER; { NUMBER OF VALID FILES ON VOLUME }
+    S_HEIGHT,             { NUMBER OF LINES ON THE SCREEN LESS ONE }
+    S_WIDTH    : INTEGER; { NUMBER OF CHARACTERS PER LINE LESS ONE }
+    ROW        : INTEGER; { NUMBER OF PRESENT ROW }
+    COL        : INTEGER; { NUMBER OF PRESENT COLUMN }
+    COL1       : INTEGER; { NUMBER OF ROWS IN COLUMN ONE }
+    COL2       : INTEGER; { NUMBER OF ROWS IN COLUMN TWO }
+    COL3       : INTEGER; { NUMBER OF ROWS IN COLUMN THREE }
+    COL4       : INTEGER; { NUMBER OF ROWS IN COLUMN FOUR }
+    Y_BASE     : INTEGER; { Y - ADDRESS OF FIRST ROW IN DISPLAY MATRIX }
+    Y_COUNTS   : INTEGER; { Y - ADDRESS OF DISK LOGISTICS }
+    formfeed   : packed array[1..2] of char ;
+    
+    COL_LENGTHS: ARRAY [1..4] OF INTEGER;
+    TOTALTOCOL : ARRAY [1..4] OF INTEGER;
+    MONTHNAME  : ARRAY [0..12] OF STRING[3];
+    FILETYPENAME:ARRAY [ FILEKIND ] OF STRING[8];
+
+    
+    DISPDIR    : psysdir   ;
+       BUFF1   : ARRAY[0..9] OF INTEGER ; { BRING DIRECTORY BUFFER TO 4 BLKS}
+    ORGDIR     : psysdir   ;
+       BUFF2   : ARRAY[0..9] OF INTEGER ; { BRING DIRECTORY BUFFER TO 4 BLKS}
+    TARGETDIR  : psysdir   ;
+       BUFF3   : ARRAY[0..9] OF INTEGER ; { BRING DIRECTORY BUFFER TO 4 BLKS}
+    INDEX      : ARRAY[DIRRANGE] OF DIRRANGE;  {INDEX INTO DIRECTORY FOR SORT}
+    LIST       : INTERACTIVE;  { OUTPUT FILE THE DIRECTORY LIST FILE ITSELF }
+
+
+    DIR_STATUS : statustype ;
+    key_cmd    : sc_key_command ;
+    
+{$p }
+
+procedure printentries; forward ;
+procedure pressreturn( st : string ); forward;
+procedure rdline ( var strng : string ); forward;
+
+    
+                 
+    
+
+  
+(*$P *)
+segment PROCEDURE INITIALIZE ;
+
+BEGIN  (* INITIALIZE *)
+  
+  TAB := CHR( 9 );
+  home_tv := chr( 30 ); { home char from the televideo 950 crt }
+  home_911:= chr(130 ); { home char from the TI-911 crt }
+  
+
+  
+  MONTHNAME[ 0] := '***';
+  MONTHNAME[ 1] := 'Jan'; MONTHNAME[ 2] := 'Feb'; MONTHNAME[ 3] := 'Mar';
+  MONTHNAME[ 4] := 'Apr'; MONTHNAME[ 5] := 'May'; MONTHNAME[ 6] := 'Jun';
+  MONTHNAME[ 7] := 'Jul'; MONTHNAME[ 8] := 'Aug'; MONTHNAME[ 9] := 'Sep';
+  MONTHNAME[10] := 'Oct'; MONTHNAME[11] := 'Nov'; MONTHNAME[12] := 'Dec';
+  
+  
+  
+  FILETYPENAME[ UNTYPEDFILE ] := 'Untypedf';
+  FILETYPENAME[ XDSKFILE    ] := 'Xdiskfil';
+  FILETYPENAME[ CODEFILE    ] := 'Codefile';
+  FILETYPENAME[ TEXTFILE    ] := 'Textfile';
+  FILETYPENAME[ INFOFILE    ] := 'Infofile';
+  FILETYPENAME[ DATAFILE    ] := 'Datafile';
+  FILETYPENAME[ GRAFFILE    ] := 'Graffile';
+  FILETYPENAME[ FOTOFILE    ] := 'Fotofile';
+  FILETYPENAME[ SECUREDIR   ] := 'Securdir';
+  filetypename[ subsvol     ] := 'Subsvol ';
+
+  buildstring := ' '; { set string length to one }
+  formfeed[1] := chr(12) ; { ASCII form feed character }
+  
+  TARGET_KNOWN := FALSE ;
+  esc_true := false ;
+  initentry := true;
+  iname := dkvid ; { prefix volume id }
+  svols_ary[0] := 0 ;
+  xy_array[1]  := 1 ;
+  dir_offs  := 0 ;
+  tar_offs  := 0 ;
+  sort  := 0 ; 
+  ch    := ' '   ; 
+  ok    := false ;
+
+  END; { OF INITIALIZE }
+  
+
+{$P }
+segment procedure help;
+begin
+  sc_clr_screen;
+  sc_goto_xy(0,2);
+  writeln('<arrows>, <return> and <tab> :move the cursor');
+  writeln('Remove  :the file under the cursor') ;
+  writeln('Change  :the file name under the cursor to <enter new name>');
+  writeln('Undo    :restores the file name under the cursor');
+  writeln('Move    :the file to the destination volume');
+  writeln('Get     :a new destination volume');
+  writeln('Edit    :the file at the cursor');
+  writeln('eXecute :the code file or redirect from the script file');
+  writeln('<enter> and <esc> :update directory and accept new volume id');
+  writeln('Quit    :update directory and exit to PASCAL system');
+  writeln('Help    :displays this page of information');
+  writeln('Output  :moves the display to a device or file');
+  writeln('Natural :displays files in the order of occurance on the volume');
+  writeln('Sorted  :displays files in alphanumeric order');
+  writeln('Logical :displays files in alphanumeric order by suffix name');
+  writeln('Verify  :redisplays the present directory');
+  writeln('Advance :advance to the subsidiary volume under the cursor');
+  writeln('Formfeed:Slew to top of page, if printer is the destination');
+  
+  pressreturn('Help  :describes the user options                ');
+  printentries;
+  
+  
+end;
+{$P }
+segment PROCEDURE DOUTPUT ;
+
+
+{ OUTPUT THE DIRECTORY TO A FILE OR DEVICE }
+BEGIN
+  newprompt := true;
+  sc_clr_line( 0 );
+  sc_goto_xy(0,0);
+  WRITE('Enter the output file name ');
+  rdline(FNAME);
+  IF LENGTH(FNAME)<>0 THEN 
+  BEGIN
+     {$I-}
+     REWRITE( LIST, FNAME);
+     {$I+}
+     
+     OK := IORESULT = 0;
+     IF NOT OK THEN
+     BEGIN
+       I := IORESULT;
+       close(list);
+       sc_goto_xy(0,0);
+       WRITE('Can not open file ',fname,', error number ',I,
+             ' <press return>');
+       READ(CH);
+     END
+     ELSE
+     BEGIN
+       CRT := FALSE ;
+       PRINTENTRIES; { PRINT ALL INFORMATION }
+       CLOSE( LIST, LOCK );
+       crt := true;
+    END;
+  END;
+END;
+
+{$P }
+procedure rdline{ var strng: string };
+var
+  exit_rd : boolean ;
+  bell    : char ;
+
+begin
+strng := '' ;
+exit_rd := false;
+bell    := chr(7);
+repeat
+  read(keyboard,ch);
+  IF not eoln(keyboard) THEN
+  begin 
+    key_cmd := sc_map_crt_command( ch );
+    case key_cmd of
+      sc_del_key,
+      sc_right_key,
+      sc_dc1_key,
+      sc_eof_key,
+      sc_up_key,
+      sc_down_key,
+      sc_insert_key,
+      sc_delete_key :begin
+                      write( bell );
+                     end;
+      
+      sc_etx_key  : begin
+                      exit_rd := true ;
+                    end;
+      
+      sc_escape_key: begin
+                      exit_rd := true ;
+                      strng := '' ;
+                     end;
+      
+      
+      sc_backspace_key,
+      sc_left_key :  begin
+                      if length(strng) > 0 then
+                      begin
+                       sc_left;
+                       write( ' ' ); { replace screen character with space}
+                       sc_left;
+                       {$R- }
+                       strng[0] := chr( ord(strng[0]) - 1 );
+                       {$R+ }
+                      end
+                      else
+                       write( bell );
+                     end;
+       sc_not_legal: begin
+                        if ch in sc_printable_chars then
+                        begin
+                           if length(strng) < 80 then
+                           begin
+                             {$R- }
+                             strng[0] := chr( ord(strng[0]) + 1 ) ;
+                             {$R+ }
+                             strng[ length( strng ) ] := ch ;
+                             write(ch);
+                           end
+                           else
+                           begin
+                              write( bell );
+                           end;
+                        end
+                        else
+                         write( bell );
+                     end; { of sc_not_legal }
+                       
+                       
+       end; { of case  key_cmd }
+   end {  not eoln }
+   else 
+   begin
+      ch := ' ' ;{ eoln so set char to a space }
+      key_cmd := sc_not_legal ;
+   end;
+   
+       
+                     
+    
+until eoln(keyboard)  or exit_rd ;
+end; { of rd_line }
+ {$P }
+PROCEDURE CALC;
+
+VAR
+   NEXTLOW     : INTEGER ;
+   LAST        : INTEGER ;
+   SIZE        : INTEGER ;
+   
+
+BEGIN
+
+{   CALCULATE THE TOTAL BLOCKS USED }
+   { INITIALIZE USED BLOCK COUNT }
+   totblks := dispdir[0].DLASTBLK-dispdir[0].DFIRSTBLK ; 
+   
+   
+   IF dispdir[0].DNUMFILES > 0 THEN
+   BEGIN
+     FOR I := 1 TO dispdir[0].DNUMFILES DO 
+       with dir_status[i] do 
+         IF not removed then 
+           totblks := totblks + dispdir[I].DLASTBLK - dispdir[I].DFIRSTBLK ;
+      
+{   FIND THE LARGEST SET OF CONTIGUOUS BLOCKS }
+      maxcontig := 0;
+      NEXTLOW := dispdir[0].DNUMFILES + 1;
+      LAST    := dispdir[0].DEOVBLK ;
+      REPEAT 
+         REPEAT 
+           NEXTLOW := NEXTLOW -1 ;
+         UNTIL ( not dir_status[nextlow].removed ) OR ( NEXTLOW < 1 );
+         SIZE := LAST - dispdir[ NEXTLOW ].DLASTBLK ;
+         IF SIZE > maxcontig THEN maxcontig := SIZE ;
+         LAST := dispdir[ NEXTLOW ].DFIRSTBLK ;
+      UNTIL NEXTLOW < 1 ;
+      
+   END
+   ELSE maxcontig := dispdir[0].DEOVBLK - dispdir[0].DLASTBLK ;
+      
+END; { OF CALC }
+
+
+{$P }
+PROCEDURE DISK_ERROR ( STRN : STRING );
+VAR
+  STRNG : STRING ;
+BEGIN
+   newprompt := true;
+   I := IORESULT;
+   sc_goto_xy(0,0);
+   CASE I OF 
+   
+    1:STRNG := CONCAT('Parity error while reading ',STRN);
+    2:STRNG := CONCAT('Can not find device for ',STRN);
+    3,4,12,13,14,15,17,18:
+      BEGIN
+        CASE I OF
+          3 :STRNG :=  '3' ;
+          4 :STRNG :=  '4' ;
+         12 :STRNG := '12' ;
+         13 :STRNG := '13' ;
+         14 :STRNG := '14' ;
+         15 :STRNG := '15' ;
+         17 :STRNG := '17' ;
+         18 :STRNG := '18' ;
+        END;
+        STRNG := CONCAT('Error number ',STRNG,' while working with ',STRN);
+      END;
+    5:STRNG := CONCAT(STRN,' went offline ');
+    6:STRNG := CONCAT('File ',STRN,' is no longer in directory.');
+    7:STRNG := CONCAT('File name ',STRN,' can not be used. ');
+    8:STRNG := CONCAT('Disk is full, ',STRN,' can not be saved.');
+    9:STRNG := CONCAT('Volume for ',STRN,' is not online.');
+   10:STRNG := CONCAT('Can not find the file ',STRN);
+   11:STRNG := CONCAT('File ',STRN,' already exists.');
+   16:STRNG := CONCAT('Volume ',STRN,' is write protected. ');
+  end;
+  pressreturn( STRNG ); { append press return message and wait for one }
+end;
+   
+{$P }
+PROCEDURE SORT_DIR;
+{ SHELL SORT DIRECTORY INDIRECTLY VIA 'INDEX' ARRAY }
+VAR
+  i,j,k,l,m : integer ;
+  swap      : BOOLEAN ;
+  temp      : integer ;
+  
+BEGIN
+  sc_goto_xy(0,0);
+  WRITELN('One moment please, directory sort is in progress.',
+           syscom^.crtctrl.eraseeol);
+  IF DISPDIR[0].DNUMFILES > 0 THEN  { NON-EMPTY DIRECTORY }
+  BEGIN
+    { SET UP INDEX ARRAY FOR SORT }
+    FOR I := 1 TO MAXDIR DO INDEX[I]:=I;
+    m := dispdir[0].dnumfiles div 2;
+    while m > 0 do
+    begin
+      k := dispdir[0].dnumfiles  - m ;
+      j := 1 ;
+      repeat
+        i := j ;
+        repeat
+          l := i + m ;
+          if dispdir[index[i]].dtid > dispdir[index[l]].dtid
+            then
+            begin
+              temp := index[i];
+              index[i] := index[l];
+              index[l] := temp;
+              i := i - m;
+              swap := i > 0 
+            end
+            else
+              swap := false ;
+        until not swap ;
+        j := j + 1;
+      until j>k;
+      m := m div 2;
+    end; { while m > 0 do }
+  end;   
+end;
+
+
+{$P } { Sort file names giving a four character suffix priority }
+procedure suffixsort;
+
+var
+   newname : string ;
+   
+begin
+   for i := 1 to dispdir[0].dnumfiles do 
+   begin
+     newname := dispdir[i].dtid;
+     l := length(newname);
+     if l > 4 then
+       if newname[l-4]='.' then begin 
+          dispdir[i].dtid := concat(
+                                copy(newname,l-4,5),
+                                copy(newname,1,l-5)  );
+          dir_status[i].swaped := true ;
+          end
+       else
+          dir_status[i].swaped := false 
+     else
+          dir_status[i].swaped := false;
+   end;
+   
+   sort_dir;
+   
+   for i:= 1 to dispdir[0].dnumfiles do 
+   begin
+      if dir_status[i].swaped  then 
+         begin
+           newname := dispdir[i].dtid;
+           l := length( newname );
+           dispdir[i].dtid := concat ( copy(newname,6,l-5),
+                                       copy(newname,1,5 ) );
+         end;
+   end;
+   
+end;
+  
+                             
+{$p }
+procedure flipword( var flipme : word );
+var temp : word ;
+begin
+  temp[0]:= flipme[0];
+  flipme[0] := flipme[1];
+  flipme[1] := temp[0];
+end;
+
+                             
+
+procedure flipdir( var dir : psysdir   );
+
+var 
+   entrynum : integer;
+
+begin
+   with dir[0] do
+   begin  
+      flipword( f1first  );
+      flipword( f1last   );
+      flipword( f1kind   );
+      flipword( f1deov   );
+      flipword( f1dnum   );
+      flipword( f1load   );
+      flipword( f1boot   );
+   end;
+
+   for entrynum := 1 to maxdir do
+   with dir[entrynum] do 
+   begin
+      flipword( f2first  );
+      flipword( f2last   );
+      flipword( f2kind   );
+      flipword( f2byte   );
+      flipword( f2aces   );
+   end;
+end;
+      
+{$P }
+PROCEDURE PROMPT ( L :INTEGER; ST:STRING );
+BEGIN
+{* *** some terminals accept msb on as low intensity display ***
+ * FOR I := 1 TO LENGTH(ST) DO
+ *    IF st[i] in [ 'a'..'z'] then ST[I] := CHR( ORD( ST[I])+128);
+ *}
+sc_clr_line( L );
+sc_goto_xy( 0,L ); 
+WRITE(ST);
+END;
+
+
+PROCEDURE PRESSRETURN { ST : STRING } ;
+
+VAR CH : CHAR ;
+ BEGIN
+  PROMPT(0,CONCAT(ST,' <press return> '));
+  READ(CH);
+END;
+
+
+PROCEDURE PRINTSTATS;
+     
+BEGIN
+   IF CRT THEN 
+   BEGIN
+      sc_goto_xy(0, 22);
+      WRITE(NUMFILES:4,' of 77 files used,',
+                   TOTBLKS:5,' Blocks used '
+                   );
+      sc_goto_xy(0,23);
+      WRITE(DISPDIR[0].DEOVBLK-TOTBLKS:4,' Blocks available,',
+                   MAXCONTIG:5,' in largest');
+   END
+   ELSE
+   BEGIN
+      WRITELN(LIST); WRITELN(LIST);
+      WRITELN(LIST,NUMFILES:4,' of 77 files used,',
+                   TOTBLKS:5,' Blocks used ');
+      WRITELN(LIST,DISPDIR[0].DEOVBLK-TOTBLKS:4,' Blocks available,',
+                   MAXCONTIG:5,' in largest');
+      WRITELN(LIST);
+   END
+END; { PRINTSTATS }
+{$P }
+procedure writeit( st:string; bool:boolean);
+var
+   i : integer ;
+begin
+  { if terminal has a low intensity display the string should be output 
+    in that mode when the boolean is true }
+  
+  {
+  if bool then for i:= 1 to length(st) do
+    st[i] := chr( ord(st[i])+128 );
+  }
+    
+  write( st );
+end;
+
+
+PROCEDURE WITH_WRITE( K : INTEGER  );
+
+VAR
+   i,j  : INTEGER;
+   low_intensity : boolean;
+   suffix : boolean ;
+   
+   
+   
+BEGIN
+  with dispdir[k],dir_status[k] do
+  begin
+    low_intensity := removed or changed or moved;
+    i := length(dtid);   { length of file name }
+    suffix := false ;
+    if i > 4 then if dtid[i-4] = '.' then suffix := true ;
+    if suffix then 
+    begin
+      if crt then writeit( copy(dtid,1,i-5),low_intensity  )
+             else write(list, copy(dtid,1,i-5) );
+      j:=i;
+      while j<15 do
+      begin
+        j := j + 1 ;
+        if crt then write( ' ' ) else write( list, ' ' );
+      end;
+      if crt then writeit( copy(dtid,i-4,5),low_intensity  )
+             else write(list, copy(dtid,i-4,5) );
+    end
+    else
+    begin
+      if crt then writeit( dtid,low_intensity ) else write( list, dtid );
+      j := i ;
+      while j<15 do
+      begin
+        j := j+1 ;
+        if crt then write(' ') else write(list,' ');
+      end;
+    end;
+    if low_intensity and crt then
+    begin
+      write( ' ' );
+      if removed then write('R')
+                 else write('-');
+      if changed then write('C')
+                 else write('-');
+      if moved   then write('M')
+                 else write('-');
+      write( chr(vs) );
+    end
+    else
+    if crt then write(      dlastblk-dfirstblk:4,chr(vs) )
+           else write(list, dlastblk-dfirstblk:4,' ' );
+  end;
+END;
+
+{$P }
+PROCEDURE PRINTENTRIES;
+
+VAR
+ DISP   : INTEGER;
+ REM    : INTEGER;
+ ROW    : INTEGER;
+
+BEGIN
+ NEWPROMPT := TRUE;
+ IF CRT THEN
+ BEGIN
+    {*** OUTPUT THE DIRECTORY TO THE CRT SCREEN }
+    sc_clr_screen ; { BLANK OUT THE CRT SCREEN }
+    sc_goto_xy(0,1);
+    WRITE('Volume name is ',DISPDIR[0].DVID,':');
+ END
+ else
+ WRITE(list,'Volume name is ',DISPDIR[0].DVID,':');
+ 
+ 
+ ROW := (DISPDIR[0].DNUMFILES) DIV 4;
+ REM := (DISPDIR[0].DNUMFILES) MOD 4;
+ IF REM >= 1 THEN COL1 := ROW + 1 ELSE COL1 := ROW ;
+ IF REM >= 2 THEN COL2 := ROW + 1 ELSE COL2 := ROW ;
+ IF REM >= 3 THEN COL3 := ROW + 1 ELSE COL3 := ROW ;
+ COL4 := ROW ;
+ TOTALTOCOL[1]:= 0;
+ TOTALTOCOL[2]:= COL1;
+ TOTALTOCOL[3]:= COL1+COL2;
+ TOTALTOCOL[4]:= COL1+COL2+COL3;
+ COL_LENGTH[1]:= COL1;
+ COL_LENGTH[2]:= COL2;
+ COL_LENGTH[3]:= COL3;
+ COL_LENGTH[4]:= COL4;
+ 
+ IF DISPDIR[0].DNUMFILES > 0 THEN 
+ BEGIN
+   IF CRT THEN 
+   BEGIN
+      Y_BASE := 2;
+      IF COL1 < 19 THEN Y_BASE := 3;
+      Y_COUNTS := Y_BASE;
+      sc_goto_xy(0,Y_BASE);
+   END
+   ELSE
+   BEGIN WRITELN(LIST); WRITELN(LIST) END;
+   
+   
+   FOR I := 1 TO COL1 DO BEGIN  { PRINT ALL ENTRIES IN THE DIRECTORY }
+     DISP := I;
+     WITH_WRITE(INDEX[DISP]);
+     
+     DISP := DISP + COL1;
+     IF DISP <= ( totaltocol[3] ) THEN WITH_WRITE(INDEX[DISP]);
+     
+     DISP := DISP + COL2;
+     IF DISP <= ( totaltocol[4] ) THEN WITH_WRITE(INDEX[DISP]);
+     
+     DISP := DISP + COL3;
+     IF ( DISP <= DISPDIR[0].DNUMFILES ) THEN WITH_WRITE(INDEX[DISP]);
+     IF CRT THEN sc_goto_xy( 0,y_base+i ) 
+            ELSE WRITELN(LIST);
+   END; { FOR/WITH }
+   
+ END;
+   
+ PRINTSTATS;
+ sc_goto_xy(50,23);
+ if target_known then write('Destination is ',tname,':');
+END; { PRINTENTRIES }
+
+    
+{$P }
+PROCEDURE LCTOUC( VAR STR:STRING );
+var i : integer;
+BEGIN
+   FOR I := 1 TO LENGTH(STR) DO
+      IF not((STR[I]< 'a') or (str[i] > 'z')) then 
+         str[i] := chr( ord(str[i])-ord('a')+ord('A'));
+end;
+
+procedure read_vid(  u: integer);
+var 
+    dirent: dentry;
+    dnum_ok : boolean;
+    
+begin
+   dirent.dfirstblk := -1;  { set an illegal value for read check }
+   UNITREAD(u,dirent,sizeof(direntry),2,0);
+   IF IORESULT = 0 THEN
+   begin
+      if dirent.dfirstblk = 0 then
+      begin
+         if dirent.dlastblk > 255 then
+         begin
+            flipword( dirent.f1kind );
+            flipword( dirent.f1dnum );
+         end;
+         with dirent do
+         begin
+           {if f1last[1] = 0 then dnum_ok := ( f1dnum[0] = 0 ) and
+            *                               ( f1dnum[1] <= 77 )
+            *               else dnum_ok := ( f1dnum[0] <= 77 ) and
+            *                               ( f1dnum[1] = 0 );
+           }
+            if ( length(dvid)<=0 ) or
+               ( length(dvid)> 7 ) or
+               ( dfkind <> untypedfile ) 
+            then syscom^.unitable^[u].UVID := ''
+            else syscom^.unitable^[u].uvid := dirent.dvid ;
+          end;
+      end
+      else syscom^.unitable^[u].uvid := '';
+   end
+   else syscom^.unitable^[u].uvid := '';
+end;
+{$p }
+function get_unit_number( var volstr: string ):integer;
+var
+   ok_num : boolean ;
+   unum   : integer ;
+   
+   
+   
+BEGIN
+  get_unit_number := 0;
+  unum := 0;
+  if volstr='' then volstr := dkvid;
+  IF volstr[1] = ':' THEN volstr := DKVID; {DEFAULT VOLUME ID}
+  IF volstr[1] = '*' THEN volstr := SYVID; {SYSTEM VOLUME ID}
+  
+  
+  I := POS(':',volstr);
+  IF I >0 THEN volstr := COPY(volstr,1,I-1);{ strip all chars following a : }
+  
+  IF volstr[1]='#' THEN 
+     BEGIN  { Standard specification of unit number }
+        I := LENGTH(volstr);
+        IF I>1 THEN volstr := COPY(volstr,2,I-1)
+               ELSE volstr := dkvid ;
+     END;
+  
+  
+  I := LENGTH(volstr);
+  J := 0;
+  K := 1;
+  ok_num := true;
+  
+  WHILE (K<=I)AND ok_num do
+    if (volstr[k] in digits) then
+    BEGIN
+      J := J*10+ORD(volstr[K])-ord('0');
+      K := K + 1;
+    END
+    else ok_num := false ;
+  
+  IF ok_num and ( j>maxunit ) THEN exit(get_unit_number);
+  IF ok_num THEN
+     begin
+       unum := J;
+       if syscom^.unitable^[j].uisblkd then read_vid(j);
+     end
+    ELSE
+      BEGIN             { not unit number - try volume names }
+        
+        LCTOUC ( volstr ); { ensure all upper case alphabetic chars }
+        
+        j := 0;
+        
+        REPEAT  { look for the volume name in the unit table }
+          j := j + 1;
+          if volstr=syscom^.unitable^[j].uvid then  { match to old name }
+            IF syscom^.UNITABLE^[J].UISBLKD THEN read_vid(j) ; { blk vol }
+        UNTIL (volstr = syscom^.UNITABLE^[j].UVID)OR( j >= MAXUNIT );
+
+
+        IF volstr = syscom^.UNITABLE^[j].UVID THEN unum := j {name is true }
+        ELSE
+          BEGIN    { retry all blocked volumes reading volume name }
+            J := 0;
+            REPEAT
+              J := J+1;
+              IF syscom^.UNITABLE^[J].UISBLKD THEN read_vid(j);
+            UNTIL (J>=MAXUNIT)OR (volstr=syscom^.unitable^[j].uvid);
+            IF volstr = syscom^.unitable^[J].UVID THEN unum := J;
+          END;
+   end;
+   get_unit_number := unum ;
+   
+end;
+{$P }
+FUNCTION  GOOD_TARGET:BOOLEAN;
+
+
+VAR
+   OK        : BOOLEAN ;
+   ABORT     : BOOLEAN ;
+   I         : INTEGER ;
+
+
+BEGIN
+OK := TRUE ; ABORT := FALSE ; THE_SAME := FALSE ;
+repeat 
+IF NOT TARGET_KNOWN THEN
+REPEAT
+    sc_clr_line( 0 );
+    sc_goto_xy(0,0); 
+    WRITE('Enter volume id of destination disk > ' );
+    NEWPROMPT := TRUE;
+    rdline(TNAME);
+    IF TNAME = '' THEN ABORT := TRUE;
+    IF NOT ABORT THEN 
+      begin
+         tar_unit := get_unit_number( tname );
+         tname := syscom^.unitable^[tar_unit].uvid;
+         if not(syscom^.unitable^[tar_unit].uisblkd) 
+         THEN 
+         begin
+           unitclear(tar_unit);
+           dest_is_text := TRUE;
+         end  
+         else
+         BEGIN
+           DEST_IS_TEXT := FALSE;
+           {$I-}
+           unitread(tar_unit,targetdir,(maxdir+1)*sizeof(dir_entry),2,0);
+           {$I+}
+           OK := IORESULT = 0;
+           IF NOT OK THEN DISK_ERROR(CONCAT(TNAME,':'))
+           else
+           BEGIN
+              IF TARGETDIR[0].DLASTBLK > 255 THEN 
+              BEGIN
+                 TARFLIP := TRUE ;
+                 FLIPDIR(TARGETDIR);
+              END
+              ELSE TARFLIP := FALSE ;
+           
+              with targetdir[0] do
+              if ( length(dvid)<=0 ) or
+                 ( length(dvid)> 7 ) or
+                 ( dnumfiles   < 0 ) or
+                 ( dnumfiles   > 77) or
+                 ( dfkind <> untypedfile ) then
+              begin
+                 sc_clr_line( 0 );
+                 sc_goto_xy(0,0);
+                 write('No directory on volume for ',TNAME,
+                       ': < press return >');
+                 read(ch);
+                 ok := false ;
+              end
+              else
+              IF dir_unit = tar_unit then
+                if dir_offs = tar_offs then
+              
+              BEGIN
+                 sc_clr_line( 0 );
+                 sc_goto_xy(0,0);
+                 write('Destination is not allowed to be the same as source.',
+                       '   <press return>');
+                 read(ch);
+                 OK := FALSE;
+              end;
+           END;
+        END;
+      END;
+  UNTIL OK OR ABORT
+  ELSE
+  BEGIN
+     IF NOT dest_is_text then
+     BEGIN
+       {$I-}
+           unitread(tar_unit,targetdir,(maxdir+1)*sizeof(dir_entry),2,0);
+       {$I+}
+       OK := IORESULT = 0;
+       IF NOT OK THEN DISK_ERROR(CONCAT(TNAME,':'))
+       else
+       BEGIN
+          IF TARGETDIR[0].DLASTBLK > 255 THEN 
+          BEGIN
+             TARFLIP := TRUE ;
+             FLIPDIR(TARGETDIR);
+          END
+          ELSE TARFLIP := FALSE ;
+           
+           with dispdir[0] do 
+           if ( length(dvid)<=0 ) or
+              ( length(dvid)> 7 ) or
+              ( dnumfiles   < 0 ) or
+              ( dnumfiles   > 77) or
+              ( dfkind <> untypedfile ) then  ok := false 
+           else
+           IF TNAME <> TARGETDIR[0].DVID THEN
+           BEGIN
+              repeat
+                 sc_clr_line( 0 );
+                 sc_goto_xy(0,0);
+                 WRITE('Old dest. was ',TNAME,
+                       ':, new dest. is ',targetdir[0].dvid,
+                       '  Ok to use new destination? (Y/N) ');
+                 read(ch);
+              until (ch='N') or (ch='n') or (ch='Y') or (ch='y');
+              ok := (ch='y') or (ch='Y');
+              if ok then TNAME := TARGETDIR[0].DVID ;
+           end;
+        END;
+  
+     END;
+     target_known := ok;
+
+  END;
+
+  UNTIL OK OR ABORT ;
+  
+  TARGET_KNOWN := NOT ABORT ;
+  GOOD_TARGET := NOT ABORT ;
+  sc_goto_xy(50,23);
+  IF TARGET_KNOWN THEN write('Destination is ',TNAME,':      ' );
+  
+  END;
+  
+{$P }
+FUNCTION UNIQUE_TARG( ST : STRING ) : BOOLEAN ;
+
+VAR
+   MATCH      : BOOLEAN ;
+   CH         : CHAR;
+   I          : INTEGER ;
+   NFILES   : INTEGER ;
+   
+
+BEGIN
+   CH := 'Y'; { INITIALIZE CHARACTER TO CAUSE TRUE RETURN }
+   NFILES := TARGETDIR[0].DNUMFILES ;
+   I := 0;
+   MATCH := FALSE ;
+   IF NFILES > 0 THEN 
+   REPEAT 
+      I := I+1;
+      MATCH := ST = TARGETDIR[I].DTID ;
+   UNTIL MATCH OR ( I>= NFILES );
+   IF MATCH THEN
+   BEGIN
+      sc_clr_line( 0 );
+      sc_goto_xy(0,0);
+      WRITE(ST, ' is on destination disk, Remove the old version? (Y/N) ');
+      NEWPROMPT := TRUE ; { RESTORE THE PROMPT LINE ON RETURN }
+
+      REPEAT READ(KEYBOARD,CH)
+      UNTIL (CH='Y')OR(CH='y')or(CH='N')OR(CH='n')
+                    OR (sc_map_crt_command(ch)= sc_escape_key) ;
+
+      IF (CH='Y')OR(CH='y') then
+      BEGIN
+         targetdir[0].dnumfiles := nfiles - 1 ;
+         IF I < NFILES THEN 
+         repeat
+            targetdir[i] := targetdir[i+1];
+            i:= i+1;
+         until i >= nfiles ;
+      END;
+   END;
+sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+UNIQUE_TARG := ((CH='Y')OR(CH='y'));
+END;
+
+{$P }
+function  room_on_target( VAR DIR      : psysdir  ;
+                              REQUEST  : INTEGER; 
+                          VAR DIRREC   : INTEGER; 
+                          var totalblks: integer;
+                          var largest  : integer ):BOOLEAN ;
+
+var 
+   nextlow  : integer ;
+   last     : integer ;
+   size     : integer ;
+   
+   
+begin
+{   FIND THE LARGEST SET OF CONTIGUOUS BLOCKS }
+   
+   LARGEST := 0;
+   totalblks := 0;
+   NEXTLOW := DIR[0].DNUMFILES + 1;
+   LAST    := DIR[0].DEOVBLK ;
+   REPEAT 
+      NEXTLOW := NEXTLOW -1 ; 
+      SIZE := LAST - DIR[ NEXTLOW ].DLASTBLK ;
+      totalblks := totalblks + size ;
+      IF SIZE > LARGEST THEN 
+      BEGIN
+         DIRREC := NEXTLOW+1 ; {  ENTRY POSITION FOR LARGEST SPACE }
+         LARGEST := SIZE ;
+      END;
+      LAST := DIR[ NEXTLOW ].DFIRSTBLK ;
+   UNTIL NEXTLOW <= 0 ;
+   ROOM_ON_TARGET := REQUEST <= LARGEST ;
+   
+END; 
+
+
+
+PROCEDURE MOVE_MESSAGE( WDSIZE: INTEGER ) ;
+
+BEGIN
+      {******}
+      sc_erase_to_eol( 50, 22 );
+      sc_goto_xy(50,22);
+      WRITE('Move buffer is ', WDSIZE ,' blocks.' );
+      {******}
+   
+      sc_clr_line( 0 );
+      sc_goto_xy(0,0);
+      WRITE('One moment please, move in progress.  ');
+      
+      NEWPROMPT := TRUE;
+      
+END;
+
+{$P }
+PROCEDURE MOVE_FILE( DIRPOS:INTEGER ) ;
+
+
+
+VAR
+   error    : boolean ;
+   totalblks: integer ;
+   largest  : integer ;
+   SIZE     : INTEGER ;
+   SOURCE   : INTEGER ;
+   DEST     : INTEGER ;
+   TEMP     : INTEGER ;
+   I        : INTEGER ;
+   DIRREC   : INTEGER ;
+   BLOCKS   :^integer ; { pointer to memory }
+   movblksiz : integer; { size of the move buffer in blocks  }
+   
+  { MOVE_FILE }
+   
+BEGIN
+i:= varavail( 'DFILE,SCREENOPS,FILEOPS,CALC' );
+i:= i - 1024; { leave 2048 bytes of stack }
+if i < 0 then i:=0;
+movblksiz := ( i div 256 - 1 );
+{ if movblksiz > 63 then movblksiz := 63 ;}  { limit size to less than 32767 }
+i := varnew ( blocks,movblksiz*256 ) ;
+if i = 0 then 
+begin 
+  pressreturn(' No room for move buffer ');
+  exit(move_file);
+end;
+
+
+SIZE := dispdir[DIRPOS].DLASTBLK-dispdir[DIRPOS].DFIRSTBLK ;
+IF GOOD_TARGET THEN 
+IF NOT DEST_IS_TEXT THEN
+BEGIN
+
+ IF UNIQUE_TARG( dispdir[DIRPOS].DTID ) THEN
+  IF TARGETDIR[0].DNUMFILES < MAXDIR THEN
+  BEGIN 
+   IF ROOM_ON_TARGET( TARGETDIR, SIZE, DIRREC ,totalblks, largest ) THEN
+   BEGIN
+      MOVE_MESSAGE( MOVBLKSIZ );
+      { OPEN THE DIRECTORY OF THE TARGET VOLUME FOR NEW ENTRY }
+      I := TARGETDIR[0].DNUMFILES + 1;
+      REPEAT
+         TARGETDIR[I] := TARGETDIR[I-1];
+         I := I-1;
+      UNTIL I <= DIRREC ;
+      
+      { MOVE THE DIRECTORY ENTRY TO THE TARGET }
+      TARGETDIR[DIRREC] := dispdir[DIRPOS];
+      
+      { SET THE STARTING BLOCK NUMBER FOR THE FILE ON THE TARGET VOLUME }
+      TARGETDIR[DIRREC].DFIRSTBLK := TARGETDIR[DIRREC-1].DLASTBLK ;
+      
+      { SET THE ENDING BLOCK NUMBER FOR THE FILE ON THE TARGET VOLUME }
+      TARGETDIR[DIRREC].DLASTBLK := TARGETDIR[DIRREC].DFIRSTBLK + SIZE ;
+      
+      { INCREASE THE NUMBER OF FILES ON THE TARGET VOLUME }
+      TARGETDIR[0].DNUMFILES := TARGETDIR[0].DNUMFILES + 1;
+      
+      
+      { MOVE THE FILE TO THE TARGET VOLUME }
+      SOURCE := dispdir[DIRPOS].DFIRSTBLK;
+      DEST   := TARGETDIR[DIRREC].DFIRSTBLK;
+      REPEAT
+         TEMP := dispdir[DIRPOS].DLASTBLK-SOURCE;
+         IF TEMP > movblksiz THEN TEMP := movblksiz;
+         {$I- }
+           unitread(dir_unit,blocks^,temp*512,source+dir_offs,0);
+         {#I+ }
+         error := ioresult <> 0;
+         IF not error THEN
+         BEGIN
+            IF TARFLIP THEN FLIPDIR(TARGETDIR);
+            TARFLIP := FALSE;
+            SOURCE := SOURCE + TEMP;
+            {$I- }
+              unitwrite(tar_unit,blocks^,temp*512,dest,0);
+            {$I+ }
+            error := ioresult <> 0;
+            IF not error THEN  DEST := DEST + TEMP
+              ELSE DISK_ERROR(CONCAT( TNAME,':',dispdir[DIRPOS].DTID ) );
+         END
+         ELSE DISK_ERROR( CONCAT(INAME,':',dispdir[DIRPOS].DTID) );
+         WRITE('.');
+      UNTIL (SOURCE = dispdir[DIRPOS].DLASTBLK) OR error ;
+      IF not error THEN
+      begin
+         {$I- }
+           unitwrite(tar_unit,targetdir,(maxdir+1)*sizeof(dir_entry),2,0);
+         {$I+ }
+         sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+         dir_status[dirpos].moved := true;
+         with_write( dirpos );
+      end;
+   END
+   ELSE
+   BEGIN
+      sc_clr_line( 0 );
+      sc_goto_xy(0,0);
+      WRITE( dispdir[dirpos].dtid,
+       ' is ',size,' blocks.  ',largest,' contig. ',totalblks,' total avail.',
+       ' <press return>');
+      read(ch);
+      newprompt := true;
+   end;
+ end
+ else
+ begin
+    sc_clr_line( 0 );
+    sc_goto_xy(0,0);
+    write( TARGETDIR[0].DVID,
+           ' volume directory is full. <press return>');
+    read(ch);
+    newprompt := true;
+ end;
+
+END
+ELSE
+BEGIN { OUTPUT DEVICE IS FOR TEXT }
+   IF dispdir[DIRPOS].DFKIND = TEXTFILE THEN
+   BEGIN
+      IF tar_unit = 1
+           THEN sc_clr_screen ;
+      sc_clr_line( 0 );
+      sc_goto_xy(0,0);
+      WRITE('Output of ',dispdir[dirpos].dtid,
+            ' to ',TNAME,': in progress.');
+      IF tar_unit = 1  THEN WRITELN;
+      newprompt := true;
+      { MOVE THE FILE TO THE TARGET VOLUME }
+      SOURCE := dispdir[DIRPOS].DFIRSTBLK+2;
+      REPEAT
+         TEMP := dispdir[DIRPOS].DLASTBLK-SOURCE;
+         IF TEMP > MOVBLKSIZ THEN TEMP := MOVBLKSIZ;
+         {$I- }
+            unitread(dir_unit,blocks^,temp*512,source+dir_offs,0);
+         {#I+ }
+         error := ioresult <> 0;
+         IF not error THEN
+         BEGIN
+            SOURCE := SOURCE + TEMP;
+            {$I- }
+              unitwrite(tar_unit,blocks^,temp*512,dest,0);
+            {$I+ }
+            error := ioresult <> 0;
+            IF not error THEN  DEST := DEST + TEMP
+              ELSE DISK_ERROR(CONCAT( TNAME,':',dispdir[DIRPOS].DTID ) );
+         END
+         ELSE DISK_ERROR( CONCAT(INAME,':',dispdir[DIRPOS].DTID) );
+         WRITE('.');
+      UNTIL (SOURCE = dispdir[DIRPOS].DLASTBLK) OR error ;
+      sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+      dir_status[dirpos].moved := true;
+      if not (tar_unit = 1) then with_write( dirpos );
+   END
+   else pressreturn('File type is not text');
+
+   IF tar_unit = 1  THEN
+   BEGIN
+     PRINTENTRIES;
+     sc_goto_xy(50,23);
+     WRITE('Destination is CONSOLE:');
+   END;
+
+
+END;
+VARDISPOSE( BLOCKS,MOVBLKSIZ*256); { RELEASE MOVE BUFFER }
+END;
+
+{$P }
+PROCEDURE GET;
+
+BEGIN
+   TARGET_KNOWN := FALSE;
+   sc_erase_to_eol( 50, 23 );
+   sc_goto_xy(50,23); 
+   IF GOOD_TARGET THEN { DUMMY IF TO CARRY THE FUNCTION CALL TO GOOD_TARGET };
+
+end;
+
+{$P }
+PROCEDURE CHANGE_FILE( CU:CHAR ; J:INTEGER );
+
+
+VAR
+   CH        : CHAR ;
+   ST        : STRING[15];
+   
+   
+   
+FUNCTION UNIQUE_FILE : BOOLEAN ;
+
+VAR
+   MATCH      : BOOLEAN ;
+   CH         : CHAR;
+   NROW,NCOL  : INTEGER ;
+   
+
+BEGIN
+   CH := 'Y'; { INITIALIZE TO CHARACTER TO CAUSE TRUE RETURN }
+   I := dispdir[0].DNUMFILES + 1;
+   MATCH := FALSE ;
+   IF I > 0 THEN
+   REPEAT  
+      I := I-1; 
+      IF (J <> INDEX[I])AND(not dir_status[INDEX[I]].removed) 
+       THEN MATCH := ST = dispdir[INDEX[I]].DTID ;
+   UNTIL MATCH OR ( I<=1 );
+   IF MATCH THEN
+   BEGIN
+      NCOL := 5 ;
+      REPEAT NCOL := NCOL - 1 UNTIL I > TOTALTOCOL[NCOL];
+      NROW := I - TOTALTOCOL[NCOL];
+      sc_goto_xy((NCOL-1)*20,Y_BASE+NROW-1);
+      dir_status[index[i]].removed := true ;
+      with_write( index[i] );
+      dir_status[index[i]].removed := false;
+      sc_clr_line( 0 );
+      sc_goto_xy(0,0);
+      WRITE('Remove the old version? (Y/N)');
+      NEWPROMPT := TRUE ; { RESTORE THE PROMPT LINE ON RETURN }
+      sc_goto_xy((NCOL-1)*20,Y_BASE+NROW-1);
+
+      REPEAT READ(KEYBOARD,CH)
+      UNTIL (CH='Y')OR(CH='y')or(CH='N')OR(CH='n')
+                    OR(sc_map_crt_command(ch) = sc_escape_key   );
+
+      IF (CH='Y')OR(CH='y') then
+      BEGIN
+         NUMFILES := NUMFILES -1;
+         dir_status[index[i]].removed := true ;
+         CALC;
+         PRINTSTATS;
+      END
+      ELSE
+      WITH_WRITE( index[i] );
+       
+  END;
+sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+UNIQUE_FILE := ((CH='Y')OR(CH='y'));
+END;
+{$P }
+    
+    { CHANGE_FILE }
+    
+ BEGIN
+   CASE CU OF 
+    
+   'C','c':BEGIN
+      IF dir_status[j].removed then
+      begin
+        newprompt := true;
+        pressreturn('cannot change a removed file name ');
+      end
+      else
+      begin
+   
+      ST := dispdir[J].DTID;
+      IF (( LENGTH(ST)>5)AND(LENGTH(ST)<15)) THEN
+         IF ST[LENGTH(ST)-4] = '.' THEN
+           WHILE LENGTH(ST)<15 DO INSERT ( ' ',ST,LENGTH(ST)-4);
+      WHILE LENGTH(ST)< 15 DO ST := CONCAT(ST,' ');
+      WRITE(ST);
+      sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+      I := 1;
+      REPEAT
+         READ (KEYBOARD,CH);
+         key_cmd := sc_map_crt_command( ch );
+         IF ((key_cmd = sc_left_key ) or ( key_cmd = sc_backspace_key ))
+              AND (I>1)  THEN I := I-1;
+         IF (key_cmd = sc_right_key) AND (I<15) THEN I := I+1;
+         IF (CH>='a') AND (CH<='z') 
+            THEN CH := CHR( ORD('A')+ORD(CH)-ORD('a') );
+         
+          
+         IF NOT(  (CH='?') OR(CH='=') OR(CH='*')    OR
+                  (CH=',') OR(CH='$') OR(CH=':')    OR
+                  (key_cmd <> SC_Not_legal ) OR EOLN(keyboard)  OR
+                  (ORD(CH)> 127)OR
+                  (ORD(CH)< ORD(' '))             ) THEN
+                  BEGIN
+                     ST[I]:= CH;
+                     WRITE(OUTPUT,CH);
+                     IF I<15 THEN I:=I+1;
+                  END;
+         sc_goto_xy( (COL-1)*20+I-1 ,Y_BASE+ROW-1); { PLACE THE CURSOR }
+      
+      UNTIL EOLN(keyboard)OR(key_cmd = sc_escape_key   )
+                          OR(key_cmd = sc_etx_key  );
+      
+      I := POS(' ',ST);
+      WHILE I<>0 DO 
+      BEGIN
+         DELETE(ST,I,1); { REMOVE THE SPACE CHARACTER }
+         I := POS(' ',ST)
+      END;
+      
+      IF NOT(CH=syscom^.crtinfo.altmode) THEN 
+        IF UNIQUE_FILE THEN
+        BEGIN
+          DIR_STATUS[J].CHANGED := TRUE ;
+          dispdir[J].DTID := ST;
+        END;
+         
+      sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+      WITH_WRITE( J );
+   end;
+   END;
+   
+   {$P }
+   'U','u':BEGIN
+         ST := ORGDIR[J].DTID; 
+         IF UNIQUE_FILE THEN
+         BEGIN
+            IF dir_status[j].removed THEN NUMFILES := NUMFILES +1;
+            dir_status[j].removed := false; { RESTORE FILE TO DIRECTORY }
+            dir_status[j].changed := false; 
+            dispdir[J].DTID := ORGDIR[J].DTID ; { RESTORE NAME IF C(hanged }
+            WITH_WRITE( J );
+            CALC;
+            PRINTSTATS;
+         END;
+      END;
+   END; { OF CASE CU }
+END;
+    
+{$P }
+PROCEDURE DELETEFILES;
+
+VAR
+   I,J    : INTEGER ;
+   
+BEGIN
+   J := 0;
+   IF NUMFILES <> 0 THEN  FOR I := 1 TO NUMFILES DO
+   BEGIN
+      REPEAT J := J +1 UNTIL not dir_status[j].removed;
+      IF J > I THEN dispdir[I] := dispdir[J];
+   END;
+   
+   dispdir[0].DNUMFILES := NUMFILES ;
+   if dirflip then 
+   BEGIN
+      DIRFLIP := FALSE;
+      flipdir(dispdir);
+   END;
+   {$I-}
+       unitwrite(dir_unit,dispdir,(maxdir+1)*sizeof(direntry),2+dir_offs,0);
+   {$I+}
+   IF IORESULT <>0 THEN DISK_ERROR( INAME );
+   
+END;
+{$P }
+PROCEDURE MARKENTRIES;
+VAR 
+  COMPLETE    : BOOLEAN;
+  MATCH       : BOOLEAN;
+  new_extend  : boolean ;
+  extension   : boolean ;
+  CH          : CHAR;
+  ST          : STRING ;
+  chartostr   : string[1];
+  I,J,K       : INTEGER;
+  NROW,NCOL   : INTEGER;
+  rep_factor  : integer;
+  
+  
+{$P }
+BEGIN   { MARKENTRIES }
+
+  COMPLETE  := FALSE ;
+  NEWPROMPT := TRUE  ;
+  extension := false ;
+  NEW_EXTEND := TRUE;
+  chartostr  := ' ';
+  
+  
+REPEAT { UNTIL COMPLETE 1111111 }
+REPEAT { UNTIL COMPLETE 2222222 }
+    esc_true := false ;
+
+  
+  IF NEWPROMPT THEN 
+  if not extension then PROMPT(0,
+'<arrows> Remove Change Undo Move Get Edit eXecute ENTER ESC Quit Help Output ?'
+               )   else prompt(0,
+'Natural Sorted Logical Verify Advance Formfeed                      12 Mar 83'
+               );
+
+    NEWPROMPT := FALSE ;
+    J :=  INDEX[ TOTALTOCOL[COL]+ROW ];
+    XY_ARRAY[ SVOLS_ARY[0] ] := J ;
+
+{*****}
+if new_extend then
+begin 
+  if dispdir[0].dnumfiles > 0 then
+  begin
+    sc_erase_to_eol(25,1);
+    sc_goto_xy(25,1);
+    WITH dispdir[J] DO WRITE(DTID,' ':(17-LENGTH(DTID)),
+         DLASTBLK-DFIRSTBLK:5,
+         DACCESS.DAY:4,'-',MONTHNAME[DACCESS.MONTH],'-',DACCESS.YEAR:2,
+         DFIRSTBLK:5,
+         DLASTBYTE:5,
+         FILETYPENAME[dfkind]:10 );
+  end;
+  new_extend := false;
+end;
+{*****}
+    sc_goto_xy( (COL-1)*20,Y_BASE+ROW-1); { PLACE THE CURSOR }
+    
+    
+{***  READ THE NEXT COMMAND CHARACTER }
+    rep_factor := 0;
+    READ(KEYBOARD,CH);
+    while ch in digits do
+    begin
+      rep_factor := rep_factor*10+(ord(ch)-ord('0'));
+      read(keyboard,ch);
+    end;
+    
+    key_cmd := sc_map_crt_command( ch );
+    
+    
+repeat
+    
+    IF key_cmd = sc_up_key THEN IF ROW = 1 THEN ROW := COL_LENGTH[COL]
+                                           ELSE ROW := ROW-1;
+    IF key_cmd = sc_down_key THEN IF ROW = COL_LENGTH[COL] THEN ROW := 1
+                                                           ELSE ROW := ROW + 1;
+    IF EOLN(KEYBOARD) THEN IF ROW = COL_LENGTH[COL] THEN
+                      BEGIN
+                        ROW := 1;
+                        IF (COL<4)THEN IF (COL_LENGTH[COL+1]>0)THEN
+                                            COL := COL + 1
+                                       ELSE COL := 1
+                        ELSE COL := 1;
+                      END
+                      ELSE ROW := ROW + 1;
+    IF (key_cmd = sc_backspace_key) or (key_cmd = sc_left_key) 
+                    THEN IF COL = 1 THEN
+                      IF ROW <= COL_LENGTH[4] THEN COL := 4 ELSE
+                      IF ROW <= COL_LENGTH[3] THEN COL := 3 ELSE
+                      IF ROW <= COL_LENGTH[2] THEN COL := 2 ELSE
+                      COL := 1
+                    ELSE COL := COL - 1;
+    IF (key_cmd = sc_right_key) OR (CH = TAB)  THEN
+                   IF ROW <= COL4 THEN { ROW IS COMPLETE }
+                      IF COL = 4 THEN COL := 1 ELSE COL := COL + 1
+                   ELSE { ROW IS A PARTIAL, 1,2 OR 3 COLUMNS ONLY }
+                      IF ((COL=1) AND (ROW=COL2)) THEN COL := 2 ELSE
+                       IF ((COL=2) AND (ROW=COL3)) THEN COL := 3 ELSE
+                        COL := 1; { COLUMN THREE WRAPS TO COLUMN ONE }
+    IF ( KEY_CMD = SC_NOT_LEGAL ) THEN
+                   IF ( CH = HOME_TV ) OR ( CH = HOME_911 ) THEN
+                   BEGIN
+                      ROW := 1;
+                      COL := 1;
+                   END;
+    
+    new_extend := 
+       ( key_cmd <> sc_not_legal ) or 
+       ( ch = home_tv ) or
+       ( ch = home_911 ) or
+       ( ch = tab  ) or 
+       ( eoln(keyboard)   );
+    COMPLETE := ( key_cmd = sc_etx_key ) or ( key_cmd = sc_escape_key);
+rep_factor:=rep_factor-1;
+until (rep_factor<1) or complete ;
+
+{*** END OF CURSOR POSITIONING COMMANDS }
+
+{$P }
+if not(new_extend or ( key_cmd = sc_etx_key   )
+                  or ( key_cmd = sc_escape_key   )) then
+                  case ch of 
+                  
+                  
+{*** REMOVE FILE PROCESSING }
+'R','r':BEGIN
+         IF not dir_status[j].removed THEN
+         BEGIN
+            NUMFILES := NUMFILES - 1;
+            dir_status[j].removed := true;
+            with_write( j );
+         END;
+         CALC;
+         PRINTSTATS;
+       END;
+    
+
+{*** SORT AND DISPLAY PRESENT VOLUME ***}
+'S','s':begin
+         sort := 1;
+         sort_dir ;
+         printentries;
+         new_extend := true;
+         row := 1; col := 1;
+        end;
+        
+{*** SORT BY FOUR CHARACTER SUFFIX & FILE NAME ***}
+'L','l':begin
+         sort := 2;
+         suffixsort;
+         printentries;
+         new_extend := true;
+         row := 1; col := 1;
+        end;
+        
+{*** MOVE THE FILE TO A TARGET }
+'M','m':
+     IF not DIR_STATUS[J].REMOVED THEN MOVE_FILE(J)
+      ELSE
+      begin
+        newprompt := true;
+        pressreturn('A REMOVED FILE CAN NOT BE MOVED. ');
+      end;
+
+{*** FORMFEED THE PRINTER                         ***}
+'F','f':begin
+          if target_known then
+            if tar_unit = 6 then 
+              unitwrite(tar_unit,formfeed,1);
+        end;
+
+{*** SET NATURAL ORDER AND DISPLAY PRESENT VOLUME ***}
+'N','n':begin
+         sort := 0;
+         for i:=1 to maxdir do index[i]:= i;
+         printentries;
+         new_extend := true;
+         row := 1; col := 1;
+        end;
+        
+{*** GET A NEW DESTINATION VOLUME }
+'G','g':  GET ;
+      
+   
+   
+{*** UNDO THE ACTION ( IF ANY ) TAKEN TO DATE ON THIS FILE }
+'U','u':CHANGE_FILE( CH, J);
+    
+{*** refresh the present volume display ***}
+'V','v':printentries;
+
+{*** CHANGE THE FILE NAME }
+'C','c':CHANGE_FILE( CH, J);
+  
+  
+{*** HELP }
+'H','h': help ;
+   
+   
+{*** OUTPUT TO A DEVICE OR FILE }
+'O','o':BEGIN 
+         DOUTPUT; 
+         NEWPROMPT := TRUE 
+      END;
+   
+{*** eXecute the code file, or initiate a monitor input string }
+'X','x':begin
+   IF dir_status[j].removed then 
+   begin
+     newprompt := true;
+     pressreturn( 'CANNOT EXECUTE A REMOVED FILE.');
+   end
+   else
+   begin
+     esc_true := true;
+     complete := true;
+   end;
+   end;
+
+{*** Edit the file specified }
+'E','e':begin
+   if dir_status[j].removed then
+   begin
+     newprompt := true;
+     pressreturn( 'CANNOT EDIT A REMOVED FILE' );
+   end
+   else
+   begin
+                           
+     esc_true := true;
+     complete := true;
+   end;
+   end;
+          
+{*** Quit the directory utility after update of directory prompt }
+'Q','q':begin
+         esc_true := true;
+         complete := true;
+        end;
+  
+{*** Advance to subsiderary volume }
+'A','a':begin
+          if dispdir[j].dfkind =subsvol then
+          begin
+            if svols_ary[0] <  max_svol_depth then
+            begin
+              SVOLS_ARY[0] := SVOLS_ARY[0] +1 ;
+              SVOLS_ARY[ svols_ary[0] ] := dispdir[j].dfirstblk + dir_offs ;
+              xy_array[ svols_ary[0]] := 1;
+              going_up := true ;
+              complete := true;
+              svols_ary[0] := svols_ary[0] + 1 ; { defeat decrement on exit }
+            end
+            else
+            begin
+              pressreturn(' Exceeds SVOL nest depth ' );
+              newprompt := true;
+            end;
+          end
+          else
+          begin
+            newprompt := true;
+            pressreturn('Selection "A" must point to SVOL type file');
+          end;
+        end; { of type 'A' }
+end; { of case }
+if ( ch = '?' ) or ( ch = '/' ) then 
+        begin
+          newprompt := true;
+          extension := not extension ;
+        end
+        else  extension := false ;
+          
+  
+UNTIL COMPLETE; { 11111111 }
+
+
+
+  TARGET_KNOWN := FALSE ;
+  do_marks := dispdir[0].dnumfiles> 0 ; { do marks only if files on original}
+  
+  IF  ( dispdir[0].dnumfiles > 0 ) THEN
+  BEGIN
+     I:=1;
+     REPEAT 
+      with dir_status[i] do
+        DO_MARKS:= removed or changed ;
+      I:=I+1 
+     UNTIL DO_MARKS OR ( I > dispdir[0].DNUMFILES );
+     IF DO_MARKS THEN 
+     BEGIN 
+      REPEAT
+       sc_clr_line( 0 );
+       sc_goto_xy( 0,0 ); 
+       WRITE ('Update directory? (Yes/No/Return)');
+       READ ( YESNO );
+      UNTIL (YESNO = 'Y')OR(YESNO ='y')OR
+            (YESNO = 'N')OR(YESNO ='n')or
+            (yesno = 'R')or(yesno ='r');
+      newprompt := true ;
+      complete := not( (yesno='R')or(yesno='r') );
+      DO_MARKS :=  (YESNO = 'Y')or(YESNO = 'y') ;
+     END;
+  END;
+until complete; { 222222222 }
+  
+if do_marks then 
+repeat
+  {$I-}
+      unitread(dir_unit,targetdir,sizeof(dir_entry),2+dir_offs,0);
+  {$I+}
+  OK := IORESULT = 0;
+  IF NOT OK THEN DISK_ERROR(CONCAT(TNAME,':'))
+  else
+    with targetdir[0] do
+    if NOT ( ( length(dvid)<=0 ) or ( length(dvid)> 7 ) )  then
+    begin
+      ok :=  disp_dir[0].dvid = targetdir[0].dvid ;
+      if not ok then
+      begin
+        ok := false;
+        repeat
+          sc_clr_line( 0 );
+          sc_goto_xy(0,0); 
+          write('Return Volume ',disp_dir[0].dvid,' to #',dir_unit,
+                ' Press Space');
+          read(ch);
+        until ch=' ' ;
+      end
+    end
+    else
+    begin
+      ok := false;
+      repeat
+        sc_clr_line( 0 );
+        sc_goto_xy(0,0);
+        write('Return Volume ',disp_dir[0].dvid,' to #',dir_unit,
+              ' Press Space');
+        read(ch);
+      until ch=' ' ;
+    end
+      
+
+until ok = true;
+         
+
+CASE CH OF 
+{*** eXecute the code file, or initiate a monitor input string }
+'X','x':begin
+     prompt(0,concat('Execute ',dispdir[0].dvid,':',dispdir[j].dtid));
+     if dispdir[j].dfkind = codefile then
+         chain( concat('I="x', dispdir[0].dvid,':',dispdir[j].dtid,'."' ))
+     else
+         chain( concat( 'I=',dispdir[0].dvid,':',dispdir[j].dtid));
+     esc_true := true;
+     complete := true;
+   end;
+
+{*** Edit the file specified }
+'E','e':begin
+     prompt(0,concat('Edit ',dispdir[0].dvid,':',dispdir[j].dtid));
+     chartostr[1] := syscom^.crtinfo.linedel;
+     chain( concat( 'I="e',chartostr,
+                           dispdir[0].dvid,':',
+                           dispdir[j].dtid,'"'));
+                           
+     esc_true := true;
+     complete := true;
+   end;
+          
+END;  { of case ch }
+IF DO_MARKS THEN DELETEFILES; 
+END; 
+
+
+
+
+{$P }
+{
+*
+**
+***
+****
+*****     PRIMARY BLOCK STARTS HERE 
+****
+***
+**
+*
+}
+BEGIN
+MEMLOCK('SCREENOPS');
+INITIALIZE;
+
+REPEAT
+  tar_offs := 0; { should always be 0 }
+  
+  {***  ACCEPT A VOLUME ID FROM THE USER   ***}
+  
+  
+  REPEAT 
+   sc_clr_screen ;
+   TNAME := iname;
+
+if SVOLS_ARY[0] = 0 then
+begin { 11111111 }
+   dir_offs := 0 ; { remove the svol offset if present }
+   going_up := true;
+
+   sc_goto_xy(0,2);
+
+   writeln('Volumes presently online:');
+   writeln;
+
+   i := 0;
+   j := 0;
+   l := 0;
+     {
+          Finds the next blocked volume for output to the screen 
+           
+     }
+     while (j < maxunit) and ( i < 60 )  do
+     begin
+       j := j+1;
+       if syscom^.unitable^[j].uisblkd then
+       begin
+          read_vid(j);
+          IF syscom^.unitable^[j].UVID <> '' THEN
+          BEGIN
+            sc_erase_to_eol( (i div 20 * 27 ), ( i mod 20 + 4 ) );
+            sc_goto_xy( ( i div 20 * 27 ), ( i mod 20 + 4 ) );
+            WRITE( j:2 );
+            
+            WRITE( ':' );
+            (*
+            IF syscom^.unitable^[j].UISBLKD THEN
+              if syscom^.unitable^[j].uvid = syvid then write( ': R ' )
+              else
+                if syscom^.unitable^[j].uvid = dkvid then write(': P ')
+                else WRITE(':   ')
+            ELSE WRITE(':   ');
+            *)
+            WRITE(syscom^.unitable^[j].UVID,
+                   ' ':8-LENGTH(SYSCOM^.UNITABLE^[J].UVID));
+            WRITE('[',syscom^.unitable^[J].ueovblk:5,']');
+            if syscom^.unitable^[j].uvid <> syscom^.unitable^[j].upvid then
+              write(syscom^.unitable^[j].upvid);
+            i := i +1 ;
+          END; { syscom^.unitable^ <> '' }
+       end; { syscom^.unitable^[j].uisblkd }
+     end; { j< maxunit and i < 80  }
+
+    ok := false;
+    sc_clr_line( 0 );
+    sc_goto_xy(0,0);
+    WRITE('Enter volume id of disk (<ESC>,<RETURN> to end) [',TNAME,'] =>');
+    rdline(INAME);
+    if iname = '' then iname:=TNAME ;
+    IF key_cmd  = sc_escape_key
+      THEN EXIT ( dfile );
+
+
+    ok := false;
+    dir_unit := get_unit_number( iname );
+end ; { 111111111 }
+
+dir_offs := SVOLS_ARY[ svols_ary[0] ] ; { displacement to svol }
+
+
+    if ((syscom^.unitable^[dir_unit].uvid <> '' ) and 
+         syscom^.unitable^[dir_unit].uisblkd )  then
+    begin
+    
+      {$I-}
+         unitread(dir_unit,dispdir,(maxdir+1)*sizeof(direntry),2+dir_offs,0);
+      {$I+}
+      OK := IORESULT = 0;
+      IF NOT OK THEN DISK_ERROR(concat(INAME,':'))
+      else
+        begin
+         if dispdir[0].dlastblk > 255 then 
+         begin
+            dirflip := true;
+            flipdir( dispdir )
+         end
+         else dirflip := false;
+         FOR I := 0 TO DISPDIR[0].DNUMFILES DO
+             ORGDIR[I] := DISPDIR[I];
+        end;
+      
+    END;
+    if not ok then initentry := false ;
+  UNTIL OK ;
+    
+IF SVOLS_ARY[0] = 0 THEN
+BEGIN
+    SVOLS_ARY[0] := 1 ; { FIRST ENTRY IS ALWAYS THE PHYSICAL VOL }
+    SVOLS_ARY[1] := 0 ; { OFFSET TO PHYSICAL IS ALWAYS ZERO }
+END;
+ 
+                      
+  if key_cmd <> sc_escape_key     then
+  begin
+     CRT := TRUE ;
+     ALLDONE := FALSE;
+     NUMFILES := DISPDIR[0].DNUMFILES;
+     J := 1;
+
+     FOR I := 1 TO MAXDIR DO INDEX[I] := I ;
+
+     case sort of
+       1: sort_dir;       {alphanumeric sort on file name}
+       2: suffixsort;     {alphanumeric sort on four char suffix and file name}
+     end;
+
+     
+
+
+     
+     IF NUMFILES > 0 THEN 
+       FOR I := 1 TO NUMFILES DO
+       begin
+         dir_status[i].removed := false;
+         dir_status[i].changed := false;
+         dir_status[i].moved   := false;
+         dir_status[i].swaped  := false;
+       end;
+     FOR I := NUMFILES+1 TO MAXDIR DO 
+       begin
+         dir_status[i].removed := true ;
+         dir_status[i].changed := false;
+         dir_status[i].moved   := false;
+         dir_status[i].swaped  := false;
+       end;
+     CALC;
+   
+     {*** OUTPUT THE DIRECTORY TO THE CRT SCREEN }
+     PRINTENTRIES; { PRINT ALL INFORMATION }
+     
+     if going_up then
+     begin
+       going_up := false;
+       col := 1;
+       row := 1;
+     end
+     else
+     begin
+       i := XY_ARRAY[ SVOLS_ARY[0] ] ;
+       j:=0;
+       repeat j:=j+1 until i = index[j] ;
+       COL := 5 ;
+       REPEAT
+         COL := COL - 1;
+       UNTIL J > TOTALTOCOL[COL] ;
+       ROW := J - TOTALTOCOL[COL] ;
+     end;
+     
+     
+     markentries;
+     key_cmd := sc_not_legal ; { insure key not reused }
+     IF SVOLS_ARY[0] > 0 THEN SVOLS_ARY[0] := SVOLS_ARY[0] - 1 ;
+     
+  end;
+ UNTIL ESC_TRUE ;
+          
+END.

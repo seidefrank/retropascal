@@ -1,0 +1,137 @@
+
+PROGRAM IOTEST;
+
+{ Author:  Charles Rockwell, Microlog, Box 116, Guilford CT, 06437. }
+
+USES IOUNIT;
+(* This construct assumes IOUNIT.CODE resides in SYSTEM.LIBRARY *)
+
+VAR 
+    SOURCE: STRING[20];                   (* INPUT TEXT FILE NAME *)
+    INTEXT: TEXT;                         (* INPUT TEXT FILE *)
+    DEST: STRING[20];                     (* OUTPUT TEXT FILE NAME *)
+    OUTTEXT: TEXT;                        (* OUTPUT TEXT FILE *)
+    CH: CHAR;
+    S: STRING;
+    OKFILE: BOOLEAN;
+
+BEGIN (* IOTEST *)
+  WRITELN;
+  WRITELN;
+  WRITELN('IOUNIT benchmark');
+  WRITELN;
+  WRITELN;
+  WRITE('Input file name ? ');
+  READLN(SOURCE);
+  WRITELN;
+  OKFILE := RESETFILE(SOURCE);
+  IF NOT OKFILE
+    THEN
+      EXIT(PROGRAM);
+  WRITELN('Test of fast character I/O');
+  WRITE('Output file name ? ');
+  READLN(DEST);
+  WRITELN;
+  OKFILE := REWRITEFILE(DEST);
+  IF OKFILE
+    THEN
+      BEGIN
+        WRITE('Using READCHAR');
+        WRITE(CHR(7));
+        WHILE NOT EOFFLAG DO
+          BEGIN
+            WHILE NOT EOLNFLAG DO
+              BEGIN
+                READCHAR(CH);
+                WRITECHAR(CH)
+              END;
+            READLINE(S);
+            WRITELINE(S)
+          END;
+        WRITE(CHR(7));
+        CLOSEOUTFILE;
+        WRITELN;
+        WRITELN
+      END
+    ELSE
+      CLOSEINFILE;
+  WRITELN('Test of standard character I/O');
+  WRITE('Output file name ? ');
+  READLN(DEST);
+  WRITELN;
+  IF DEST<>''
+    THEN
+      BEGIN
+        RESET(INTEXT,SOURCE);
+        REWRITE(OUTTEXT,DEST);
+        WRITE('Using READ');
+        WRITE(CHR(7));
+        WHILE NOT EOF(INTEXT) DO
+          BEGIN
+            WHILE NOT EOLN(INTEXT) DO
+              BEGIN
+                READ(INTEXT,CH);
+                WRITE(OUTTEXT,CH)
+              END;
+            READLN(INTEXT);
+            WRITELN(OUTTEXT)
+          END;
+        WRITE(CHR(7));
+        CLOSE(INTEXT,LOCK);
+        CLOSE(OUTTEXT,LOCK);
+        WRITELN;
+        WRITELN
+      END;
+  WRITELN('Test of fast line I/O');
+  WRITE('Output file name ? ');
+  READLN(DEST);
+  WRITELN;
+  OKFILE := RESETFILE(SOURCE);
+  IF NOT OKFILE
+    THEN
+      BEGIN
+        WRITELN('Fatal error -- lost input file');
+        EXIT(PROGRAM)
+      END;
+  OKFILE := REWRITEFILE(DEST);
+  IF OKFILE
+    THEN
+      BEGIN
+        WRITE('Using READLINE');
+        WRITE(CHR(7));
+        WHILE NOT EOFFLAG DO
+          BEGIN
+            READLINE(S);
+            WRITELINE(S)
+          END;
+        WRITE(CHR(7));
+        CLOSEOUTFILE;
+        WRITELN;
+        WRITELN
+      END
+    ELSE
+      CLOSEINFILE;
+  WRITELN('Test of standard line I/O');
+  WRITE('Output file name ? ');
+  READLN(DEST);
+  WRITELN;
+  IF DEST <>''
+    THEN
+      BEGIN
+        RESET(INTEXT,SOURCE);
+        REWRITE(OUTTEXT,DEST);
+        WRITE('Using READLN');
+        WRITE(CHR(7));
+        WHILE NOT EOF(INTEXT) DO
+          BEGIN
+            READLN(INTEXT,S);
+            WRITELN(OUTTEXT,S)
+          END;
+        WRITE(CHR(7));
+        CLOSE(INTEXT,LOCK);
+        CLOSE(OUTTEXT,LOCK);
+        WRITELN;
+        WRITELN
+      END;
+  CLOSEINFILE
+END. (* IOTEST *)
